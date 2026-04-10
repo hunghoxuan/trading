@@ -1,0 +1,52 @@
+//@version=5
+indicator("Enhanced SMA Crossover with RSI Confirmation", shorttitle="SMA Cross RSI", overlay=true)
+
+// Define the length of the short-term and long-term moving averages
+shortLength = input.int(9, title="Short-term Moving Average Length")
+longLength = input.int(21, title="Long-term Moving Average Length")
+rsiLength = input.int(14, title="RSI Length")
+rsiOverbought = input.int(70, title="RSI Overbought Level")
+rsiOversold = input.int(30, title="RSI Oversold Level")
+
+// ATR settings for calculating Take Profit and Stop Loss
+atrLength = input.int(14, title="ATR Length")
+atrMultiplier = input.float(1.5, title="ATR Multiplier")
+
+// Calculate the short-term and long-term moving averages
+shortSMA = ta.sma(close, shortLength)
+longSMA = ta.sma(close, longLength)
+
+// Calculate RSI
+rsi = ta.rsi(close, rsiLength)
+
+// Calculate ATR
+atr = ta.atr(atrLength)
+
+// Define Take Profit and Stop Loss levels
+takeProfit = atr * atrMultiplier
+stopLoss = atr * atrMultiplier
+
+// Plot the moving averages
+plot(shortSMA, color=color.blue, title="Short-term SMA")
+plot(longSMA, color=color.red, title="Long-term SMA")
+
+// Generate entry signals with RSI confirmation
+longCondition = ta.crossover(shortSMA, longSMA) and rsi < rsiOverbought
+shortCondition = ta.crossunder(shortSMA, longSMA) and rsi > rsiOversold
+
+// Plot entry signals on the chart with labels
+plotshape(series=longCondition, location=location.belowbar, color=color.green, style=shape.labelup, text="BUY", title="Buy Signal")
+plotshape(series=shortCondition, location=location.abovebar, color=color.red, style=shape.labeldown, text="SELL", title="Sell Signal")
+
+// Labels for entry points with Take Profit and Stop Loss
+if (longCondition)
+    label.new(bar_index, low, text="BUY\nTP: " + str.tostring(close + takeProfit, format.mintick) + "\nSL: " + str.tostring(close - stopLoss, format.mintick),
+              style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+
+if (shortCondition)
+    label.new(bar_index, high, text="SELL\nTP: " + str.tostring(close - takeProfit, format.mintick) + "\nSL: " + str.tostring(close + stopLoss, format.mintick),
+              style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)
+
+// Display alerts
+alertcondition(longCondition, title="Buy Alert", message="Buy Signal: Short-term SMA crossed above Long-term SMA with RSI confirmation")
+alertcondition(shortCondition, title="Sell Alert", message="Sell Signal: Short-term SMA crossed below Long-term SMA with RSI confirmation")

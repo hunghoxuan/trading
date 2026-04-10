@@ -1,0 +1,2639 @@
+//@version=5
+// @kit-version: 10
+library("KitCore", dynamic_requests = true)
+
+//s
+export type Theme
+    color COLOR_BEARISH = color.red
+    color COLOR_BULLISH = color.teal
+    color COLOR_NEUTRAL = color.gray
+    color COLOR_BROKEN = color.olive
+    color COLOR_TRANSPARENT = color.white
+    color TEXT_COLOR = #ffffff
+    color TEXT_COLOR_BULLISH = color.teal
+    color COLOR_UI_BG = color.black
+    color COLOR_UI_FG = color.white
+    color COLOR_UI_ACCENT = color.yellow
+    color COLOR_KEYLEVEL = color.yellow
+    color COLOR_LTF = color.gray // Base-TF zigzag/swing color.
+    color COLOR_HTF1 = color.orange // HTF1: warm tangerine.
+    color COLOR_HTF2 = color.purple // HTF2: violet.
+    int LTF_TRANSP = 60
+    int HTF1_TRANSP = 60
+    int HTF2_TRANSP = 70
+    
+    string STYLE_STRONG = line.style_solid
+    string STYLE_WEAK = line.style_dotted
+    string STYLE_BROKEN = line.style_dashed
+    string STYLE_LABEL_NONE = label.style_none
+    string SIZE_TINY = size.tiny
+    string SIZE_SMALL = size.small
+    string SIZE_NORMAL = size.normal
+    int T_NONE = 0
+    int T_LOW = 20
+    int T_MEDIUM = 50
+    int T_NORMAL = 80
+
+// Shared baseline settings for duplicated cross-indicator constants.
+export type Settings
+    int GLOBAL_MAX_LOOKBACK_BARS = 500 // Global default lookback bars for lifecycle/render gating.
+    int HTF_CANDLES_BASE = 16 // Base count for HTF1 projected candles/panel.
+    int HTF_CANDLES_BIAS1 = 12 // Base count for HTF2 projected candles/panel.
+    bool DYN_LOOKBACK_ENABLE = true // Enables dynamic HTF-derived lookback recalculation.
+    string DYN_RECALC_MODE_ON_HTF2 = "ON_HTF2_CLOSE" // Recalculate when HTF2 closes.
+    string DYN_RECALC_MODE_EVERY_N = "EVERY_N_BARS" // Recalculate every N bars.
+    int DYN_RECALC_EVERY_BARS = 10 // N-bars interval when using EVERY_N_BARS mode.
+    int DYN_HTF2_CANDLES_MIN = 3 // Min dynamic candle count for HTF2 panel.
+    int DYN_HTF2_CANDLES_MAX = 12 // Max dynamic candle count for HTF2 panel.
+    int DYN_HTF2_CANDLES_FALLBACK = 12 // Fallback HTF2 candle count when no anchor exists.
+    int DYN_HTF1_CANDLES_MIN = 3 // Min derived candle count for HTF1 panel.
+    int DYN_HTF1_CANDLES_MAX = 16 // Max derived candle count for HTF1 panel.
+    int DYN_CURR_LOOKBACK_MIN_BARS = 50 // Min derived current-TF lookback bars.
+    int DYN_CURR_LOOKBACK_MAX_BARS = 3000 // Max derived current-TF lookback bars.
+    float MS_CURR_SWING_X_SHIFT_FRAC = 1.0 // Current-TF swing marker X offset factor.
+    float MS_CURR_SWING_Y_SHIFT_TICKS = 0.0 // Current-TF swing marker Y offset in ticks.
+    int MS_HTF1_SWING_Y_SHIFT_TICKS = 0 // HTF1 swing marker Y offset in ticks.
+    int MS_HTF2_SWING_Y_SHIFT_TICKS = 0 // HTF2 swing marker Y offset in ticks.
+    //int HTF_RIGHT_OFFSET = 20 // Right-side bars offset for HTF candle panels.
+    int SWING_HISTORY_MAX = 120 // Max stored swing points in per-TF arrays.
+    int SR_LINE_TRANSP = 72 // Support/Resistance line transparency.
+    int W_BIAS_STRUCTURE = 3
+    int W_BIAS_VWAP = 2
+    int W_BIAS_EMA50 = 2
+    int W_BIAS_RSI = 1
+    int W_BIAS_ADX = 1
+    int W_BIAS_RSI_IMPULSE = 1
+    int W_BIAS_SUPERTREND = 2
+    int W_BIAS_DONCHIAN = 2
+    int BIAS_PROFILE_REACTIVE = 0 // TF profile: 1m-5m.
+    int BIAS_PROFILE_INTRADAY = 1 // TF profile: 15m-1h.
+    int BIAS_PROFILE_SWING = 2 // TF profile: 4h.
+    int BIAS_PROFILE_MACRO = 3 // TF profile: 1D-1W.
+    float SIGNAL_RR_DEFAULT = 1.0 // Default reward:risk target multiple for signal trade plans.
+    float SIGNAL_STOPLOSS = 0.0 // 0=auto zone-edge stop, >0=fixed ATR-multiple stop distance from entry.
+    bool ENTRY_REQUIRE_NEXT_BAR = true // If true, TP/SL checks start after entry candle closes.
+    bool ENTRY_SL_FIRST_ON_DUAL_HIT = true // If TP+SL touched on same bar, prioritize SL.
+    int ENTRY_RECENT_DUP_BARS = 2 // Default anti-duplicate window for recent active entries.
+    string TOOLTIP_REASON_PREFIX = "\nReason: " // Shared tooltip prefix for reason text.
+    string TOOLTIP_TOUCHES_PREFIX = "Touches: " // Shared tooltip prefix for touch-count labels.
+    int CP_MIN_CONV = 2 // Min confluence score required to show candle-pattern emphasis.
+    int CP_VOL_LEN = 20 // Candle-pattern relative-volume moving-average length.
+    float CP_VOL_HIGH = 1.5 // Relative-volume threshold for high-volume bonus.
+    float CP_VOL_EXTREME = 2.0 // Relative-volume threshold for extreme-volume bonus.
+    float CP_DOJI_PCT = 0.10 // Max body/range ratio to classify doji-like candles.
+    float CP_WICK_BODY = 2.0 // Min wick/body ratio for long-wick rejection families.
+    float CP_WICK_DOMINANCE = 2.0 // Min dominant-wick factor vs opposite wick.
+    float CP_OPPOSITE_WICK_MAX_BODY = 0.5 // Opposite wick cap (in body units).
+    float CP_ENGULF_MIN = 1.0 // Min previous-body multiplier for engulfing validation.
+    float CP_TWEEZER_ATR = 0.05 // Max ATR-distance between tweezer highs/lows.
+    float CP_MARUBOZU_WICK = 0.05 // Max wick/body ratio for marubozu classification.
+    float CP_3LINE_BODY = 0.60 // Min body/range ratio for 3-line momentum candles.
+    float CP_VOL_MIN = 1.5 // Min relative volume for candle-pattern confluence bonus.
+    
+
+// Shared constant vocabulary that is not user-configurable.
+export type Const
+    string SIGNAL_STATE_PENDING = "PENDING"
+    string SIGNAL_STATE_START = "START"
+    string SIGNAL_STATE_TP = "TP"
+    string SIGNAL_STATE_SL = "SL"
+    int SIG_STAT_TOTAL = 0
+    int SIG_STAT_TP = 1
+    int SIG_STAT_SL = 2
+    int SIG_TYPE_OB = 0
+    int SIG_TYPE_BB = 1
+    int SIG_TYPE_FVG = 2
+    int SIG_TYPE_SWEEP = 3
+    int SIG_TYPE_COUNT = 4
+    int SIG_METRIC_TP = 0
+    int SIG_METRIC_SL = 1
+    int SIG_METRIC_GAIN_R = 2
+    int SIG_METRIC_COUNT = 3
+    int LIFE_FORMED = 0
+    int LIFE_TOUCHED = 1
+    int LIFE_RESPECTED = 2
+    int LIFE_RECLAIMED = 3
+    int LIFE_BROKEN = 4
+    int LIFE_INVALID = 5
+    int LIFE_RESOLVED = 6
+    string ENTRY_MODE_OFF = "NO ENTRY"
+    string ENTRY_MODE_LIMIT = "LIMIT"
+    string ENTRY_MODE_AFTER_RETEST = "AFTER RETEST"
+    string ENTRY_RESOLVE_INTRABAR = "Intrabar"
+    string ENTRY_RESOLVE_BAR_CLOSE = "Bar Close"
+    string DASH_NONE = "none"
+    string DASH_TOP_RIGHT = "top-right"
+    string DASH_BOTTOM_RIGHT = "bottom-right"
+    string DASH_TOP_CENTER = "top-center"
+    string DASH_BOTTOM_CENTER = "bottom-center"
+    string DISP_NONE = "None"
+    string DISP_MARKER = "Marker"
+    string DISP_EVENT = "Event"
+    string DISP_ENTRY = "Entry"
+    string PIVOT_MODE_FIXED = "Fixed"
+    string OB_CLASS_ORIGIN = "O"
+    string OB_CLASS_DECISIONAL = "D"
+    string OB_CLASS_EXTREME = "X"
+    string OB_CLASS_MITIGATION = "M"
+    string SYM_DOT = "●"
+    string SYM_DOT_SMALL = "•"
+    string SYM_DOT_TINY = "·"
+    string SYM_UP = "▲"
+    string SYM_DN = "▼"
+    string SYM_DASH = "▬"
+    string SYM_CHECK = "✓"
+    string SYM_ARR1_UP = "⇑" 
+    string SYM_ARR1_DN = "⇓"
+    string SYM_ARR2_UP = "↑" 
+    string SYM_ARR2_DN = "↓" 
+    string SYM_DIAMOND = "◈"
+    string SYM_DIAMOND_SMALL = "◇"
+    string SYM_STAR = "★"
+    string SYM_STAR_SMALL = "☆"
+    string SYM_TARGET = "🎯"
+    string SYM_STOPLOSS = "🛑"
+    string SYM_VERTICAL_BAR = "▮"
+    string SYM_CIRCLE = "⊙"
+    string SYM_RSI = "RSI"
+    string SYM_VWAP = "VWAP"
+    string TT_BUY = "Potential Buy"
+    string TT_SELL = "Potential Sell"
+    string TIME_EVENT_LABEL_MODE_TIME = "TIME"
+    string TIME_EVENT_LABEL_MODE_TEXT = "TEXT"
+    string TIME_EVENT_WINDOW_MIDNIGHT = "0000-0001"
+    string TIME_EVENT_WINDOW_0830 = "0830-0831"
+    string TIME_EVENT_WINDOW_NY_OPEN = "0930-0931"
+    string TIME_EVENT_WINDOW_1000 = "1000-1001"
+    string TIME_EVENT_WINDOW_LDN_CLOSE = "1130-1131"
+    string TIME_EVENT_WINDOW_PM_BULL = "1400-1401"
+    string TIME_EVENT_TXT_MIDNIGHT = "00:00"
+    string TIME_EVENT_TXT_0830 = "08:30"
+    string TIME_EVENT_TXT_NY_OPEN = "09:30"
+    string TIME_EVENT_TXT_1000 = "10:00"
+    string TIME_EVENT_TXT_LDN_CLOSE = "L.C"
+    string TIME_EVENT_TXT_PM_BULL = "14:00"
+    string TIME_EVENT_NAME_MIDNIGHT = "Midnight"
+    string TIME_EVENT_NAME_0830 = "8:30"
+    string TIME_EVENT_NAME_NY_OPEN = "NY.O"
+    string TIME_EVENT_NAME_1000 = "10AM"
+    string TIME_EVENT_NAME_LDN_CLOSE = "L.C"
+    string TIME_EVENT_NAME_PM_BULL = "2PM"
+    string TIME_EVENT_TT_MIDNIGHT = "NY Midnight Open\nTrue daily open for algorithms and true daily opening price."
+    string TIME_EVENT_TT_0830 = "8:30 AM Macro\nOften a high-volatility macro data window. Use extra caution around liquidity + spread expansion."
+    string TIME_EVENT_TT_NY_OPEN = "NY Equities Open\nTrue day-open volume injection. Often acts as a manipulative judas swing."
+    string TIME_EVENT_TT_1000 = "10:00 AM Silver Bullet / Macro\nHigh probability continuation or reversal timezone."
+    string TIME_EVENT_TT_LDN_CLOSE = "London Close Macro\nOften creates the high/low of the day in London/NY crossover."
+    string TIME_EVENT_TT_PM_BULL = "2:00 PM Silver Bullet\nAfternoon structural flush and continuation in NY PM."
+    string WIN_LABEL_TIMEZONE = "UTC-5"
+    string FMT_PRICE   = "#.####"
+
+Const CONST = Const.new()
+
+// Shared HTF candle panel storage type.
+export type HTF_Data
+    array<box> boxes
+    array<line> wicks_h
+    array<line> wicks_l
+    array<float> hl
+    string name
+
+// Generic HTF candle slot visual config.
+export type HTFCandleVisualCfg
+    int transparent = 60
+    string labelSize = size.normal
+    int patternBorderWidth = 1
+    int clearBorderWidth = 0
+
+// Generic HTF candle slot layout config.
+export type HTFCandleLayoutCfg
+    bool dynamicEnabled = true
+    int fallbackCount0 = 16
+    int fallbackCount1 = 12
+    int firstSlotBaseOffsetBars = 15
+    int secondSlotGapBars = 5
+    int spanTrimBars = 3
+
+// Generic swing point payload.
+export type Swing
+    int id = 0
+    string tfName = ""
+    int tfIndex = 0
+    int currentBarIndex = na
+    float price
+    int time
+    int barIndex
+    string tf
+    bool isSwingHigh
+    line swingLine = na
+    bool mitigated = false
+
+// High/low swing pair used by market-structure traversal.
+export type SwingLeg
+    int id = 0
+    string tfName = ""
+    int tfIndex = 0
+    int highSwingId = na
+    int lowSwingId = na
+    int startBarIndex = na
+    int endBarIndex = na
+    int startTime = na
+    int endTime = na
+    float highPrice = na
+    float lowPrice = na
+    int dir = 0
+    bool active = true
+    string breakType = ""
+    int breakTime = na
+    float quality = na
+
+// Next-gen market-structure container (swings + legs only).
+export type MarketStructure
+    string tfName = ""
+    int tfIndex = 0
+    array<Swing> swings = na
+    array<SwingLeg> legs = na
+    int activeLegId = na
+    int lastBosLegId = na
+    int lastMssLegId = na
+    int nextSwingId = 1
+    int nextLegId = 1
+
+// Per-timeframe visual config for structure rendering.
+export type TFConfig
+    string id
+    bool showSwings
+    bool showZigzag
+    color swingHighColor
+    color swingLowColor
+    string swingSize
+    color zigzagColor
+    string zigzagStyle
+    int zigzagWidth
+    int swingYShiftTicks
+
+// Per-timeframe runtime structure state.
+export type TFData
+    string tf
+    MarketStructure ms
+    bool highArmed
+    bool lowArmed
+    int prevBreakout
+    int msBias
+    int lastHighSeenTime
+    int lastLowSeenTime
+    label lastHighMarker = na
+    label lastLowMarker = na
+    float zzLastPrice
+    int zzLastIndex
+    bool zzLastIsHigh
+    line zzLiveLine
+    label zzLiveLabel = na
+    float candHighPrice = na
+    int candHighTime = na
+    int candHighIndex = na
+    float candLowPrice = na
+    int candLowTime = na
+    int candLowIndex = na
+    int zzLastTime = na
+    int legId = 0
+    int legDir = 0
+    int legEventTime = na
+    int legLastEventSeen = na
+    int legSeqAll = 0
+    int legSeqOb = 0
+    int legSeqFvg = 0
+    int legSeqRjb = 0
+    int legSeqSd = 0
+    int legSeqLevel = 0
+
+// TFData constructor helper with MarketStructure pre-wired.
+export tf_data_new(string tfName, int tfIndex) =>
+    TFData d = TFData.new()
+    MarketStructure ms0 = MarketStructure.new()
+    ms0.tfName := tfName
+    ms0.tfIndex := tfIndex
+    ms0.swings := array.new<Swing>()
+    ms0.legs := array.new<SwingLeg>()
+    d.tf := tfName
+    d.ms := ms0
+    d.highArmed := false
+    d.lowArmed := false
+    d.prevBreakout := 0
+    d.msBias := 0
+    d
+
+// Shared setup signal object shape before an actual entry is created.
+export type Event
+    string type
+    string direction
+    float zoneTop
+    float zoneBtm
+    float zonePrice
+    int barDetected
+    int barBreak
+    bool retestSeen
+    string reason
+    float quality
+    int score
+
+// Shared area-based price-zone object shape.
+export type PDArray
+    string type
+    float top
+    float bottom
+    int barStart
+    bool mitigated = false
+    bool broken = false
+    box visualBox = na
+    label visualLabel = na
+    line visualLine = na
+    int barEnd = na
+    float price = na
+    bool isHigh = false
+    bool isBullish = false
+    string labelText = ""
+    int extendBars = 0
+    float qualityPct = na
+    string sourceTf = ""
+    int sourceTfRank = 0
+    int legId = 0
+    int legDir = 0
+    int legSeqAll = 0
+    int legSeqType = 0
+    int lifeState = 0
+    int touchCount = 0
+    int rejectCount = 0
+    bool createsFvg = false
+    float extremeDist = na
+    int originLevel = 0
+    float volScore = na
+    float relVolume = na
+    float zoneHeightAtr = na
+    float displacementAtr = na
+    float displacementPct = na
+    int createdBar = na
+    string parentType = ""
+    string visAreaGeomSig = ""
+    string visAreaStyleSig = ""
+    string visLineGeomSig = ""
+    string visLineStyleSig = ""
+    string visLabelGeomSig = ""
+    string visLabelStyleSig = ""
+
+// Shared strategy registry item (toggle + score + short label).
+export type EntryModelDef
+    string key
+    string shortName
+    int baseScore
+    bool enabled
+    string trigger_type = "Trade" // Signal | Trade
+    string trigger_when = "Retest" // Touch | Retest
+    float rr = 2.0 // 0 => dynamic
+    string entry_point = "edge" // edge | middle | end
+    int bias_ltf = 0 // 0 off | 1 trend | 2 bias
+    int bias_htf1 = 0 // 0 off | 1 trend | 2 bias
+    int bias_htf2 = 0 // 0 off | 1 trend | 2 bias
+    string required_previous_events = "" // e.g. "SWEEP,MSS"
+    int required_window_bars = 80
+    string bias_direction = "na" // long | short | na
+    int max_active = 1
+    bool dynamic_tp_sl = true
+    float risk_zone_pct = 0.20
+    string entry_mode = "AFTER RETEST" // NO ENTRY | LIMIT | AFTER RETEST
+
+// Shared technical-indicator snapshot for one timeframe on current bar.
+export type TechnicalContext
+    float atr14 = na
+    float ema9 = na
+    float ema20 = na
+    float ema21 = na
+    float ema50 = na
+    float ema200 = na
+    float sma20 = na
+    float sma200 = na
+    float rsi14 = na
+    float adx14 = na
+    float vwap = na
+    float stochK = na
+    float stochD = na
+    float bbBasis = na
+    float bbDev = na
+    float bbUpper = na
+    float bbLower = na
+    float bbBandwidth = na
+    float bbBandwidthAvg = na
+    bool bbSqueeze = false
+    float ichiConv = na
+    float ichiBase = na
+    float ichiSpanA = na
+    float ichiSpanB = na
+    float ichiCloudTop = na
+    float ichiCloudBtm = na
+    bool ichiAboveCloud = false
+    bool ichiBelowCloud = false
+    float macdHist = na
+    bool macdFlipUp = false
+    bool macdFlipDn = false
+    float fibHi55 = na
+    float fibLo55 = na
+    float fibRange55 = na
+    float fib618Bull = na
+    float fib618Bear = na
+    float fibTolerance = na
+    bool fibNearBull = false
+    bool fibNearBear = false
+    bool ema50Up = false
+    bool ema50Down = false
+
+// Shared chart-wide context snapshot for strategy/event processing.
+export type ChartContext
+    int barIdx = 0
+    float closeV = na
+    float highV = na
+    float lowV = na
+    int biasVal = 0
+    float atrV = na
+    array<PDArray> zones = na
+    array<PDArray> levels = na
+    array<Event> events = na
+    array<Event> signalHist = na
+    int b0 = 0
+    int s0 = 0
+    int m0 = 1
+    int t0 = 0
+    int b15 = 0
+    int s15 = 0
+    int m15 = 1
+    int t15 = 0
+    int b240 = 0
+    int s240 = 0
+    int m240 = 1
+    int t240 = 0
+    int b1d = 0
+    int s1d = 0
+    int m1d = 1
+    int t1d = 0
+    int b1w = 0
+    int s1w = 0
+    int m1w = 1
+    int t1w = 0
+    int compositeBias = 0
+    int activeBias = 0
+    int dir0 = 0
+    int dir15 = 0
+    int dir240 = 0
+    int dir1d = 0
+    int dir1w = 0
+    float signalMemoryScore = 0.0
+    int signalMemoryDir = 0
+    int signalBullCount = 0
+    int signalBearCount = 0
+    array<string> biasBullFactors = na
+    array<string> biasBearFactors = na
+    string htf1Name = na
+    string htf2Name = na
+    float rangeHigh = na
+    float rangeLow = na
+    float pdh = na
+    float pdl = na
+    int pdTime = na
+    float htf1Open = na
+    float htf1High = na
+    float htf1Low = na
+    float htf1Close = na
+    int htf1Pattern = na
+    float htf2Open = na
+    float htf2High = na
+    float htf2Low = na
+    float htf2Close = na
+    int htf2Pattern = na
+    array<float> ltfSwingHighPrices = na
+    array<int> ltfSwingHighTimes = na
+    array<float> ltfSwingLowPrices = na
+    array<int> ltfSwingLowTimes = na
+    array<float> htf1SwingHighPrices = na
+    array<int> htf1SwingHighTimes = na
+    array<float> htf1SwingLowPrices = na
+    array<int> htf1SwingLowTimes = na
+    array<float> htf2SwingHighPrices = na
+    array<int> htf2SwingHighTimes = na
+    array<float> htf2SwingLowPrices = na
+    array<int> htf2SwingLowTimes = na
+
+// Shared runtime chart config for common confluence/entry gates.
+export type ChartConfig
+    bool useBias = true
+    bool allowLong = true
+    bool allowShort = true
+    float rr = 2.0
+    bool dynamicTp = true
+    int maxStartEntries = 1
+    bool showPending = true
+    bool showStart = true
+    bool showTp = true
+    bool showSl = true
+
+// Runtime chart state for non-backfill trade scanning across reload/tf/symbol changes.
+export type RuntimeContext
+    string lastSymbol = ""
+    string lastTf = ""
+    int tradeScanStartBar = na
+    bool chartIsNew = false
+    bool symbolChanged = false
+    bool tfChanged = false
+    bool tradeScanEnabled = false
+
+// Updates runtime state and computes "fresh chart" + scan gate.
+export update_runtime_context(RuntimeContext rt) =>
+    bool first = barstate.isfirst or rt.lastSymbol == "" or rt.lastTf == ""
+    bool symChanged = not first and syminfo.tickerid != rt.lastSymbol
+    bool tfChanged = not first and timeframe.period != rt.lastTf
+    bool chartIsNew = first or symChanged or tfChanged
+    int scanStart = rt.tradeScanStartBar
+    if chartIsNew or na(scanStart)
+        scanStart := last_bar_index
+    bool canScan = bar_index >= scanStart
+    rt.lastSymbol := syminfo.tickerid
+    rt.lastTf := timeframe.period
+    rt.tradeScanStartBar := scanStart
+    rt.chartIsNew := chartIsNew
+    rt.symbolChanged := symChanged
+    rt.tfChanged := tfChanged
+    rt.tradeScanEnabled := canScan
+    rt
+
+// Toggle pack for centralized context data loading.
+export type DataCfg
+    bool needBias = true
+    bool needMsTrendDirs = true
+    bool needPdPw = false
+    bool needPriceRange = false
+    bool needHtfCandles = false
+    bool needMsSwingArrays = false
+    bool initBiasFactorArrays = false
+    int rangeLookbackBars = 500
+
+// Minimal swing reference payload for zone lookup helpers.
+export type SwingRef
+    int barIndex
+    float price
+    bool isHigh
+
+// Core (Sessions/Killzones): One tracked line (running high or running low) with optional label.
+export type WindowLine
+    line ln = na
+    label lb = na
+    float extreme = na
+    int startT = na
+    bool active = false
+
+// Core (Sessions): Background highlight for overlaps (no border, high transparency).
+export type WindowBox
+    box bx = na
+    float hi = na
+    float lo = na
+    int startT = na
+    bool active = false
+
+// Shared runtime entry object for opened/resolved entry lifecycle.
+export type Trade
+    string direction
+    string type
+    float zoneTop
+    float zoneBtm
+    float entry
+    float stoploss
+    float takeprofit
+    float rrValue
+    int barCreated
+    int barClosed = na
+    string reason
+    int score
+    string state = ""
+    box tpBox = na
+    box slBox = na
+    line entryLine = na
+    line tpLine = na
+    line slLine = na
+    label infoLabel = na
+    bool touched = false
+    string visualSig = ""
+
+// Trade visual style config to allow per-indicator overrides without editing library code.
+export type EntryVisualCfg
+    int startTouchedBgAlpha = 88
+    int startUntouchedBgAlpha = 95
+    int resolvedWinnerBgAlpha = 72
+    int resolvedLoserBgAlpha = 95
+    int startTouchedBorderAlpha = 35
+    int startUntouchedBorderAlpha = 55
+    int resolvedWinnerBorderAlpha = 18
+    int resolvedLoserBorderAlpha = 72
+    int entryStartTouchedAlpha = 60
+    int entryStartUntouchedAlpha = 35
+    int entryResolvedWinnerAlpha = 18
+    int entryResolvedLoserAlpha = 55
+    int compactWinnerBgAlpha = 70
+    int compactLoserBgAlpha = 92
+    int compactWinnerBorderAlpha = 12
+    int compactLoserBorderAlpha = 65
+
+// Zone box+label visual configuration.
+export type ZoneVisualCfg
+    int minWidthBars = 1
+    int borderWidth = 1
+    string textSize = size.tiny
+    color transparentColor = color.white
+    string labelStyle = label.style_none
+    string textHAlign = text.align_right
+    string textVAlign = text.align_bottom
+
+// Projected HTF box visual configuration.
+export type ProjectedBoxVisualCfg
+    int borderWidth = 1
+    string textSize = size.small
+    string textHAlign = text.align_right
+    string textVAlign = text.align_center
+
+// Shared line+text visual configuration.
+export type LineTextVisualCfg
+    string lineStyle = line.style_solid
+    int lineWidth = 1
+    string textSize = size.tiny
+    int vPos = 0
+    float yPadTicks = 0.0
+    float xRatio = 0.5
+    int xPadBars = 0
+    string textAlign = text.align_center
+
+// PDArray line-render visual configuration.
+export type PriceZoneLineVisualCfg
+    string lineStyle = line.style_solid
+    int lineWidth = 1
+    string labelSize = size.tiny
+    bool showLabel = true
+
+// Shared strategy descriptor used by strategy engines.
+export type Strategy
+    int id
+    string name
+    string shortName
+    int tfSecMin
+    int tfSecMax
+    string description
+    int effectiveness
+
+// Shared confluence adjustment result shape.
+export type ConfluenceResult
+    string reason
+    int score
+
+// Candle-pattern confluence config (pattern thresholds + volume gate + scoring weights).
+export type CandlePatternCfg
+    float dojiBodyMaxPct = 0.1
+    float wickBodyMin = 2.0
+    float wickDominanceMin = 2.0
+    float oppositeWickMaxBody = 0.5
+    float engulfMinPrevBody = 1.0
+    float tweezerTolAtr = 0.05
+    float marubozuMaxWickBody = 0.2
+    float threeLineMinBodyPct = 0.6
+    int volLen = 20
+    float volMin = 1.5
+    int scorePattern = 1
+    int scoreVolume = 1
+
+// Candle-pattern display config (visual toggles + color palette).
+export type CandlePatternVisualCfg
+    bool showCandles = true
+    bool showHalo = true
+    bool showMarkers = true
+    color bull = #00e5b0
+    color bear = #ff3366
+    color neutral = #888888
+    color normBull = #26a69a
+    color normBear = #ef5350
+    color markerBull = #00e5b0
+    color markerBear = #ff3366
+    color markerNeutral = #888888
+
+
+// Returns/updates swing references from source TF (high+low pivots merged by time).
+// Output is persistent per sourceTf in current script instance.
+export get_swingrefs_from_tf(string sourceTf, int maxCount) =>
+    var string _srTf = ""
+    var array<SwingRef> _srRefs = array.new<SwingRef>()
+    var int _lastHighTs = na
+    var int _lastLowTs = na
+    string tf = sourceTf == "" ? timeframe.period : sourceTf
+    int piv = 5
+    int cap = math.max(maxCount, 1)
+    if tf != _srTf
+        _srTf := tf
+        _lastHighTs := na
+        _lastLowTs := na
+        array.clear(_srRefs)
+
+    float ph = request.security(syminfo.tickerid, tf, ta.pivothigh(high, piv, piv), gaps = barmerge.gaps_off)
+    int phT = request.security(syminfo.tickerid, tf, not na(ta.pivothigh(high, piv, piv)) ? time[piv] : na, gaps = barmerge.gaps_off)
+    float pl = request.security(syminfo.tickerid, tf, ta.pivotlow(low, piv, piv), gaps = barmerge.gaps_off)
+    int plT = request.security(syminfo.tickerid, tf, not na(ta.pivotlow(low, piv, piv)) ? time[piv] : na, gaps = barmerge.gaps_off)
+
+    if not na(ph) and not na(phT) and (na(_lastHighTs) or phT > _lastHighTs)
+        int msPerBarH = math.max(time - time[1], 1)
+        int barsAgoH = int(math.round((time - phT) / msPerBarH))
+        int idxH = bar_index - barsAgoH
+        idxH := idxH >= 0 and idxH <= bar_index + 500 ? idxH : na
+        if not na(idxH)
+            array.push(_srRefs, SwingRef.new(idxH, ph, true))
+            _lastHighTs := phT
+    if not na(pl) and not na(plT) and (na(_lastLowTs) or plT > _lastLowTs)
+        int msPerBarL = math.max(time - time[1], 1)
+        int barsAgoL = int(math.round((time - plT) / msPerBarL))
+        int idxL = bar_index - barsAgoL
+        idxL := idxL >= 0 and idxL <= bar_index + 500 ? idxL : na
+        if not na(idxL)
+            array.push(_srRefs, SwingRef.new(idxL, pl, false))
+            _lastLowTs := plT
+
+    while array.size(_srRefs) > cap
+        array.shift(_srRefs)
+    _srRefs
+
+// Returns nearest swing top above currentPrice and nearest swing bottom below currentPrice from source TF.
+export get_first_swingrefs_around_price(string sourceTf, int maxCount, float currentPrice) =>
+    array<SwingRef> refs = get_swingrefs_from_tf(sourceTf, maxCount)
+    SwingRef topRef = na
+    SwingRef btmRef = na
+    float topDist = na
+    float btmDist = na
+    if array.size(refs) > 0 and not na(currentPrice)
+        for i = 0 to array.size(refs) - 1
+            SwingRef s = array.get(refs, i)
+            if s.isHigh and s.price > currentPrice
+                float dTop = s.price - currentPrice
+                if na(topDist) or dTop < topDist
+                    topDist := dTop
+                    topRef := s
+            if (not s.isHigh) and s.price < currentPrice
+                float dBtm = currentPrice - s.price
+                if na(btmDist) or dBtm < btmDist
+                    btmDist := dBtm
+                    btmRef := s
+    [topRef, btmRef]
+
+// Returns a standard candle-pattern config built from shared Settings defaults.
+// SMC helper
+export get_candle_pattern_cfg(Settings s, int scorePattern, int scoreVolume) =>
+    CandlePatternCfg.new(
+     dojiBodyMaxPct = s.CP_DOJI_PCT,
+     wickBodyMin = s.CP_WICK_BODY,
+     wickDominanceMin = s.CP_WICK_DOMINANCE,
+     oppositeWickMaxBody = s.CP_OPPOSITE_WICK_MAX_BODY,
+     engulfMinPrevBody = s.CP_ENGULF_MIN,
+     tweezerTolAtr = s.CP_TWEEZER_ATR,
+     marubozuMaxWickBody = s.CP_MARUBOZU_WICK,
+     threeLineMinBodyPct = s.CP_3LINE_BODY,
+     volLen = s.CP_VOL_LEN,
+     volMin = s.CP_VOL_MIN,
+     scorePattern = scorePattern,
+     scoreVolume = scoreVolume)
+
+// Per-indicator toggle flags for each bias factor used in get_bias_data_for_tf().
+// All flags default true so callers only need to override what they want to disable.
+export type BiasToggles
+    bool useStructure   = true  // Include market structure direction in scoring.
+    bool useVwap        = true  // Include VWAP position in scoring.
+    bool useEma         = true  // Include EMA-50/200 in scoring.
+    bool useRsi         = true  // Include RSI midpoint in scoring.
+    bool useAdx         = true  // Include ADX trend strength in scoring.
+    bool useRsiImpulse  = true  // Include RSI impulse cross in scoring.
+    bool useSupertrend  = true  // Include Supertrend direction in scoring.
+    bool useDonchian    = true  // Include Donchian channel position in scoring.
+
+// Returns strength background color by type and level (1..5).
+export get_strength_color(string p_type, int s = 3) =>
+    p_type == "bull" ? (s >= 5 ? #004D40 : s == 4 ? #00695C : s == 3 ? #00897B : s == 2 ? #26A69A : #80CBC4) : p_type == "bear" ? (s >= 5 ? #B71C1C : s == 4 ? #C62828 : s == 3 ? #D32F2F : s == 2 ? #EF5350 : #EF9A9A) : color.new(color.gray, 0)
+
+// Returns side-prefixed text for buy/sell tooltip or label use.
+export tt_side(bool isBuy, string reason) =>
+    (isBuy ? "BUY • " : "SELL • ") + reason
+
+// Returns dynamic confirmation window based on timeframe and event type.
+export get_dynamic_confirmation_window_bars(string tfPeriod, bool isSweep, int sweepMinBars, int sweepMaxBars, int breakMinBars, int breakMaxBars) =>
+    int tfSec = timeframe.in_seconds(tfPeriod)
+    int raw = isSweep ? (tfSec <= 900 ? 6 : tfSec <= 3600 ? 8 : tfSec <= 14400 ? 6 : tfSec <= 86400 ? 4 : 3) : (tfSec <= 900 ? 20 : tfSec <= 3600 ? 24 : tfSec <= 14400 ? 18 : tfSec <= 86400 ? 12 : 8)
+    int minBars = isSweep ? sweepMinBars : breakMinBars
+    int maxBars = isSweep ? sweepMaxBars : breakMaxBars
+    math.max(minBars, math.min(raw, maxBars))
+
+// Returns flattened signal stats matrix index.
+export get_signal_stat_idx(int typeIdx, int metricIdx, int metricCount) =>
+    typeIdx * metricCount + metricIdx
+
+// Returns true when entry plan values are valid for direction and minimum tick distance.
+export is_valid_trade_plan(string direction, float entry, float stoploss, float takeprofit, float tickSize) =>
+    bool isBuy = direction == "Buy"
+    bool finite = not na(entry) and not na(stoploss) and not na(takeprofit)
+    bool sideOk = isBuy ? (stoploss < entry and takeprofit > entry) : (stoploss > entry and takeprofit < entry)
+    bool distOk = math.abs(entry - stoploss) >= tickSize and math.abs(takeprofit - entry) >= tickSize
+    finite and sideOk and distOk
+
+// Builds a shared Trade object only when the plan is valid; otherwise returns na.
+export create_trade_if_valid(string direction, string type, float zoneTop, float zoneBtm, float entry, float stoploss, float takeprofit, float rrValue, int barCreated, string reason, int scoreVal, Const c, float tickSize) =>
+    Trade out = na
+    if is_valid_trade_plan(direction, entry, stoploss, takeprofit, tickSize)
+        out := Trade.new(direction, type, zoneTop, zoneBtm, entry, stoploss, takeprofit, rrValue, barCreated, int(na), reason, scoreVal, c.SIGNAL_STATE_PENDING, na, na, na, na, na)
+    out
+
+// Applies TP/SL/+R stats update from one outcome code: 1=TP, -1=SL, 0=none.
+export apply_trade_outcome_stats(array<float> stats, int bucketIdx, int outcome, float rrValue, Const c, int metricCount) =>
+    int idxSl = get_signal_stat_idx(bucketIdx, c.SIG_METRIC_SL, metricCount)
+    int idxTp = get_signal_stat_idx(bucketIdx, c.SIG_METRIC_TP, metricCount)
+    int idxGr = get_signal_stat_idx(bucketIdx, c.SIG_METRIC_GAIN_R, metricCount)
+    if outcome < 0
+        array.set(stats, idxSl, array.get(stats, idxSl) + 1)
+        array.set(stats, idxGr, array.get(stats, idxGr) - 1)
+    else if outcome > 0
+        array.set(stats, idxTp, array.get(stats, idxTp) + 1)
+        array.set(stats, idxGr, array.get(stats, idxGr) + rrValue)
+    bool(na)
+
+// Returns true if there is an active START entry for strategy+direction.
+// Indicator helper
+export has_active_trade_for_strategy(array<Trade> entriesRef, array<int> entryStrategyIds, int stratId, string direction, Const c) =>
+    bool out = false
+    if array.size(entriesRef) > 0 and array.size(entryStrategyIds) == array.size(entriesRef)
+        for i = array.size(entriesRef) - 1 to 0
+            Trade e = array.get(entriesRef, i)
+            int sid = array.get(entryStrategyIds, i)
+            if sid == stratId and e.direction == direction and e.state == c.SIGNAL_STATE_START
+                out := true
+                break
+    out
+
+// Returns true if there was a recent START entry for strategy+direction in the recentBars window.
+// Indicator helper
+export has_recent_active_trade_for_strategy(array<Trade> entriesRef, array<int> entryStrategyIds, int stratId, string direction, int recentBars, Const c) =>
+    bool out = false
+    if array.size(entriesRef) > 0 and array.size(entryStrategyIds) == array.size(entriesRef)
+        for i = array.size(entriesRef) - 1 to 0
+            Trade e = array.get(entriesRef, i)
+            int sid = array.get(entryStrategyIds, i)
+            bool same = sid == stratId and e.direction == direction and e.state == c.SIGNAL_STATE_START
+            if same and (bar_index - e.barCreated <= recentBars)
+                out := true
+                break
+    out
+
+// Finds an existing active entry for same direction and approximately the same zone.
+// SMC helper
+export find_trade_idx(array<Trade> entriesRef, string direction, float top, float btm, float minTick, string activeState) =>
+    int found = na
+    if array.size(entriesRef) > 0
+        for i = array.size(entriesRef) - 1 to 0
+            Trade e = array.get(entriesRef, i)
+            bool sameZone = math.abs(e.zoneTop - top) < minTick * 2 and math.abs(e.zoneBtm - btm) < minTick * 2
+            bool sameDir = e.direction == direction
+            bool active = e.state == activeState
+            if sameZone and sameDir and active
+                found := i
+                break
+    found
+
+// Unified trade-gap calculator (supports Fixed/Risk/ATR/Hybrid with optional hard floors).
+// `mode`: FIXED | RISK | RISK% | ATR | HYBRID (or any other => hybrid max).
+export get_trade_gap_unified(float entry, float slRaw, float atrRef, string mode, float fixedTicks = 0.0, float riskPct = 0.0, float atrMult = 0.0, float floorTicks = 0.0, float floorAtrMult = 0.0) =>
+    float safeAtr = math.max(atrRef, 0.0)
+    float gapFixed = syminfo.mintick * math.max(fixedTicks, 0.0)
+    float gapRisk = math.abs(entry - slRaw) * math.max(riskPct, 0.0)
+    float gapAtr = safeAtr * math.max(atrMult, 0.0)
+    string m = str.upper(mode)
+    float baseGap = m == "FIXED" ? gapFixed :
+     (m == "RISK" or m == "RISK%") ? gapRisk :
+     m == "ATR" ? gapAtr :
+     math.max(gapFixed, math.max(gapRisk, gapAtr))
+    float minGap = math.max(syminfo.mintick * math.max(floorTicks, 0.0), safeAtr * math.max(floorAtrMult, 0.0))
+    math.max(baseGap, minGap)
+
+// Counts active START trades.
+// Shared helper
+export count_start_trades(array<Trade> tradesRef, Const c) =>
+    int cnt = 0
+    if array.size(tradesRef) > 0
+        for i = 0 to array.size(tradesRef) - 1
+            Trade e = array.get(tradesRef, i)
+            if e.state == c.SIGNAL_STATE_START
+                cnt += 1
+    cnt
+
+// Finds nearest swing target above and below reference price across LTF/HTF stores.
+// Shared helper
+export get_nearest_swing_targets_from_tf_data(TFData ltfData, TFData htf1Data, TFData htf2Data, float refPrice) =>
+    float above = na
+    float below = na
+    if not na(ltfData.ms.swings) and array.size(ltfData.ms.swings) > 0
+        for i = 0 to array.size(ltfData.ms.swings) - 1
+            Swing s = array.get(ltfData.ms.swings, i)
+            float p = s.price
+            if s.isSwingHigh and p > refPrice and (na(above) or p < above)
+                above := p
+            if (not s.isSwingHigh) and p < refPrice and (na(below) or p > below)
+                below := p
+    if not na(htf1Data.ms.swings) and array.size(htf1Data.ms.swings) > 0
+        for i = 0 to array.size(htf1Data.ms.swings) - 1
+            Swing s = array.get(htf1Data.ms.swings, i)
+            float p = s.price
+            if s.isSwingHigh and p > refPrice and (na(above) or p < above)
+                above := p
+            if (not s.isSwingHigh) and p < refPrice and (na(below) or p > below)
+                below := p
+    if not na(htf2Data.ms.swings) and array.size(htf2Data.ms.swings) > 0
+        for i = 0 to array.size(htf2Data.ms.swings) - 1
+            Swing s = array.get(htf2Data.ms.swings, i)
+            float p = s.price
+            if s.isSwingHigh and p > refPrice and (na(above) or p < above)
+                above := p
+            if (not s.isSwingHigh) and p < refPrice and (na(below) or p > below)
+                below := p
+    [above, below]
+
+
+// Returns minimum right X for one zone after width clamping.
+// UI Kit
+export get_pdarray_min_right_idx(PDArray z, int desiredRight, int minWidthBars) =>
+    math.max(desiredRight, z.barStart + minWidthBars)
+
+// Returns first non-na timestamp among 3 values.
+export get_first_non_na3(int t1, int t2, int t3) =>
+    not na(t1) ? t1 : not na(t2) ? t2 : t3
+
+// Resolve dynamic anchor timestamp by priority mode.
+export get_dynamic_anchor_ts(string mode, string srFirst, string swingFirst, int obTs, int srTs, int swingTs) =>
+    mode == srFirst ? get_first_non_na3(srTs, obTs, swingTs) : mode == swingFirst ? get_first_non_na3(swingTs, obTs, srTs) : get_first_non_na3(obTs, srTs, swingTs)
+
+// Returns visible high/low range used by HTF mini-chart labels.
+export get_htf_range(HTF_Data store) =>
+    float rHi = na
+    float rLo = na
+    if store.hl.size() > 0
+        for i = 0 to store.hl.size() - 1
+            float v = store.hl.get(i)
+            if not na(v)
+                rHi := na(rHi) ? v : math.max(rHi, v)
+                rLo := na(rLo) ? v : math.min(rLo, v)
+    [rHi, rLo]
+
+// Converts timeframe string to seconds.
+export get_tf_seconds(string tf_period) =>
+    tf_period == "1" ? 60 :
+     tf_period == "5" ? 300 :
+     tf_period == "15" ? 900 :
+     tf_period == "60" ? 3600 :
+     tf_period == "240" ? 14400 :
+     tf_period == "1D" or tf_period == "D" ? 86400 :
+     tf_period == "1W" or tf_period == "W" ? 604800 :
+     tf_period == "1M" or tf_period == "M" ? 2592000 :
+     (not na(str.tonumber(tf_period)) ? int(str.tonumber(tf_period)) * 60 : timeframe.in_seconds(timeframe.period))
+
+// Returns candidate higher timeframes (> current TF, max 2 from [15m,4h,1D,1W]).
+export get_htfs() =>
+    string[] base_tfs = array.from("15", "240", "1D", "1W")
+    string[] valid_tfs = array.new_string(0)
+    int current_tf_sec = timeframe.in_seconds(timeframe.period)
+    for tf in base_tfs
+        if timeframe.in_seconds(tf) > current_tf_sec
+            array.push(valid_tfs, tf)
+    string[] result_tfs = array.new_string(0)
+    if array.size(valid_tfs) > 0
+        array.push(result_tfs, array.get(valid_tfs, 0))
+    if array.size(valid_tfs) > 1
+        array.push(result_tfs, array.get(valid_tfs, 1))
+    result_tfs
+
+// Returns top-2 higher timeframes as a fixed pair [htf1, htf2].
+export get_htf_pair() =>
+    int currSec = get_tf_seconds(timeframe.period)
+    string tf1 = na
+    string tf2 = na
+    // Override map:
+    // 1m  -> 5m, 15m
+    // 1h  -> 1D, 1W
+    if currSec <= 60
+        tf1 := "5"
+        tf2 := "15"
+    else if currSec == 3600
+        tf1 := "1D"
+        tf2 := "1W"
+    else
+        string[] tfs = get_htfs()
+        tf1 := array.size(tfs) > 0 ? array.get(tfs, 0) : na
+        tf2 := array.size(tfs) > 1 ? array.get(tfs, 1) : na
+    [tf1, tf2]
+
+// Builds compact bull/bear factor texts from component scores.
+export get_bias_factor_texts_from_scores(int sStructure, int sVwap, int sEma50, int sRsi, int sAdx, int sImpulse, int sSupertrend, int sDonchian) =>
+    string bull = ""
+    string bear = ""
+    if sStructure > 0
+        bull := bull == "" ? "Structure" : bull + ", Structure"
+    else if sStructure < 0
+        bear := bear == "" ? "Structure" : bear + ", Structure"
+    if sVwap > 0
+        bull := bull == "" ? "VWAP" : bull + ", VWAP"
+    else if sVwap < 0
+        bear := bear == "" ? "VWAP" : bear + ", VWAP"
+    if sEma50 > 0
+        bull := bull == "" ? "EMA" : bull + ", EMA"
+    else if sEma50 < 0
+        bear := bear == "" ? "EMA" : bear + ", EMA"
+    if sRsi > 0
+        bull := bull == "" ? "RSI" : bull + ", RSI"
+    else if sRsi < 0
+        bear := bear == "" ? "RSI" : bear + ", RSI"
+    if sAdx > 0
+        bull := bull == "" ? "ADX" : bull + ", ADX"
+    else if sAdx < 0
+        bear := bear == "" ? "ADX" : bear + ", ADX"
+    if sImpulse > 0
+        bull := bull == "" ? "Impulse" : bull + ", Impulse"
+    else if sImpulse < 0
+        bear := bear == "" ? "Impulse" : bear + ", Impulse"
+    if sSupertrend > 0
+        bull := bull == "" ? "Supertrend" : bull + ", Supertrend"
+    else if sSupertrend < 0
+        bear := bear == "" ? "Supertrend" : bear + ", Supertrend"
+    if sDonchian > 0
+        bull := bull == "" ? "Donchian" : bull + ", Donchian"
+    else if sDonchian < 0
+        bear := bear == "" ? "Donchian" : bear + ", Donchian"
+    [bull, bear]
+
+// Returns structure trend state from pivot breaks (-1 bear, 0 neutral, 1 bull).
+// Local Helper
+export get_trend_state(int len) =>
+    float ph = ta.valuewhen(not na(ta.pivothigh(high, len, len)), ta.pivothigh(high, len, len), 0)
+    float pl = ta.valuewhen(not na(ta.pivotlow(low, len, len)), ta.pivotlow(low, len, len), 0)
+    int result = close > ph ? 1 : close < pl ? -1 : 0
+    result
+
+// Candle direction helpers (offset-based).
+export is_bull_candle(int off) =>
+    int maxSafeOff = 300
+    int safeOff = math.max(0, math.min(off, maxSafeOff))
+    close[safeOff] > open[safeOff]
+
+// Indicator helper
+export is_bear_candle(int off) =>
+    int maxSafeOff = 300
+    int safeOff = math.max(0, math.min(off, maxSafeOff))
+    close[safeOff] < open[safeOff]
+
+// Divergence helpers (ported from Hung - Indicators).
+// Returns positive divergence length vs prior pivot lows.
+export div_calc_pos_len(series float src, int cond, int prd, int maxbars, bool dontconfirm, array<int> pl_positions, array<float> pl_vals) =>
+    int divlen = 0
+    float prsc = close
+    int maxSafeOff = 300
+    if dontconfirm or src > src[1] or close > close[1]
+        int startpoint = dontconfirm ? 0 : 1
+        for x = 0 to 9
+            int lenRaw = bar_index - array.get(pl_positions, x) + prd
+            if array.get(pl_positions, x) == 0 or lenRaw > maxbars or lenRaw > maxSafeOff
+                break
+            int len = lenRaw
+            if len > 5 and ((cond == 1 and src[startpoint] > src[len] and prsc[startpoint] < nz(array.get(pl_vals, x))) or (cond == 2 and src[startpoint] < src[len] and prsc[startpoint] > nz(array.get(pl_vals, x))))
+                float slope1 = (src[startpoint] - src[len]) / (len - startpoint)
+                float virtual_line1 = src[startpoint] - slope1
+                float slope2 = (close[startpoint] - close[len]) / (len - startpoint)
+                float virtual_line2 = close[startpoint] - slope2
+                bool arrived = true
+                for y = 1 + startpoint to len - 1
+                    if y > maxSafeOff
+                        arrived := false
+                        break
+                    if src[y] < virtual_line1 or nz(close[y]) < virtual_line2
+                        arrived := false
+                        break
+                    virtual_line1 := virtual_line1 - slope1
+                    virtual_line2 := virtual_line2 - slope2
+                if arrived
+                    divlen := len
+                    break
+    divlen
+
+// Returns negative divergence length vs prior pivot highs.
+// Local Helper
+export div_calc_neg_len(series float src, int cond, int prd, int maxbars, bool dontconfirm, array<int> ph_positions, array<float> ph_vals) =>
+    int divlen = 0
+    float prsc = close
+    int maxSafeOff = 300
+    if dontconfirm or src < src[1] or close < close[1]
+        int startpoint = dontconfirm ? 0 : 1
+        for x = 0 to 9
+            int lenRaw = bar_index - array.get(ph_positions, x) + prd
+            if array.get(ph_positions, x) == 0 or lenRaw > maxbars or lenRaw > maxSafeOff
+                break
+            int len = lenRaw
+            if len > 5 and ((cond == 1 and src[startpoint] < src[len] and prsc[startpoint] > nz(array.get(ph_vals, x))) or (cond == 2 and src[startpoint] > src[len] and prsc[startpoint] < nz(array.get(ph_vals, x))))
+                float slope1 = (src[startpoint] - src[len]) / (len - startpoint)
+                float virtual_line1 = src[startpoint] - slope1
+                float slope2 = (close[startpoint] - nz(close[len])) / (len - startpoint)
+                float virtual_line2 = close[startpoint] - slope2
+                bool arrived = true
+                for y = 1 + startpoint to len - 1
+                    if y > maxSafeOff
+                        arrived := false
+                        break
+                    if src[y] > virtual_line1 or nz(close[y]) > virtual_line2
+                        arrived := false
+                        break
+                    virtual_line1 := virtual_line1 - slope1
+                    virtual_line2 := virtual_line2 - slope2
+                if arrived
+                    divlen := len
+                    break
+    divlen
+
+// Returns [divType, divLen] for a given source series and mode.
+// divType: 0 none, 1 reg bull, 2 reg bear, 3 hidden bull, 4 hidden bear.
+// Indicator helper
+export div_check_all(series float src, string searchdiv, int prd, int maxbars, bool dontconfirm,
+ array<int> ph_positions, array<int> pl_positions, array<float> ph_vals, array<float> pl_vals) =>
+    int res = 0
+    int len = 0
+    if searchdiv == "Regular" or searchdiv == "Regular/Hidden"
+        int l = div_calc_pos_len(src, 1, prd, maxbars, dontconfirm, pl_positions, pl_vals)
+        if l > 0
+            res := 1
+            len := l
+        else
+            int l2 = div_calc_neg_len(src, 1, prd, maxbars, dontconfirm, ph_positions, ph_vals)
+            if l2 > 0
+                res := 2
+                len := l2
+    if (res == 0) and (searchdiv == "Hidden" or searchdiv == "Regular/Hidden")
+        int l4 = div_calc_neg_len(src, 2, prd, maxbars, dontconfirm, ph_positions, ph_vals)
+        if l4 > 0
+            res := 3
+            len := l4
+        int l5 = div_calc_pos_len(src, 2, prd, maxbars, dontconfirm, pl_positions, pl_vals)
+        if l5 > 0
+            res := 4
+            len := l5
+    [res, len]
+
+
+// Returns effective minimum bias percentage after profile override.
+export get_effective_bias_min_pct(string profile, float customMinAbsPct) =>
+    profile == "Scalp" ? 45.0 : profile == "Intraday" ? 35.0 : profile == "Swing" ? 30.0 : customMinAbsPct
+
+// Returns raw factor values used by bias scoring.
+export get_bias_factor_values(int len, int emaLen, int rsiLen, int adxLen, float stMult, int stAtrLen, int donchianLen) =>
+    int msBias = get_trend_state(len)
+    float ema50 = ta.ema(close, emaLen)
+    float rsi = ta.rsi(close, rsiLen)
+    [_, _, adx] = ta.dmi(adxLen, adxLen)
+    float vwapVal = ta.vwap(hlc3)
+    [stLine, _] = ta.supertrend(stMult, stAtrLen)
+    float dUpper = ta.highest(high, donchianLen)
+    float dLower = ta.lowest(low, donchianLen)
+    float dMid = (dUpper + dLower) / 2.0
+    [msBias, ema50, rsi, adx, vwapVal, stLine, dMid]
+
+// Returns total/max/factor scores for bias confluence.
+export get_bias_factor_scores(int msBias, float closeV, float ema50, float rsi, float adx, float vwapV, float stLine, float donchianMid,
+ bool useStructure, bool useVwap, bool useEma50, bool useRsi, bool useAdx, bool useRsiImpulse, bool useSupertrend, bool useDonchian,
+ int wStructure, int wVwap, int wEma50, int wRsi, int wAdx, int wRsiImpulse, int wSupertrend, int wDonchian,
+ float rsiMidline, float rsiImpulseHigh, float rsiImpulseLow, float adxThreshold) =>
+    int sStructure = 0
+    int sEma50 = 0
+    int sRsi = 0
+    int sAdx = 0
+    int sImpulse = 0
+    int sVwap = 0
+    int sSupertrend = 0
+    int sDonchian = 0
+    int maxScore = 0
+
+    if useStructure
+        maxScore += wStructure
+        sStructure := msBias == 1 ? wStructure : msBias == -1 ? -wStructure : 0
+    if useEma50
+        maxScore += wEma50
+        sEma50 := closeV > ema50 ? wEma50 : closeV < ema50 ? -wEma50 : 0
+    if useRsi
+        maxScore += wRsi
+        sRsi := rsi > rsiMidline ? wRsi : rsi < rsiMidline ? -wRsi : 0
+    if useAdx
+        maxScore += wAdx
+        if adx > adxThreshold
+            int lead = sStructure + sEma50 + sRsi
+            sAdx := lead > 0 ? wAdx : lead < 0 ? -wAdx : 0
+    if useRsiImpulse
+        maxScore += wRsiImpulse
+        sImpulse := rsi > rsiImpulseHigh ? wRsiImpulse : rsi < rsiImpulseLow ? -wRsiImpulse : 0
+    if useVwap
+        maxScore += wVwap
+        sVwap := closeV > vwapV ? wVwap : closeV < vwapV ? -wVwap : 0
+    if useSupertrend
+        maxScore += wSupertrend
+        sSupertrend := closeV > stLine ? wSupertrend : closeV < stLine ? -wSupertrend : 0
+    if useDonchian
+        maxScore += wDonchian
+        sDonchian := closeV > donchianMid ? wDonchian : closeV < donchianMid ? -wDonchian : 0
+
+    int totalScore = sStructure + sVwap + sEma50 + sRsi + sAdx + sImpulse + sSupertrend + sDonchian
+    [totalScore, maxScore, sStructure, sVwap, sEma50, sRsi, sAdx, sImpulse, sSupertrend, sDonchian]
+
+// Returns final bias from confluence values.
+export get_trend_data(int len, int emaLen, int rsiLen, int adxLen, float stMult, int stAtrLen, int donchianLen,
+ bool useStructure, bool useVwap, bool useEma50, bool useRsi, bool useAdx, bool useRsiImpulse, bool useSupertrend, bool useDonchian,
+ int wStructure, int wVwap, int wEma50, int wRsi, int wAdx, int wRsiImpulse, int wSupertrend, int wDonchian,
+ float rsiMidline, float rsiImpulseHigh, float rsiImpulseLow, float adxThreshold,
+ string profile, float customMinAbsPct) =>
+    [msBias, ema50, rsi, adx, vwapVal, stLine, dMid] = get_bias_factor_values(len, emaLen, rsiLen, adxLen, stMult, stAtrLen, donchianLen)
+    [totalScore, maxScore, _, _, _, _, _, _, _, _] = get_bias_factor_scores(msBias, close, ema50, rsi, adx, vwapVal, stLine, dMid,
+     useStructure, useVwap, useEma50, useRsi, useAdx, useRsiImpulse, useSupertrend, useDonchian,
+     wStructure, wVwap, wEma50, wRsi, wAdx, wRsiImpulse, wSupertrend, wDonchian,
+     rsiMidline, rsiImpulseHigh, rsiImpulseLow, adxThreshold)
+    int absScore = math.abs(totalScore)
+    float effMinPct = get_effective_bias_min_pct(profile, customMinAbsPct)
+    int minScoreRequired = math.max(1, int(math.ceil(maxScore * effMinPct / 100.0)))
+    int bias = absScore >= minScoreRequired ? (totalScore > 0 ? 1 : totalScore < 0 ? -1 : 0) : 0
+    [bias, absScore, maxScore, totalScore]
+
+// Formats timeframe string to friendly label (e.g., 240 -> 4h).
+export get_friendly_tf(string simple_tf) =>
+    if simple_tf == "D" or simple_tf == "W" or simple_tf == "M"
+        simple_tf
+    else
+        val = str.tonumber(simple_tf)
+        if not na(val)
+            if val >= 60 and val % 60 == 0
+                str.tostring(val / 60) + "h"
+            else
+                simple_tf + "m"
+        else
+            simple_tf
+
+
+// Returns relative pivot length for target TF in current TF context.
+// Higher TF-distance => higher returned pivot length.
+export get_dynamic_pivot_length(string current_tf, string target_tf) =>
+    int currSec = math.max(get_tf_seconds(current_tf), 1)
+    int tgtSec = math.max(get_tf_seconds(target_tf), currSec)
+    float ratio = float(tgtSec) / float(currSec)
+    int currBase = currSec <= 900 ? 15 : currSec <= 3600 ? 10 : currSec <= 14400 ? 7 : currSec <= 86400 ? 5 : 3
+    int raw = int(math.round(float(currBase) * math.sqrt(ratio)))
+    int outLen = math.max(currBase + (ratio > 1.0 ? 1 : 0), math.min(raw, 300))
+    outLen
+
+// Records one swing point when enabled.
+export record_swing_if(bool enabled, array<float> prices, array<int> times, float val, int ts, int maxHistory) =>
+    bool added = false
+    if enabled and not na(val) and not na(ts)
+        bool shouldPush = true
+        int n = array.size(times)
+        if n > 0
+            shouldPush := array.get(times, n - 1) != ts
+        if shouldPush
+            array.push(prices, val)
+            array.push(times, ts)
+            if array.size(prices) > maxHistory
+                array.shift(prices)
+                array.shift(times)
+            added := true
+    added
+
+// Enforces alternating sequence H->L->H->L by collapsing consecutive same-side swings.
+export sanitize_swing_ledgers(array<float> highPrices, array<int> highTimes, array<float> lowPrices, array<int> lowTimes, int maxHistory) =>
+    int nH = array.size(highPrices)
+    int nL = array.size(lowPrices)
+    int nTot = nH + nL
+    if nTot > 1
+        array<int> mergedTimes = array.new_int()
+        array<float> mergedPrices = array.new_float()
+        array<bool> mergedIsHigh = array.new_bool()
+        int iH = 0
+        int iL = 0
+        while iH < nH or iL < nL
+            bool takeHigh = false
+            if iL >= nL
+                takeHigh := iH < nH
+            else if iH >= nH
+                takeHigh := false
+            else
+                int hT = array.get(highTimes, iH)
+                int lT = array.get(lowTimes, iL)
+                takeHigh := hT <= lT
+            if takeHigh
+                array.push(mergedTimes, array.get(highTimes, iH))
+                array.push(mergedPrices, array.get(highPrices, iH))
+                array.push(mergedIsHigh, true)
+                iH += 1
+            else
+                array.push(mergedTimes, array.get(lowTimes, iL))
+                array.push(mergedPrices, array.get(lowPrices, iL))
+                array.push(mergedIsHigh, false)
+                iL += 1
+
+        array<int> cleanTimes = array.new_int()
+        array<float> cleanPrices = array.new_float()
+        array<bool> cleanIsHigh = array.new_bool()
+        for i = 0 to array.size(mergedTimes) - 1
+            int t = array.get(mergedTimes, i)
+            float p = array.get(mergedPrices, i)
+            bool isHigh = array.get(mergedIsHigh, i)
+            int nClean = array.size(cleanTimes)
+            if nClean == 0
+                array.push(cleanTimes, t)
+                array.push(cleanPrices, p)
+                array.push(cleanIsHigh, isHigh)
+            else
+                int li = nClean - 1
+                bool lastIsHigh = array.get(cleanIsHigh, li)
+                if isHigh != lastIsHigh
+                    array.push(cleanTimes, t)
+                    array.push(cleanPrices, p)
+                    array.push(cleanIsHigh, isHigh)
+                else
+                    float lastP = array.get(cleanPrices, li)
+                    bool replace = isHigh ? p >= lastP : p <= lastP
+                    if replace
+                        array.set(cleanTimes, li, t)
+                        array.set(cleanPrices, li, p)
+
+        array.clear(highPrices)
+        array.clear(highTimes)
+        array.clear(lowPrices)
+        array.clear(lowTimes)
+        for i = 0 to array.size(cleanTimes) - 1
+            int t = array.get(cleanTimes, i)
+            float p = array.get(cleanPrices, i)
+            bool isHigh = array.get(cleanIsHigh, i)
+            if isHigh
+                array.push(highTimes, t)
+                array.push(highPrices, p)
+            else
+                array.push(lowTimes, t)
+                array.push(lowPrices, p)
+        while array.size(highPrices) > maxHistory
+            array.remove(highPrices, 0)
+            array.remove(highTimes, 0)
+        while array.size(lowPrices) > maxHistory
+            array.remove(lowPrices, 0)
+            array.remove(lowTimes, 0)
+    bool(na)
+
+// TF pipeline mutator: arm candidate swings from raw pivots.
+export process_tf_armed_state(TFData tfData, bool enabled, float swingHigh, int swingHighT, float swingLow, int swingLowT, int maxHistory) =>
+    if enabled
+        if na(tfData.ms.swings)
+            MarketStructure ms0 = MarketStructure.new()
+            ms0.tfName := tfData.tf
+            ms0.tfIndex := 0
+            ms0.swings := array.new<Swing>()
+            ms0.legs := array.new<SwingLeg>()
+            tfData.ms := ms0
+        int hiIdx = not na(swingHighT) ? int(ta.valuewhen(time == swingHighT, bar_index, 0)) : na
+        int loIdx = not na(swingLowT) ? int(ta.valuewhen(time == swingLowT, bar_index, 0)) : na
+        bool nextHighArmed = tfData.highArmed
+        bool nextLowArmed = tfData.lowArmed
+        if not na(swingHigh) and not na(swingHighT)
+            Swing sHi = Swing.new()
+            sHi.id := tfData.ms.nextSwingId
+            tfData.ms.nextSwingId += 1
+            sHi.tfName := tfData.tf
+            sHi.tfIndex := tfData.ms.tfIndex
+            sHi.currentBarIndex := bar_index
+            sHi.price := swingHigh
+            sHi.time := swingHighT
+            sHi.barIndex := hiIdx
+            sHi.tf := tfData.tf
+            sHi.isSwingHigh := true
+            array.push(tfData.ms.swings, sHi)
+            nextHighArmed := true
+        if not na(swingLow) and not na(swingLowT)
+            Swing sLo = Swing.new()
+            sLo.id := tfData.ms.nextSwingId
+            tfData.ms.nextSwingId += 1
+            sLo.tfName := tfData.tf
+            sLo.tfIndex := tfData.ms.tfIndex
+            sLo.currentBarIndex := bar_index
+            sLo.price := swingLow
+            sLo.time := swingLowT
+            sLo.barIndex := loIdx
+            sLo.tf := tfData.tf
+            sLo.isSwingHigh := false
+            array.push(tfData.ms.swings, sLo)
+            nextLowArmed := true
+        while array.size(tfData.ms.swings) > maxHistory
+            array.remove(tfData.ms.swings, 0)
+        tfData.highArmed := nextHighArmed
+        tfData.lowArmed := nextLowArmed
+    bool(na)
+
+// Market-structure scaffold: initialize swing/leg container for one TF.
+export market_structure_new(string tfName, int tfIndex) =>
+    MarketStructure ms = MarketStructure.new()
+    ms.tfName := tfName
+    ms.tfIndex := tfIndex
+    ms.swings := array.new<Swing>()
+    ms.legs := array.new<SwingLeg>()
+    ms
+
+// Market-structure scaffold: clear state but preserve TF identity.
+export market_structure_reset(MarketStructure ms) =>
+    if na(ms.swings)
+        ms.swings := array.new<Swing>()
+    else
+        array.clear(ms.swings)
+    if na(ms.legs)
+        ms.legs := array.new<SwingLeg>()
+    else
+        array.clear(ms.legs)
+    ms.activeLegId := na
+    ms.lastBosLegId := na
+    ms.lastMssLegId := na
+    ms.nextSwingId := 1
+    ms.nextLegId := 1
+    bool(na)
+
+// Swing constructor helper used by migration/adapters.
+export swing_new(string tfName, int tfIndex, int currentBarIndex, float price, int swingTime, int swingBarIndex, bool isSwingHigh, line swingLine, bool mitigated, int id) =>
+    Swing s = Swing.new()
+    s.id := id
+    s.tfName := tfName
+    s.tfIndex := tfIndex
+    s.currentBarIndex := currentBarIndex
+    s.price := price
+    s.time := swingTime
+    s.barIndex := swingBarIndex
+    s.tf := tfName
+    s.isSwingHigh := isSwingHigh
+    s.swingLine := swingLine
+    s.mitigated := mitigated
+    s
+
+// Incremental write-path helper: record one swing point into MarketStructure.
+// Returns true when the structure changed (append/replace), otherwise false.
+export market_structure_record_swing(MarketStructure ms, string tfName, int tfIndex, int currentBarIndex, float price, int swingTime, int swingBarIndex, bool isSwingHigh, int maxHistory) =>
+    bool changed = false
+    if na(ms.swings)
+        ms.swings := array.new<Swing>()
+    if na(ms.legs)
+        ms.legs := array.new<SwingLeg>()
+    ms.tfName := tfName
+    ms.tfIndex := tfIndex
+    if na(price) or na(swingTime)
+        false
+    else
+        int n = array.size(ms.swings)
+        if n == 0
+            Swing s0 = swing_new(tfName, tfIndex, currentBarIndex, price, swingTime, swingBarIndex, isSwingHigh, na, false, ms.nextSwingId)
+            ms.nextSwingId += 1
+            array.push(ms.swings, s0)
+            changed := true
+        else
+            Swing last = array.get(ms.swings, n - 1)
+            if isSwingHigh == last.isSwingHigh
+                bool better = isSwingHigh ? price >= last.price : price <= last.price
+                if better and swingTime >= last.time
+                    last.price := price
+                    last.time := swingTime
+                    last.barIndex := swingBarIndex
+                    last.currentBarIndex := currentBarIndex
+                    array.set(ms.swings, n - 1, last)
+                    changed := true
+                    int legN = array.size(ms.legs)
+                    if legN > 0
+                        SwingLeg lastLeg = array.get(ms.legs, legN - 1)
+                        if isSwingHigh
+                            lastLeg.highPrice := price
+                            lastLeg.highSwingId := last.id
+                        else
+                            lastLeg.lowPrice := price
+                            lastLeg.lowSwingId := last.id
+                        lastLeg.endTime := swingTime
+                        lastLeg.endBarIndex := swingBarIndex
+                        array.set(ms.legs, legN - 1, lastLeg)
+            else
+                Swing sn = swing_new(tfName, tfIndex, currentBarIndex, price, swingTime, swingBarIndex, isSwingHigh, na, false, ms.nextSwingId)
+                ms.nextSwingId += 1
+                array.push(ms.swings, sn)
+                SwingLeg leg = SwingLeg.new()
+                leg.id := ms.nextLegId
+                ms.nextLegId += 1
+                leg.tfName := tfName
+                leg.tfIndex := tfIndex
+                leg.startTime := last.time
+                leg.endTime := sn.time
+                leg.startBarIndex := last.barIndex
+                leg.endBarIndex := sn.barIndex
+                leg.highSwingId := last.isSwingHigh ? last.id : sn.id
+                leg.lowSwingId := last.isSwingHigh ? sn.id : last.id
+                leg.highPrice := last.isSwingHigh ? last.price : sn.price
+                leg.lowPrice := last.isSwingHigh ? sn.price : last.price
+                leg.dir := sn.isSwingHigh ? 1 : -1
+                leg.active := true
+                if array.size(ms.legs) > 0
+                    SwingLeg prevLeg = array.get(ms.legs, array.size(ms.legs) - 1)
+                    prevLeg.active := false
+                    array.set(ms.legs, array.size(ms.legs) - 1, prevLeg)
+                array.push(ms.legs, leg)
+                ms.activeLegId := leg.id
+                changed := true
+        while array.size(ms.swings) > maxHistory
+            array.remove(ms.swings, 0)
+        while array.size(ms.legs) > maxHistory
+            array.remove(ms.legs, 0)
+        changed
+
+// Returns [latestHighPrice, latestHighTime, latestLowPrice, latestLowTime] from MarketStructure.
+export market_structure_latest_hilo(MarketStructure ms) =>
+    float latestHigh = na
+    int latestHighT = na
+    float latestLow = na
+    int latestLowT = na
+    if not na(ms.swings) and array.size(ms.swings) > 0
+        for i = array.size(ms.swings) - 1 to 0 by 1
+            Swing s = array.get(ms.swings, i)
+            if s.isSwingHigh and na(latestHigh)
+                latestHigh := s.price
+                latestHighT := s.time
+            if not s.isSwingHigh and na(latestLow)
+                latestLow := s.price
+                latestLowT := s.time
+            if not na(latestHigh) and not na(latestLow)
+                break
+    [latestHigh, latestHighT, latestLow, latestLowT]
+
+// Snaps a reference price to the nearest swing price (same side) across LTF/HTF1/HTF2 MarketStructure stores.
+export get_price_snapped_to_ms_swings(float refPrice, float tol, bool isSwingHigh, MarketStructure msLtf, MarketStructure msHtf1, MarketStructure msHtf2) =>
+    float out = refPrice
+    float bestD = na
+    if not na(msLtf.swings) and array.size(msLtf.swings) > 0
+        for i = 0 to array.size(msLtf.swings) - 1
+            Swing s = array.get(msLtf.swings, i)
+            if s.isSwingHigh == isSwingHigh
+                float d = math.abs(s.price - refPrice)
+                if d <= tol and (na(bestD) or d < bestD)
+                    out := s.price
+                    bestD := d
+    if not na(msHtf1.swings) and array.size(msHtf1.swings) > 0
+        for i = 0 to array.size(msHtf1.swings) - 1
+            Swing s = array.get(msHtf1.swings, i)
+            if s.isSwingHigh == isSwingHigh
+                float d = math.abs(s.price - refPrice)
+                if d <= tol and (na(bestD) or d < bestD)
+                    out := s.price
+                    bestD := d
+    if not na(msHtf2.swings) and array.size(msHtf2.swings) > 0
+        for i = 0 to array.size(msHtf2.swings) - 1
+            Swing s = array.get(msHtf2.swings, i)
+            if s.isSwingHigh == isSwingHigh
+                float d = math.abs(s.price - refPrice)
+                if d <= tol and (na(bestD) or d < bestD)
+                    out := s.price
+                    bestD := d
+    out
+
+// Returns dynamic pivot length to mimic target TF swings from current TF bars.
+export get_mimic_pivot_len(string currentTf, string targetTf, int pivotLenBase, int pivotLenScalp, int pivotLenIntraday, int pivotLenMultiDay, int pivotLenSwing, int pivotLenPosition) =>
+    int currSec = math.max(get_tf_seconds(currentTf), 1)
+    int tgtSec = math.max(get_tf_seconds(targetTf), currSec)
+    int targetBase = tgtSec <= 300 ? pivotLenScalp :
+     tgtSec <= 3600 ? pivotLenIntraday :
+     tgtSec <= 14400 ? pivotLenMultiDay :
+     tgtSec <= 86400 ? pivotLenSwing : pivotLenPosition
+    float ratio = float(tgtSec) / float(currSec)
+    int raw = int(math.round(float(targetBase) * math.pow(ratio, 0.55)))
+    int outLen = math.max(pivotLenBase + 1, raw)
+    outLen
+
+
+// Helper (Bias): Select one effective indicator cluster by timeframe.
+export get_bias_profile_id(string tf, Settings cfg) =>
+    int sec = get_tf_seconds(tf)
+    sec <= 300 ? cfg.BIAS_PROFILE_REACTIVE : sec <= 3600 ? cfg.BIAS_PROFILE_INTRADAY : sec <= 14400 ? cfg.BIAS_PROFILE_SWING : cfg.BIAS_PROFILE_MACRO
+
+// Helper (Bias): Human-readable profile name for tooltip/debug.
+// Local Helper
+export get_bias_profile_name(int profileId, Settings cfg) =>
+    profileId == cfg.BIAS_PROFILE_REACTIVE ? "Reactive" : profileId == cfg.BIAS_PROFILE_INTRADAY ? "Intraday" : profileId == cfg.BIAS_PROFILE_SWING ? "Swing" : "Macro"
+
+// Helper (Bias): Converts score strength into a 1..5 level for TradingKit colors.
+export get_bias_strength_level(int absScore, int maxScore) =>
+    float pct = maxScore > 0 ? (float(absScore) * 100.0 / float(maxScore)) : 0.0
+    pct >= 80 ? 5 : pct >= 60 ? 4 : pct >= 40 ? 3 : pct >= 20 ? 2 : 1
+
+// Core (Bias): TF-aware bias resolver. Routes to the correct get_trend_data() profile based on TF.
+// Returns [biasDir, absScore, maxScore, totalScore] — same tuple as get_trend_data().
+// Factors enabled per profile are overridden by the BiasToggles flags (AND logic).
+// Call from indicator scope with request.security() for HTF data.
+export get_bias_data_for_tf(string tf, Settings cfg, BiasToggles tog) =>
+    int profileId = get_bias_profile_id(tf, cfg)
+    int pivotLen  = get_dynamic_pivot_length(timeframe.period, tf)
+    if profileId == cfg.BIAS_PROFILE_REACTIVE
+        // Reactive (≤5m): VWAP + RSI + RSI impulse; EMA/ADX/ST/Donchian off.
+        get_trend_data(pivotLen, 34, 14, 14, 2.0, 7, 20,
+         tog.useStructure, tog.useVwap, false, tog.useRsi, false, tog.useRsiImpulse, false, false,
+         cfg.W_BIAS_STRUCTURE, cfg.W_BIAS_VWAP, cfg.W_BIAS_EMA50, cfg.W_BIAS_RSI, cfg.W_BIAS_ADX, cfg.W_BIAS_RSI_IMPULSE, cfg.W_BIAS_SUPERTREND, cfg.W_BIAS_DONCHIAN,
+         50.0, 60.0, 40.0, 20.0, "Scalp", 40.0)
+    else if profileId == cfg.BIAS_PROFILE_INTRADAY
+        // Intraday (≤1h): EMA200 + VWAP + RSI + ADX; impulse/ST/Donchian off.
+        get_trend_data(pivotLen, 200, 14, 14, 2.5, 10, 20,
+         tog.useStructure, tog.useVwap, tog.useEma, tog.useRsi, tog.useAdx, false, false, false,
+         cfg.W_BIAS_STRUCTURE, cfg.W_BIAS_VWAP, cfg.W_BIAS_EMA50, cfg.W_BIAS_RSI, cfg.W_BIAS_ADX, cfg.W_BIAS_RSI_IMPULSE, cfg.W_BIAS_SUPERTREND, cfg.W_BIAS_DONCHIAN,
+         50.0, 60.0, 40.0, 20.0, "Intraday", 35.0)
+    else if profileId == cfg.BIAS_PROFILE_SWING
+        // Swing (≤4h): Supertrend + Donchian + ADX + structure; VWAP/EMA/RSI/impulse off.
+        get_trend_data(pivotLen, 200, 14, 14, 3.0, 10, 55,
+         tog.useStructure, false, false, false, tog.useAdx, false, tog.useSupertrend, tog.useDonchian,
+         cfg.W_BIAS_STRUCTURE, cfg.W_BIAS_VWAP, cfg.W_BIAS_EMA50, cfg.W_BIAS_RSI, cfg.W_BIAS_ADX, cfg.W_BIAS_RSI_IMPULSE, cfg.W_BIAS_SUPERTREND, cfg.W_BIAS_DONCHIAN,
+         50.0, 60.0, 40.0, 20.0, "Swing", 30.0)
+    else
+        // Macro (>4h): EMA200 + Donchian + structure; VWAP/RSI/ADX/impulse/ST off.
+        get_trend_data(pivotLen, 200, 14, 14, 3.0, 10, 55,
+         tog.useStructure, false, tog.useEma, false, false, false, false, tog.useDonchian,
+         cfg.W_BIAS_STRUCTURE, cfg.W_BIAS_VWAP, cfg.W_BIAS_EMA50, cfg.W_BIAS_RSI, cfg.W_BIAS_ADX, cfg.W_BIAS_RSI_IMPULSE, cfg.W_BIAS_SUPERTREND, cfg.W_BIAS_DONCHIAN,
+         50.0, 60.0, 40.0, 20.0, "Macro", 30.0)
+
+// Core (Bias): Full factor component breakdown for one TF.
+// Returns: [total, max, sStructure, sVwap, sEma50, sRsi, sAdx, sImpulse, sSupertrend, sDonchian]
+export get_bias_components_for_tf(string tf, Settings cfg, BiasToggles tog) =>
+    int profileId = get_bias_profile_id(tf, cfg)
+    int pivotLen  = get_dynamic_pivot_length(timeframe.period, tf)
+    if profileId == cfg.BIAS_PROFILE_REACTIVE
+        [msBias, ema50, rsi, adx, vwapVal, stLine, dMid] = get_bias_factor_values(pivotLen, 34, 14, 14, 2.0, 7, 20)
+        get_bias_factor_scores(msBias, close, ema50, rsi, adx, vwapVal, stLine, dMid,
+         tog.useStructure, tog.useVwap, false, tog.useRsi, false, tog.useRsiImpulse, false, false,
+         cfg.W_BIAS_STRUCTURE, cfg.W_BIAS_VWAP, cfg.W_BIAS_EMA50, cfg.W_BIAS_RSI, cfg.W_BIAS_ADX, cfg.W_BIAS_RSI_IMPULSE, cfg.W_BIAS_SUPERTREND, cfg.W_BIAS_DONCHIAN,
+         50.0, 60.0, 40.0, 20.0)
+    else if profileId == cfg.BIAS_PROFILE_INTRADAY
+        [msBias, ema50, rsi, adx, vwapVal, stLine, dMid] = get_bias_factor_values(pivotLen, 200, 14, 14, 2.5, 10, 20)
+        get_bias_factor_scores(msBias, close, ema50, rsi, adx, vwapVal, stLine, dMid,
+         tog.useStructure, tog.useVwap, tog.useEma, tog.useRsi, tog.useAdx, false, false, false,
+         cfg.W_BIAS_STRUCTURE, cfg.W_BIAS_VWAP, cfg.W_BIAS_EMA50, cfg.W_BIAS_RSI, cfg.W_BIAS_ADX, cfg.W_BIAS_RSI_IMPULSE, cfg.W_BIAS_SUPERTREND, cfg.W_BIAS_DONCHIAN,
+         50.0, 60.0, 40.0, 20.0)
+    else if profileId == cfg.BIAS_PROFILE_SWING
+        [msBias, ema50, rsi, adx, vwapVal, stLine, dMid] = get_bias_factor_values(pivotLen, 200, 14, 14, 3.0, 10, 55)
+        get_bias_factor_scores(msBias, close, ema50, rsi, adx, vwapVal, stLine, dMid,
+         tog.useStructure, false, false, false, tog.useAdx, false, tog.useSupertrend, tog.useDonchian,
+         cfg.W_BIAS_STRUCTURE, cfg.W_BIAS_VWAP, cfg.W_BIAS_EMA50, cfg.W_BIAS_RSI, cfg.W_BIAS_ADX, cfg.W_BIAS_RSI_IMPULSE, cfg.W_BIAS_SUPERTREND, cfg.W_BIAS_DONCHIAN,
+         50.0, 60.0, 40.0, 20.0)
+    else
+        [msBias, ema50, rsi, adx, vwapVal, stLine, dMid] = get_bias_factor_values(pivotLen, 200, 14, 14, 3.0, 10, 55)
+        get_bias_factor_scores(msBias, close, ema50, rsi, adx, vwapVal, stLine, dMid,
+         tog.useStructure, false, tog.useEma, false, false, false, false, tog.useDonchian,
+         cfg.W_BIAS_STRUCTURE, cfg.W_BIAS_VWAP, cfg.W_BIAS_EMA50, cfg.W_BIAS_RSI, cfg.W_BIAS_ADX, cfg.W_BIAS_RSI_IMPULSE, cfg.W_BIAS_SUPERTREND, cfg.W_BIAS_DONCHIAN,
+         50.0, 60.0, 40.0, 20.0)
+
+// request.security-safe wrapper for exported callers.
+// Pine disallows request expressions depending on exported function arguments.
+get_bias_components_for_tf_default(string tf) =>
+    Settings cfg0 = Settings.new()
+    BiasToggles tog0 = BiasToggles.new()
+    get_bias_components_for_tf(tf, cfg0, tog0)
+
+// Market-structure trend dir helper from TFData.
+// Indicator helper
+export get_ms_trend_dir(TFData tfData) =>
+    tfData.msBias != 0 ? tfData.msBias : tfData.prevBreakout
+
+// Slot trend resolver from three TFData ledgers.
+export get_ms_trend_dir_for_slot(string tfName, string currentTf, string htf1Name, string htf2Name, TFData ltfDataX, TFData htf1DataX, TFData htf2DataX) =>
+    int out = 0
+    if tfName == currentTf
+        out := get_ms_trend_dir(ltfDataX)
+    else if tfName == htf1Name
+        out := get_ms_trend_dir(htf1DataX)
+    else if tfName == htf2Name
+        out := get_ms_trend_dir(htf2DataX)
+    out
+
+// Fixed-TF market-structure trend source (independent from dynamic htf1/htf2 mapping).
+// This is used to keep dashboard/context trend cells consistent across chart timeframe changes.
+get_ms_trend_dir_fixed_expr() =>
+    int piv = 5
+    float lastHi = ta.valuewhen(not na(ta.pivothigh(high, piv, piv)), ta.pivothigh(high, piv, piv), 0)
+    float lastLo = ta.valuewhen(not na(ta.pivotlow(low, piv, piv)), ta.pivotlow(low, piv, piv), 0)
+    var int dir = 0
+    bool breakUp = not na(lastHi) and close > lastHi
+    bool breakDn = not na(lastLo) and close < lastLo
+    if breakUp and not breakDn
+        dir := 1
+    else if breakDn and not breakUp
+        dir := -1
+    dir
+
+get_ms_trend_dir_fixed_tf(string tfName) =>
+    request.security(syminfo.tickerid, tfName, get_ms_trend_dir_fixed_expr(), gaps = barmerge.gaps_off)
+
+// Returns relative volume at offset (current volume / SMA volume).
+export get_rel_volume(int off, int len) =>
+    int maxSafeOff = 300
+    int safeOff = math.max(0, math.min(off, maxSafeOff))
+    avgVol = ta.sma(volume, len)
+    base = nz(avgVol[safeOff], volume[safeOff])
+    base > 0 ? (volume[safeOff] / base) : 0.0
+
+// Maps timestamp to closest current-chart bar_index.
+export closest_bar_index_from_time(int t) =>
+    int msPerBar = math.max(time - time[1], 1)
+    int barsAgo = int(math.round((time - t) / msPerBar))
+    int idx = bar_index - barsAgo
+    idx >= 0 and idx <= bar_index + 500 ? idx : na
+
+// Returns rendered span in bars for one HTF mini-chart slot.
+export get_htf_chart_span(int count) =>
+    (count - 1) * (2 + 1) + 2
+
+// Returns latest non-na timestamp among 4 candidates.
+export get_latest_time4(int t1, int t2, int t3, int t4) =>
+    int out = na
+    if not na(t1)
+        out := t1
+    if not na(t2)
+        out := na(out) ? t2 : math.max(out, t2)
+    if not na(t3)
+        out := na(out) ? t3 : math.max(out, t3)
+    if not na(t4)
+        out := na(out) ? t4 : math.max(out, t4)
+    out
+
+// Returns candle count in `tf` needed to include an anchor timestamp.
+export get_candles_to_anchor(string tf, int anchorTs, int minCandles, int maxCandles, int fallbackCandles) =>
+    if na(tf)
+        fallbackCandles
+    else
+        int tfSec = math.max(get_tf_seconds(tf), 1)
+        int barsRaw = na(anchorTs) ? fallbackCandles : int(math.ceil(math.max(float(time - anchorTs), 0.0) / float(tfSec * 1000))) + 2
+        int lo = math.max(minCandles, 1)
+        int hi = math.max(maxCandles, lo)
+        math.max(lo, math.min(barsRaw, hi))
+
+// Returns current-TF lookback bars derived from HTF2 candle span.
+export get_curr_lookback_from_htf2(string htf2, int htf2Candles, int minBars, int maxBars) =>
+    if na(htf2)
+        math.max(minBars, 1)
+    else
+        int htf2Sec = math.max(get_tf_seconds(htf2), 1)
+        int currSec = math.max(get_tf_seconds(timeframe.period), 1)
+        int barsRaw = int(math.ceil(float(htf2Candles * htf2Sec) / float(currSec)))
+        int lo = math.max(minBars, 1)
+        int hi = math.max(maxBars, lo)
+        math.max(lo, math.min(barsRaw, hi))
+
+// Returns true when index is inside the last `lookbackBars` bars.
+export is_in_draw_lookback_index(int idx, int lookbackBars) =>
+    na(idx) ? false : idx >= math.max(last_bar_index - math.max(lookbackBars, 1), 0)
+
+// Returns true when current bar is inside the last `lookbackBars` bars.
+export is_in_draw_lookback_current(int lookbackBars) =>
+    is_in_draw_lookback_index(bar_index, lookbackBars)
+
+// Returns cutoff time for recent-window filtering from `lookbackBars`.
+export get_recent_time_cutoff(int lookbackBars) =>
+    int lb = math.max(lookbackBars, 1)
+    bar_index > lb ? time[lb] : 0
+
+// Computes retracement level on a leg.
+export get_leg_retracement(float legStart, float legEnd, float ratio, bool isBullLeg) =>
+    float rng = math.abs(legEnd - legStart)
+    isBullLeg ? (legEnd - rng * ratio) : (legEnd + rng * ratio)
+
+// Scans from start index to current bar and returns the extreme price+index.
+export get_range_extreme_from_index(int startIdx, bool findLow, int maxScanBars) =>
+    bool ok = false
+    int outIdx = na
+    float outPrice = na
+    int dist = bar_index - startIdx
+    if dist >= 0
+        int safeMax = math.max(maxScanBars, 1)
+        int scan = math.min(dist, safeMax)
+        // Runtime-safe cap to avoid historical-buffer overrun in callers with long legs.
+        int scanSafe = math.min(scan, 90)
+        // Clamp scan start so first accessed offset never exceeds the safe cap.
+        int safeStartIdx = math.max(startIdx, bar_index - scanSafe)
+        int safeDist = bar_index - safeStartIdx
+        float best = findLow ? 10e10 : -10e10
+        for j = 0 to safeDist
+            int idx = safeStartIdx + j
+            int off = bar_index - idx
+            float v = findLow ? low[off] : high[off]
+            bool better = findLow ? (v <= best) : (v >= best)
+            if better
+                best := v
+                outIdx := idx
+                outPrice := v
+                ok := true
+    [ok, outIdx, outPrice]
+
+// Sessions/time-event helper: selects displayed label text by mode.
+export get_time_event_label(string mode, string modeTime, string shortTime, string shortName) =>
+    mode == modeTime ? shortTime : shortName
+
+
+// Resolves one entry state on current bar and returns [updatedEntry, outcomeCode].
+// outcomeCode: 1 = TP hit, -1 = SL hit, 2 = invalidated before entry touch, 0 = unchanged.
+export resolve_trade_state(Trade e, float hi, float lo, int barIdx, bool requireNextBar, bool slFirstOnDualHit, Const c) =>
+    int outcome = 0
+    if e.state == c.SIGNAL_STATE_PENDING or e.state == c.SIGNAL_STATE_START
+        int age = barIdx - e.barCreated
+        if age > 0 and not e.touched
+            bool touchedNow = hi >= e.entry and lo <= e.entry
+            if touchedNow
+                e.touched := true
+                e.state := c.SIGNAL_STATE_START
+        if not requireNextBar or age > 0
+            bool isBuy = e.direction == "Buy"
+            bool hitTp = isBuy ? (hi >= e.takeprofit) : (lo <= e.takeprofit)
+            bool hitSl = isBuy ? (lo <= e.stoploss) : (hi >= e.stoploss)
+            if hitTp and hitSl
+                if slFirstOnDualHit
+                    hitTp := false
+                else
+                    hitSl := false
+            // If TP/SL is reached before entry is ever touched, invalidate this setup.
+            if (hitTp or hitSl) and not e.touched
+                outcome := 2
+            else if hitSl
+                e.state := c.SIGNAL_STATE_SL
+                e.barClosed := barIdx
+                outcome := -1
+            else if hitTp
+                e.state := c.SIGNAL_STATE_TP
+                e.barClosed := barIdx
+                outcome := 1
+    [e, outcome]
+
+// ==================== GENERIC UTILITIES ====================
+
+// Helper (Bias): Gate for directional entries against composite bias.
+// Returns true when bias is neutral (0) or agrees with direction ("Buy"/"Sell").
+export bias_allows_direction(int compositeBias, string direction) =>
+    compositeBias == 0 ? true : direction == "Buy" ? compositeBias == 1 : direction == "Sell" ? compositeBias == -1 : false
+
+CANDLE_NONE = 0 // Pattern enum id used by candle-pattern functions.
+CANDLE_DOJI = 1 // Pattern enum id used by candle-pattern functions.
+CANDLE_BULL_ENG = 2 // Pattern enum id used by candle-pattern functions.
+CANDLE_BEAR_ENG = 3 // Pattern enum id used by candle-pattern functions.
+CANDLE_HAMMER = 4 // Pattern enum id used by candle-pattern functions.
+CANDLE_SHOOTING_STAR = 5 // Pattern enum id used by candle-pattern functions.
+CANDLE_BULL_HARAMI = 6 // Pattern enum id used by candle-pattern functions.
+CANDLE_BEAR_HARAMI = 7 // Pattern enum id used by candle-pattern functions.
+CANDLE_DRAGONFLY_DOJI = 8 // Pattern enum id used by candle-pattern functions.
+CANDLE_GRAVESTONE_DOJI = 9 // Pattern enum id used by candle-pattern functions.
+CANDLE_PIERCING_LINE = 10 // Pattern enum id used by candle-pattern functions.
+CANDLE_DARK_CLOUD = 11 // Pattern enum id used by candle-pattern functions.
+CANDLE_TWEEZER_TOP = 12 // Pattern enum id used by candle-pattern functions.
+CANDLE_TWEEZER_BOTTOM = 13 // Pattern enum id used by candle-pattern functions.
+CANDLE_BULL_MARUBOZU = 14 // Pattern enum id used by candle-pattern functions.
+CANDLE_BEAR_MARUBOZU = 15 // Pattern enum id used by candle-pattern functions.
+CANDLE_3_WHITE_SOLDIERS = 16 // Pattern enum id used by candle-pattern functions.
+CANDLE_3_BLACK_CROWS = 17 // Pattern enum id used by candle-pattern functions.
+CANDLE_MORNING_STAR = 18 // Pattern enum id used by candle-pattern functions.
+CANDLE_EVENING_STAR = 19 // Pattern enum id used by candle-pattern functions.
+
+// Detects candle pattern enum id from OHLC structure.
+export get_candle_pattern(float cpDojiBodyMaxPct, float cpWickBodyMin, float cpWickDominanceMin, float cpOppositeWickMaxBody, float cpEngulfMinPrevBody, float cpTweezerTolAtr, float cpMarubozuMaxWickBody, float cp3lineMinBodyPct) =>
+    if not barstate.isconfirmed or bar_index < 2
+        CANDLE_NONE
+    else
+        float body = math.abs(close - open)
+        float rng = math.max(high - low, syminfo.mintick)
+        float upperWick = high - math.max(open, close)
+        float lowerWick = math.min(open, close) - low
+        float safeBody = math.max(body, syminfo.mintick)
+        float safeUpper = math.max(upperWick, syminfo.mintick)
+        float safeLower = math.max(lowerWick, syminfo.mintick)
+        // Keep pattern detection lightweight and buffer-safe in local scopes.
+        float atrRef = ta.sma(math.max(high - low, syminfo.mintick), 3)
+        float tweezerTol = math.max(atrRef * cpTweezerTolAtr, syminfo.mintick * 2)
+        float bullWickBodyRatio = lowerWick / safeBody
+        float bearWickBodyRatio = upperWick / safeBody
+        float bullWickDominance = lowerWick / safeUpper
+        float bearWickDominance = upperWick / safeLower
+        float body1 = math.abs(close[1] - open[1])
+        float body2 = math.abs(close[2] - open[2])
+        float rng1 = math.max(high[1] - low[1], syminfo.mintick)
+        float rng2 = math.max(high[2] - low[2], syminfo.mintick)
+        float upW1 = high[1] - math.max(open[1], close[1])
+        float dnW1 = math.min(open[1], close[1]) - low[1]
+        float upW2 = high[2] - math.max(open[2], close[2])
+        float dnW2 = math.min(open[2], close[2]) - low[2]
+        bool doji = body <= rng * cpDojiBodyMaxPct
+        bool dragonflyDoji = doji and bullWickBodyRatio >= cpWickBodyMin and bullWickDominance >= cpWickDominanceMin
+        bool gravestoneDoji = doji and bearWickBodyRatio >= cpWickBodyMin and bearWickDominance >= cpWickDominanceMin
+        bool bullEng = close > open and close[1] < open[1] and open <= close[1] and close >= open[1] and body > math.abs(close[1] - open[1]) * cpEngulfMinPrevBody
+        bool bearEng = close < open and close[1] > open[1] and open >= close[1] and close <= open[1] and body > math.abs(close[1] - open[1]) * cpEngulfMinPrevBody
+        bool hammer = not doji and bullWickBodyRatio >= cpWickBodyMin and bullWickDominance >= cpWickDominanceMin and upperWick <= body * cpOppositeWickMaxBody and close >= open
+        bool shootingStar = not doji and bearWickBodyRatio >= cpWickBodyMin and bearWickDominance >= cpWickDominanceMin and lowerWick <= body * cpOppositeWickMaxBody and close <= open
+        bool bullHarami = open[1] > close[1] and close > open and close <= open[1] and close[1] <= open
+        bool bearHarami = close[1] > open[1] and open > close and open <= close[1] and open[1] <= close
+        bool piercingLine = close[1] < open[1] and close > open and open < close[1] and close > (open[1] + close[1]) / 2
+        bool darkCloudCover = close[1] > open[1] and close < open and open > close[1] and close < (open[1] + close[1]) / 2
+        bool tweezerTop = close[1] > open[1] and close < open and math.abs(high - high[1]) <= tweezerTol
+        bool tweezerBottom = close[1] < open[1] and close > open and math.abs(low - low[1]) <= tweezerTol
+        bool bullMarubozu = close > open and (upperWick / safeBody) <= cpMarubozuMaxWickBody and (lowerWick / safeBody) <= cpMarubozuMaxWickBody and (body / rng) >= 0.7
+        bool bearMarubozu = close < open and (upperWick / safeBody) <= cpMarubozuMaxWickBody and (lowerWick / safeBody) <= cpMarubozuMaxWickBody and (body / rng) >= 0.7
+        bool threeWhiteSoldiers = close > open and close[1] > open[1] and close[2] > open[2] and close > close[1] and close[1] > close[2] and (body / rng) >= cp3lineMinBodyPct and (body1 / rng1) >= cp3lineMinBodyPct and (body2 / rng2) >= cp3lineMinBodyPct and upperWick <= body and upW1 <= body1 and upW2 <= body2 and open <= close[1] and open >= open[1] and open[1] <= close[2] and open[1] >= open[2]
+        bool threeBlackCrows = close < open and close[1] < open[1] and close[2] < open[2] and close < close[1] and close[1] < close[2] and (body / rng) >= cp3lineMinBodyPct and (body1 / rng1) >= cp3lineMinBodyPct and (body2 / rng2) >= cp3lineMinBodyPct and lowerWick <= body and dnW1 <= body1 and dnW2 <= body2 and open >= close[1] and open <= open[1] and open[1] >= close[2] and open[1] <= open[2]
+        bool morningStar = close[2] < open[2] and math.abs(close[1] - open[1]) <= (math.max(high[1] - low[1], syminfo.mintick) * cpDojiBodyMaxPct) and close > open and close > (open[2] + close[2]) / 2
+        bool eveningStar = close[2] > open[2] and math.abs(close[1] - open[1]) <= (math.max(high[1] - low[1], syminfo.mintick) * cpDojiBodyMaxPct) and close < open and close < (open[2] + close[2]) / 2
+        bullEng ? CANDLE_BULL_ENG : bearEng ? CANDLE_BEAR_ENG : hammer ? CANDLE_HAMMER : shootingStar ? CANDLE_SHOOTING_STAR : dragonflyDoji ? CANDLE_DRAGONFLY_DOJI : gravestoneDoji ? CANDLE_GRAVESTONE_DOJI : bullHarami ? CANDLE_BULL_HARAMI : bearHarami ? CANDLE_BEAR_HARAMI : piercingLine ? CANDLE_PIERCING_LINE : darkCloudCover ? CANDLE_DARK_CLOUD : tweezerTop ? CANDLE_TWEEZER_TOP : tweezerBottom ? CANDLE_TWEEZER_BOTTOM : bullMarubozu ? CANDLE_BULL_MARUBOZU : bearMarubozu ? CANDLE_BEAR_MARUBOZU : threeWhiteSoldiers ? CANDLE_3_WHITE_SOLDIERS : threeBlackCrows ? CANDLE_3_BLACK_CROWS : morningStar ? CANDLE_MORNING_STAR : eveningStar ? CANDLE_EVENING_STAR : doji ? CANDLE_DOJI : CANDLE_NONE
+
+// Returns readable text for candle pattern enum id.
+export get_candle_pattern_text(int p) =>
+    p == CANDLE_BULL_ENG ? "Bull Engulfing (bullish reversal/continuation impulse)" :
+     p == CANDLE_BEAR_ENG ? "Bear Engulfing (bearish reversal/continuation impulse)" :
+     p == CANDLE_HAMMER ? "Hammer (bullish reversal/continuation impulse)" :
+     p == CANDLE_SHOOTING_STAR ? "Shooting Star (bearish reversal/continuation impulse)" :
+     p == CANDLE_DRAGONFLY_DOJI ? "Dragonfly Doji (bullish reversal/continuation impulse)" :
+     p == CANDLE_GRAVESTONE_DOJI ? "Gravestone Doji (bearish reversal/continuation impulse)" :
+     p == CANDLE_BULL_HARAMI ? "Bull Harami (bullish reversal/continuation impulse)" :
+     p == CANDLE_BEAR_HARAMI ? "Bear Harami (bearish reversal/continuation impulse)" :
+     p == CANDLE_PIERCING_LINE ? "Piercing Line (bullish reversal/continuation impulse)" :
+     p == CANDLE_DARK_CLOUD ? "Dark Cloud (bearish reversal/continuation impulse)" :
+     p == CANDLE_TWEEZER_TOP ? "Tweezer Top (bearish reversal/continuation impulse)" :
+     p == CANDLE_TWEEZER_BOTTOM ? "Tweezer Bottom (bullish reversal/continuation impulse)" :
+     p == CANDLE_BULL_MARUBOZU ? "Bull Marubozu (bullish reversal/continuation impulse)" :
+     p == CANDLE_BEAR_MARUBOZU ? "Bear Marubozu (bearish reversal/continuation impulse)" :
+     p == CANDLE_3_WHITE_SOLDIERS ? "3 White Soldiers (bullish reversal/continuation impulse)" :
+     p == CANDLE_3_BLACK_CROWS ? "3 Black Crows (bearish reversal/continuation impulse)" :
+     p == CANDLE_MORNING_STAR ? "Morning Star (bullish reversal/continuation impulse)" :
+     p == CANDLE_EVENING_STAR ? "Evening Star (bearish reversal/continuation impulse)" :
+     p == CANDLE_DOJI ? "Doji (neutral)" :
+     ""
+
+// Returns directional bias from candle pattern (-1/0/1).
+export get_candle_pattern_bias(int p) =>
+    p == CANDLE_BULL_ENG or p == CANDLE_HAMMER or p == CANDLE_DRAGONFLY_DOJI or p == CANDLE_BULL_HARAMI or p == CANDLE_PIERCING_LINE or p == CANDLE_TWEEZER_BOTTOM or p == CANDLE_BULL_MARUBOZU or p == CANDLE_3_WHITE_SOLDIERS or p == CANDLE_MORNING_STAR ? 1 :
+     p == CANDLE_BEAR_ENG or p == CANDLE_SHOOTING_STAR or p == CANDLE_GRAVESTONE_DOJI or p == CANDLE_BEAR_HARAMI or p == CANDLE_DARK_CLOUD or p == CANDLE_TWEEZER_TOP or p == CANDLE_BEAR_MARUBOZU or p == CANDLE_3_BLACK_CROWS or p == CANDLE_EVENING_STAR ? -1 :
+     0
+
+// Applies candle-pattern + relative-volume confluence adjustments to a base signal score.
+export apply_candle_pattern_confluence(string direction, string reason, int baseScore, CandlePatternCfg cfg) =>
+    int p = get_candle_pattern(cfg.dojiBodyMaxPct, cfg.wickBodyMin, cfg.wickDominanceMin, cfg.oppositeWickMaxBody, cfg.engulfMinPrevBody, cfg.tweezerTolAtr, cfg.marubozuMaxWickBody, cfg.threeLineMinBodyPct)
+    int pBias = get_candle_pattern_bias(p)
+    bool aligned = (direction == "Buy" and pBias > 0) or (direction == "Sell" and pBias < 0)
+    bool isConfluenceEvent = str.contains(reason, "Retest") or str.contains(reason, "Sweep") or str.contains(reason, "respected") or str.contains(reason, "reclaimed") or str.contains(reason, "rejected")
+    float volBase = ta.sma(volume, cfg.volLen)
+    float relVol = volBase > 0 ? (volume / volBase) : 0.0
+    int bonus = (aligned and isConfluenceEvent ? cfg.scorePattern : 0) + (isConfluenceEvent and relVol >= cfg.volMin ? cfg.scoreVolume : 0)
+    string pTxt = get_candle_pattern_text(p)
+    string outReason = reason
+    if bonus > 0 and pTxt != ""
+        outReason += " + " + pTxt
+    if isConfluenceEvent and relVol >= cfg.volMin
+        outReason += " + Vol"
+    ConfluenceResult.new(outReason, baseScore + bonus)
+
+get_data_technical_local_tuple() =>
+    float atr14 = ta.atr(14)
+    float ema9 = ta.ema(close, 9)
+    float ema20 = ta.ema(close, 20)
+    float ema21 = ta.ema(close, 21)
+    float ema50 = ta.ema(close, 50)
+    float ema200 = ta.ema(close, 200)
+    float sma20 = ta.sma(close, 20)
+    float sma200 = ta.sma(close, 200)
+    float rsi14 = ta.rsi(close, 14)
+    [_, _, adx14] = ta.dmi(14, 14)
+    float vwap = ta.vwap(hlc3)
+    float stochK = ta.stoch(close, high, low, 14)
+    float stochD = ta.sma(stochK, 3)
+    float bbBasis = sma20
+    float bbDev = 2.0 * ta.stdev(close, 20)
+    float bbUpper = bbBasis + bbDev
+    float bbLower = bbBasis - bbDev
+    float bbBandwidth = bbBasis != 0 ? (bbUpper - bbLower) / bbBasis : 0.0
+    float bbBandwidthAvg = ta.sma(bbBandwidth, 20)
+    bool bbSqueeze = bbBandwidthAvg > 0 ? bbBandwidth <= bbBandwidthAvg * 0.8 : bbBandwidth < 0.04
+    float ichiConv = (ta.highest(high, 9) + ta.lowest(low, 9)) / 2.0
+    float ichiBase = (ta.highest(high, 26) + ta.lowest(low, 26)) / 2.0
+    float ichiSpanA = (ichiConv + ichiBase) / 2.0
+    float ichiSpanB = (ta.highest(high, 52) + ta.lowest(low, 52)) / 2.0
+    float ichiCloudTop = math.max(ichiSpanA[26], ichiSpanB[26])
+    float ichiCloudBtm = math.min(ichiSpanA[26], ichiSpanB[26])
+    bool ichiAboveCloud = close > ichiCloudTop
+    bool ichiBelowCloud = close < ichiCloudBtm
+    [_, _, macdHist] = ta.macd(close, 12, 26, 9)
+    bool macdFlipUp = macdHist > 0 and macdHist[1] <= 0
+    bool macdFlipDn = macdHist < 0 and macdHist[1] >= 0
+    float fibHi55 = ta.highest(high, 55)
+    float fibLo55 = ta.lowest(low, 55)
+    float fibRange55 = math.max(fibHi55 - fibLo55, syminfo.mintick)
+    float fib618Bull = fibHi55 - fibRange55 * 0.618
+    float fib618Bear = fibLo55 + fibRange55 * 0.618
+    float fibTolerance = fibRange55 * 0.03
+    bool fibNearBull = low <= fib618Bull + fibTolerance and close >= fib618Bull - fibTolerance
+    bool fibNearBear = high >= fib618Bear - fibTolerance and close <= fib618Bear + fibTolerance
+    bool ema50Up = ema50 > ema50[1]
+    bool ema50Down = ema50 < ema50[1]
+    [atr14, ema9, ema20, ema21, ema50, ema200, sma20, sma200, rsi14, adx14, vwap, stochK, stochD, bbBasis, bbDev, bbUpper, bbLower, bbBandwidth, bbBandwidthAvg, bbSqueeze, ichiConv, ichiBase, ichiSpanA, ichiSpanB, ichiCloudTop, ichiCloudBtm, ichiAboveCloud, ichiBelowCloud, macdHist, macdFlipUp, macdFlipDn, fibHi55, fibLo55, fibRange55, fib618Bull, fib618Bear, fibTolerance, fibNearBull, fibNearBear, ema50Up, ema50Down]
+
+// Returns technical-analysis feature tuple for requested timeframe.
+// tf="" or current timeframe returns local values, otherwise mapped via request.security.
+export get_data_technical(string tf) =>
+    bool useLocal = na(tf) or tf == "" or tf == timeframe.period
+    if useLocal
+        get_data_technical_local_tuple()
+    else
+        request.security(syminfo.tickerid, tf, get_data_technical_local_tuple())
+
+get_data_technical_ctx_from_tuple(float atr14, float ema9, float ema20, float ema21, float ema50, float ema200, float sma20, float sma200, float rsi14, float adx14, float vwap, float stochK, float stochD, float bbBasis, float bbDev, float bbUpper, float bbLower, float bbBandwidth, float bbBandwidthAvg, bool bbSqueeze, float ichiConv, float ichiBase, float ichiSpanA, float ichiSpanB, float ichiCloudTop, float ichiCloudBtm, bool ichiAboveCloud, bool ichiBelowCloud, float macdHist, bool macdFlipUp, bool macdFlipDn, float fibHi55, float fibLo55, float fibRange55, float fib618Bull, float fib618Bear, float fibTolerance, bool fibNearBull, bool fibNearBear, bool ema50Up, bool ema50Down) =>
+    TechnicalContext out = TechnicalContext.new()
+    out.atr14 := atr14
+    out.ema9 := ema9
+    out.ema20 := ema20
+    out.ema21 := ema21
+    out.ema50 := ema50
+    out.ema200 := ema200
+    out.sma20 := sma20
+    out.sma200 := sma200
+    out.rsi14 := rsi14
+    out.adx14 := adx14
+    out.vwap := vwap
+    out.stochK := stochK
+    out.stochD := stochD
+    out.bbBasis := bbBasis
+    out.bbDev := bbDev
+    out.bbUpper := bbUpper
+    out.bbLower := bbLower
+    out.bbBandwidth := bbBandwidth
+    out.bbBandwidthAvg := bbBandwidthAvg
+    out.bbSqueeze := bbSqueeze
+    out.ichiConv := ichiConv
+    out.ichiBase := ichiBase
+    out.ichiSpanA := ichiSpanA
+    out.ichiSpanB := ichiSpanB
+    out.ichiCloudTop := ichiCloudTop
+    out.ichiCloudBtm := ichiCloudBtm
+    out.ichiAboveCloud := ichiAboveCloud
+    out.ichiBelowCloud := ichiBelowCloud
+    out.macdHist := macdHist
+    out.macdFlipUp := macdFlipUp
+    out.macdFlipDn := macdFlipDn
+    out.fibHi55 := fibHi55
+    out.fibLo55 := fibLo55
+    out.fibRange55 := fibRange55
+    out.fib618Bull := fib618Bull
+    out.fib618Bear := fib618Bear
+    out.fibTolerance := fibTolerance
+    out.fibNearBull := fibNearBull
+    out.fibNearBear := fibNearBear
+    out.ema50Up := ema50Up
+    out.ema50Down := ema50Down
+    out
+
+// Returns technical context object for one timeframe key.
+export get_data_technical_ctx(string tf) =>
+    [atr14, ema9, ema20, ema21, ema50, ema200, sma20, sma200, rsi14, adx14, vwap, stochK, stochD, bbBasis, bbDev, bbUpper, bbLower, bbBandwidth, bbBandwidthAvg, bbSqueeze, ichiConv, ichiBase, ichiSpanA, ichiSpanB, ichiCloudTop, ichiCloudBtm, ichiAboveCloud, ichiBelowCloud, macdHist, macdFlipUp, macdFlipDn, fibHi55, fibLo55, fibRange55, fib618Bull, fib618Bear, fibTolerance, fibNearBull, fibNearBear, ema50Up, ema50Down] = get_data_technical(tf)
+    get_data_technical_ctx_from_tuple(atr14, ema9, ema20, ema21, ema50, ema200, sma20, sma200, rsi14, adx14, vwap, stochK, stochD, bbBasis, bbDev, bbUpper, bbLower, bbBandwidth, bbBandwidthAvg, bbSqueeze, ichiConv, ichiBase, ichiSpanA, ichiSpanB, ichiCloudTop, ichiCloudBtm, ichiAboveCloud, ichiBelowCloud, macdHist, macdFlipUp, macdFlipDn, fibHi55, fibLo55, fibRange55, fib618Bull, fib618Bear, fibTolerance, fibNearBull, fibNearBear, ema50Up, ema50Down)
+
+// Returns OHLC + candle pattern stream for one HTF slot.
+// Uses fixed pattern parameters because request.security expression in exported
+// library functions cannot depend on function arguments.
+export get_data_htf_candles(string tf) =>
+    [o, h, l, c] = if not na(tf)
+        request.security(syminfo.tickerid, tf, [open, high, low, close], gaps = barmerge.gaps_off)
+    else
+        [na, na, na, na]
+    int pat = if not na(tf)
+        request.security(syminfo.tickerid, tf, get_candle_pattern(0.10, 2.0, 2.0, 0.5, 1.0, 0.05, 0.05, 0.60))
+    else
+        na
+    [o, h, l, c, pat]
+
+// Builds a centralized chart data context with optional data packs.
+export get_data_context(DataCfg cfg, Settings s, BiasToggles tog, array<PDArray> zonesRef, array<PDArray> levelsRef, array<Event> eventsRef, array<Event> signalHistRef, TFData ltfData, TFData htf1Data, TFData htf2Data) =>
+    ChartContext ctx = ChartContext.new()
+    ctx.barIdx := bar_index
+    ctx.closeV := close
+    ctx.highV := high
+    ctx.lowV := low
+    ctx.atrV := ta.atr(14)
+    ctx.zones := zonesRef
+    ctx.levels := levelsRef
+    ctx.events := eventsRef
+    ctx.signalHist := signalHistRef
+    [tf1, tf2] = get_htf_pair()
+    ctx.htf1Name := tf1
+    ctx.htf2Name := tf2
+
+    if cfg.needBias
+        [tot0, max0, sStructure0, sVwap0, sEma500, sRsi0, sAdx0, sImpulse0, sSupertrend0, sDonchian0] = get_bias_components_for_tf(timeframe.period, s, tog)
+        [tot15, max15, sStructure15, sVwap15, sEma5015, sRsi15, sAdx15, sImpulse15, sSupertrend15, sDonchian15] = request.security(syminfo.tickerid, "15", get_bias_components_for_tf_default("15"))
+        [tot240, max240, sStructure240, sVwap240, sEma50240, sRsi240, sAdx240, sImpulse240, sSupertrend240, sDonchian240] = request.security(syminfo.tickerid, "240", get_bias_components_for_tf_default("240"))
+        [tot1d, max1d, sStructure1d, sVwap1d, sEma501d, sRsi1d, sAdx1d, sImpulse1d, sSupertrend1d, sDonchian1d] = request.security(syminfo.tickerid, "1D", get_bias_components_for_tf_default("1D"))
+        [tot1w, max1w, sStructure1w, sVwap1w, sEma501w, sRsi1w, sAdx1w, sImpulse1w, sSupertrend1w, sDonchian1w] = request.security(syminfo.tickerid, "1W", get_bias_components_for_tf_default("1W"))
+        int b0 = tot0 > 0 ? 1 : tot0 < 0 ? -1 : 0
+        int b15 = tot15 > 0 ? 1 : tot15 < 0 ? -1 : 0
+        int b240 = tot240 > 0 ? 1 : tot240 < 0 ? -1 : 0
+        int b1d = tot1d > 0 ? 1 : tot1d < 0 ? -1 : 0
+        int b1w = tot1w > 0 ? 1 : tot1w < 0 ? -1 : 0
+        ctx.b0 := b0
+        ctx.s0 := math.abs(tot0)
+        ctx.m0 := math.max(max0, 1)
+        ctx.t0 := tot0
+        ctx.b15 := b15
+        ctx.s15 := math.abs(tot15)
+        ctx.m15 := math.max(max15, 1)
+        ctx.t15 := tot15
+        ctx.b240 := b240
+        ctx.s240 := math.abs(tot240)
+        ctx.m240 := math.max(max240, 1)
+        ctx.t240 := tot240
+        ctx.b1d := b1d
+        ctx.s1d := math.abs(tot1d)
+        ctx.m1d := math.max(max1d, 1)
+        ctx.t1d := tot1d
+        ctx.b1w := b1w
+        ctx.s1w := math.abs(tot1w)
+        ctx.m1w := math.max(max1w, 1)
+        ctx.t1w := tot1w
+        int currSec = get_tf_seconds(timeframe.period)
+        bool use15 = get_tf_seconds("15") > currSec
+        bool use240 = get_tf_seconds("240") > currSec
+        bool use1d = get_tf_seconds("1D") > currSec
+        bool use1w = get_tf_seconds("1W") > currSec
+        float power = (ctx.b0 * ctx.s0 * 1.0) + (use15 ? (ctx.b15 * ctx.s15 * 1.5) : 0.0) + (use240 ? (ctx.b240 * ctx.s240 * 2.0) : 0.0) + (use1d ? (ctx.b1d * ctx.s1d * 3.0) : 0.0) + (use1w ? (ctx.b1w * ctx.s1w * 4.0) : 0.0)
+        float powerMax = (ctx.m0 * 1.0) + (use15 ? (ctx.m15 * 1.5) : 0.0) + (use240 ? (ctx.m240 * 2.0) : 0.0) + (use1d ? (ctx.m1d * 3.0) : 0.0) + (use1w ? (ctx.m1w * 4.0) : 0.0)
+        float powerPct = powerMax > 0 ? math.min(math.max((power / powerMax) * 100.0, -100.0), 100.0) : 0.0
+        ctx.compositeBias := powerPct > 20 ? 1 : powerPct < -20 ? -1 : 0
+        ctx.activeBias := ctx.compositeBias != 0 ? ctx.compositeBias : ctx.b0
+        ctx.biasVal := ctx.activeBias
+
+        if cfg.initBiasFactorArrays
+            ctx.biasBullFactors := array.new_string(5, "")
+            ctx.biasBearFactors := array.new_string(5, "")
+            [bull0, bear0] = get_bias_factor_texts_from_scores(sStructure0, sVwap0, sEma500, sRsi0, sAdx0, sImpulse0, sSupertrend0, sDonchian0)
+            [bull15, bear15] = get_bias_factor_texts_from_scores(sStructure15, sVwap15, sEma5015, sRsi15, sAdx15, sImpulse15, sSupertrend15, sDonchian15)
+            [bull240, bear240] = get_bias_factor_texts_from_scores(sStructure240, sVwap240, sEma50240, sRsi240, sAdx240, sImpulse240, sSupertrend240, sDonchian240)
+            [bull1d, bear1d] = get_bias_factor_texts_from_scores(sStructure1d, sVwap1d, sEma501d, sRsi1d, sAdx1d, sImpulse1d, sSupertrend1d, sDonchian1d)
+            [bull1w, bear1w] = get_bias_factor_texts_from_scores(sStructure1w, sVwap1w, sEma501w, sRsi1w, sAdx1w, sImpulse1w, sSupertrend1w, sDonchian1w)
+            array.set(ctx.biasBullFactors, 0, bull0)
+            array.set(ctx.biasBearFactors, 0, bear0)
+            array.set(ctx.biasBullFactors, 1, bull15)
+            array.set(ctx.biasBearFactors, 1, bear15)
+            array.set(ctx.biasBullFactors, 2, bull240)
+            array.set(ctx.biasBearFactors, 2, bear240)
+            array.set(ctx.biasBullFactors, 3, bull1d)
+            array.set(ctx.biasBearFactors, 3, bear1d)
+            array.set(ctx.biasBullFactors, 4, bull1w)
+            array.set(ctx.biasBearFactors, 4, bear1w)
+
+    if cfg.needMsTrendDirs
+        ctx.dir0 := get_ms_trend_dir_for_slot(timeframe.period, timeframe.period, tf1, tf2, ltfData, htf1Data, htf2Data)
+        ctx.dir15 := get_ms_trend_dir_fixed_tf("15")
+        ctx.dir240 := get_ms_trend_dir_fixed_tf("240")
+        ctx.dir1d := get_ms_trend_dir_fixed_tf("1D")
+        ctx.dir1w := get_ms_trend_dir_fixed_tf("1W")
+
+    if cfg.needPdPw
+        [d_h, d_l, d_t] = request.security(syminfo.tickerid, "D", [high[1], low[1], time[1]], lookahead = barmerge.lookahead_on)
+        ctx.pdh := d_h
+        ctx.pdl := d_l
+        ctx.pdTime := d_t
+
+    if cfg.needPriceRange
+        int lb = math.max(cfg.rangeLookbackBars, 1)
+        ctx.rangeHigh := ta.highest(high, lb)
+        ctx.rangeLow := ta.lowest(low, lb)
+
+    if cfg.needHtfCandles
+        [o1, h1, l1, c1, p1] = get_data_htf_candles(tf1)
+        [o2, h2, l2, c2, p2] = get_data_htf_candles(tf2)
+        ctx.htf1Open := o1
+        ctx.htf1High := h1
+        ctx.htf1Low := l1
+        ctx.htf1Close := c1
+        ctx.htf1Pattern := p1
+        ctx.htf2Open := o2
+        ctx.htf2High := h2
+        ctx.htf2Low := l2
+        ctx.htf2Close := c2
+        ctx.htf2Pattern := p2
+
+    if cfg.needMsSwingArrays
+        array<float> lHi = array.new_float()
+        array<int> lHiT = array.new_int()
+        array<float> lLo = array.new_float()
+        array<int> lLoT = array.new_int()
+        if not na(ltfData.ms.swings) and array.size(ltfData.ms.swings) > 0
+            for i = 0 to array.size(ltfData.ms.swings) - 1
+                Swing s = array.get(ltfData.ms.swings, i)
+                if s.isSwingHigh
+                    array.push(lHi, s.price)
+                    array.push(lHiT, s.time)
+                else
+                    array.push(lLo, s.price)
+                    array.push(lLoT, s.time)
+        ctx.ltfSwingHighPrices := lHi
+        ctx.ltfSwingHighTimes := lHiT
+        ctx.ltfSwingLowPrices := lLo
+        ctx.ltfSwingLowTimes := lLoT
+
+        array<float> h1Hi = array.new_float()
+        array<int> h1HiT = array.new_int()
+        array<float> h1Lo = array.new_float()
+        array<int> h1LoT = array.new_int()
+        if not na(htf1Data.ms.swings) and array.size(htf1Data.ms.swings) > 0
+            for i = 0 to array.size(htf1Data.ms.swings) - 1
+                Swing s = array.get(htf1Data.ms.swings, i)
+                if s.isSwingHigh
+                    array.push(h1Hi, s.price)
+                    array.push(h1HiT, s.time)
+                else
+                    array.push(h1Lo, s.price)
+                    array.push(h1LoT, s.time)
+        ctx.htf1SwingHighPrices := h1Hi
+        ctx.htf1SwingHighTimes := h1HiT
+        ctx.htf1SwingLowPrices := h1Lo
+        ctx.htf1SwingLowTimes := h1LoT
+
+        array<float> h2Hi = array.new_float()
+        array<int> h2HiT = array.new_int()
+        array<float> h2Lo = array.new_float()
+        array<int> h2LoT = array.new_int()
+        if not na(htf2Data.ms.swings) and array.size(htf2Data.ms.swings) > 0
+            for i = 0 to array.size(htf2Data.ms.swings) - 1
+                Swing s = array.get(htf2Data.ms.swings, i)
+                if s.isSwingHigh
+                    array.push(h2Hi, s.price)
+                    array.push(h2HiT, s.time)
+                else
+                    array.push(h2Lo, s.price)
+                    array.push(h2LoT, s.time)
+        ctx.htf2SwingHighPrices := h2Hi
+        ctx.htf2SwingHighTimes := h2HiT
+        ctx.htf2SwingLowPrices := h2Lo
+        ctx.htf2SwingLowTimes := h2LoT
+
+    ctx
+
+// Applies candle-pattern border emphasis to a rendered HTF slot.
+export apply_htf_candle_pattern_marks(HTF_Data store, bool show, int patSeries, int count, color tfColor, color bullColor, color bearColor, HTFCandleVisualCfg cfg) =>
+    if not show
+        if array.size(store.boxes) > 0
+            for i = 0 to array.size(store.boxes) - 1
+                box bx = array.get(store.boxes, i)
+                bx.set_border_width(cfg.clearBorderWidth)
+    else
+        for i = 0 to count - 1
+            int currD = i * 3
+            int p = patSeries[currD]
+            bool hasPattern = not na(p) and p > 0
+            if i < array.size(store.boxes)
+                box bx = array.get(store.boxes, i)
+                if hasPattern
+                    int pb = get_candle_pattern_bias(p)
+                    color borderClr = pb > 0 ? bullColor : pb < 0 ? bearColor : tfColor
+                    bx.set_border_color(color.new(borderClr, 0))
+                    bx.set_border_width(cfg.patternBorderWidth)
+                else
+                    bx.set_border_width(cfg.clearBorderWidth)
+    bool(na)
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CANDLE PATTERN DETECTION & SCORING
+//  Reusable by any indicator. All logic centralised here.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── private helpers ────────────────────────────────────────────────────────
+_cp_body(o, c)      => math.abs(c - o)
+_cp_rng(h, l)       => h - l
+_cp_upWick(o, c, h) => h - math.max(o, c)
+_cp_loWick(o, c, l) => math.min(o, c) - l
+_cp_bull(o, c)      => c > o
+_cp_bear(o, c)      => c < o
+
+// Returns base reliability score (1-5) for a named pattern.
+// 5 = 3-candle high conviction  4 = kicker  3 = engulf/marubozu
+// 2 = single-bar moderate       1 = context-only (doji/inside/outside)
+// Local Helper
+export cp_base_score(string n) =>
+    bool is5 = n == "Three White Soldiers" or n == "Three Black Crows" or n == "Morning Star" or n == "Evening Star"
+    bool is4 = n == "Bullish Kicker" or n == "Bearish Kicker"
+    bool is3 = n == "Bullish Engulfing" or n == "Bearish Engulfing" or n == "Bullish Marubozu" or n == "Bearish Marubozu" or n == "Piercing Line" or n == "Dark Cloud Cover"
+    bool is2 = n == "Hammer" or n == "Hanging Man" or n == "Shooting Star" or n == "Inverted Hammer" or n == "Bullish Harami" or n == "Bearish Harami" or n == "Tweezer Bottom" or n == "Tweezer Top" or n == "Dragonfly Doji" or n == "Gravestone Doji"
+    if is5
+        5
+    else if is4
+        4
+    else if is3
+        3
+    else if is2
+        2
+    else
+        1
+
+// Returns a star-rating string for the given score value.
+export cp_score_stars(int score) =>
+    if score >= 5
+        "★★★★★"
+    else if score == 4
+        "★★★★☆"
+    else if score == 3
+        "★★★☆☆"
+    else if score == 2
+        "★★☆☆☆"
+    else
+        "★☆☆☆☆"
+
+// Returns body bg color tinted by bias + score tier.
+// Uses Theme transparency constants:
+//   score 5 → T_NONE (0%) solid   4 → T_LOW (20%)   3 → T_MEDIUM (50%)
+//   score 2 → 70%              1 → T_NORMAL (80%) — barely visible
+export cp_score_color(int score, int bias, color bull, color bear, Theme th) =>
+    if bias == 0
+        na
+    else
+        color base  = bias == 1 ? bull : bear
+        int   transp = score >= 5 ? th.T_NONE : score == 4 ? th.T_LOW : score == 3 ? th.T_MEDIUM : score == 2 ? 70 : th.T_NORMAL
+        color.new(base, transp)
+
+// Returns border color by conviction tier.
+// score ≥5 + any vol  → bright white (top signal)
+// score ≥4            → gold  #FFD700 (strong pattern)
+// score = 3            → bias-tinted (moderate)
+// score ≤2            → na (default thin border, no noise)
+export cp_border_color(int score, int bias, color bull, color bear, Theme th) =>
+    if score >= 5
+        color.new(th.TEXT_COLOR, th.T_NONE)   // white – top conviction
+    else if score >= 4
+        color.new(#FFD700, th.T_NONE)          // gold – strong signal
+    else if score == 3
+        color base = bias == 1 ? bull : bear
+        color.new(base, th.T_LOW)              // T_LOW = 20% transp (vivid tint)
+    else
+        na                                     // score ≤2: no border overlay
+
+// Returns wick color based on volume ratio vs average.
+// volRatio = volume / sma(volume, N)
+//   ≥2.0 → extreme vol → bright white (institutional move)
+//   ≥1.5 → high vol    → gold (#FFD700) — confirmed signal
+//   ≥1.0 → normal vol  → bias color, T_LOW transp (clear but not loud)
+//   < 1.0 → weak vol   → bias color, T_NORMAL transp (dim — caution: fake signal)
+// When no pattern (bias==0): returns na so plotcandle uses default
+export cp_wick_color(int score  , int bias, float volRatio, color bull, color bear, Theme th) =>
+    if bias == 0 or score == 0
+        na
+    else
+        color base = bias == 1 ? bull : bear
+        if volRatio >= 2.0
+            color.new(th.TEXT_COLOR, th.T_NONE)   // white — extreme volume
+        else if volRatio >= 1.5
+            color.new(#FFD700, th.T_NONE)          // gold — high volume
+        else if volRatio >= 1.0
+            color.new(base, th.T_LOW)              // tinted — average volume
+        else
+            color.new(base, th.T_NORMAL)           // dim — below-average (suspect)
+
+// Runs all 25 pattern detectors using a CandlePatternCfg.
+// Returns [patternName, bias, baseScore, confluenceVotes]
+//   bias: +1 bullish | -1 bearish | 0 none
+//   baseScore: 1-5 reliability of the dominant pattern
+//   confluenceVotes: count of patterns voting in dominant direction
+export cp_detect(CandlePatternCfg cfg) =>
+    float dp  = cfg.dojiBodyMaxPct
+    float wb  = cfg.wickBodyMin
+    float ow  = cfg.oppositeWickMaxBody
+    float em  = cfg.engulfMinPrevBody
+    float ta  = cfg.tweezerTolAtr
+    float mw  = cfg.marubozuMaxWickBody
+    float tb  = cfg.threeLineMinBodyPct
+    float sb  = 0.33   // star body max pct (fixed, sensible default)
+
+    // ── 1. Doji ─────────────────────────────────────────────
+    float _b0 = _cp_body(open, close)
+    float _r0 = _cp_rng(high, low)
+    bool d_doji = _r0 > 0 and (_b0 / _r0) <= dp
+
+    // ── 2. Dragonfly Doji ───────────────────────────────────
+    float _lo2 = _cp_loWick(open, close, low)
+    float _up2 = _cp_upWick(open, close, high)
+    bool d_dfly = _r0 > 0 and (_b0 / _r0) <= dp and _lo2 >= wb * math.max(_up2, syminfo.mintick)
+    int   b_dfly = d_dfly ? 1 : 0
+
+    // ── 3. Gravestone Doji ──────────────────────────────────
+    bool d_grav = _r0 > 0 and (_b0 / _r0) <= dp and _up2 >= wb * math.max(_lo2, syminfo.mintick)
+    int  b_grav = d_grav ? -1 : 0
+
+    // ── 4. Hammer ───────────────────────────────────────────
+    bool d_hammer = _b0 > 0 and _lo2 >= wb * _b0 and _up2 <= ow * _b0
+    int  b_hammer = d_hammer ? 1 : 0
+
+    // ── 5. Inverted Hammer ──────────────────────────────────
+    bool d_iHam = _b0 > 0 and _up2 >= wb * _b0 and _lo2 <= ow * _b0
+    int  b_iHam = d_iHam ? 1 : 0
+
+    // ── 6. Hanging Man ──────────────────────────────────────
+    bool d_hang = _b0 > 0 and _lo2 >= wb * _b0 and _up2 <= 0.3 * _b0
+    int  b_hang = d_hang ? -1 : 0
+
+    // ── 7. Shooting Star ────────────────────────────────────
+    bool d_shoot = _b0 > 0 and _up2 >= wb * _b0 and _lo2 <= 0.3 * _b0
+    int  b_shoot = d_shoot ? -1 : 0
+
+    // ── 8. Bullish Marubozu ─────────────────────────────────
+    bool d_mBull = _cp_bull(open, close) and _b0 > 0 and _up2 <= mw * _b0 and _lo2 <= mw * _b0
+    int  b_mBull = d_mBull ? 1 : 0
+
+    // ── 9. Bearish Marubozu ─────────────────────────────────
+    bool d_mBear = _cp_bear(open, close) and _b0 > 0 and _up2 <= mw * _b0 and _lo2 <= mw * _b0
+    int  b_mBear = d_mBear ? -1 : 0
+
+    // ── 10. Bullish Engulfing ───────────────────────────────
+    float _pb10 = _cp_body(open[1], close[1])
+    bool d_bullEng = _cp_bear(open[1], close[1]) and _cp_bull(open, close) and close >= open[1] and open <= close[1] and _b0 >= em * math.max(_pb10, syminfo.mintick)
+    int  b_bullEng = d_bullEng ? 1 : 0
+
+    // ── 11. Bearish Engulfing ───────────────────────────────
+    bool d_bearEng = _cp_bull(open[1], close[1]) and _cp_bear(open, close) and close <= open[1] and open >= close[1] and _b0 >= em * math.max(_pb10, syminfo.mintick)
+    int  b_bearEng = d_bearEng ? -1 : 0
+
+    // ── 12. Bullish Harami ──────────────────────────────────
+    bool d_bullHar = _cp_bear(open[1], close[1]) and _cp_bull(open, close) and high <= math.max(open[1], close[1]) and low >= math.min(open[1], close[1])
+    int  b_bullHar = d_bullHar ? 1 : 0
+
+    // ── 13. Bearish Harami ──────────────────────────────────
+    bool d_bearHar = _cp_bull(open[1], close[1]) and _cp_bear(open, close) and high <= math.max(open[1], close[1]) and low >= math.min(open[1], close[1])
+    int  b_bearHar = d_bearHar ? -1 : 0
+
+    // ── 14. Piercing Line ───────────────────────────────────
+    float _mid14 = (open[1] + close[1]) / 2.0
+    bool d_pierce = _cp_bear(open[1], close[1]) and _cp_bull(open, close) and open <= close[1] and close > _mid14 and close < open[1]
+    int  b_pierce = d_pierce ? 1 : 0
+
+    // ── 15. Dark Cloud Cover ────────────────────────────────
+    float _mid15 = (open[1] + close[1]) / 2.0
+    bool d_dcc = _cp_bull(open[1], close[1]) and _cp_bear(open, close) and open >= close[1] and close < _mid15 and close > open[1]
+    int  b_dcc = d_dcc ? -1 : 0
+
+    // ── 16. Morning Star ────────────────────────────────────
+    float _c2b16 = _cp_body(open[2], close[2])
+    float _c1b16 = _cp_body(open[1], close[1])
+    bool d_morn = _cp_bear(open[2], close[2]) and _c1b16 <= sb * _c2b16 and _cp_bull(open, close) and close > (open[2] + close[2]) / 2.0
+    int  b_morn = d_morn ? 1 : 0
+
+    // ── 17. Evening Star ────────────────────────────────────
+    float _c2b17 = _cp_body(open[2], close[2])
+    float _c1b17 = _cp_body(open[1], close[1])
+    bool d_even = _cp_bull(open[2], close[2]) and _c1b17 <= sb * _c2b17 and _cp_bear(open, close) and close < (open[2] + close[2]) / 2.0
+    int  b_even = d_even ? -1 : 0
+
+    // ── 18. Three White Soldiers ────────────────────────────
+    float _r18a = _cp_rng(high, low)
+    float _r18b = _cp_rng(high[1], low[1])
+    float _r18c = _cp_rng(high[2], low[2])
+    bool _3ws_c0 = _cp_bull(open, close)    and _cp_body(open, close)    >= tb * _r18a
+    bool _3ws_c1 = _cp_bull(open[1], close[1]) and _cp_body(open[1], close[1]) >= tb * _r18b
+    bool _3ws_c2 = _cp_bull(open[2], close[2]) and _cp_body(open[2], close[2]) >= tb * _r18c
+    bool d_3ws = _3ws_c0 and _3ws_c1 and _3ws_c2 and close > close[1] and close[1] > close[2]
+    int  b_3ws = d_3ws ? 1 : 0
+
+    // ── 19. Three Black Crows ───────────────────────────────
+    bool _3bc_c0 = _cp_bear(open, close)    and _cp_body(open, close)    >= tb * _r18a
+    bool _3bc_c1 = _cp_bear(open[1], close[1]) and _cp_body(open[1], close[1]) >= tb * _r18b
+    bool _3bc_c2 = _cp_bear(open[2], close[2]) and _cp_body(open[2], close[2]) >= tb * _r18c
+    bool d_3bc = _3bc_c0 and _3bc_c1 and _3bc_c2 and close < close[1] and close[1] < close[2]
+    int  b_3bc = d_3bc ? -1 : 0
+
+    // ── 20. Bullish Kicker ──────────────────────────────────
+    bool d_bKick = _cp_bear(open[1], close[1]) and _cp_bull(open, close) and open >= open[1]
+    int  b_bKick = d_bKick ? 1 : 0
+
+    // ── 21. Bearish Kicker ──────────────────────────────────
+    bool d_brKick = _cp_bull(open[1], close[1]) and _cp_bear(open, close) and open <= open[1]
+    int  b_brKick = d_brKick ? -1 : 0
+
+    // ── 22. Tweezer Bottom ──────────────────────────────────
+    float _atr22 = ta.atr(14)
+    bool d_tBtm = math.abs(low - low[1]) <= _atr22 * ta and _cp_bear(open[1], close[1]) and _cp_bull(open, close)
+    int  b_tBtm = d_tBtm ? 1 : 0
+
+    // ── 23. Tweezer Top ─────────────────────────────────────
+    bool d_tTop = math.abs(high - high[1]) <= _atr22 * ta and _cp_bull(open[1], close[1]) and _cp_bear(open, close)
+    int  b_tTop = d_tTop ? -1 : 0
+
+    // ── 24. Inside Bar ──────────────────────────────────────
+    bool d_inside = high < high[1] and low > low[1]
+    int  b_inside = d_inside ? (_cp_bull(open[1], close[1]) ? 1 : -1) : 0
+
+    // ── 25. Outside Bar ─────────────────────────────────────
+    bool d_outside = high > high[1] and low < low[1]
+    int  b_outside = d_outside ? (_cp_bull(open, close) ? 1 : -1) : 0
+
+    // ── Vote accumulation ───────────────────────────────────
+    int bv = (b_dfly==1?1:0) + (b_hammer==1?1:0) + (b_iHam==1?1:0)  + (b_mBull==1?1:0)  + (b_bullEng==1?1:0) + (b_bullHar==1?1:0) + (b_pierce==1?1:0) + (b_morn==1?1:0) + (b_3ws==1?1:0) + (b_bKick==1?1:0) + (b_tBtm==1?1:0) + (b_inside==1?1:0) + (b_outside==1?1:0)
+    int rv = (b_grav==-1?1:0) + (b_hang==-1?1:0) + (b_shoot==-1?1:0) + (b_mBear==-1?1:0) + (b_bearEng==-1?1:0) + (b_bearHar==-1?1:0) + (b_dcc==-1?1:0) + (b_even==-1?1:0) + (b_3bc==-1?1:0) + (b_brKick==-1?1:0) + (b_tTop==-1?1:0) + (b_inside==-1?1:0) + (b_outside==-1?1:0)
+
+    int aggBias = bv > rv ? 1 : rv > bv ? -1 : 0
+    int votes   = math.max(bv, rv)
+
+    // ── Dominant pattern name (priority: 3-candle > kicker > 2-candle > 1-candle) ─
+    string name = d_3ws     and aggBias ==  1 ? "Three White Soldiers" :
+                  d_3bc     and aggBias == -1 ? "Three Black Crows"    :
+                  d_bKick   and aggBias ==  1 ? "Bullish Kicker"       :
+                  d_brKick  and aggBias == -1 ? "Bearish Kicker"       :
+                  d_morn    and aggBias ==  1 ? "Morning Star"         :
+                  d_even    and aggBias == -1 ? "Evening Star"         :
+                  d_bullEng and aggBias ==  1 ? "Bullish Engulfing"    :
+                  d_bearEng and aggBias == -1 ? "Bearish Engulfing"    :
+                  d_pierce  and aggBias ==  1 ? "Piercing Line"        :
+                  d_dcc     and aggBias == -1 ? "Dark Cloud Cover"     :
+                  d_mBull   and aggBias ==  1 ? "Bullish Marubozu"     :
+                  d_mBear   and aggBias == -1 ? "Bearish Marubozu"     :
+                  d_hammer  and aggBias ==  1 ? "Hammer"               :
+                  d_hang    and aggBias == -1 ? "Hanging Man"          :
+                  d_dfly    and aggBias ==  1 ? "Dragonfly Doji"       :
+                  d_grav    and aggBias == -1 ? "Gravestone Doji"      :
+                  d_tBtm    and aggBias ==  1 ? "Tweezer Bottom"       :
+                  d_tTop    and aggBias == -1 ? "Tweezer Top"          :
+                  d_bullHar and aggBias ==  1 ? "Bullish Harami"       :
+                  d_bearHar and aggBias == -1 ? "Bearish Harami"       :
+                  d_iHam    and aggBias ==  1 ? "Inverted Hammer"      :
+                  d_shoot   and aggBias == -1 ? "Shooting Star"        :
+                  d_inside                    ? "Inside Bar"           :
+                  d_outside                   ? "Outside Bar"          :
+                  d_doji                      ? "Doji"                 :
+                  "None"
+
+    [name, aggBias, cp_base_score(name), votes]
+
+// Returns line extension bars by source timeframe role.
+export get_tf_line_ext_bars(string sourceTf, string tf1Name, string tf2Name, int ltfExt, int htf1Ext, int htf2Ext) =>
+    sourceTf == tf2Name ? htf2Ext : sourceTf == tf1Name ? htf1Ext : ltfExt
+
+// Returns line color by source timeframe role.
+export get_tf_line_color(string sourceTf, string tf1Name, string tf2Name, color ltfColor, color htf1Color, color htf2Color) =>
+    sourceTf == tf2Name ? htf2Color : sourceTf == tf1Name ? htf1Color : ltfColor
+
+// Human-readable lifecycle name.
+export get_lifecycle_name(int state, int formed, int touched, int respected, int reclaimed) =>
+    state == formed ? "FORMED" :
+     state == touched ? "TOUCHED" :
+     state == respected ? "RESPECTED" :
+     state == reclaimed ? "RECLAIMED" :
+     "BROKEN"
+
+export is_life_formed(int state, Const c) =>
+    state == c.LIFE_FORMED
+
+export is_life_touched(int state, Const c) =>
+    state == c.LIFE_TOUCHED
+
+export is_life_respected(int state, Const c) =>
+    state == c.LIFE_RESPECTED
+
+export is_life_reclaimed(int state, Const c) =>
+    state == c.LIFE_RECLAIMED
+
+export is_life_broken(int state, Const c) =>
+    state == c.LIFE_BROKEN
+
+// Merge lifecycle states with BROKEN precedence.
+export merge_lifecycle_state(int a, int b, int brokenState) =>
+    a == brokenState or b == brokenState ? brokenState : math.max(a, b)
+
+// Builds SR tooltip from counters + lifecycle state.
+export build_sr_tooltip(string touchesPrefix, int touchCount, int rejectCount, int state, int formed, int touched, int respected, int reclaimed) =>
+    string touchLabel = touchesPrefix == "" ? "Touches" : touchesPrefix
+    touchLabel + ": " + str.tostring(math.max(touchCount, 0)) + "\nRejects: " + str.tostring(math.max(rejectCount, 0)) + "\nState: " + get_lifecycle_name(state, formed, touched, respected, reclaimed)
+
+// Returns next lifecycle state from generic break/touch/respect/reclaim inputs.
+export lifecycle_next_state(bool breakCond, bool touchCond, bool respectCond, bool reclaimCond, bool cooldownOk, int prevState, int broken, int touched, int respected, int reclaimed) =>
+    int next = prevState
+    if breakCond
+        next := broken
+    else if touchCond and cooldownOk
+        next := respectCond ? (prevState == broken ? reclaimed : respected) : touched
+    else if reclaimCond and prevState == broken
+        next := reclaimed
+    next
+
+// Returns next [touchCount, rejectCount] from generic touch/respect flags.
+export lifecycle_next_counts(int touchCount, int rejectCount, bool touchCond, bool respectCond, bool cooldownOk) =>
+    int t = math.max(touchCount, 0)
+    int r = math.max(rejectCount, 0)
+    if touchCond and cooldownOk
+        t += 1
+        if respectCond
+            r += 1
+    [t, r]
+
+// Returns lifecycle line style mapped from state.
+export lifecycle_line_style(int state, int touched, int broken, int reclaimed, string formedStyle, string touchedStyle, string brokenStyle, string reclaimedStyle) =>
+    state == broken ? brokenStyle : state == touched ? touchedStyle : state == reclaimed ? reclaimedStyle : formedStyle
+
+// Returns lifecycle alpha mapped from state.
+export lifecycle_alpha(int state, int touched, int respected, int reclaimed, int broken, int formedAlpha, int touchedAlpha, int respectedAlpha, int reclaimedAlpha, int brokenAlpha) =>
+    state == broken ? brokenAlpha :
+     state == reclaimed ? reclaimedAlpha :
+     state == respected ? respectedAlpha :
+     state == touched ? touchedAlpha :
+     formedAlpha

@@ -1,0 +1,2975 @@
+//@version=5
+// @version: 49
+// @trace_ts: 2026-03-18 22:05:00 +0100
+// @trace_update: centralized shared UI/enum string constants (entry resolve, dashboard positions, display modes, time-event labels/tooltips, aux symbols) into Const
+// @trace_features: indicators can now reuse one shared string vocabulary from Core Const to reduce local literal duplication
+// @trace_last_backup: /Users/macmini/Trade/Bot/Hung Bot/versions/50-before-market-structure-lib-refactor/TradingKitCore.pine
+library("TradingKitCore", dynamic_requests = true)
+
+//s
+export type Theme
+    color COLOR_BEARISH = color.red
+    color COLOR_BULLISH = color.teal
+    color COLOR_NEUTRAL = color.gray
+    color COLOR_BROKEN = color.olive
+    color COLOR_TRANSPARENT = color.white
+    color TEXT_COLOR = #ffffff
+    color TEXT_COLOR_BULLISH = color.teal
+    color COLOR_UI_BG = color.black
+    color COLOR_UI_FG = color.white
+    color COLOR_UI_ACCENT = color.yellow
+    color COLOR_KEYLEVEL = color.yellow
+    color COLOR_LTF = color.gray // Base-TF zigzag/swing color.
+    color COLOR_HTF1 = color.orange // HTF1: warm tangerine.
+    color COLOR_HTF2 = color.purple // HTF2: violet.
+    int LTF_TRANSP = 60
+    int HTF1_TRANSP = 60
+    int HTF2_TRANSP = 70
+    
+    string STYLE_STRONG = line.style_solid
+    string STYLE_WEAK = line.style_dotted
+    string STYLE_BROKEN = line.style_dashed
+    string STYLE_LABEL_NONE = label.style_none
+    string SIZE_TINY = size.tiny
+    string SIZE_SMALL = size.small
+    string SIZE_NORMAL = size.normal
+    int T_NONE = 0
+    int T_LOW = 20
+    int T_MEDIUM = 50
+    int T_NORMAL = 80
+
+// Shared baseline settings for duplicated cross-indicator constants.
+export type Settings
+    int GLOBAL_MAX_LOOKBACK_BARS = 500 // Global default lookback bars for lifecycle/render gating.
+    int HTF_CANDLES_BASE = 16 // Base count for HTF1 projected candles/panel.
+    int HTF_CANDLES_BIAS1 = 12 // Base count for HTF2 projected candles/panel.
+    bool DYN_LOOKBACK_ENABLE = true // Enables dynamic HTF-derived lookback recalculation.
+    string DYN_RECALC_MODE_ON_HTF2 = "ON_HTF2_CLOSE" // Recalculate when HTF2 closes.
+    string DYN_RECALC_MODE_EVERY_N = "EVERY_N_BARS" // Recalculate every N bars.
+    int DYN_RECALC_EVERY_BARS = 10 // N-bars interval when using EVERY_N_BARS mode.
+    int DYN_HTF2_CANDLES_MIN = 3 // Min dynamic candle count for HTF2 panel.
+    int DYN_HTF2_CANDLES_MAX = 12 // Max dynamic candle count for HTF2 panel.
+    int DYN_HTF2_CANDLES_FALLBACK = 12 // Fallback HTF2 candle count when no anchor exists.
+    int DYN_HTF1_CANDLES_MIN = 3 // Min derived candle count for HTF1 panel.
+    int DYN_HTF1_CANDLES_MAX = 16 // Max derived candle count for HTF1 panel.
+    int DYN_CURR_LOOKBACK_MIN_BARS = 50 // Min derived current-TF lookback bars.
+    int DYN_CURR_LOOKBACK_MAX_BARS = 3000 // Max derived current-TF lookback bars.
+    float MS_CURR_SWING_X_SHIFT_FRAC = 1.0 // Current-TF swing marker X offset factor.
+    float MS_CURR_SWING_Y_SHIFT_TICKS = 0.0 // Current-TF swing marker Y offset in ticks.
+    int MS_HTF1_SWING_Y_SHIFT_TICKS = 0 // HTF1 swing marker Y offset in ticks.
+    int MS_HTF2_SWING_Y_SHIFT_TICKS = 0 // HTF2 swing marker Y offset in ticks.
+    //int HTF_RIGHT_OFFSET = 20 // Right-side bars offset for HTF candle panels.
+    int SWING_HISTORY_MAX = 120 // Max stored swing points in per-TF arrays.
+    int SR_LINE_TRANSP = 72 // Support/Resistance line transparency.
+    int W_BIAS_STRUCTURE = 3
+    int W_BIAS_VWAP = 2
+    int W_BIAS_EMA50 = 2
+    int W_BIAS_RSI = 1
+    int W_BIAS_ADX = 1
+    int W_BIAS_RSI_IMPULSE = 1
+    int W_BIAS_SUPERTREND = 2
+    int W_BIAS_DONCHIAN = 2
+    int BIAS_PROFILE_REACTIVE = 0 // TF profile: 1m-5m.
+    int BIAS_PROFILE_INTRADAY = 1 // TF profile: 15m-1h.
+    int BIAS_PROFILE_SWING = 2 // TF profile: 4h.
+    int BIAS_PROFILE_MACRO = 3 // TF profile: 1D-1W.
+    float SIGNAL_RR_DEFAULT = 1.0 // Default reward:risk target multiple for signal trade plans.
+    float SIGNAL_STOPLOSS = 0.0 // 0=auto zone-edge stop, >0=fixed ATR-multiple stop distance from entry.
+    bool ENTRY_REQUIRE_NEXT_BAR = true // If true, TP/SL checks start after entry candle closes.
+    bool ENTRY_SL_FIRST_ON_DUAL_HIT = true // If TP+SL touched on same bar, prioritize SL.
+    int ENTRY_RECENT_DUP_BARS = 2 // Default anti-duplicate window for recent active entries.
+    string TOOLTIP_REASON_PREFIX = "\nReason: " // Shared tooltip prefix for reason text.
+    string TOOLTIP_TOUCHES_PREFIX = "Touches: " // Shared tooltip prefix for touch-count labels.
+    int CP_MIN_CONV = 2 // Min confluence score required to show candle-pattern emphasis.
+    int CP_VOL_LEN = 20 // Candle-pattern relative-volume moving-average length.
+    float CP_VOL_HIGH = 1.5 // Relative-volume threshold for high-volume bonus.
+    float CP_VOL_EXTREME = 2.0 // Relative-volume threshold for extreme-volume bonus.
+    float CP_DOJI_PCT = 0.10 // Max body/range ratio to classify doji-like candles.
+    float CP_WICK_BODY = 2.0 // Min wick/body ratio for long-wick rejection families.
+    float CP_WICK_DOMINANCE = 2.0 // Min dominant-wick factor vs opposite wick.
+    float CP_OPPOSITE_WICK_MAX_BODY = 0.5 // Opposite wick cap (in body units).
+    float CP_ENGULF_MIN = 1.0 // Min previous-body multiplier for engulfing validation.
+    float CP_TWEEZER_ATR = 0.05 // Max ATR-distance between tweezer highs/lows.
+    float CP_MARUBOZU_WICK = 0.05 // Max wick/body ratio for marubozu classification.
+    float CP_3LINE_BODY = 0.60 // Min body/range ratio for 3-line momentum candles.
+    float CP_VOL_MIN = 1.5 // Min relative volume for candle-pattern confluence bonus.
+    
+
+// Shared constant vocabulary that is not user-configurable.
+export type Const
+    string SIGNAL_STATE_PENDING = "PENDING"
+    string SIGNAL_STATE_START = "START"
+    string SIGNAL_STATE_TP = "TP"
+    string SIGNAL_STATE_SL = "SL"
+    int SIG_STAT_TOTAL = 0
+    int SIG_STAT_TP = 1
+    int SIG_STAT_SL = 2
+    int SIG_TYPE_OB = 0
+    int SIG_TYPE_BB = 1
+    int SIG_TYPE_FVG = 2
+    int SIG_TYPE_SWEEP = 3
+    int SIG_TYPE_COUNT = 4
+    int SIG_METRIC_TP = 0
+    int SIG_METRIC_SL = 1
+    int SIG_METRIC_GAIN_R = 2
+    int SIG_METRIC_COUNT = 3
+    int LIFE_FORMED = 0
+    int LIFE_TOUCHED = 1
+    int LIFE_RESPECTED = 2
+    int LIFE_RECLAIMED = 3
+    int LIFE_BROKEN = 4
+    int LIFE_INVALID = 5
+    int LIFE_RESOLVED = 6
+    string ENTRY_MODE_OFF = "NO ENTRY"
+    string ENTRY_MODE_LIMIT = "LIMIT"
+    string ENTRY_MODE_AFTER_RETEST = "AFTER RETEST"
+    string ENTRY_RESOLVE_INTRABAR = "Intrabar"
+    string ENTRY_RESOLVE_BAR_CLOSE = "Bar Close"
+    string DASH_NONE = "none"
+    string DASH_TOP_RIGHT = "top-right"
+    string DASH_BOTTOM_RIGHT = "bottom-right"
+    string DASH_TOP_CENTER = "top-center"
+    string DASH_BOTTOM_CENTER = "bottom-center"
+    string DISP_NONE = "None"
+    string DISP_MARKER = "Marker"
+    string DISP_EVENT = "Event"
+    string DISP_ENTRY = "Entry"
+    string PIVOT_MODE_FIXED = "Fixed"
+    string OB_CLASS_ORIGIN = "O"
+    string OB_CLASS_DECISIONAL = "D"
+    string OB_CLASS_EXTREME = "X"
+    string OB_CLASS_MITIGATION = "M"
+    string SYM_DOT = "●"
+    string SYM_DOT_SMALL = "•"
+    string SYM_DOT_TINY = "·"
+    string SYM_UP = "▲"
+    string SYM_DN = "▼"
+    string SYM_DASH = "▬"
+    string SYM_CHECK = "✓"
+    string SYM_ARR1_UP = "⇑" 
+    string SYM_ARR1_DN = "⇓"
+    string SYM_ARR2_UP = "↑" 
+    string SYM_ARR2_DN = "↓" 
+    string SYM_DIAMOND = "◈"
+    string SYM_DIAMOND_SMALL = "◇"
+    string SYM_STAR = "★"
+    string SYM_STAR_SMALL = "☆"
+    string SYM_TARGET = "🎯"
+    string SYM_STOPLOSS = "🛑"
+    string SYM_VERTICAL_BAR = "▮"
+    string SYM_CIRCLE = "⊙"
+    string SYM_RSI = "RSI"
+    string SYM_VWAP = "VWAP"
+    string TT_BUY = "Potential Buy"
+    string TT_SELL = "Potential Sell"
+    string TIME_EVENT_LABEL_MODE_TIME = "TIME"
+    string TIME_EVENT_LABEL_MODE_TEXT = "TEXT"
+    string TIME_EVENT_WINDOW_MIDNIGHT = "0000-0001"
+    string TIME_EVENT_WINDOW_0830 = "0830-0831"
+    string TIME_EVENT_WINDOW_NY_OPEN = "0930-0931"
+    string TIME_EVENT_WINDOW_1000 = "1000-1001"
+    string TIME_EVENT_WINDOW_LDN_CLOSE = "1130-1131"
+    string TIME_EVENT_WINDOW_PM_BULL = "1400-1401"
+    string TIME_EVENT_TXT_MIDNIGHT = "00:00"
+    string TIME_EVENT_TXT_0830 = "08:30"
+    string TIME_EVENT_TXT_NY_OPEN = "09:30"
+    string TIME_EVENT_TXT_1000 = "10:00"
+    string TIME_EVENT_TXT_LDN_CLOSE = "L.C"
+    string TIME_EVENT_TXT_PM_BULL = "14:00"
+    string TIME_EVENT_NAME_MIDNIGHT = "Midnight"
+    string TIME_EVENT_NAME_0830 = "8:30"
+    string TIME_EVENT_NAME_NY_OPEN = "NY.O"
+    string TIME_EVENT_NAME_1000 = "10AM"
+    string TIME_EVENT_NAME_LDN_CLOSE = "L.C"
+    string TIME_EVENT_NAME_PM_BULL = "2PM"
+    string TIME_EVENT_TT_MIDNIGHT = "NY Midnight Open\nTrue daily open for algorithms and true daily opening price."
+    string TIME_EVENT_TT_0830 = "8:30 AM Macro\nOften a high-volatility macro data window. Use extra caution around liquidity + spread expansion."
+    string TIME_EVENT_TT_NY_OPEN = "NY Equities Open\nTrue day-open volume injection. Often acts as a manipulative judas swing."
+    string TIME_EVENT_TT_1000 = "10:00 AM Silver Bullet / Macro\nHigh probability continuation or reversal timezone."
+    string TIME_EVENT_TT_LDN_CLOSE = "London Close Macro\nOften creates the high/low of the day in London/NY crossover."
+    string TIME_EVENT_TT_PM_BULL = "2:00 PM Silver Bullet\nAfternoon structural flush and continuation in NY PM."
+    string WIN_LABEL_TIMEZONE = "UTC-5"
+    string FMT_PRICE   = "#.####"
+
+Const CONST = Const.new()
+
+// Shared HTF candle panel storage type.
+export type HTF_Data
+    array<box> boxes
+    array<line> wicks_h
+    array<line> wicks_l
+    array<float> hl
+    string name
+
+// Generic HTF candle slot visual config.
+export type HTFCandleVisualCfg
+    int transparent = 60
+    string labelSize = size.normal
+    int patternBorderWidth = 1
+    int clearBorderWidth = 0
+
+// Generic HTF candle slot layout config.
+export type HTFCandleLayoutCfg
+    bool dynamicEnabled = true
+    int fallbackCount0 = 16
+    int fallbackCount1 = 12
+    int firstSlotBaseOffsetBars = 15
+    int secondSlotGapBars = 5
+    int spanTrimBars = 3
+
+// Generic swing point payload.
+export type Swing
+    float price
+    int time
+    int barIndex
+    string tf
+    bool isSwingHigh
+
+// Per-timeframe visual config for structure rendering.
+export type TFConfig
+    string id
+    bool showSwings
+    bool showZigzag
+    color swingHighColor
+    color swingLowColor
+    string swingSize
+    color zigzagColor
+    string zigzagStyle
+    int zigzagWidth
+    int swingYShiftTicks
+
+// Per-timeframe runtime structure state.
+export type TFData
+    string tf
+    array<float> swingHighPrices
+    array<int> swingHighTimes
+    array<float> swingLowPrices
+    array<int> swingLowTimes
+    array<float> swingSeqPrices
+    array<int> swingSeqTimes
+    array<bool> swingSeqIsHigh
+    bool highArmed
+    bool lowArmed
+    int prevBreakout
+    int msBias
+    int lastHighSeenTime
+    int lastLowSeenTime
+    label lastHighMarker = na
+    label lastLowMarker = na
+    float zzLastPrice
+    int zzLastIndex
+    bool zzLastIsHigh
+    line zzLiveLine
+    label zzLiveLabel = na
+    float candHighPrice = na
+    int candHighTime = na
+    int candHighIndex = na
+    float candLowPrice = na
+    int candLowTime = na
+    int candLowIndex = na
+    int zzLastTime = na
+    int legId = 0
+    int legDir = 0
+    int legEventTime = na
+    int legLastEventSeen = na
+    int legSeqAll = 0
+    int legSeqOb = 0
+    int legSeqFvg = 0
+    int legSeqRjb = 0
+    int legSeqSd = 0
+    int legSeqLevel = 0
+
+// Shared setup signal object shape before an actual entry is created.
+export type Trigger
+    string type
+    string direction
+    float zoneTop
+    float zoneBtm
+    float zonePrice
+    int barDetected
+    int barBreak
+    bool retestSeen
+    string reason
+    float quality
+    int score
+
+// Shared area-based price-zone object shape.
+export type PDArray
+    string type
+    float top
+    float bottom
+    int barStart
+    bool mitigated = false
+    bool broken = false
+    box visualBox = na
+    label visualLabel = na
+    line visualLine = na
+    int barEnd = na
+    float price = na
+    bool isHigh = false
+    bool isBullish = false
+    string labelText = ""
+    int extendBars = 0
+    float qualityPct = na
+    string sourceTf = ""
+    int sourceTfRank = 0
+    int legId = 0
+    int legDir = 0
+    int legSeqAll = 0
+    int legSeqType = 0
+    int lifeState = 0
+    int touchCount = 0
+    int rejectCount = 0
+
+// Shared strategy registry item (toggle + score + short label).
+export type EntryModelDef
+    string key
+    string shortName
+    int baseScore
+    bool enabled
+
+// Shared chart-wide context snapshot for strategy/event processing.
+export type ChartContext
+    int barIdx = 0
+    float closeV = na
+    float highV = na
+    float lowV = na
+    int biasVal = 0
+    float atrV = na
+    array<PDArray> zones = na
+    array<PDArray> levels = na
+    array<Trigger> events = na
+    array<Trigger> signalHist = na
+    int b0 = 0
+    int s0 = 0
+    int m0 = 1
+    int t0 = 0
+    int b15 = 0
+    int s15 = 0
+    int m15 = 1
+    int t15 = 0
+    int b240 = 0
+    int s240 = 0
+    int m240 = 1
+    int t240 = 0
+    int b1d = 0
+    int s1d = 0
+    int m1d = 1
+    int t1d = 0
+    int b1w = 0
+    int s1w = 0
+    int m1w = 1
+    int t1w = 0
+    int compositeBias = 0
+    int activeBias = 0
+    int dir0 = 0
+    int dir15 = 0
+    int dir240 = 0
+    int dir1d = 0
+    int dir1w = 0
+    float signalMemoryScore = 0.0
+    int signalMemoryDir = 0
+    int signalBullCount = 0
+    int signalBearCount = 0
+    array<string> biasBullFactors = na
+    array<string> biasBearFactors = na
+
+// Shared runtime chart config for common confluence/entry gates.
+export type ChartConfig
+    bool useBias = true
+    bool allowLong = true
+    bool allowShort = true
+    float rr = 2.0
+    bool dynamicTp = true
+    int maxStartEntries = 1
+    bool showPending = true
+    bool showStart = true
+    bool showTp = true
+    bool showSl = true
+
+// Minimal swing reference payload for zone lookup helpers.
+export type SwingRef
+    int barIndex
+    float price
+    bool isHigh
+
+// Returns/updates swing references from source TF (high+low pivots merged by time).
+// Output is persistent per sourceTf in current script instance.
+export get_swingrefs_from_tf(string sourceTf, int maxCount) =>
+    var string _srTf = ""
+    var array<SwingRef> _srRefs = array.new<SwingRef>()
+    var int _lastHighTs = na
+    var int _lastLowTs = na
+    string tf = sourceTf == "" ? timeframe.period : sourceTf
+    int piv = 5
+    int cap = math.max(maxCount, 1)
+    if tf != _srTf
+        _srTf := tf
+        _lastHighTs := na
+        _lastLowTs := na
+        array.clear(_srRefs)
+
+    float ph = request.security(syminfo.tickerid, tf, ta.pivothigh(high, piv, piv), gaps = barmerge.gaps_off)
+    int phT = request.security(syminfo.tickerid, tf, not na(ta.pivothigh(high, piv, piv)) ? time[piv] : na, gaps = barmerge.gaps_off)
+    float pl = request.security(syminfo.tickerid, tf, ta.pivotlow(low, piv, piv), gaps = barmerge.gaps_off)
+    int plT = request.security(syminfo.tickerid, tf, not na(ta.pivotlow(low, piv, piv)) ? time[piv] : na, gaps = barmerge.gaps_off)
+
+    if not na(ph) and not na(phT) and (na(_lastHighTs) or phT > _lastHighTs)
+        int msPerBarH = math.max(time - time[1], 1)
+        int barsAgoH = int(math.round((time - phT) / msPerBarH))
+        int idxH = bar_index - barsAgoH
+        idxH := idxH >= 0 and idxH <= bar_index + 500 ? idxH : na
+        if not na(idxH)
+            array.push(_srRefs, SwingRef.new(idxH, ph, true))
+            _lastHighTs := phT
+    if not na(pl) and not na(plT) and (na(_lastLowTs) or plT > _lastLowTs)
+        int msPerBarL = math.max(time - time[1], 1)
+        int barsAgoL = int(math.round((time - plT) / msPerBarL))
+        int idxL = bar_index - barsAgoL
+        idxL := idxL >= 0 and idxL <= bar_index + 500 ? idxL : na
+        if not na(idxL)
+            array.push(_srRefs, SwingRef.new(idxL, pl, false))
+            _lastLowTs := plT
+
+    while array.size(_srRefs) > cap
+        array.shift(_srRefs)
+    _srRefs
+
+// Returns nearest swing top above currentPrice and nearest swing bottom below currentPrice from source TF.
+export get_first_swingrefs_around_price(string sourceTf, int maxCount, float currentPrice) =>
+    array<SwingRef> refs = get_swingrefs_from_tf(sourceTf, maxCount)
+    SwingRef topRef = na
+    SwingRef btmRef = na
+    float topDist = na
+    float btmDist = na
+    if array.size(refs) > 0 and not na(currentPrice)
+        for i = 0 to array.size(refs) - 1
+            SwingRef s = array.get(refs, i)
+            if s.isHigh and s.price > currentPrice
+                float dTop = s.price - currentPrice
+                if na(topDist) or dTop < topDist
+                    topDist := dTop
+                    topRef := s
+            if (not s.isHigh) and s.price < currentPrice
+                float dBtm = currentPrice - s.price
+                if na(btmDist) or dBtm < btmDist
+                    btmDist := dBtm
+                    btmRef := s
+    [topRef, btmRef]
+
+// Returns first OB/FVG candidate detected from raw candles after a swing (no external zone arrays).
+// Current implementation supports only sourceTf == chart timeframe; otherwise returns na.
+export get_first_zone_from_swing(string sourceTf, SwingRef swing) =>
+    PDArray out = na
+    string tfKey = str.upper(sourceTf)
+    bool sameTf = tfKey == "" or tfKey == str.upper(timeframe.period)
+    int swingOff = bar_index - swing.barIndex
+    int maxScan = math.min(math.max(swingOff, 0), 120)
+    bool wantBull = close >= swing.price
+    if sameTf and not na(swing.barIndex) and not na(swing.price) and maxScan >= 4
+        // scan from swing -> current to get the first candidate that forms after swing
+        for off = maxScan - 2 to 2 by -1
+            if na(out)
+                bool obBull = wantBull and close[off] < open[off] and close[off - 1] > high[off]
+                bool obBear = (not wantBull) and close[off] > open[off] and close[off - 1] < low[off]
+                bool fvgBull = wantBull and low[off] > high[off + 2]
+                bool fvgBear = (not wantBull) and high[off] < low[off + 2]
+                int zStart = bar_index - off
+                if obBull or obBear
+                    float zTop = high[off]
+                    float zBtm = low[off]
+                    bool zBull = obBull
+                    string zLbl = zBull ? "OB" : "OB"
+                    out := PDArray.new("OB", zTop, zBtm, zStart, false, false, na, na, na, na, na, false, zBull, zLbl, 0, na)
+                    out.sourceTf := sourceTf
+                else if fvgBull or fvgBear
+                    float zTop = fvgBull ? low[off] : low[off + 2]
+                    float zBtm = fvgBull ? high[off + 2] : high[off]
+                    bool zBull = fvgBull
+                    string zLbl = zBull ? "FVG" : "FVG"
+                    out := PDArray.new("FVG", zTop, zBtm, zStart, false, false, na, na, na, na, na, false, zBull, zLbl, 0, na)
+                    out.sourceTf := sourceTf
+    out
+
+
+
+// Core (Sessions/Killzones): One tracked line (running high or running low) with optional label.
+export type WindowLine
+    line ln = na
+    label lb = na
+    float extreme = na
+    int startT = na
+    bool active = false
+
+// Core (Sessions): Background highlight for overlaps (no border, high transparency).
+export type WindowBox
+    box bx = na
+    float hi = na
+    float lo = na
+    int startT = na
+    bool active = false
+
+// Shared runtime entry object for opened/resolved entry lifecycle.
+export type Trade
+    string direction
+    string type
+    float zoneTop
+    float zoneBtm
+    float entry
+    float stoploss
+    float takeprofit
+    float rrValue
+    int barCreated
+    int barClosed = na
+    string reason
+    int score
+    string state = ""
+    box tpBox = na
+    box slBox = na
+    line entryLine = na
+    line tpLine = na
+    line slLine = na
+    label infoLabel = na
+    bool touched = false
+
+// Trade visual style config to allow per-indicator overrides without editing library code.
+export type EntryVisualCfg
+    int startTouchedBgAlpha = 88
+    int startUntouchedBgAlpha = 95
+    int resolvedWinnerBgAlpha = 72
+    int resolvedLoserBgAlpha = 95
+    int startTouchedBorderAlpha = 35
+    int startUntouchedBorderAlpha = 55
+    int resolvedWinnerBorderAlpha = 18
+    int resolvedLoserBorderAlpha = 72
+    int entryStartTouchedAlpha = 60
+    int entryStartUntouchedAlpha = 35
+    int entryResolvedWinnerAlpha = 18
+    int entryResolvedLoserAlpha = 55
+    int compactWinnerBgAlpha = 70
+    int compactLoserBgAlpha = 92
+    int compactWinnerBorderAlpha = 12
+    int compactLoserBorderAlpha = 65
+
+// Zone box+label visual configuration.
+export type ZoneVisualCfg
+    int minWidthBars = 1
+    int borderWidth = 1
+    string textSize = size.tiny
+    color transparentColor = color.white
+    string labelStyle = label.style_none
+    string textHAlign = text.align_right
+    string textVAlign = text.align_bottom
+
+// Projected HTF box visual configuration.
+export type ProjectedBoxVisualCfg
+    int borderWidth = 1
+    string textSize = size.small
+    string textHAlign = text.align_right
+    string textVAlign = text.align_center
+
+// Shared line+text visual configuration.
+export type LineTextVisualCfg
+    string lineStyle = line.style_solid
+    int lineWidth = 1
+    string textSize = size.tiny
+    int vPos = 0
+    float yPadTicks = 0.0
+    float xRatio = 0.5
+    int xPadBars = 0
+    string textAlign = text.align_center
+
+// PDArray line-render visual configuration.
+export type PriceZoneLineVisualCfg
+    string lineStyle = line.style_solid
+    int lineWidth = 1
+    string labelSize = size.tiny
+    bool showLabel = true
+
+// Shared strategy descriptor used by strategy engines.
+export type Strategy
+    int id
+    string name
+    string shortName
+    int tfSecMin
+    int tfSecMax
+    string description
+    int effectiveness
+
+// Shared confluence adjustment result shape.
+export type ConfluenceResult
+    string reason
+    int score
+
+// Candle-pattern confluence config (pattern thresholds + volume gate + scoring weights).
+export type CandlePatternCfg
+    float dojiBodyMaxPct = 0.1
+    float wickBodyMin = 2.0
+    float wickDominanceMin = 2.0
+    float oppositeWickMaxBody = 0.5
+    float engulfMinPrevBody = 1.0
+    float tweezerTolAtr = 0.05
+    float marubozuMaxWickBody = 0.2
+    float threeLineMinBodyPct = 0.6
+    int volLen = 20
+    float volMin = 1.5
+    int scorePattern = 1
+    int scoreVolume = 1
+
+// Candle-pattern display config (visual toggles + color palette).
+export type CandlePatternVisualCfg
+    bool showCandles = true
+    bool showHalo = true
+    bool showMarkers = true
+    color bull = #00e5b0
+    color bear = #ff3366
+    color neutral = #888888
+    color normBull = #26a69a
+    color normBear = #ef5350
+    color markerBull = #00e5b0
+    color markerBear = #ff3366
+    color markerNeutral = #888888
+
+// Returns a standard candle-pattern config built from shared Settings defaults.
+// SMC helper
+export get_candle_pattern_cfg(Settings s, int scorePattern, int scoreVolume) =>
+    CandlePatternCfg.new(
+     dojiBodyMaxPct = s.CP_DOJI_PCT,
+     wickBodyMin = s.CP_WICK_BODY,
+     wickDominanceMin = s.CP_WICK_DOMINANCE,
+     oppositeWickMaxBody = s.CP_OPPOSITE_WICK_MAX_BODY,
+     engulfMinPrevBody = s.CP_ENGULF_MIN,
+     tweezerTolAtr = s.CP_TWEEZER_ATR,
+     marubozuMaxWickBody = s.CP_MARUBOZU_WICK,
+     threeLineMinBodyPct = s.CP_3LINE_BODY,
+     volLen = s.CP_VOL_LEN,
+     volMin = s.CP_VOL_MIN,
+     scorePattern = scorePattern,
+     scoreVolume = scoreVolume)
+
+// Per-indicator toggle flags for each bias factor used in get_bias_data_for_tf().
+// All flags default true so callers only need to override what they want to disable.
+export type BiasToggles
+    bool useStructure   = true  // Include market structure direction in scoring.
+    bool useVwap        = true  // Include VWAP position in scoring.
+    bool useEma         = true  // Include EMA-50/200 in scoring.
+    bool useRsi         = true  // Include RSI midpoint in scoring.
+    bool useAdx         = true  // Include ADX trend strength in scoring.
+    bool useRsiImpulse  = true  // Include RSI impulse cross in scoring.
+    bool useSupertrend  = true  // Include Supertrend direction in scoring.
+    bool useDonchian    = true  // Include Donchian channel position in scoring.
+
+// Returns side-prefixed text for buy/sell tooltip or label use.
+// SMC helper
+export tt_side(bool isBuy, string reason) =>
+    (isBuy ? "BUY • " : "SELL • ") + reason
+
+// Returns dynamic confirmation window based on timeframe and event type.
+// SMC helper
+export get_dynamic_confirmation_window_bars(string tfPeriod, bool isSweep, int sweepMinBars, int sweepMaxBars, int breakMinBars, int breakMaxBars) =>
+    int tfSec = timeframe.in_seconds(tfPeriod)
+    int raw = isSweep ? (tfSec <= 900 ? 6 : tfSec <= 3600 ? 8 : tfSec <= 14400 ? 6 : tfSec <= 86400 ? 4 : 3) : (tfSec <= 900 ? 20 : tfSec <= 3600 ? 24 : tfSec <= 14400 ? 18 : tfSec <= 86400 ? 12 : 8)
+    int minBars = isSweep ? sweepMinBars : breakMinBars
+    int maxBars = isSweep ? sweepMaxBars : breakMaxBars
+    math.max(minBars, math.min(raw, maxBars))
+
+// Returns flattened signal stats matrix index.
+// Local Helper
+export get_signal_stat_idx(int typeIdx, int metricIdx, int metricCount) =>
+    typeIdx * metricCount + metricIdx
+
+// Returns true when entry plan values are valid for direction and minimum tick distance.
+// Local Helper
+export is_valid_entry_plan(string direction, float entry, float stoploss, float takeprofit, float tickSize) =>
+    bool isBuy = direction == "Buy"
+    bool finite = not na(entry) and not na(stoploss) and not na(takeprofit)
+    bool sideOk = isBuy ? (stoploss < entry and takeprofit > entry) : (stoploss > entry and takeprofit < entry)
+    bool distOk = math.abs(entry - stoploss) >= tickSize and math.abs(takeprofit - entry) >= tickSize
+    finite and sideOk and distOk
+
+// Builds a shared Trade object only when the plan is valid; otherwise returns na.
+// SMC helper
+export create_entry_if_valid(string direction, string type, float zoneTop, float zoneBtm, float entry, float stoploss, float takeprofit, float rrValue, int barCreated, string reason, int scoreVal, Const c, float tickSize) =>
+    Trade out = na
+    if is_valid_entry_plan(direction, entry, stoploss, takeprofit, tickSize)
+        out := Trade.new(direction, type, zoneTop, zoneBtm, entry, stoploss, takeprofit, rrValue, barCreated, int(na), reason, scoreVal, c.SIGNAL_STATE_PENDING, na, na, na, na, na)
+    out
+
+// Applies TP/SL/+R stats update from one outcome code: 1=TP, -1=SL, 0=none.
+// SMC helper
+export apply_entry_outcome_stats(array<float> stats, int bucketIdx, int outcome, float rrValue, Const c, int metricCount) =>
+    int idxSl = get_signal_stat_idx(bucketIdx, c.SIG_METRIC_SL, metricCount)
+    int idxTp = get_signal_stat_idx(bucketIdx, c.SIG_METRIC_TP, metricCount)
+    int idxGr = get_signal_stat_idx(bucketIdx, c.SIG_METRIC_GAIN_R, metricCount)
+    if outcome < 0
+        array.set(stats, idxSl, array.get(stats, idxSl) + 1)
+        array.set(stats, idxGr, array.get(stats, idxGr) - 1)
+    else if outcome > 0
+        array.set(stats, idxTp, array.get(stats, idxTp) + 1)
+        array.set(stats, idxGr, array.get(stats, idxGr) + rrValue)
+    bool(na)
+
+// Returns true if there is an active START entry for strategy+direction.
+// Indicator helper
+export has_active_entry_for_strategy(array<Trade> entriesRef, array<int> entryStrategyIds, int stratId, string direction, Const c) =>
+    bool out = false
+    if array.size(entriesRef) > 0 and array.size(entryStrategyIds) == array.size(entriesRef)
+        for i = array.size(entriesRef) - 1 to 0
+            Trade e = array.get(entriesRef, i)
+            int sid = array.get(entryStrategyIds, i)
+            if sid == stratId and e.direction == direction and e.state == c.SIGNAL_STATE_START
+                out := true
+                break
+    out
+
+// Returns true if there was a recent START entry for strategy+direction in the recentBars window.
+// Indicator helper
+export has_recent_active_entry_for_strategy(array<Trade> entriesRef, array<int> entryStrategyIds, int stratId, string direction, int recentBars, Const c) =>
+    bool out = false
+    if array.size(entriesRef) > 0 and array.size(entryStrategyIds) == array.size(entriesRef)
+        for i = array.size(entriesRef) - 1 to 0
+            Trade e = array.get(entriesRef, i)
+            int sid = array.get(entryStrategyIds, i)
+            bool same = sid == stratId and e.direction == direction and e.state == c.SIGNAL_STATE_START
+            if same and (bar_index - e.barCreated <= recentBars)
+                out := true
+                break
+    out
+
+// Finds an existing active entry for same direction and approximately the same zone.
+// SMC helper
+export find_entry_idx(array<Trade> entriesRef, string direction, float top, float btm, float minTick, string activeState) =>
+    int found = na
+    if array.size(entriesRef) > 0
+        for i = array.size(entriesRef) - 1 to 0
+            Trade e = array.get(entriesRef, i)
+            bool sameZone = math.abs(e.zoneTop - top) < minTick * 2 and math.abs(e.zoneBtm - btm) < minTick * 2
+            bool sameDir = e.direction == direction
+            bool active = e.state == activeState
+            if sameZone and sameDir and active
+                found := i
+                break
+    found
+
+
+// Returns high/low bounds across a lookback window starting at startOff.
+// Local Helper
+export get_base_bounds(int startOff, int len) =>
+    int maxSafeOff = 300
+    int startSafe = math.max(0, math.min(startOff, maxSafeOff))
+    float bh = high[startSafe]
+    float bl = low[startSafe]
+    for i = 1 to len - 1
+        int off = math.max(0, math.min(startOff + i, maxSafeOff))
+        bh := math.max(bh, high[off])
+        bl := math.min(bl, low[off])
+    [bh, bl]
+
+// Deletes box/label/line drawings owned by one PDArray.
+// Local Helper
+export delete_zone_drawings(PDArray z) =>
+    if not na(z.visualBox)
+        z.visualBox.delete()
+    if not na(z.visualLabel)
+        z.visualLabel.delete()
+    if not na(z.visualLine)
+        z.visualLine.delete()
+    bool(na)
+
+// Unified renderer for PDArray visuals (area box, line, or mixed).
+// SMC helper
+export draw_price_zone(PDArray z, int leftIdx, int rightIdx, float top, float btm, color areaFillColor, color areaBorderColor, string areaBorderStyle, string labelText, color labelColor, string tooltipText, int labelX, float labelY, ZoneVisualCfg areaCfg, PriceZoneLineVisualCfg lineCfg, bool showArea = true, bool showLine = false, float linePrice = na, color lineColor = na, string labelMode = "AREA", bool showLabel = true) =>
+    int rightClamped = math.max(rightIdx, leftIdx + math.max(areaCfg.minWidthBars, 1))
+    float resolvedLinePrice = na(linePrice) ? (top + btm) / 2.0 : linePrice
+    color resolvedLineColor = na(lineColor) ? areaBorderColor : lineColor
+    string mode = str.upper(labelMode)
+    bool wantAreaLabel = showLabel and mode == "AREA" and showArea
+    bool wantLineLabel = showLabel and mode == "LINE" and showLine and lineCfg.showLabel
+    bool wantAnyLabel = wantAreaLabel or wantLineLabel
+    int resolvedLabelX = wantLineLabel ? rightClamped : labelX
+    float resolvedLabelY = wantLineLabel ? resolvedLinePrice : labelY
+    string resolvedLabelSize = wantLineLabel ? lineCfg.labelSize : areaCfg.textSize
+    string resolvedLabelStyle = wantLineLabel ? label.style_none : areaCfg.labelStyle
+    color resolvedLabelBg = wantLineLabel ? color.new(color.white, 100) : areaCfg.transparentColor
+
+    if showArea
+        if na(z.visualBox)
+            z.visualBox := box.new(left = leftIdx, top = top, right = rightClamped, bottom = btm, border_color = areaBorderColor, border_style = areaBorderStyle, border_width = areaCfg.borderWidth, bgcolor = areaFillColor, text = "", text_halign = areaCfg.textHAlign, text_valign = areaCfg.textVAlign, text_size = areaCfg.textSize, text_color = labelColor)
+        else
+            z.visualBox.set_lefttop(leftIdx, top)
+            z.visualBox.set_rightbottom(rightClamped, btm)
+            z.visualBox.set_bgcolor(areaFillColor)
+            z.visualBox.set_border_color(areaBorderColor)
+            z.visualBox.set_border_style(areaBorderStyle)
+            z.visualBox.set_border_width(areaCfg.borderWidth)
+    else if not na(z.visualBox)
+        z.visualBox.delete()
+        z.visualBox := na
+
+    if showLine
+        if na(z.visualLine)
+            z.visualLine := line.new(leftIdx, resolvedLinePrice, rightClamped, resolvedLinePrice, xloc = xloc.bar_index, color = resolvedLineColor, style = lineCfg.lineStyle, width = lineCfg.lineWidth)
+        else
+            z.visualLine.set_xy1(leftIdx, resolvedLinePrice)
+            z.visualLine.set_xy2(rightClamped, resolvedLinePrice)
+            z.visualLine.set_color(resolvedLineColor)
+            z.visualLine.set_style(lineCfg.lineStyle)
+            z.visualLine.set_width(lineCfg.lineWidth)
+        z.price := resolvedLinePrice
+    else if not na(z.visualLine)
+        z.visualLine.delete()
+        z.visualLine := na
+
+    if wantAnyLabel
+        if na(z.visualLabel)
+            z.visualLabel := label.new(resolvedLabelX, resolvedLabelY, text = labelText, xloc = xloc.bar_index, color = resolvedLabelBg, style = resolvedLabelStyle, textcolor = labelColor, size = resolvedLabelSize, tooltip = tooltipText)
+        else
+            z.visualLabel.set_xy(resolvedLabelX, resolvedLabelY)
+            z.visualLabel.set_text(labelText)
+            z.visualLabel.set_color(resolvedLabelBg)
+            z.visualLabel.set_textcolor(labelColor)
+            z.visualLabel.set_style(resolvedLabelStyle)
+            z.visualLabel.set_size(resolvedLabelSize)
+            z.visualLabel.set_tooltip(tooltipText)
+    else if not na(z.visualLabel)
+        z.visualLabel.delete()
+        z.visualLabel := na
+    z
+
+// Returns minimum right X for one zone after width clamping.
+// SMC helper
+export get_zone_min_right_idx(PDArray z, int desiredRight, int minWidthBars) =>
+    math.max(desiredRight, z.barStart + minWidthBars)
+
+
+// Deletes all visuals owned by one Trade.
+// Indicator helper
+export delete_entry_visuals(Trade e) =>
+    if not na(e.tpBox)
+        e.tpBox.delete()
+    if not na(e.slBox)
+        e.slBox.delete()
+    if not na(e.entryLine)
+        e.entryLine.delete()
+    if not na(e.tpLine)
+        e.tpLine.delete()
+    if not na(e.slLine)
+        e.slLine.delete()
+    if not na(e.infoLabel)
+        e.infoLabel.delete()
+    bool(na)
+
+// Returns true when two price ranges overlap.
+zones_overlap(float topA, float btmA, float topB, float btmB) =>
+    math.min(topA, topB) >= math.max(btmA, btmB)
+
+// Nearby OB overlap/proximity check.
+export has_nearby_zone(array<PDArray> zones, array<string> types, bool isBull, float top, float btm, int startIdx, int maxBarsApart) =>
+    bool found = false
+    if array.size(zones) > 0
+        for i = array.size(zones) - 1 to 0
+            z = array.get(zones, i)
+            bool isTargetOb = array.includes(types, z.type) and z.isBullish == isBull
+            if isTargetOb and not z.broken
+                bool nearBar = math.abs(startIdx - z.barStart) <= maxBarsApart
+                bool overlap = zones_overlap(top, btm, z.top, z.bottom)
+                if nearBar or overlap
+                    found := true
+                    break
+    found
+
+// Check if same-side active OB already exists.
+export has_active_zone_same_side(array<PDArray> zones, array<string> types, bool isBull) =>
+    bool found = false
+    if array.size(zones) > 0
+        for i = array.size(zones) - 1 to 0
+            z = array.get(zones, i)
+            if array.includes(types, z.type) and z.isBullish == isBull and not z.broken
+                found := true
+                break
+    found
+
+// Check if OB candidate is extreme versus existing OBs.
+export is_extreme_zone_candidate(array<PDArray> zones, array<string> types, bool isBull, float top, float btm) =>
+    bool extreme = true
+    if array.size(zones) > 0
+        for i = array.size(zones) - 1 to 0
+            z = array.get(zones, i)
+            if array.includes(types, z.type) and z.isBullish == isBull and not z.broken
+                if isBull and btm > z.bottom
+                    extreme := false
+                    break
+                if not isBull and top < z.top
+                    extreme := false
+                    break
+    extreme
+
+// Returns first non-na timestamp among 3 values.
+// Local Helper
+export get_first_non_na3(int t1, int t2, int t3) =>
+    not na(t1) ? t1 : not na(t2) ? t2 : t3
+
+// Resolve dynamic anchor timestamp by priority mode.
+// SMC helper
+export get_dynamic_anchor_ts(string mode, string srFirst, string swingFirst, int obTs, int srTs, int swingTs) =>
+    mode == srFirst ? get_first_non_na3(srTs, obTs, swingTs) : mode == swingFirst ? get_first_non_na3(swingTs, obTs, srTs) : get_first_non_na3(obTs, srTs, swingTs)
+
+// Returns visible high/low range used by HTF mini-chart labels.
+// Local Helper
+export get_htf_range(HTF_Data store) =>
+    float rHi = na
+    float rLo = na
+    if store.hl.size() > 0
+        for i = 0 to store.hl.size() - 1
+            float v = store.hl.get(i)
+            if not na(v)
+                rHi := na(rHi) ? v : math.max(rHi, v)
+                rLo := na(rLo) ? v : math.min(rLo, v)
+    [rHi, rLo]
+
+// Creates one HTF mini candle body + wick objects.
+// Local Helper
+export create_htf_candle_objects(int bIdx, int offset, float o_p, float h_p, float l_p, float c_p, color up, color dn, int trans) =>
+    color col = o_p < c_p ? up : dn
+    box bx = box.new(bIdx + offset, math.max(o_p, c_p), bIdx + offset + 2, math.min(o_p, c_p), bgcolor = color.new(col, trans), border_color = na)
+    int wickX = bIdx + offset + 1
+    line wh = line.new(wickX, math.max(o_p, c_p), wickX, h_p, color = color.new(col, trans))
+    line wl = line.new(wickX, math.min(o_p, c_p), wickX, l_p, color = color.new(col, trans))
+    [bx, wh, wl]
+
+// Renders one HTF mini candle strip.
+// Local Helper
+export render_htf_view(HTF_Data store, int count, int offset, float o_p, float h_p, float l_p, float c_p, color up, color dn, int trans) =>
+    int bIdx = bar_index
+    int safeCount = math.max(count, 1)
+    int storeN = store.boxes.size()
+    int renderN = math.min(storeN, safeCount)
+    // If store contains stale extra candles, hide them to avoid stacking/overlap artifacts.
+    if storeN > safeCount
+        for k = safeCount to storeN - 1
+            box bxStale = store.boxes.get(k)
+            line whStale = store.wicks_h.get(k)
+            line wlStale = store.wicks_l.get(k)
+            bxStale.set_lefttop(na, na)
+            bxStale.set_rightbottom(na, na)
+            whStale.set_xy1(na, na)
+            whStale.set_xy2(na, na)
+            wlStale.set_xy1(na, na)
+            wlStale.set_xy2(na, na)
+    if ta.change(o_p)
+        box.delete(store.boxes.shift())
+        line.delete(store.wicks_h.shift())
+        line.delete(store.wicks_l.shift())
+        store.hl.shift()
+        store.hl.shift()
+        [newBx, newWh, newWl] = create_htf_candle_objects(bIdx, offset, o_p, h_p, l_p, c_p, up, dn, trans)
+        store.boxes.push(newBx)
+        store.wicks_h.push(newWh)
+        store.wicks_l.push(newWl)
+        store.hl.push(h_p)
+        store.hl.push(l_p)
+    else
+        int currD = offset - ((safeCount - 1) * 3)
+        for i = 0 to renderN - 1
+            box bx = store.boxes.get(i)
+            line wh = store.wicks_h.get(i)
+            line wl = store.wicks_l.get(i)
+            int wCenter = bIdx + currD + 1
+            if i < safeCount - 1
+                int leftX = bIdx + currD
+                int rightX = bIdx + currD + 2
+                if bx.get_left() != leftX
+                    bx.set_left(leftX)
+                if bx.get_right() != rightX
+                    bx.set_right(rightX)
+                if wh.get_x1() != wCenter or wh.get_x2() != wCenter
+                    wh.set_x1(wCenter), wh.set_x2(wCenter)
+                if wl.get_x1() != wCenter or wl.get_x2() != wCenter
+                    wl.set_x1(wCenter), wl.set_x2(wCenter)
+            else
+                bx.set_lefttop(bIdx + currD, math.max(o_p, c_p))
+                bx.set_rightbottom(bIdx + currD + 2, math.min(o_p, c_p))
+                bx.set_bgcolor(color.new(o_p < c_p ? up : dn, trans))
+                wh.set_xy1(wCenter, math.max(o_p, c_p)), wh.set_xy2(wCenter, h_p)
+                wl.set_xy1(wCenter, math.min(o_p, c_p)), wl.set_xy2(wCenter, l_p)
+                store.hl.set(safeCount * 2 - 2, h_p)
+                store.hl.set(safeCount * 2 - 1, l_p)
+            currD += 3
+    bool(na)
+
+// Updates/creates the label under one HTF mini chart.
+// Local Helper
+export update_htf_name_label(label lb, HTF_Data store, int count, int offset, string tfText, Theme theme) =>
+    label out = lb
+    [rHi, rLo] = get_htf_range(store)
+    bool valid = not na(rHi) and not na(rLo)
+    if valid
+        float pad = math.max((rHi - rLo) * 0.10, syminfo.mintick * 15)
+        float y = rLo - pad
+        float span = (count - 1) * 3 + 2
+        int x = bar_index + offset - int(math.floor(span / 2))
+        if na(out)
+            out := label.new(x, y, tfText, xloc = xloc.bar_index, style = theme.STYLE_LABEL_NONE, color = theme.COLOR_TRANSPARENT, textcolor = theme.COLOR_NEUTRAL, size = theme.SIZE_TINY)
+        else
+            if out.get_x() != x
+                out.set_x(x)
+            if out.get_y() != y
+                out.set_y(y)
+            if out.get_text() != tfText
+                out.set_text(tfText)
+            out.set_textcolor(theme.COLOR_NEUTRAL)
+    else if not na(out)
+        out.delete()
+        out := na
+    out
+
+// Renders one HTF mini-chart slot.
+// SMC helper
+export render_htf_slot(HTF_Data store, label lb, bool show, float _o, float _h, float _l, float _c, int count, int offset, string tfText, Theme theme, int trans) =>
+    label out = lb
+    if show
+        render_htf_view(store, count, offset, _o, _h, _l, _c, theme.COLOR_BULLISH, theme.COLOR_BEARISH, trans)
+        string tfLabel = tfText == "240" ? "4h" : tfText == "60" ? "1h" : tfText == "15" ? "15m" : tfText == "5" ? "5m" : tfText
+        out := update_htf_name_label(out, store, count, offset, tfLabel, theme)
+    else if not na(out)
+        out.delete()
+        out := na
+    out
+
+// Converts timeframe string to seconds.
+// SMC helper
+export get_tf_seconds(string tf_period) =>
+    tf_period == "1" ? 60 :
+     tf_period == "5" ? 300 :
+     tf_period == "15" ? 900 :
+     tf_period == "60" ? 3600 :
+     tf_period == "240" ? 14400 :
+     tf_period == "1D" or tf_period == "D" ? 86400 :
+     tf_period == "1W" or tf_period == "W" ? 604800 :
+     tf_period == "1M" or tf_period == "M" ? 2592000 :
+     (not na(str.tonumber(tf_period)) ? int(str.tonumber(tf_period)) * 60 : timeframe.in_seconds(timeframe.period))
+
+// Returns candidate higher timeframes (> current TF, max 2 from [15m,4h,1D,1W]).
+// Local Helper
+export get_htfs() =>
+    string[] base_tfs = array.from("15", "240", "1D", "1W")
+    string[] valid_tfs = array.new_string(0)
+    int current_tf_sec = timeframe.in_seconds(timeframe.period)
+    for tf in base_tfs
+        if timeframe.in_seconds(tf) > current_tf_sec
+            array.push(valid_tfs, tf)
+    string[] result_tfs = array.new_string(0)
+    if array.size(valid_tfs) > 0
+        array.push(result_tfs, array.get(valid_tfs, 0))
+    if array.size(valid_tfs) > 1
+        array.push(result_tfs, array.get(valid_tfs, 1))
+    result_tfs
+
+// Returns top-2 higher timeframes as a fixed pair [htf1, htf2].
+// SMC helper
+export get_htf_pair() =>
+    int currSec = get_tf_seconds(timeframe.period)
+    string tf1 = na
+    string tf2 = na
+    // Override map:
+    // 1m  -> 5m, 15m
+    // 1h  -> 1D, 1W
+    if currSec <= 60
+        tf1 := "5"
+        tf2 := "15"
+    else if currSec == 3600
+        tf1 := "1D"
+        tf2 := "1W"
+    else
+        string[] tfs = get_htfs()
+        tf1 := array.size(tfs) > 0 ? array.get(tfs, 0) : na
+        tf2 := array.size(tfs) > 1 ? array.get(tfs, 1) : na
+    [tf1, tf2]
+
+// Returns structure trend state from pivot breaks (-1 bear, 0 neutral, 1 bull).
+// Local Helper
+export get_trend_state(int len) =>
+    float ph = ta.valuewhen(not na(ta.pivothigh(high, len, len)), ta.pivothigh(high, len, len), 0)
+    float pl = ta.valuewhen(not na(ta.pivotlow(low, len, len)), ta.pivotlow(low, len, len), 0)
+    int result = close > ph ? 1 : close < pl ? -1 : 0
+    result
+
+// Candle direction helpers (offset-based).
+// Indicator helper
+export is_bull_candle(int off) =>
+    int maxSafeOff = 300
+    int safeOff = math.max(0, math.min(off, maxSafeOff))
+    close[safeOff] > open[safeOff]
+
+// Indicator helper
+export is_bear_candle(int off) =>
+    int maxSafeOff = 300
+    int safeOff = math.max(0, math.min(off, maxSafeOff))
+    close[safeOff] < open[safeOff]
+
+// Draws a small icon label with tooltip near the current bar. Returns the created label (caller can ignore).
+// Indicator helper
+export draw_icon_tooltip(int idx, int lookbackBars, bool enabled, string dir, color txtColor, string icon, string tooltipText, string txtSize, Theme theme) =>
+    label out = na
+    // NOTE: Avoid calling is_in_draw_lookback_index() here because Pine libraries do not allow forward references reliably.
+    bool inLookback = not na(idx) and idx >= math.max(last_bar_index - lookbackBars, 0)
+    if enabled and inLookback
+        ylocVal = dir == "Top" ? yloc.abovebar : yloc.belowbar
+        out := label.new(idx, na, icon, yloc = ylocVal, color = color.new(theme.COLOR_TRANSPARENT, 100), textcolor = txtColor, style = theme.STYLE_LABEL_NONE, size = txtSize, tooltip = tooltipText)
+    out
+
+// Divergence helpers (ported from Hung - Indicators).
+// Returns positive divergence length vs prior pivot lows.
+// Local Helper
+export div_calc_pos_len(series float src, int cond, int prd, int maxbars, bool dontconfirm, array<int> pl_positions, array<float> pl_vals) =>
+    int divlen = 0
+    float prsc = close
+    int maxSafeOff = 300
+    if dontconfirm or src > src[1] or close > close[1]
+        int startpoint = dontconfirm ? 0 : 1
+        for x = 0 to 9
+            int lenRaw = bar_index - array.get(pl_positions, x) + prd
+            if array.get(pl_positions, x) == 0 or lenRaw > maxbars or lenRaw > maxSafeOff
+                break
+            int len = lenRaw
+            if len > 5 and ((cond == 1 and src[startpoint] > src[len] and prsc[startpoint] < nz(array.get(pl_vals, x))) or (cond == 2 and src[startpoint] < src[len] and prsc[startpoint] > nz(array.get(pl_vals, x))))
+                float slope1 = (src[startpoint] - src[len]) / (len - startpoint)
+                float virtual_line1 = src[startpoint] - slope1
+                float slope2 = (close[startpoint] - close[len]) / (len - startpoint)
+                float virtual_line2 = close[startpoint] - slope2
+                bool arrived = true
+                for y = 1 + startpoint to len - 1
+                    if y > maxSafeOff
+                        arrived := false
+                        break
+                    if src[y] < virtual_line1 or nz(close[y]) < virtual_line2
+                        arrived := false
+                        break
+                    virtual_line1 := virtual_line1 - slope1
+                    virtual_line2 := virtual_line2 - slope2
+                if arrived
+                    divlen := len
+                    break
+    divlen
+
+// Returns negative divergence length vs prior pivot highs.
+// Local Helper
+export div_calc_neg_len(series float src, int cond, int prd, int maxbars, bool dontconfirm, array<int> ph_positions, array<float> ph_vals) =>
+    int divlen = 0
+    float prsc = close
+    int maxSafeOff = 300
+    if dontconfirm or src < src[1] or close < close[1]
+        int startpoint = dontconfirm ? 0 : 1
+        for x = 0 to 9
+            int lenRaw = bar_index - array.get(ph_positions, x) + prd
+            if array.get(ph_positions, x) == 0 or lenRaw > maxbars or lenRaw > maxSafeOff
+                break
+            int len = lenRaw
+            if len > 5 and ((cond == 1 and src[startpoint] < src[len] and prsc[startpoint] > nz(array.get(ph_vals, x))) or (cond == 2 and src[startpoint] > src[len] and prsc[startpoint] < nz(array.get(ph_vals, x))))
+                float slope1 = (src[startpoint] - src[len]) / (len - startpoint)
+                float virtual_line1 = src[startpoint] - slope1
+                float slope2 = (close[startpoint] - nz(close[len])) / (len - startpoint)
+                float virtual_line2 = close[startpoint] - slope2
+                bool arrived = true
+                for y = 1 + startpoint to len - 1
+                    if y > maxSafeOff
+                        arrived := false
+                        break
+                    if src[y] > virtual_line1 or nz(close[y]) > virtual_line2
+                        arrived := false
+                        break
+                    virtual_line1 := virtual_line1 - slope1
+                    virtual_line2 := virtual_line2 - slope2
+                if arrived
+                    divlen := len
+                    break
+    divlen
+
+// Returns [divType, divLen] for a given source series and mode.
+// divType: 0 none, 1 reg bull, 2 reg bear, 3 hidden bull, 4 hidden bear.
+// Indicator helper
+export div_check_all(series float src, string searchdiv, int prd, int maxbars, bool dontconfirm,
+ array<int> ph_positions, array<int> pl_positions, array<float> ph_vals, array<float> pl_vals) =>
+    int res = 0
+    int len = 0
+    if searchdiv == "Regular" or searchdiv == "Regular/Hidden"
+        int l = div_calc_pos_len(src, 1, prd, maxbars, dontconfirm, pl_positions, pl_vals)
+        if l > 0
+            res := 1
+            len := l
+        else
+            int l2 = div_calc_neg_len(src, 1, prd, maxbars, dontconfirm, ph_positions, ph_vals)
+            if l2 > 0
+                res := 2
+                len := l2
+    if (res == 0) and (searchdiv == "Hidden" or searchdiv == "Regular/Hidden")
+        int l4 = div_calc_neg_len(src, 2, prd, maxbars, dontconfirm, ph_positions, ph_vals)
+        if l4 > 0
+            res := 3
+            len := l4
+        int l5 = div_calc_pos_len(src, 2, prd, maxbars, dontconfirm, pl_positions, pl_vals)
+        if l5 > 0
+            res := 4
+            len := l5
+    [res, len]
+
+
+// Returns effective minimum bias percentage after profile override.
+// Local Helper
+export get_effective_bias_min_pct(string profile, float customMinAbsPct) =>
+    profile == "Scalp" ? 45.0 : profile == "Intraday" ? 35.0 : profile == "Swing" ? 30.0 : customMinAbsPct
+
+// Returns raw factor values used by bias scoring.
+// Local Helper
+export get_bias_factor_values(int len, int emaLen, int rsiLen, int adxLen, float stMult, int stAtrLen, int donchianLen) =>
+    int msBias = get_trend_state(len)
+    float ema50 = ta.ema(close, emaLen)
+    float rsi = ta.rsi(close, rsiLen)
+    [_, _, adx] = ta.dmi(adxLen, adxLen)
+    float vwapVal = ta.vwap(hlc3)
+    [stLine, _] = ta.supertrend(stMult, stAtrLen)
+    float dUpper = ta.highest(high, donchianLen)
+    float dLower = ta.lowest(low, donchianLen)
+    float dMid = (dUpper + dLower) / 2.0
+    [msBias, ema50, rsi, adx, vwapVal, stLine, dMid]
+
+// Returns total/max/factor scores for bias confluence.
+// Local Helper
+export get_bias_factor_scores(int msBias, float closeV, float ema50, float rsi, float adx, float vwapV, float stLine, float donchianMid,
+ bool useStructure, bool useVwap, bool useEma50, bool useRsi, bool useAdx, bool useRsiImpulse, bool useSupertrend, bool useDonchian,
+ int wStructure, int wVwap, int wEma50, int wRsi, int wAdx, int wRsiImpulse, int wSupertrend, int wDonchian,
+ float rsiMidline, float rsiImpulseHigh, float rsiImpulseLow, float adxThreshold) =>
+    int sStructure = 0
+    int sEma50 = 0
+    int sRsi = 0
+    int sAdx = 0
+    int sImpulse = 0
+    int sVwap = 0
+    int sSupertrend = 0
+    int sDonchian = 0
+    int maxScore = 0
+
+    if useStructure
+        maxScore += wStructure
+        sStructure := msBias == 1 ? wStructure : msBias == -1 ? -wStructure : 0
+    if useEma50
+        maxScore += wEma50
+        sEma50 := closeV > ema50 ? wEma50 : closeV < ema50 ? -wEma50 : 0
+    if useRsi
+        maxScore += wRsi
+        sRsi := rsi > rsiMidline ? wRsi : rsi < rsiMidline ? -wRsi : 0
+    if useAdx
+        maxScore += wAdx
+        if adx > adxThreshold
+            int lead = sStructure + sEma50 + sRsi
+            sAdx := lead > 0 ? wAdx : lead < 0 ? -wAdx : 0
+    if useRsiImpulse
+        maxScore += wRsiImpulse
+        sImpulse := rsi > rsiImpulseHigh ? wRsiImpulse : rsi < rsiImpulseLow ? -wRsiImpulse : 0
+    if useVwap
+        maxScore += wVwap
+        sVwap := closeV > vwapV ? wVwap : closeV < vwapV ? -wVwap : 0
+    if useSupertrend
+        maxScore += wSupertrend
+        sSupertrend := closeV > stLine ? wSupertrend : closeV < stLine ? -wSupertrend : 0
+    if useDonchian
+        maxScore += wDonchian
+        sDonchian := closeV > donchianMid ? wDonchian : closeV < donchianMid ? -wDonchian : 0
+
+    int totalScore = sStructure + sVwap + sEma50 + sRsi + sAdx + sImpulse + sSupertrend + sDonchian
+    [totalScore, maxScore, sStructure, sVwap, sEma50, sRsi, sAdx, sImpulse, sSupertrend, sDonchian]
+
+// Returns final bias from confluence values.
+// Local Helper
+export get_trend_data(int len, int emaLen, int rsiLen, int adxLen, float stMult, int stAtrLen, int donchianLen,
+ bool useStructure, bool useVwap, bool useEma50, bool useRsi, bool useAdx, bool useRsiImpulse, bool useSupertrend, bool useDonchian,
+ int wStructure, int wVwap, int wEma50, int wRsi, int wAdx, int wRsiImpulse, int wSupertrend, int wDonchian,
+ float rsiMidline, float rsiImpulseHigh, float rsiImpulseLow, float adxThreshold,
+ string profile, float customMinAbsPct) =>
+    [msBias, ema50, rsi, adx, vwapVal, stLine, dMid] = get_bias_factor_values(len, emaLen, rsiLen, adxLen, stMult, stAtrLen, donchianLen)
+    [totalScore, maxScore, _, _, _, _, _, _, _, _] = get_bias_factor_scores(msBias, close, ema50, rsi, adx, vwapVal, stLine, dMid,
+     useStructure, useVwap, useEma50, useRsi, useAdx, useRsiImpulse, useSupertrend, useDonchian,
+     wStructure, wVwap, wEma50, wRsi, wAdx, wRsiImpulse, wSupertrend, wDonchian,
+     rsiMidline, rsiImpulseHigh, rsiImpulseLow, adxThreshold)
+    int absScore = math.abs(totalScore)
+    float effMinPct = get_effective_bias_min_pct(profile, customMinAbsPct)
+    int minScoreRequired = math.max(1, int(math.ceil(maxScore * effMinPct / 100.0)))
+    int bias = absScore >= minScoreRequired ? (totalScore > 0 ? 1 : totalScore < 0 ? -1 : 0) : 0
+    [bias, absScore, maxScore, totalScore]
+
+// Formats timeframe string to friendly label (e.g., 240 -> 4h).
+// SMC helper
+export get_friendly_tf(string simple_tf) =>
+    if simple_tf == "D" or simple_tf == "W" or simple_tf == "M"
+        simple_tf
+    else
+        val = str.tonumber(simple_tf)
+        if not na(val)
+            if val >= 60 and val % 60 == 0
+                str.tostring(val / 60) + "h"
+            else
+                simple_tf + "m"
+        else
+            simple_tf
+
+
+// Returns relative pivot length for target TF in current TF context.
+// Higher TF-distance => higher returned pivot length.
+// Local Helper
+export get_dynamic_pivot_length(string current_tf, string target_tf) =>
+    int currSec = math.max(get_tf_seconds(current_tf), 1)
+    int tgtSec = math.max(get_tf_seconds(target_tf), currSec)
+    float ratio = float(tgtSec) / float(currSec)
+    int currBase = currSec <= 900 ? 15 : currSec <= 3600 ? 10 : currSec <= 14400 ? 7 : currSec <= 86400 ? 5 : 3
+    int raw = int(math.round(float(currBase) * math.sqrt(ratio)))
+    int outLen = math.max(currBase + (ratio > 1.0 ? 1 : 0), math.min(raw, 300))
+    outLen
+
+// Records one swing point when enabled.
+export record_swing_if(bool enabled, array<float> prices, array<int> times, float val, int ts, int maxHistory) =>
+    bool added = false
+    if enabled and not na(val) and not na(ts)
+        bool shouldPush = true
+        int n = array.size(times)
+        if n > 0
+            shouldPush := array.get(times, n - 1) != ts
+        if shouldPush
+            array.push(prices, val)
+            array.push(times, ts)
+            if array.size(prices) > maxHistory
+                array.shift(prices)
+                array.shift(times)
+            added := true
+    added
+
+// Enforces alternating sequence H->L->H->L by collapsing consecutive same-side swings.
+export sanitize_swing_ledgers(array<float> highPrices, array<int> highTimes, array<float> lowPrices, array<int> lowTimes, int maxHistory) =>
+    int nH = array.size(highPrices)
+    int nL = array.size(lowPrices)
+    int nTot = nH + nL
+    if nTot > 1
+        array<int> mergedTimes = array.new_int()
+        array<float> mergedPrices = array.new_float()
+        array<bool> mergedIsHigh = array.new_bool()
+        int iH = 0
+        int iL = 0
+        while iH < nH or iL < nL
+            bool takeHigh = false
+            if iL >= nL
+                takeHigh := iH < nH
+            else if iH >= nH
+                takeHigh := false
+            else
+                int hT = array.get(highTimes, iH)
+                int lT = array.get(lowTimes, iL)
+                takeHigh := hT <= lT
+            if takeHigh
+                array.push(mergedTimes, array.get(highTimes, iH))
+                array.push(mergedPrices, array.get(highPrices, iH))
+                array.push(mergedIsHigh, true)
+                iH += 1
+            else
+                array.push(mergedTimes, array.get(lowTimes, iL))
+                array.push(mergedPrices, array.get(lowPrices, iL))
+                array.push(mergedIsHigh, false)
+                iL += 1
+
+        array<int> cleanTimes = array.new_int()
+        array<float> cleanPrices = array.new_float()
+        array<bool> cleanIsHigh = array.new_bool()
+        for i = 0 to array.size(mergedTimes) - 1
+            int t = array.get(mergedTimes, i)
+            float p = array.get(mergedPrices, i)
+            bool isHigh = array.get(mergedIsHigh, i)
+            int nClean = array.size(cleanTimes)
+            if nClean == 0
+                array.push(cleanTimes, t)
+                array.push(cleanPrices, p)
+                array.push(cleanIsHigh, isHigh)
+            else
+                int li = nClean - 1
+                bool lastIsHigh = array.get(cleanIsHigh, li)
+                if isHigh != lastIsHigh
+                    array.push(cleanTimes, t)
+                    array.push(cleanPrices, p)
+                    array.push(cleanIsHigh, isHigh)
+                else
+                    float lastP = array.get(cleanPrices, li)
+                    bool replace = isHigh ? p >= lastP : p <= lastP
+                    if replace
+                        array.set(cleanTimes, li, t)
+                        array.set(cleanPrices, li, p)
+
+        array.clear(highPrices)
+        array.clear(highTimes)
+        array.clear(lowPrices)
+        array.clear(lowTimes)
+        for i = 0 to array.size(cleanTimes) - 1
+            int t = array.get(cleanTimes, i)
+            float p = array.get(cleanPrices, i)
+            bool isHigh = array.get(cleanIsHigh, i)
+            if isHigh
+                array.push(highTimes, t)
+                array.push(highPrices, p)
+            else
+                array.push(lowTimes, t)
+                array.push(lowPrices, p)
+        while array.size(highPrices) > maxHistory
+            array.remove(highPrices, 0)
+            array.remove(highTimes, 0)
+        while array.size(lowPrices) > maxHistory
+            array.remove(lowPrices, 0)
+            array.remove(lowTimes, 0)
+    bool(na)
+
+// Local helpers for market-structure block (kept before process_* to avoid forward-reference issues).
+ms_draw_swing_marker(int xIdx, float yPrice, int xShiftBars, float yShiftPrice, color markerColor, string markerSize, string tooltipText) =>
+    label.new(xIdx + xShiftBars, yPrice - yShiftPrice, CONST.SYM_DOT, xloc = xloc.bar_index, style = label.style_none, color = color.new(color.white, 100), textcolor = markerColor, size = markerSize, tooltip = tooltipText)
+
+ms_draw_line_segment(int x1, float y1, int x2, float y2, string xLocation, color lnColor, string lnStyle, int lnWidth) =>
+    line.new(x1, y1, x2, y2, xloc = xLocation, color = lnColor, style = lnStyle, width = lnWidth)
+
+ms_get_range_extreme_from_index(int startIdx, bool findLow, int maxScanBars) =>
+    bool ok = false
+    int outIdx = na
+    float outPrice = na
+    int dist = bar_index - startIdx
+    if dist >= 0
+        int safeMax = math.max(maxScanBars, 1)
+        int scan = math.min(dist, safeMax)
+        int scanSafe = math.min(scan, 90)
+        int safeStartIdx = math.max(startIdx, bar_index - scanSafe)
+        int safeDist = bar_index - safeStartIdx
+        float best = findLow ? 10e10 : -10e10
+        for j = 0 to safeDist
+            int idx = safeStartIdx + j
+            int off = bar_index - idx
+            float v = findLow ? low[off] : high[off]
+            bool better = findLow ? (v <= best) : (v >= best)
+            if better
+                best := v
+                outIdx := idx
+                outPrice := v
+                ok := true
+    [ok, outIdx, outPrice]
+
+ms_draw_dline(line ln, int x1, float y1, int x2, float y2, color lnColor, string lnStyle, int lnWidth) =>
+    line out = ln
+    int minSafeLeft = math.max(bar_index - 450, 0)
+    int safeX1 = math.max(x1, minSafeLeft)
+    int safeX2 = math.max(x2, minSafeLeft)
+    if safeX2 < safeX1
+        safeX2 := safeX1
+    if na(out)
+        out := line.new(safeX1, y1, safeX2, y2, xloc = xloc.bar_index, color = lnColor, style = lnStyle, width = lnWidth)
+    else
+        out.set_xy1(safeX1, y1)
+        out.set_xy2(safeX2, y2)
+        out.set_color(lnColor)
+        out.set_style(lnStyle)
+        out.set_width(lnWidth)
+    out
+
+ms_delete_line_safe(line ln) =>
+    if not na(ln)
+        ln.delete()
+    bool(na)
+
+ms_draw_line_label(label lb, int x, float y, string txt, color txtColor, string txtSize, string tipText) =>
+    label out = lb
+    if na(out)
+        out := label.new(x, y, txt, xloc = xloc.bar_index, style = label.style_none, color = color.new(color.white, 100), textcolor = txtColor, size = txtSize, tooltip = tipText, textalign = text.align_left)
+    else
+        if out.get_x() != x
+            out.set_x(x)
+        if out.get_y() != y
+            out.set_y(y)
+        if out.get_text() != txt
+            out.set_text(txt)
+        out.set_textcolor(txtColor)
+        out.set_size(txtSize)
+        out.set_tooltip(tipText)
+    out
+
+// Draw one confirmed swing marker; keep historical markers on chart.
+export draw_htf_swing_marker_if(bool showFlag, float swingPrice, int swingTime, int swingIdx, int recentTsCut, int lastSeenTime, label prevMarker, string tf, string swingTag, color clr, string markerSize, int yShiftTicks) =>
+    int nextSeen = lastSeenTime
+    label nextMarker = prevMarker
+    if showFlag and not na(swingPrice) and not na(swingTime) and not na(swingIdx) and swingTime >= recentTsCut and (na(lastSeenTime) or swingTime > lastSeenTime)
+        string tt = "Confirmed Swing " + swingTag + " " + get_friendly_tf(tf)
+        nextMarker := ms_draw_swing_marker(swingIdx, swingPrice, 0, yShiftTicks, clr, markerSize, tt)
+        nextSeen := swingTime
+    [nextSeen, nextMarker]
+
+// Updates zigzag state from one confirmed swing point.
+export update_zz_state(bool show, bool isHighPivot, float pivotPrice, int pivotTime, int pivotIdx, int recentIdxCut, int lastTime, int lastIdx, float lastPrice, bool lastIsHigh, color zzColor, string zzStyle, int zzWidth) =>
+    int outTime = lastTime
+    int outIdx = lastIdx
+    float outPrice = lastPrice
+    bool outIsHigh = lastIsHigh
+    if show and not na(pivotPrice) and not na(pivotTime) and not na(pivotIdx) and pivotIdx >= recentIdxCut and (na(outTime) or pivotTime > outTime)
+        if not na(outIdx) and outIdx >= recentIdxCut and outIsHigh != isHighPivot
+            ms_draw_line_segment(outIdx, outPrice, pivotIdx, pivotPrice, xloc.bar_index, zzColor, zzStyle, zzWidth)
+        outTime := pivotTime
+        outIdx := pivotIdx
+        outPrice := pivotPrice
+        outIsHigh := isHighPivot
+    [outTime, outIdx, outPrice, outIsHigh]
+
+// TF pipeline mutator: arm candidate swings from raw pivots.
+export process_tf_armed_state(TFData tfData, bool enabled, float swingHigh, int swingHighT, float swingLow, int swingLowT, int maxHistory) =>
+    if enabled
+        bool nextHighArmed = record_swing_if(enabled, tfData.swingHighPrices, tfData.swingHighTimes, swingHigh, swingHighT, maxHistory) ? true : tfData.highArmed
+        bool nextLowArmed = record_swing_if(enabled, tfData.swingLowPrices, tfData.swingLowTimes, swingLow, swingLowT, maxHistory) ? true : tfData.lowArmed
+        sanitize_swing_ledgers(tfData.swingHighPrices, tfData.swingHighTimes, tfData.swingLowPrices, tfData.swingLowTimes, maxHistory)
+        tfData.highArmed := nextHighArmed
+        tfData.lowArmed := nextLowArmed
+    bool(na)
+
+// TF pipeline mutator: draw confirmed swing markers only.
+export process_tf_swing_markers(TFData tfData, TFConfig cfg, bool enabled, string tf, float swingHigh, int swingHighT, int swingHighIdx, float swingLow, int swingLowT, int swingLowIdx, int recentTsCut) =>
+    bool canDraw = cfg.showSwings and enabled
+    if not canDraw
+        if not na(tfData.lastHighMarker)
+            tfData.lastHighMarker.delete()
+            tfData.lastHighMarker := na
+        if not na(tfData.lastLowMarker)
+            tfData.lastLowMarker.delete()
+            tfData.lastLowMarker := na
+        tfData.lastHighSeenTime := na
+        tfData.lastLowSeenTime := na
+    else
+        int lastHiT = array.size(tfData.swingHighTimes) > 0 ? array.get(tfData.swingHighTimes, array.size(tfData.swingHighTimes) - 1) : na
+        int lastLoT = array.size(tfData.swingLowTimes) > 0 ? array.get(tfData.swingLowTimes, array.size(tfData.swingLowTimes) - 1) : na
+        bool acceptedHigh = not na(swingHigh) and not na(swingHighT) and not na(lastHiT) and swingHighT == lastHiT
+        bool acceptedLow = not na(swingLow) and not na(swingLowT) and not na(lastLoT) and swingLowT == lastLoT
+        [nextHiSeen, nextHiMarker] = draw_htf_swing_marker_if(canDraw, acceptedHigh ? swingHigh : na, acceptedHigh ? swingHighT : na, acceptedHigh ? swingHighIdx : na, recentTsCut, tfData.lastHighSeenTime, tfData.lastHighMarker, tf, "H", cfg.swingHighColor, cfg.swingSize, cfg.swingYShiftTicks)
+        [nextLoSeen, nextLoMarker] = draw_htf_swing_marker_if(canDraw, acceptedLow ? swingLow : na, acceptedLow ? swingLowT : na, acceptedLow ? swingLowIdx : na, recentTsCut, tfData.lastLowSeenTime, tfData.lastLowMarker, tf, "L", cfg.swingLowColor, cfg.swingSize, cfg.swingYShiftTicks)
+        tfData.lastHighSeenTime := nextHiSeen
+        tfData.lastLowSeenTime := nextLoSeen
+        tfData.lastHighMarker := nextHiMarker
+        tfData.lastLowMarker := nextLoMarker
+    bool(na)
+
+// TF pipeline mutator: zigzag state from confirmed swings.
+export process_tf_zigzag_from_pivots(TFData tfData, TFConfig cfg, bool enabled, float swingHigh, int swingHighT, int swingHighIdx, float swingLow, int swingLowT, int swingLowIdx, int recentIdxCut) =>
+    int lastHiT = array.size(tfData.swingHighTimes) > 0 ? array.get(tfData.swingHighTimes, array.size(tfData.swingHighTimes) - 1) : na
+    int lastLoT = array.size(tfData.swingLowTimes) > 0 ? array.get(tfData.swingLowTimes, array.size(tfData.swingLowTimes) - 1) : na
+    bool acceptedHigh = not na(swingHigh) and not na(swingHighT) and not na(lastHiT) and swingHighT == lastHiT
+    bool acceptedLow = not na(swingLow) and not na(swingLowT) and not na(lastLoT) and swingLowT == lastLoT
+    [outTimeA, outIdxA, outPriceA, outIsHighA] = update_zz_state(cfg.showZigzag and enabled, true, acceptedHigh ? swingHigh : na, acceptedHigh ? swingHighT : na, acceptedHigh ? swingHighIdx : na, recentIdxCut, tfData.zzLastTime, tfData.zzLastIndex, tfData.zzLastPrice, tfData.zzLastIsHigh, cfg.zigzagColor, cfg.zigzagStyle, cfg.zigzagWidth)
+    [outTimeB, outIdxB, outPriceB, outIsHighB] = update_zz_state(cfg.showZigzag and enabled, false, acceptedLow ? swingLow : na, acceptedLow ? swingLowT : na, acceptedLow ? swingLowIdx : na, recentIdxCut, outTimeA, outIdxA, outPriceA, outIsHighA, cfg.zigzagColor, cfg.zigzagStyle, cfg.zigzagWidth)
+    tfData.zzLastTime := outTimeB
+    tfData.zzLastIndex := outIdxB
+    tfData.zzLastPrice := outPriceB
+    tfData.zzLastIsHigh := outIsHighB
+    bool(na)
+
+// Draws the unconfirmed/live zigzag tail and optional live swing marker.
+export process_tf_live_tail(TFData tfData, TFConfig cfg, bool enabled, string tfName, int recentIdxCut, string symbolDot) =>
+    if cfg.showZigzag and enabled and not na(tfData.zzLastIndex) and tfData.zzLastIndex >= recentIdxCut and not na(tfData.zzLastPrice)
+        bool wantLow = tfData.zzLastIsHigh
+        int liveScanStart = tfData.zzLastIndex
+        int liveScanBars = math.min(math.max(bar_index - tfData.zzLastIndex, 1), 90)
+        bool anchorFresh = (bar_index - tfData.zzLastIndex) <= liveScanBars
+        [liveOk, liveIdx, livePrice] = ms_get_range_extreme_from_index(liveScanStart, wantLow, liveScanBars)
+        bool validStep = anchorFresh and liveOk and not na(liveIdx) and liveIdx > tfData.zzLastIndex
+        bool validDir = validStep and not na(livePrice) and (wantLow ? livePrice <= tfData.zzLastPrice : livePrice >= tfData.zzLastPrice)
+        if validDir
+            color liveColor = color.new(cfg.zigzagColor, 55)
+            tfData.zzLiveLine := ms_draw_dline(tfData.zzLiveLine, tfData.zzLastIndex, tfData.zzLastPrice, liveIdx, livePrice, liveColor, cfg.zigzagStyle, math.max(cfg.zigzagWidth, 1))
+            if cfg.showSwings
+                color markerColor = color.new(wantLow ? cfg.swingLowColor : cfg.swingHighColor, 35)
+                string tt = "Live Swing " + tfName
+                float markerY = livePrice - (syminfo.mintick * cfg.swingYShiftTicks)
+                tfData.zzLiveLabel := ms_draw_line_label(tfData.zzLiveLabel, liveIdx, markerY, symbolDot, markerColor, cfg.swingSize, tt)
+            else
+                if not na(tfData.zzLiveLabel)
+                    tfData.zzLiveLabel.delete()
+                    tfData.zzLiveLabel := na
+        else
+            ms_delete_line_safe(tfData.zzLiveLine)
+            tfData.zzLiveLine := na
+            if not na(tfData.zzLiveLabel)
+                tfData.zzLiveLabel.delete()
+                tfData.zzLiveLabel := na
+    else
+        ms_delete_line_safe(tfData.zzLiveLine)
+        tfData.zzLiveLine := na
+        if not na(tfData.zzLiveLabel)
+            tfData.zzLiveLabel.delete()
+            tfData.zzLiveLabel := na
+    bool(na)
+
+// Returns dynamic pivot length to mimic target TF swings from current TF bars.
+export get_mimic_pivot_len(string currentTf, string targetTf, int pivotLenBase, int pivotLenScalp, int pivotLenIntraday, int pivotLenMultiDay, int pivotLenSwing, int pivotLenPosition) =>
+    int currSec = math.max(get_tf_seconds(currentTf), 1)
+    int tgtSec = math.max(get_tf_seconds(targetTf), currSec)
+    int targetBase = tgtSec <= 300 ? pivotLenScalp :
+     tgtSec <= 3600 ? pivotLenIntraday :
+     tgtSec <= 14400 ? pivotLenMultiDay :
+     tgtSec <= 86400 ? pivotLenSwing : pivotLenPosition
+    float ratio = float(tgtSec) / float(currSec)
+    int raw = int(math.round(float(targetBase) * math.pow(ratio, 0.55)))
+    int outLen = math.max(pivotLenBase + 1, raw)
+    outLen
+
+
+// Helper (Bias): Select one effective indicator cluster by timeframe.
+// Local Helper
+export get_bias_profile_id(string tf, Settings cfg) =>
+    int sec = get_tf_seconds(tf)
+    sec <= 300 ? cfg.BIAS_PROFILE_REACTIVE : sec <= 3600 ? cfg.BIAS_PROFILE_INTRADAY : sec <= 14400 ? cfg.BIAS_PROFILE_SWING : cfg.BIAS_PROFILE_MACRO
+
+// Helper (Bias): Human-readable profile name for tooltip/debug.
+// Local Helper
+export get_bias_profile_name(int profileId, Settings cfg) =>
+    profileId == cfg.BIAS_PROFILE_REACTIVE ? "Reactive" : profileId == cfg.BIAS_PROFILE_INTRADAY ? "Intraday" : profileId == cfg.BIAS_PROFILE_SWING ? "Swing" : "Macro"
+
+// Helper (Bias): Short factor summary for dashboard tooltip.
+// Local Helper
+export get_bias_profile_factors(int profileId, Settings cfg) =>
+    profileId == cfg.BIAS_PROFILE_REACTIVE ? "VWAP, RSI, RSI impulse, light structure" :
+     profileId == cfg.BIAS_PROFILE_INTRADAY ? "EMA200, VWAP, RSI, ADX, structure" :
+     profileId == cfg.BIAS_PROFILE_SWING ? "Supertrend, Donchian, ADX, structure" :
+     "EMA200, Donchian, structure"
+
+// Helper (Bias): Converts score strength into a 1..5 level for TradingKit colors.
+// Indicator helper
+export get_bias_strength_level(int absScore, int maxScore) =>
+    float pct = maxScore > 0 ? (float(absScore) * 100.0 / float(maxScore)) : 0.0
+    pct >= 80 ? 5 : pct >= 60 ? 4 : pct >= 40 ? 3 : pct >= 20 ? 2 : 1
+
+// Helper (Bias): One compact tooltip line-set for dashboard cells.
+// Indicator helper
+export get_bias_tooltip(string tf, int biasDir, int absScore, int maxScore, int totalScore, Settings cfg) =>
+    int profileId = get_bias_profile_id(tf, cfg)
+    string biasTxt = biasDir == 1 ? "Bullish" : biasDir == -1 ? "Bearish" : "Neutral"
+    float pct = maxScore > 0 ? (float(absScore) * 100.0 / float(maxScore)) : 0.0
+    biasTxt + " " + str.tostring(totalScore) + "/" + str.tostring(maxScore) + " (" + str.tostring(pct, "#.0") + "%)\n" +
+     "Profile: " + get_bias_profile_name(profileId, cfg) + "\n" +
+     "Factors: " + get_bias_profile_factors(profileId, cfg)
+
+// Core (Bias): TF-aware bias resolver. Routes to the correct get_trend_data() profile based on TF.
+// Returns [biasDir, absScore, maxScore, totalScore] — same tuple as get_trend_data().
+// Factors enabled per profile are overridden by the BiasToggles flags (AND logic).
+// Call from indicator scope with request.security() for HTF data.
+// Indicator helper
+export get_bias_data_for_tf(string tf, Settings cfg, BiasToggles tog) =>
+    int profileId = get_bias_profile_id(tf, cfg)
+    int pivotLen  = get_dynamic_pivot_length(timeframe.period, tf)
+    if profileId == cfg.BIAS_PROFILE_REACTIVE
+        // Reactive (≤5m): VWAP + RSI + RSI impulse; EMA/ADX/ST/Donchian off.
+        get_trend_data(pivotLen, 34, 14, 14, 2.0, 7, 20,
+         tog.useStructure, tog.useVwap, false, tog.useRsi, false, tog.useRsiImpulse, false, false,
+         cfg.W_BIAS_STRUCTURE, cfg.W_BIAS_VWAP, cfg.W_BIAS_EMA50, cfg.W_BIAS_RSI, cfg.W_BIAS_ADX, cfg.W_BIAS_RSI_IMPULSE, cfg.W_BIAS_SUPERTREND, cfg.W_BIAS_DONCHIAN,
+         50.0, 60.0, 40.0, 20.0, "Scalp", 40.0)
+    else if profileId == cfg.BIAS_PROFILE_INTRADAY
+        // Intraday (≤1h): EMA200 + VWAP + RSI + ADX; impulse/ST/Donchian off.
+        get_trend_data(pivotLen, 200, 14, 14, 2.5, 10, 20,
+         tog.useStructure, tog.useVwap, tog.useEma, tog.useRsi, tog.useAdx, false, false, false,
+         cfg.W_BIAS_STRUCTURE, cfg.W_BIAS_VWAP, cfg.W_BIAS_EMA50, cfg.W_BIAS_RSI, cfg.W_BIAS_ADX, cfg.W_BIAS_RSI_IMPULSE, cfg.W_BIAS_SUPERTREND, cfg.W_BIAS_DONCHIAN,
+         50.0, 60.0, 40.0, 20.0, "Intraday", 35.0)
+    else if profileId == cfg.BIAS_PROFILE_SWING
+        // Swing (≤4h): Supertrend + Donchian + ADX + structure; VWAP/EMA/RSI/impulse off.
+        get_trend_data(pivotLen, 200, 14, 14, 3.0, 10, 55,
+         tog.useStructure, false, false, false, tog.useAdx, false, tog.useSupertrend, tog.useDonchian,
+         cfg.W_BIAS_STRUCTURE, cfg.W_BIAS_VWAP, cfg.W_BIAS_EMA50, cfg.W_BIAS_RSI, cfg.W_BIAS_ADX, cfg.W_BIAS_RSI_IMPULSE, cfg.W_BIAS_SUPERTREND, cfg.W_BIAS_DONCHIAN,
+         50.0, 60.0, 40.0, 20.0, "Swing", 30.0)
+    else
+        // Macro (>4h): EMA200 + Donchian + structure; VWAP/RSI/ADX/impulse/ST off.
+        get_trend_data(pivotLen, 200, 14, 14, 3.0, 10, 55,
+         tog.useStructure, false, tog.useEma, false, false, false, false, tog.useDonchian,
+         cfg.W_BIAS_STRUCTURE, cfg.W_BIAS_VWAP, cfg.W_BIAS_EMA50, cfg.W_BIAS_RSI, cfg.W_BIAS_ADX, cfg.W_BIAS_RSI_IMPULSE, cfg.W_BIAS_SUPERTREND, cfg.W_BIAS_DONCHIAN,
+         50.0, 60.0, 40.0, 20.0, "Macro", 30.0)
+
+// Core (Bias): Full factor component breakdown for one TF.
+// Returns: [total, max, sStructure, sVwap, sEma50, sRsi, sAdx, sImpulse, sSupertrend, sDonchian]
+// Indicator helper
+export get_bias_components_for_tf(string tf, Settings cfg, BiasToggles tog) =>
+    int profileId = get_bias_profile_id(tf, cfg)
+    int pivotLen  = get_dynamic_pivot_length(timeframe.period, tf)
+    if profileId == cfg.BIAS_PROFILE_REACTIVE
+        [msBias, ema50, rsi, adx, vwapVal, stLine, dMid] = get_bias_factor_values(pivotLen, 34, 14, 14, 2.0, 7, 20)
+        get_bias_factor_scores(msBias, close, ema50, rsi, adx, vwapVal, stLine, dMid,
+         tog.useStructure, tog.useVwap, false, tog.useRsi, false, tog.useRsiImpulse, false, false,
+         cfg.W_BIAS_STRUCTURE, cfg.W_BIAS_VWAP, cfg.W_BIAS_EMA50, cfg.W_BIAS_RSI, cfg.W_BIAS_ADX, cfg.W_BIAS_RSI_IMPULSE, cfg.W_BIAS_SUPERTREND, cfg.W_BIAS_DONCHIAN,
+         50.0, 60.0, 40.0, 20.0)
+    else if profileId == cfg.BIAS_PROFILE_INTRADAY
+        [msBias, ema50, rsi, adx, vwapVal, stLine, dMid] = get_bias_factor_values(pivotLen, 200, 14, 14, 2.5, 10, 20)
+        get_bias_factor_scores(msBias, close, ema50, rsi, adx, vwapVal, stLine, dMid,
+         tog.useStructure, tog.useVwap, tog.useEma, tog.useRsi, tog.useAdx, false, false, false,
+         cfg.W_BIAS_STRUCTURE, cfg.W_BIAS_VWAP, cfg.W_BIAS_EMA50, cfg.W_BIAS_RSI, cfg.W_BIAS_ADX, cfg.W_BIAS_RSI_IMPULSE, cfg.W_BIAS_SUPERTREND, cfg.W_BIAS_DONCHIAN,
+         50.0, 60.0, 40.0, 20.0)
+    else if profileId == cfg.BIAS_PROFILE_SWING
+        [msBias, ema50, rsi, adx, vwapVal, stLine, dMid] = get_bias_factor_values(pivotLen, 200, 14, 14, 3.0, 10, 55)
+        get_bias_factor_scores(msBias, close, ema50, rsi, adx, vwapVal, stLine, dMid,
+         tog.useStructure, false, false, false, tog.useAdx, false, tog.useSupertrend, tog.useDonchian,
+         cfg.W_BIAS_STRUCTURE, cfg.W_BIAS_VWAP, cfg.W_BIAS_EMA50, cfg.W_BIAS_RSI, cfg.W_BIAS_ADX, cfg.W_BIAS_RSI_IMPULSE, cfg.W_BIAS_SUPERTREND, cfg.W_BIAS_DONCHIAN,
+         50.0, 60.0, 40.0, 20.0)
+    else
+        [msBias, ema50, rsi, adx, vwapVal, stLine, dMid] = get_bias_factor_values(pivotLen, 200, 14, 14, 3.0, 10, 55)
+        get_bias_factor_scores(msBias, close, ema50, rsi, adx, vwapVal, stLine, dMid,
+         tog.useStructure, false, tog.useEma, false, false, false, false, tog.useDonchian,
+         cfg.W_BIAS_STRUCTURE, cfg.W_BIAS_VWAP, cfg.W_BIAS_EMA50, cfg.W_BIAS_RSI, cfg.W_BIAS_ADX, cfg.W_BIAS_RSI_IMPULSE, cfg.W_BIAS_SUPERTREND, cfg.W_BIAS_DONCHIAN,
+         50.0, 60.0, 40.0, 20.0)
+
+// Market-structure trend dir helper from TFData.
+// Indicator helper
+export get_ms_trend_dir(TFData tfData) =>
+    tfData.msBias != 0 ? tfData.msBias : tfData.prevBreakout
+
+// Slot trend resolver from three TFData ledgers.
+// Indicator helper
+export get_ms_trend_dir_for_slot(string tfName, string currentTf, string htf1Name, string htf2Name, TFData ltfDataX, TFData htf1DataX, TFData htf2DataX) =>
+    int out = 0
+    if tfName == currentTf
+        out := get_ms_trend_dir(ltfDataX)
+    else if tfName == htf1Name
+        out := get_ms_trend_dir(htf1DataX)
+    else if tfName == htf2Name
+        out := get_ms_trend_dir(htf2DataX)
+    out
+
+// Returns relative volume at offset (current volume / SMA volume).
+// Local Helper
+export get_rel_volume(int off, int len) =>
+    int maxSafeOff = 300
+    int safeOff = math.max(0, math.min(off, maxSafeOff))
+    avgVol = ta.sma(volume, len)
+    base = nz(avgVol[safeOff], volume[safeOff])
+    base > 0 ? (volume[safeOff] / base) : 0.0
+
+// Validates candle quality for EQ detection (body + wick filters).
+// SMC helper
+export is_valid_eq_candle(int off, bool isUpper) =>
+    int maxSafeOff = 300
+    int safeOff = math.max(0, math.min(off, maxSafeOff))
+    o = open[safeOff], c = close[safeOff], h = high[safeOff], l = low[safeOff]
+    rg = h - l
+    body = math.abs(o - c)
+    wick = isUpper ? h - math.max(o, c) : math.min(o, c) - l
+    rg > 0 and body > rg * 0.25 and wick > rg * 0.25
+
+// Maps timestamp to closest current-chart bar_index.
+// SMC helper
+export closest_bar_index_from_time(int t) =>
+    int msPerBar = math.max(time - time[1], 1)
+    int barsAgo = int(math.round((time - t) / msPerBar))
+    int idx = bar_index - barsAgo
+    idx >= 0 and idx <= bar_index + 500 ? idx : na
+
+// Returns rendered span in bars for one HTF mini-chart slot.
+// SMC helper
+export get_htf_chart_span(int count) =>
+    (count - 1) * (2 + 1) + 2
+
+// Returns latest non-na timestamp among 4 candidates.
+// SMC helper
+export get_latest_time4(int t1, int t2, int t3, int t4) =>
+    int out = na
+    if not na(t1)
+        out := t1
+    if not na(t2)
+        out := na(out) ? t2 : math.max(out, t2)
+    if not na(t3)
+        out := na(out) ? t3 : math.max(out, t3)
+    if not na(t4)
+        out := na(out) ? t4 : math.max(out, t4)
+    out
+
+// Returns candle count in `tf` needed to include an anchor timestamp.
+// SMC helper
+export get_candles_to_anchor(string tf, int anchorTs, int minCandles, int maxCandles, int fallbackCandles) =>
+    if na(tf)
+        fallbackCandles
+    else
+        int tfSec = math.max(get_tf_seconds(tf), 1)
+        int barsRaw = na(anchorTs) ? fallbackCandles : int(math.ceil(math.max(float(time - anchorTs), 0.0) / float(tfSec * 1000))) + 2
+        int lo = math.max(minCandles, 1)
+        int hi = math.max(maxCandles, lo)
+        math.max(lo, math.min(barsRaw, hi))
+
+// Returns current-TF lookback bars derived from HTF2 candle span.
+// SMC helper
+export get_curr_lookback_from_htf2(string htf2, int htf2Candles, int minBars, int maxBars) =>
+    if na(htf2)
+        math.max(minBars, 1)
+    else
+        int htf2Sec = math.max(get_tf_seconds(htf2), 1)
+        int currSec = math.max(get_tf_seconds(timeframe.period), 1)
+        int barsRaw = int(math.ceil(float(htf2Candles * htf2Sec) / float(currSec)))
+        int lo = math.max(minBars, 1)
+        int hi = math.max(maxBars, lo)
+        math.max(lo, math.min(barsRaw, hi))
+
+// Returns true when index is inside the last `lookbackBars` bars.
+// Local Helper
+export is_in_draw_lookback_index(int idx, int lookbackBars) =>
+    na(idx) ? false : idx >= math.max(last_bar_index - math.max(lookbackBars, 1), 0)
+
+// Returns true when current bar is inside the last `lookbackBars` bars.
+// SMC helper
+export is_in_draw_lookback_current(int lookbackBars) =>
+    is_in_draw_lookback_index(bar_index, lookbackBars)
+
+// Returns cutoff time for recent-window filtering from `lookbackBars`.
+// SMC helper
+export get_recent_time_cutoff(int lookbackBars) =>
+    int lb = math.max(lookbackBars, 1)
+    bar_index > lb ? time[lb] : 0
+
+// Resets HTF candle-object arrays and preallocates slots.
+// SMC helper
+export cleanup_htf_arrays(array<box> boxes, array<line> wicksHigh, array<line> wicksLow, array<float> hl, int size) =>
+    if array.size(boxes) > 0
+        for i = 0 to array.size(boxes) - 1
+            box.delete(array.get(boxes, i))
+            line.delete(array.get(wicksHigh, i))
+            line.delete(array.get(wicksLow, i))
+    array.clear(boxes)
+    array.clear(wicksHigh)
+    array.clear(wicksLow)
+    array.clear(hl)
+    for i = 0 to size - 1
+        array.push(boxes, box.new(na, na, na, na))
+        array.push(wicksHigh, line.new(na, na, na, na))
+        array.push(wicksLow, line.new(na, na, na, na))
+    for i = 0 to (size * 2) - 1
+        array.push(hl, na)
+    bool(na)
+
+// Deletes optional line+label visuals.
+// SMC helper
+export delete_line_label(line ln, label lb) =>
+    if not na(ln)
+        ln.delete()
+    if not na(lb)
+        lb.delete()
+    bool(na)
+
+// Updates one projected-zone box lifecycle and visuals.
+// Local Helper
+export update_projected_box(box bx, bool isVisible, int leftTime, int extendBars, float top, float btm, color zoneColor, color txtColor, string txt,
+ int currentBarIndex, int currentTime, int previousTime, int fallbackSpanBars, bool allowDraw, color borderColor, string borderStyle, ProjectedBoxVisualCfg cfg) =>
+    box out = bx
+    bool valid = isVisible and not na(leftTime) and not na(top) and not na(btm) and top > btm and allowDraw
+    if valid
+        bool crossT = currentTime >= leftTime and previousTime < leftTime
+        int leftIdxExact = ta.valuewhen(time == leftTime, bar_index, 0)
+        int leftIdxCross = ta.valuewhen(crossT, bar_index, 0)
+        int leftResolved = not na(leftIdxExact) ? leftIdxExact : leftIdxCross
+        int leftIdx = not na(leftResolved) ? leftResolved : math.max(currentBarIndex - fallbackSpanBars, 0)
+        int rightIdx = currentBarIndex + math.max(extendBars, 0)
+        if na(out)
+            out := box.new(leftIdx, top, rightIdx, btm, xloc = xloc.bar_index, bgcolor = zoneColor, border_color = borderColor, border_style = borderStyle, border_width = cfg.borderWidth, text = txt, text_halign = cfg.textHAlign, text_valign = cfg.textVAlign, text_size = cfg.textSize, text_color = txtColor)
+        else
+            out.set_lefttop(leftIdx, top)
+            out.set_rightbottom(rightIdx, btm)
+            out.set_bgcolor(zoneColor)
+            out.set_border_color(borderColor)
+            out.set_border_style(borderStyle)
+            out.set_border_width(cfg.borderWidth)
+            out.set_text_color(txtColor)
+            out.set_text(txt)
+    else
+        if not na(out)
+            out.delete()
+            out := na
+    out
+
+// Updates one slot in projected-zone box array.
+// SMC helper
+export update_projected_box_slot(array<box> store, int slotIdx, bool isVisible, int leftTime, int extendBars, float top, float btm, color zoneColor, color txtColor, string txt,
+ int currentBarIndex, int currentTime, int previousTime, int fallbackSpanBars, bool allowDraw, color borderColor, string borderStyle, ProjectedBoxVisualCfg cfg) =>
+    if slotIdx >= 0 and slotIdx < array.size(store)
+        box bx = array.get(store, slotIdx)
+        bx := update_projected_box(bx, isVisible, leftTime, extendBars, top, btm, zoneColor, txtColor, txt, currentBarIndex, currentTime, previousTime, fallbackSpanBars, allowDraw, borderColor, borderStyle, cfg)
+        array.set(store, slotIdx, bx)
+
+// Draws a generic line segment (supports horizontal/diagonal and time/index xloc).
+// SMC helper
+export draw_line_segment(int x1, float y1, int x2, float y2, string xLocation, color lnColor, string lnStyle, int lnWidth) =>
+    line.new(x1, y1, x2, y2, xloc = xLocation, color = lnColor, style = lnStyle, width = lnWidth)
+
+// Updates/creates one horizontal line object with guarded coordinates.
+// SMC helper
+export draw_hline(line ln, int x1, float y, int x2, color lnColor, string lnStyle, int lnWidth) =>
+    line out = ln
+    int minSafeLeft = math.max(bar_index - 450, 0)
+    int safeX1 = math.max(x1, minSafeLeft)
+    int safeX2 = math.max(x2, minSafeLeft)
+    if safeX2 < safeX1
+        safeX2 := safeX1
+    if na(out)
+        out := line.new(safeX1, y, safeX2, y, xloc = xloc.bar_index, color = lnColor, style = lnStyle, width = lnWidth)
+    else
+        if out.get_x1() != safeX1
+            out.set_x1(safeX1)
+        if out.get_x2() != safeX2
+            out.set_x2(safeX2)
+        if out.get_y1() != y
+            out.set_y1(y)
+        if out.get_y2() != y
+            out.set_y2(y)
+        out.set_color(lnColor)
+        out.set_style(lnStyle)
+        out.set_width(lnWidth)
+    out
+
+// Updates/creates one diagonal line object.
+// SMC helper
+export draw_dline(line ln, int x1, float y1, int x2, float y2, color lnColor, string lnStyle, int lnWidth) =>
+    line out = ln
+    int minSafeLeft = math.max(bar_index - 450, 0)
+    int safeX1 = math.max(x1, minSafeLeft)
+    int safeX2 = math.max(x2, minSafeLeft)
+    if safeX2 < safeX1
+        safeX2 := safeX1
+    if na(out)
+        out := line.new(safeX1, y1, safeX2, y2, xloc = xloc.bar_index, color = lnColor, style = lnStyle, width = lnWidth)
+    else
+        out.set_xy1(safeX1, y1)
+        out.set_xy2(safeX2, y2)
+        out.set_color(lnColor)
+        out.set_style(lnStyle)
+        out.set_width(lnWidth)
+    out
+
+// Safely deletes a line object if it exists.
+// SMC helper
+export delete_line_safe(line ln) =>
+    if not na(ln)
+        ln.delete()
+    bool(na)
+
+// Draws text anchored on a line position with configurable placement.
+// SMC helper
+export draw_text_on_line(int x1, float y1, int x2, float y2, string xLocation, string txt, color txtColor, string txtSize, int vPos, float yPadTicks, float xRatio, int xPadBars, string tooltipText, string textAlign, Theme theme) =>
+    int barMs = int(math.max(time - time[1], 1))
+    int padX = xLocation == xloc.bar_time ? (xPadBars * barMs) : xPadBars
+    int baseX = int(math.round(x1 + (x2 - x1) * xRatio))
+    int labelX = baseX + padX
+    float baseY = y1 + (y2 - y1) * xRatio
+    float yPad = syminfo.mintick * yPadTicks
+    float labelY = vPos > 0 ? baseY + yPad : vPos < 0 ? baseY - yPad : baseY
+    label.new(labelX, labelY, txt, xloc = xLocation, color = color.new(theme.COLOR_TRANSPARENT, 100), style = theme.STYLE_LABEL_NONE, textcolor = txtColor, size = txtSize, tooltip = tooltipText, textalign = textAlign)
+
+// Updates/creates one plain text label for line endpoints.
+// SMC helper
+export draw_line_label(label lb, int x, float y, string txt, color txtColor, string txtSize, string tipText) =>
+    label out = lb
+    if na(out)
+        out := label.new(x, y, txt, xloc = xloc.bar_index, style = label.style_none, color = color.new(color.white, 100), textcolor = txtColor, size = txtSize, tooltip = tipText, textalign = text.align_left)
+    else
+        if out.get_x() != x
+            out.set_x(x)
+        if out.get_y() != y
+            out.set_y(y)
+        if out.get_text() != txt
+            out.set_text(txt)
+        out.set_textcolor(txtColor)
+        out.set_size(txtSize)
+        out.set_tooltip(tipText)
+    out
+
+// Computes retracement level on a leg.
+// SMC helper
+export get_leg_retracement(float legStart, float legEnd, float ratio, bool isBullLeg) =>
+    float rng = math.abs(legEnd - legStart)
+    isBullLeg ? (legEnd - rng * ratio) : (legEnd + rng * ratio)
+
+// Scans from start index to current bar and returns the extreme price+index.
+// SMC helper
+export get_range_extreme_from_index(int startIdx, bool findLow, int maxScanBars) =>
+    bool ok = false
+    int outIdx = na
+    float outPrice = na
+    int dist = bar_index - startIdx
+    if dist >= 0
+        int safeMax = math.max(maxScanBars, 1)
+        int scan = math.min(dist, safeMax)
+        // Runtime-safe cap to avoid historical-buffer overrun in callers with long legs.
+        int scanSafe = math.min(scan, 90)
+        // Clamp scan start so first accessed offset never exceeds the safe cap.
+        int safeStartIdx = math.max(startIdx, bar_index - scanSafe)
+        int safeDist = bar_index - safeStartIdx
+        float best = findLow ? 10e10 : -10e10
+        for j = 0 to safeDist
+            int idx = safeStartIdx + j
+            int off = bar_index - idx
+            float v = findLow ? low[off] : high[off]
+            bool better = findLow ? (v <= best) : (v >= best)
+            if better
+                best := v
+                outIdx := idx
+                outPrice := v
+                ok := true
+    [ok, outIdx, outPrice]
+
+// Sessions/time-event helper: draw one compact top label on a time anchor.
+// Indicator helper
+export draw_time_event_top(int t, float yAnchor, string txt, string tip, color clr, Theme theme) =>
+    label.new(t, yAnchor + syminfo.mintick * 2, txt, xloc = xloc.bar_time, yloc = yloc.price, color = color.new(theme.COLOR_TRANSPARENT, 100), textcolor = clr, style = label.style_label_down, size = theme.SIZE_TINY, tooltip = tip)
+
+// Sessions/time-event helper: selects displayed label text by mode.
+// Indicator helper
+export get_time_event_label(string mode, string modeTime, string shortTime, string shortName) =>
+    mode == modeTime ? shortTime : shortName
+
+// Draws a line and optional text in one helper.
+// SMC helper
+export draw_line_with_text(int x1, float y1, int x2, float y2, string xLocation, color lnColor, string txt, bool showTxt, color txtColor, string tooltipText, LineTextVisualCfg cfg, Theme theme) =>
+    line outLine = draw_line_segment(x1, y1, x2, y2, xLocation, lnColor, cfg.lineStyle, cfg.lineWidth)
+    label outLabel = na
+    if showTxt
+        outLabel := draw_text_on_line(x1, y1, x2, y2, xLocation, txt, txtColor, cfg.textSize, cfg.vPos, cfg.yPadTicks, cfg.xRatio, cfg.xPadBars, tooltipText, cfg.textAlign, theme)
+    [outLine, outLabel]
+
+// Draws a swing marker on bar_index chart coordinates.
+// SMC helper
+export draw_swing_marker(int xIdx, float yPrice, int xShiftBars, float yShiftPrice, color markerColor, string markerSize, string tooltipText) =>
+    label.new(xIdx + xShiftBars, yPrice - yShiftPrice, CONST.SYM_DOT, xloc = xloc.bar_index, style = label.style_none, color = color.new(color.white, 100), textcolor = markerColor, size = markerSize, tooltip = tooltipText)
+
+
+// Draws one compact TP/SL box pair with a center entry line.
+// Local Helper
+export draw_signal_plan(int leftX, int rightX, float entry, float stop, float target, bool confirmed, color tpBgConfirmed, color tpBgPending, color slBgConfirmed, color slBgPending, string borderStyle, color entryColor) =>
+    color tpBg = confirmed ? tpBgConfirmed : tpBgPending
+    color slBg = confirmed ? slBgConfirmed : slBgPending
+    float tpTop = math.max(entry, target)
+    float tpBtm = math.min(entry, target)
+    float slTop = math.max(entry, stop)
+    float slBtm = math.min(entry, stop)
+    box tpBox = box.new(leftX, tpTop, rightX, tpBtm, bgcolor = tpBg, border_color = tpBg, border_style = borderStyle, border_width = 1, xloc = xloc.bar_index)
+    box slBox = box.new(leftX, slTop, rightX, slBtm, bgcolor = slBg, border_color = slBg, border_style = borderStyle, border_width = 1, xloc = xloc.bar_index)
+    line entryLine = line.new(leftX, entry, rightX, entry, xloc = xloc.bar_index, color = entryColor, style = line.style_solid, width = 1)
+    tpBox.set_text("")
+    slBox.set_text("")
+    entryLine.set_extend(extend.none)
+    [tpBox, slBox, entryLine]
+
+// Returns shared direction visual colors and primary style.
+// Local Helper
+export get_direction_colors(string direction, Theme theme) =>
+    bool isBull = direction == "Buy"
+    color txtCol = isBull ? color.new(theme.COLOR_BULLISH, 0) : color.new(theme.COLOR_BEARISH, 0)
+    color bgEvent = isBull ? color.new(theme.COLOR_BULLISH, 75) : color.new(theme.COLOR_BEARISH, 75)
+    color bgEntry = isBull ? color.new(theme.COLOR_BULLISH, 0) : color.new(theme.COLOR_BEARISH, 0)
+    string lblStyle = isBull ? label.style_label_up : label.style_label_down
+    [isBull, txtCol, bgEvent, bgEntry, lblStyle]
+
+// Draws one strategy marker according to display mode.
+// Local Helper
+export draw_strategy_marker(bool canDraw, string dispMode, string direction, string icon, string tip, Theme theme, string dispNone, string dispMarker, string dispEvent, string dispEntry) =>
+    if canDraw and dispMode != dispNone and direction != ""
+        [isBull, txtCol, bgEvent, bgEntry, _] = get_direction_colors(direction, theme)
+        if dispMode == dispMarker
+            label.new(bar_index, na, icon, yloc = isBull ? yloc.belowbar : yloc.abovebar, color = color.new(theme.COLOR_UI_BG, 100), textcolor = txtCol, style = label.style_none, size = theme.SIZE_TINY, tooltip = tip)
+        else if dispMode == dispEvent
+            label.new(bar_index, na, icon, yloc = isBull ? yloc.belowbar : yloc.abovebar, color = bgEvent, textcolor = theme.COLOR_UI_FG, style = isBull ? label.style_label_up : label.style_label_down, size = theme.SIZE_TINY, tooltip = tip)
+        else if dispMode == dispEntry
+            label.new(bar_index, na, icon, yloc = isBull ? yloc.belowbar : yloc.abovebar, color = bgEntry, textcolor = theme.COLOR_UI_FG, style = isBull ? label.style_label_up : label.style_label_down, size = theme.SIZE_TINY, tooltip = tip)
+    bool(na)
+
+// Draws one strategy signal/event marker with optional setup-name prefix.
+// Indicator helper
+export draw_strategy(string strategyName, bool canDraw, string dispMode, string direction, string icon, string tip, Theme theme, string dispNone, string dispMarker, string dispEvent, string dispEntry) =>
+    string tt = dispMode == dispEntry and str.length(strategyName) > 0 ? (strategyName + "\n" + tip) : tip
+    draw_strategy_marker(canDraw, dispMode, direction, icon, tt, theme, dispNone, dispMarker, dispEvent, dispEntry)
+
+// Draws winning strategy signal (non-Trade modes). Trade mode is handled by Trade lifecycle visuals.
+// Indicator helper
+export draw_entry_signal(bool show, int sigDir, string setupName, string sigReason, string shortName, string dispMode, Theme theme, bool canDraw, string ttBuy, string ttSell, string ttReason, string dispNone, string dispMarker, string dispEvent, string dispEntry) =>
+    if show and sigDir != 0 and dispMode != dispNone and dispMode != dispEntry
+        string tip = (sigDir == 1 ? ttBuy : ttSell) + " [" + shortName + "]" + ttReason + setupName + "\n" + str.replace_all(sigReason, ", ", "\n")
+        draw_strategy(setupName, canDraw, dispMode, sigDir == 1 ? "Buy" : "Sell", shortName, tip, theme, dispNone, dispMarker, dispEvent, dispEntry)
+    bool(na)
+
+// Resolves one entry state on current bar and returns [updatedEntry, outcomeCode].
+// outcomeCode: 1 = TP hit, -1 = SL hit, 2 = invalidated before entry touch, 0 = unchanged.
+// SMC helper
+export resolve_entry_state(Trade e, float hi, float lo, int barIdx, bool requireNextBar, bool slFirstOnDualHit, Const c) =>
+    int outcome = 0
+    if e.state == c.SIGNAL_STATE_PENDING or e.state == c.SIGNAL_STATE_START
+        int age = barIdx - e.barCreated
+        if age > 0 and not e.touched
+            bool touchedNow = hi >= e.entry and lo <= e.entry
+            if touchedNow
+                e.touched := true
+                e.state := c.SIGNAL_STATE_START
+        if not requireNextBar or age > 0
+            bool isBuy = e.direction == "Buy"
+            bool hitTp = isBuy ? (hi >= e.takeprofit) : (lo <= e.takeprofit)
+            bool hitSl = isBuy ? (lo <= e.stoploss) : (hi >= e.stoploss)
+            if hitTp and hitSl
+                if slFirstOnDualHit
+                    hitTp := false
+                else
+                    hitSl := false
+            // If TP/SL is reached before entry is ever touched, invalidate this setup.
+            if (hitTp or hitSl) and not e.touched
+                outcome := 2
+            else if hitSl
+                e.state := c.SIGNAL_STATE_SL
+                e.barClosed := barIdx
+                outcome := -1
+            else if hitTp
+                e.state := c.SIGNAL_STATE_TP
+                e.barClosed := barIdx
+                outcome := 1
+    [e, outcome]
+
+// Draw/update one entry visual by lifecycle state (START/TP/SL).
+// Local Helper
+export draw_entry_visual(Trade e, Const c, Theme theme, EntryVisualCfg vcfg, bool planShow, bool showStart, bool showTp, bool showSl, int perfLookbackBars, int extendBars, string displayMode, string displayMark, int resolvedLineBars) =>
+    bool isPending = e.state == c.SIGNAL_STATE_PENDING
+    bool isStart = e.state == c.SIGNAL_STATE_START
+    bool isTp = e.state == c.SIGNAL_STATE_TP
+    bool isSl = e.state == c.SIGNAL_STATE_SL
+    bool isLive = isPending or isStart
+    bool visibleState = isLive ? showStart : isTp ? showTp : isSl ? showSl : false
+    int VISUAL_BARINDEX_SAFE_MAX = 5000
+    int lb = math.min(math.max(perfLookbackBars, 1), VISUAL_BARINDEX_SAFE_MAX)
+    bool inLookback = bar_index >= math.max(last_bar_index - lb, 0)
+    int minX = math.max(bar_index - lb, 0)
+    int anchorX = not na(e.barClosed) ? e.barClosed : e.barCreated
+    bool entryInsideWindow = anchorX >= minX
+    if not planShow or not visibleState or not inLookback or not entryInsideWindow
+        delete_entry_visuals(e)
+        e.tpBox := na
+        e.slBox := na
+        e.entryLine := na
+        e.tpLine := na
+        e.slLine := na
+        e.infoLabel := na
+    else
+        int leftX = e.barCreated + 1
+        int rightX = not na(e.barClosed) ? e.barClosed : (bar_index + extendBars)
+        if isStart
+            rightX := math.max(rightX, bar_index + 5)
+        int safeLeftX = math.max(leftX, minX)
+        int safeRightX = math.max(rightX, safeLeftX)
+        string sideTxt = str.upper(e.direction)
+        bool isBuyEntry = str.upper(e.direction) == "BUY"
+        string setupTxt = str.length(e.type) > 0 ? e.type : "N/A"
+        string reasonTxt = str.length(e.reason) > 0 ? e.reason : "N/A"
+        string tt = sideTxt + " (" + setupTxt + ")" +
+         "\nentry:" + str.tostring(e.entry, format.mintick) + ", tp:" + str.tostring(e.takeprofit, format.mintick) + ", sl:" + str.tostring(e.stoploss, format.mintick) + ", RR:" + str.tostring(e.rrValue, "#.##") +
+         "\n" + reasonTxt
+        int tpAlpha = isLive ? (e.touched ? vcfg.startTouchedBgAlpha : vcfg.startUntouchedBgAlpha) : isTp ? vcfg.resolvedWinnerBgAlpha : vcfg.resolvedLoserBgAlpha
+        int slAlpha = isLive ? (e.touched ? vcfg.startTouchedBgAlpha : vcfg.startUntouchedBgAlpha) : isSl ? vcfg.resolvedWinnerBgAlpha : vcfg.resolvedLoserBgAlpha
+        color tpBg = color.new(theme.COLOR_BULLISH, tpAlpha)
+        color slBg = color.new(theme.COLOR_BEARISH, slAlpha)
+        color entryColor = isLive ? (e.touched ? color.new(theme.COLOR_UI_FG, vcfg.entryStartTouchedAlpha) : color.new(theme.COLOR_UI_FG, vcfg.entryStartUntouchedAlpha)) : (isTp ? color.new(theme.COLOR_BULLISH, vcfg.entryResolvedWinnerAlpha) : isSl ? color.new(theme.COLOR_BEARISH, vcfg.entryResolvedWinnerAlpha) : color.new(theme.COLOR_UI_FG, vcfg.entryResolvedLoserAlpha))
+        color tpBorder = isLive ? color.new(theme.COLOR_BULLISH, e.touched ? vcfg.startTouchedBorderAlpha : vcfg.startUntouchedBorderAlpha) : isTp ? color.new(theme.COLOR_BULLISH, vcfg.resolvedWinnerBorderAlpha) : color.new(theme.COLOR_BULLISH, vcfg.resolvedLoserBorderAlpha)
+        color slBorder = isLive ? color.new(theme.COLOR_BEARISH, e.touched ? vcfg.startTouchedBorderAlpha : vcfg.startUntouchedBorderAlpha) : isSl ? color.new(theme.COLOR_BEARISH, vcfg.resolvedWinnerBorderAlpha) : color.new(theme.COLOR_BEARISH, vcfg.resolvedLoserBorderAlpha)
+        string lineStyleByTouch = e.touched ? line.style_solid : line.style_dotted
+        string markerTxt = (isTp or isSl) ? ((isTp ? c.SYM_CHECK : "x") + " " + setupTxt) : setupTxt
+        color markerTxtColor = isBuyEntry ? theme.COLOR_BULLISH : theme.COLOR_BEARISH
+        float tpTop = math.max(e.entry, e.takeprofit)
+        float tpBtm = math.min(e.entry, e.takeprofit)
+        float slTop = math.max(e.entry, e.stoploss)
+        float slBtm = math.min(e.entry, e.stoploss)
+        bool useCompactResolved = (isTp or isSl) and displayMode == displayMark
+        if useCompactResolved
+            int tpResolvedAlpha = isTp ? vcfg.compactWinnerBgAlpha : vcfg.compactLoserBgAlpha
+            int slResolvedAlpha = isSl ? vcfg.compactWinnerBgAlpha : vcfg.compactLoserBgAlpha
+            color tpResolvedBg = color.new(theme.COLOR_BULLISH, tpResolvedAlpha)
+            color slResolvedBg = color.new(theme.COLOR_BEARISH, slResolvedAlpha)
+            color tpResolvedBorder = color.new(theme.COLOR_BULLISH, isTp ? vcfg.compactWinnerBorderAlpha : vcfg.compactLoserBorderAlpha)
+            color slResolvedBorder = color.new(theme.COLOR_BEARISH, isSl ? vcfg.compactWinnerBorderAlpha : vcfg.compactLoserBorderAlpha)
+            int markRight = math.max(safeRightX, safeRightX + math.min(resolvedLineBars, 0))
+            color entryLineColor = isTp ? color.new(theme.COLOR_BULLISH, 20) : color.new(theme.COLOR_BEARISH, 20)
+            string entryLineStyle = line.style_solid
+            if na(e.tpBox) or na(e.slBox)
+                [tpBox, slBox, _] = draw_signal_plan(safeLeftX, safeRightX, e.entry, e.stoploss, e.takeprofit, true, tpResolvedBg, tpResolvedBorder, slResolvedBg, slResolvedBorder, line.style_solid, entryLineColor)
+                e.tpBox := tpBox
+                e.slBox := slBox
+            e.tpBox.set_lefttop(safeLeftX, tpTop)
+            e.tpBox.set_rightbottom(safeRightX, tpBtm)
+            e.tpBox.set_bgcolor(tpResolvedBg)
+            e.tpBox.set_border_color(tpResolvedBorder)
+            e.tpBox.set_border_style(line.style_dotted)
+            e.tpBox.set_border_width(1)
+            e.slBox.set_lefttop(safeLeftX, slTop)
+            e.slBox.set_rightbottom(safeRightX, slBtm)
+            e.slBox.set_bgcolor(slResolvedBg)
+            e.slBox.set_border_color(slResolvedBorder)
+            e.slBox.set_border_style(line.style_dotted)
+            e.slBox.set_border_width(1)
+            if not na(e.tpLine)
+                e.tpLine.delete()
+                e.tpLine := na
+            if not na(e.slLine)
+                e.slLine.delete()
+                e.slLine := na
+            if na(e.entryLine)
+                e.entryLine := line.new(safeLeftX, e.entry, markRight, e.entry, xloc = xloc.bar_index, color = entryLineColor, style = entryLineStyle, width = 1)
+            else
+                e.entryLine.set_xy1(safeLeftX, e.entry)
+                e.entryLine.set_xy2(markRight, e.entry)
+                e.entryLine.set_color(entryLineColor)
+                e.entryLine.set_style(entryLineStyle)
+            string resultMarkerTxt = setupTxt
+            color resultMarkerColor = isBuyEntry ? theme.COLOR_BULLISH : theme.COLOR_BEARISH
+            int tipX = safeRightX
+            float tipY = e.entry
+            if na(e.infoLabel)
+                e.infoLabel := label.new(tipX, tipY, resultMarkerTxt, xloc = xloc.bar_index, style = label.style_none, color = color.new(theme.COLOR_TRANSPARENT, 100), textcolor = resultMarkerColor, size = theme.SIZE_TINY, tooltip = tt)
+            else
+                e.infoLabel.set_xy(tipX, tipY)
+                e.infoLabel.set_text(resultMarkerTxt)
+                e.infoLabel.set_style(label.style_none)
+                e.infoLabel.set_color(color.new(theme.COLOR_TRANSPARENT, 100))
+                e.infoLabel.set_textcolor(resultMarkerColor)
+                e.infoLabel.set_tooltip(tt)
+        else
+            if not na(e.tpLine)
+                e.tpLine.delete()
+                e.tpLine := na
+            if not na(e.slLine)
+                e.slLine.delete()
+                e.slLine := na
+            if na(e.tpBox) or na(e.slBox) or na(e.entryLine)
+                [tpBox, slBox, entryLine] = draw_signal_plan(safeLeftX, safeRightX, e.entry, e.stoploss, e.takeprofit, true, tpBg, tpBorder, slBg, slBorder, lineStyleByTouch, entryColor)
+                e.tpBox := tpBox
+                e.slBox := slBox
+                e.entryLine := entryLine
+            e.tpBox.set_lefttop(safeLeftX, tpTop)
+            e.tpBox.set_rightbottom(safeRightX, tpBtm)
+            e.tpBox.set_bgcolor(tpBg)
+            e.tpBox.set_border_color(tpBorder)
+            e.tpBox.set_border_style(lineStyleByTouch)
+            e.tpBox.set_border_width(1)
+            e.slBox.set_lefttop(safeLeftX, slTop)
+            e.slBox.set_rightbottom(safeRightX, slBtm)
+            e.slBox.set_bgcolor(slBg)
+            e.slBox.set_border_color(slBorder)
+            e.slBox.set_border_style(lineStyleByTouch)
+            e.slBox.set_border_width(1)
+            e.entryLine.set_xy1(safeLeftX, e.entry)
+            e.entryLine.set_xy2(safeRightX, e.entry)
+            e.entryLine.set_color(entryColor)
+            e.entryLine.set_style(lineStyleByTouch)
+            if not na(e.entryLine)
+                e.entryLine.set_style(lineStyleByTouch)
+            int tipX = (isTp or isSl) and not na(e.barClosed) ? math.max(e.barClosed, safeLeftX) : safeRightX
+            if na(e.infoLabel)
+                e.infoLabel := label.new(tipX, e.entry, markerTxt, xloc = xloc.bar_index, style = label.style_none, color = color.new(theme.COLOR_TRANSPARENT, 100), textcolor = markerTxtColor, size = theme.SIZE_TINY, tooltip = tt)
+            else
+                e.infoLabel.set_xy(tipX, e.entry)
+                e.infoLabel.set_text(markerTxt)
+                e.infoLabel.set_style(label.style_none)
+                e.infoLabel.set_color(color.new(theme.COLOR_TRANSPARENT, 100))
+                e.infoLabel.set_textcolor(markerTxtColor)
+                e.infoLabel.set_tooltip(tt)
+    e
+
+// Returns strength background color by type and level (1..5).
+// Indicator helper
+export get_strength_color(string p_type, int s = 3) =>
+    p_type == "bull" ? (s >= 5 ? #004D40 : s == 4 ? #00695C : s == 3 ? #00897B : s == 2 ? #26A69A : #80CBC4) : p_type == "bear" ? (s >= 5 ? #B71C1C : s == 4 ? #C62828 : s == 3 ? #D32F2F : s == 2 ? #EF5350 : #EF9A9A) : color.new(color.gray, 0)
+
+// ==================== GENERIC UTILITIES ====================
+
+// Helper (Bias): Gate for directional entries against composite bias.
+// Returns true when bias is neutral (0) or agrees with direction ("Buy"/"Sell").
+// Indicator helper
+export bias_allows_direction(int compositeBias, string direction) =>
+    compositeBias == 0 ? true : direction == "Buy" ? compositeBias == 1 : direction == "Sell" ? compositeBias == -1 : false
+
+CANDLE_NONE = 0 // Pattern enum id used by candle-pattern functions.
+CANDLE_DOJI = 1 // Pattern enum id used by candle-pattern functions.
+CANDLE_BULL_ENG = 2 // Pattern enum id used by candle-pattern functions.
+CANDLE_BEAR_ENG = 3 // Pattern enum id used by candle-pattern functions.
+CANDLE_HAMMER = 4 // Pattern enum id used by candle-pattern functions.
+CANDLE_SHOOTING_STAR = 5 // Pattern enum id used by candle-pattern functions.
+CANDLE_BULL_HARAMI = 6 // Pattern enum id used by candle-pattern functions.
+CANDLE_BEAR_HARAMI = 7 // Pattern enum id used by candle-pattern functions.
+CANDLE_DRAGONFLY_DOJI = 8 // Pattern enum id used by candle-pattern functions.
+CANDLE_GRAVESTONE_DOJI = 9 // Pattern enum id used by candle-pattern functions.
+CANDLE_PIERCING_LINE = 10 // Pattern enum id used by candle-pattern functions.
+CANDLE_DARK_CLOUD = 11 // Pattern enum id used by candle-pattern functions.
+CANDLE_TWEEZER_TOP = 12 // Pattern enum id used by candle-pattern functions.
+CANDLE_TWEEZER_BOTTOM = 13 // Pattern enum id used by candle-pattern functions.
+CANDLE_BULL_MARUBOZU = 14 // Pattern enum id used by candle-pattern functions.
+CANDLE_BEAR_MARUBOZU = 15 // Pattern enum id used by candle-pattern functions.
+CANDLE_3_WHITE_SOLDIERS = 16 // Pattern enum id used by candle-pattern functions.
+CANDLE_3_BLACK_CROWS = 17 // Pattern enum id used by candle-pattern functions.
+CANDLE_MORNING_STAR = 18 // Pattern enum id used by candle-pattern functions.
+CANDLE_EVENING_STAR = 19 // Pattern enum id used by candle-pattern functions.
+
+// Detects candle pattern enum id from OHLC structure.
+// Local Helper
+export get_candle_pattern(float cpDojiBodyMaxPct, float cpWickBodyMin, float cpWickDominanceMin, float cpOppositeWickMaxBody, float cpEngulfMinPrevBody, float cpTweezerTolAtr, float cpMarubozuMaxWickBody, float cp3lineMinBodyPct) =>
+    if not barstate.isconfirmed
+        CANDLE_NONE
+    else
+        float body = math.abs(close - open)
+        float rng = math.max(high - low, syminfo.mintick)
+        float upperWick = high - math.max(open, close)
+        float lowerWick = math.min(open, close) - low
+        float safeBody = math.max(body, syminfo.mintick)
+        float safeUpper = math.max(upperWick, syminfo.mintick)
+        float safeLower = math.max(lowerWick, syminfo.mintick)
+        float atrRef = ta.atr(14)
+        float tweezerTol = math.max(atrRef * cpTweezerTolAtr, syminfo.mintick * 2)
+        float bullWickBodyRatio = lowerWick / safeBody
+        float bearWickBodyRatio = upperWick / safeBody
+        float bullWickDominance = lowerWick / safeUpper
+        float bearWickDominance = upperWick / safeLower
+        float body1 = math.abs(close[1] - open[1])
+        float body2 = math.abs(close[2] - open[2])
+        float rng1 = math.max(high[1] - low[1], syminfo.mintick)
+        float rng2 = math.max(high[2] - low[2], syminfo.mintick)
+        float upW1 = high[1] - math.max(open[1], close[1])
+        float dnW1 = math.min(open[1], close[1]) - low[1]
+        float upW2 = high[2] - math.max(open[2], close[2])
+        float dnW2 = math.min(open[2], close[2]) - low[2]
+        bool doji = body <= rng * cpDojiBodyMaxPct
+        bool dragonflyDoji = doji and bullWickBodyRatio >= cpWickBodyMin and bullWickDominance >= cpWickDominanceMin
+        bool gravestoneDoji = doji and bearWickBodyRatio >= cpWickBodyMin and bearWickDominance >= cpWickDominanceMin
+        bool bullEng = close > open and close[1] < open[1] and open <= close[1] and close >= open[1] and body > math.abs(close[1] - open[1]) * cpEngulfMinPrevBody
+        bool bearEng = close < open and close[1] > open[1] and open >= close[1] and close <= open[1] and body > math.abs(close[1] - open[1]) * cpEngulfMinPrevBody
+        bool hammer = not doji and bullWickBodyRatio >= cpWickBodyMin and bullWickDominance >= cpWickDominanceMin and upperWick <= body * cpOppositeWickMaxBody and close >= open
+        bool shootingStar = not doji and bearWickBodyRatio >= cpWickBodyMin and bearWickDominance >= cpWickDominanceMin and lowerWick <= body * cpOppositeWickMaxBody and close <= open
+        bool bullHarami = open[1] > close[1] and close > open and close <= open[1] and close[1] <= open
+        bool bearHarami = close[1] > open[1] and open > close and open <= close[1] and open[1] <= close
+        bool piercingLine = close[1] < open[1] and close > open and open < close[1] and close > (open[1] + close[1]) / 2
+        bool darkCloudCover = close[1] > open[1] and close < open and open > close[1] and close < (open[1] + close[1]) / 2
+        bool tweezerTop = close[1] > open[1] and close < open and math.abs(high - high[1]) <= tweezerTol
+        bool tweezerBottom = close[1] < open[1] and close > open and math.abs(low - low[1]) <= tweezerTol
+        bool bullMarubozu = close > open and (upperWick / safeBody) <= cpMarubozuMaxWickBody and (lowerWick / safeBody) <= cpMarubozuMaxWickBody and (body / rng) >= 0.7
+        bool bearMarubozu = close < open and (upperWick / safeBody) <= cpMarubozuMaxWickBody and (lowerWick / safeBody) <= cpMarubozuMaxWickBody and (body / rng) >= 0.7
+        bool threeWhiteSoldiers = close > open and close[1] > open[1] and close[2] > open[2] and close > close[1] and close[1] > close[2] and (body / rng) >= cp3lineMinBodyPct and (body1 / rng1) >= cp3lineMinBodyPct and (body2 / rng2) >= cp3lineMinBodyPct and upperWick <= body and upW1 <= body1 and upW2 <= body2 and open <= close[1] and open >= open[1] and open[1] <= close[2] and open[1] >= open[2]
+        bool threeBlackCrows = close < open and close[1] < open[1] and close[2] < open[2] and close < close[1] and close[1] < close[2] and (body / rng) >= cp3lineMinBodyPct and (body1 / rng1) >= cp3lineMinBodyPct and (body2 / rng2) >= cp3lineMinBodyPct and lowerWick <= body and dnW1 <= body1 and dnW2 <= body2 and open >= close[1] and open <= open[1] and open[1] >= close[2] and open[1] <= open[2]
+        bool morningStar = close[2] < open[2] and math.abs(close[1] - open[1]) <= (math.max(high[1] - low[1], syminfo.mintick) * cpDojiBodyMaxPct) and close > open and close > (open[2] + close[2]) / 2
+        bool eveningStar = close[2] > open[2] and math.abs(close[1] - open[1]) <= (math.max(high[1] - low[1], syminfo.mintick) * cpDojiBodyMaxPct) and close < open and close < (open[2] + close[2]) / 2
+        bullEng ? CANDLE_BULL_ENG : bearEng ? CANDLE_BEAR_ENG : hammer ? CANDLE_HAMMER : shootingStar ? CANDLE_SHOOTING_STAR : dragonflyDoji ? CANDLE_DRAGONFLY_DOJI : gravestoneDoji ? CANDLE_GRAVESTONE_DOJI : bullHarami ? CANDLE_BULL_HARAMI : bearHarami ? CANDLE_BEAR_HARAMI : piercingLine ? CANDLE_PIERCING_LINE : darkCloudCover ? CANDLE_DARK_CLOUD : tweezerTop ? CANDLE_TWEEZER_TOP : tweezerBottom ? CANDLE_TWEEZER_BOTTOM : bullMarubozu ? CANDLE_BULL_MARUBOZU : bearMarubozu ? CANDLE_BEAR_MARUBOZU : threeWhiteSoldiers ? CANDLE_3_WHITE_SOLDIERS : threeBlackCrows ? CANDLE_3_BLACK_CROWS : morningStar ? CANDLE_MORNING_STAR : eveningStar ? CANDLE_EVENING_STAR : doji ? CANDLE_DOJI : CANDLE_NONE
+
+// Returns readable text for candle pattern enum id.
+// Local Helper
+export get_candle_pattern_text(int p) =>
+    p == CANDLE_BULL_ENG ? "Bull Engulfing (bullish reversal/continuation impulse)" :
+     p == CANDLE_BEAR_ENG ? "Bear Engulfing (bearish reversal/continuation impulse)" :
+     p == CANDLE_HAMMER ? "Hammer (bullish reversal/continuation impulse)" :
+     p == CANDLE_SHOOTING_STAR ? "Shooting Star (bearish reversal/continuation impulse)" :
+     p == CANDLE_DRAGONFLY_DOJI ? "Dragonfly Doji (bullish reversal/continuation impulse)" :
+     p == CANDLE_GRAVESTONE_DOJI ? "Gravestone Doji (bearish reversal/continuation impulse)" :
+     p == CANDLE_BULL_HARAMI ? "Bull Harami (bullish reversal/continuation impulse)" :
+     p == CANDLE_BEAR_HARAMI ? "Bear Harami (bearish reversal/continuation impulse)" :
+     p == CANDLE_PIERCING_LINE ? "Piercing Line (bullish reversal/continuation impulse)" :
+     p == CANDLE_DARK_CLOUD ? "Dark Cloud (bearish reversal/continuation impulse)" :
+     p == CANDLE_TWEEZER_TOP ? "Tweezer Top (bearish reversal/continuation impulse)" :
+     p == CANDLE_TWEEZER_BOTTOM ? "Tweezer Bottom (bullish reversal/continuation impulse)" :
+     p == CANDLE_BULL_MARUBOZU ? "Bull Marubozu (bullish reversal/continuation impulse)" :
+     p == CANDLE_BEAR_MARUBOZU ? "Bear Marubozu (bearish reversal/continuation impulse)" :
+     p == CANDLE_3_WHITE_SOLDIERS ? "3 White Soldiers (bullish reversal/continuation impulse)" :
+     p == CANDLE_3_BLACK_CROWS ? "3 Black Crows (bearish reversal/continuation impulse)" :
+     p == CANDLE_MORNING_STAR ? "Morning Star (bullish reversal/continuation impulse)" :
+     p == CANDLE_EVENING_STAR ? "Evening Star (bearish reversal/continuation impulse)" :
+     p == CANDLE_DOJI ? "Doji (neutral)" :
+     ""
+
+// Returns directional bias from candle pattern (-1/0/1).
+// Local Helper
+export get_candle_pattern_bias(int p) =>
+    p == CANDLE_BULL_ENG or p == CANDLE_HAMMER or p == CANDLE_DRAGONFLY_DOJI or p == CANDLE_BULL_HARAMI or p == CANDLE_PIERCING_LINE or p == CANDLE_TWEEZER_BOTTOM or p == CANDLE_BULL_MARUBOZU or p == CANDLE_3_WHITE_SOLDIERS or p == CANDLE_MORNING_STAR ? 1 :
+     p == CANDLE_BEAR_ENG or p == CANDLE_SHOOTING_STAR or p == CANDLE_GRAVESTONE_DOJI or p == CANDLE_BEAR_HARAMI or p == CANDLE_DARK_CLOUD or p == CANDLE_TWEEZER_TOP or p == CANDLE_BEAR_MARUBOZU or p == CANDLE_3_BLACK_CROWS or p == CANDLE_EVENING_STAR ? -1 :
+     0
+
+// Applies candle-pattern + relative-volume confluence adjustments to a base signal score.
+// SMC helper
+export apply_candle_pattern_confluence(string direction, string reason, int baseScore, CandlePatternCfg cfg) =>
+    int p = get_candle_pattern(cfg.dojiBodyMaxPct, cfg.wickBodyMin, cfg.wickDominanceMin, cfg.oppositeWickMaxBody, cfg.engulfMinPrevBody, cfg.tweezerTolAtr, cfg.marubozuMaxWickBody, cfg.threeLineMinBodyPct)
+    int pBias = get_candle_pattern_bias(p)
+    bool aligned = (direction == "Buy" and pBias > 0) or (direction == "Sell" and pBias < 0)
+    bool isConfluenceEvent = str.contains(reason, "Retest") or str.contains(reason, "Sweep") or str.contains(reason, "respected") or str.contains(reason, "reclaimed") or str.contains(reason, "rejected")
+    float volBase = ta.sma(volume, cfg.volLen)
+    float relVol = volBase > 0 ? (volume / volBase) : 0.0
+    int bonus = (aligned and isConfluenceEvent ? cfg.scorePattern : 0) + (isConfluenceEvent and relVol >= cfg.volMin ? cfg.scoreVolume : 0)
+    string pTxt = get_candle_pattern_text(p)
+    string outReason = reason
+    if bonus > 0 and pTxt != ""
+        outReason += " + " + pTxt
+    if isConfluenceEvent and relVol >= cfg.volMin
+        outReason += " + Vol"
+    ConfluenceResult.new(outReason, baseScore + bonus)
+
+// Returns OHLC + candle pattern stream for one HTF slot.
+// Uses fixed pattern parameters because request.security expression in exported
+// library functions cannot depend on function arguments.
+// SMC helper
+export get_data_htf_candles(string tf) =>
+    [o, h, l, c] = if not na(tf)
+        request.security(syminfo.tickerid, tf, [open, high, low, close], gaps = barmerge.gaps_off)
+    else
+        [na, na, na, na]
+    int pat = if not na(tf)
+        request.security(syminfo.tickerid, tf, get_candle_pattern(0.10, 2.0, 2.0, 0.5, 1.0, 0.05, 0.05, 0.60))
+    else
+        na
+    [o, h, l, c, pat]
+
+// Applies candle-pattern border emphasis to a rendered HTF slot.
+// SMC helper
+export apply_htf_candle_pattern_marks(HTF_Data store, bool show, int patSeries, int count, color tfColor, color bullColor, color bearColor, HTFCandleVisualCfg cfg) =>
+    if not show
+        if array.size(store.boxes) > 0
+            for i = 0 to array.size(store.boxes) - 1
+                box bx = array.get(store.boxes, i)
+                bx.set_border_width(cfg.clearBorderWidth)
+    else
+        for i = 0 to count - 1
+            int currD = i * 3
+            int p = patSeries[currD]
+            bool hasPattern = not na(p) and p > 0
+            if i < array.size(store.boxes)
+                box bx = array.get(store.boxes, i)
+                if hasPattern
+                    int pb = get_candle_pattern_bias(p)
+                    color borderClr = pb > 0 ? bullColor : pb < 0 ? bearColor : tfColor
+                    bx.set_border_color(color.new(borderClr, 0))
+                    bx.set_border_width(cfg.patternBorderWidth)
+                else
+                    bx.set_border_width(cfg.clearBorderWidth)
+    bool(na)
+
+// Draws one HTF candle slot from prepared OHLC/pattern data.
+// SMC helper
+export draw_data_htf_candles(HTF_Data store, label tfLabel, bool show, float o, float h, float l, float c, int pat, int count, int offset, string tfText, color tfColor, Theme theme, HTFCandleVisualCfg cfg) =>
+    label out = render_htf_slot(store, tfLabel, show, o, h, l, c, count, offset, tfText, theme, cfg.transparent)
+    if not na(out)
+        out.set_textcolor(tfColor)
+        out.set_size(cfg.labelSize)
+    apply_htf_candle_pattern_marks(store, show, pat, count, tfColor, theme.COLOR_BULLISH, theme.COLOR_BEARISH, cfg)
+    out
+
+// Calculates slot TF/count/offset/reset data for the 2-slot HTF candle panel.
+// SMC helper
+export get_data_htf_candle_layout(string htf1, string htf2, int dynCachedHtf1Candles, int dynCachedHtf2Candles, string prevSlotTf0, string prevSlotTf1, int baseExtBars, HTFCandleLayoutCfg cfg) =>
+    string slotTf0 = htf1
+    string slotTf1 = htf2
+    int slotCount0 = cfg.dynamicEnabled ? math.max(dynCachedHtf1Candles, 1) : cfg.fallbackCount0
+    int slotCount1 = cfg.dynamicEnabled ? math.max(dynCachedHtf2Candles, 1) : cfg.fallbackCount1
+    bool show0 = not na(slotTf0)
+    bool show1 = not na(slotTf1)
+    int span0 = get_htf_chart_span(slotCount0)
+    int span1 = get_htf_chart_span(slotCount1)
+    int off0 = baseExtBars + cfg.firstSlotBaseOffsetBars + math.max(span0 - cfg.spanTrimBars, 0)
+    int off1 = off0 + (show0 ? (span1 + cfg.secondSlotGapBars) : 0)
+    bool needReset0 = barstate.isfirst or slotTf0 != prevSlotTf0
+    bool needReset1 = barstate.isfirst or slotTf1 != prevSlotTf1
+    [slotTf0, slotTf1, slotCount0, slotCount1, show0, show1, off0, off1, needReset0, needReset1]
+
+// Resets/draws the two-slot HTF candle panel and returns updated slot labels.
+// SMC helper
+export process_data_htf_candles(
+ HTF_Data htf1C, HTF_Data htf2C, label htfLabel0In, label htfLabel1In,
+ string slotTf0, string slotTf1, int slotCount0, int slotCount1, bool show0, bool show1, int off0, int off1, bool needReset0, bool needReset1,
+ float o1, float h1, float l1, float c1, int htfPat1, float o2, float h2, float l2, float c2, int htfPat2,
+ color tf1Color, color tf2Color, Theme theme, HTFCandleVisualCfg cfg) =>
+    if needReset0
+        cleanup_htf_arrays(htf1C.boxes, htf1C.wicks_h, htf1C.wicks_l, htf1C.hl, math.max(slotCount0, 1))
+    if needReset1 and slotCount1 > 0
+        cleanup_htf_arrays(htf2C.boxes, htf2C.wicks_h, htf2C.wicks_l, htf2C.hl, slotCount1)
+    label out0 = draw_data_htf_candles(htf1C, htfLabel0In, show0, o1, h1, l1, c1, htfPat1, slotCount0, off0, slotTf0, tf1Color, theme, cfg)
+    label out1 = draw_data_htf_candles(htf2C, htfLabel1In, show1, o2, h2, l2, c2, htfPat2, slotCount1, off1, slotTf1, tf2Color, theme, cfg)
+    [out0, out1]
+
+// ==================== SESSION & KILLZONE METHODS ====================
+// Helper (Sessions/Killzones): Start/update a running extreme line during a time window.
+// Indicator helper
+export method manage_window_line(WindowLine _id, bool _inWin, float _hi, float _lo, int _time, color _clr, string _txt, bool _labelIsTime, bool _useMax, int _width, bool _showLabel, string _labelSize, string _tooltip, string _timeFormat, string _timeZone, float _padBars) =>
+    float v = _useMax ? _hi : _lo
+    if _inWin and not _inWin[1]
+        _id.extreme := v
+        _id.startT := _time
+        _id.active := true
+
+        if not na(_id.ln)
+            _id.ln.delete()
+        if not na(_id.lb)
+            _id.lb.delete()
+
+        _id.ln := line.new(_id.startT, _id.extreme, _id.startT, _id.extreme, xloc.bar_time, color = _clr, style = line.style_solid, width = _width) 
+        if _showLabel and _labelSize != "None"
+            lbStyle = _useMax ? label.style_label_down : label.style_label_up
+            int padMs = _padBars > 0 ? int(nz(_time - _time[1], 0) * _padBars) : 0
+            string labelTxt = _labelIsTime ? str.replace(str.format_time(_id.startT, _timeFormat, _timeZone), ":00 ", " ") : _txt
+            _id.lb := label.new(_id.startT + padMs, _id.extreme, labelTxt, xloc.bar_time, color = color.new(color.white, 100), style = lbStyle, textcolor = _clr, size = _labelSize, tooltip = _tooltip)
+
+    if _inWin and _id.active
+        _id.extreme := _useMax ? math.max(_hi, _id.extreme) : math.min(_lo, _id.extreme)
+        if not na(_id.ln)
+            line.set_y1(_id.ln, _id.extreme)
+            line.set_xy2(_id.ln, _time, _id.extreme)
+        if not na(_id.lb)
+            int padMs = _padBars > 0 ? int(nz(_time - _time[1], 0) * _padBars) : 0
+            label.set_x(_id.lb, _id.startT + padMs)
+            label.set_y(_id.lb, _id.extreme)
+            string labelTxt = _labelIsTime ? str.replace(str.format_time(_id.startT, _timeFormat, _timeZone), ":00 ", " ") : _txt
+            if label.get_text(_id.lb) != labelTxt
+                label.set_text(_id.lb, labelTxt)
+
+    if not _inWin and _id.active
+        _id.active := false
+
+// Helper (Sessions/Killzones): Hard-reset drawings/state (used when feature disabled or not applicable TF).
+// Indicator helper
+export method reset_window_line(WindowLine _id) =>
+    if not na(_id.ln)
+        _id.ln.delete()
+    if not na(_id.lb)
+        _id.lb.delete()
+    _id.ln := na
+    _id.lb := na
+    _id.extreme := na
+    _id.startT := na
+    _id.active := false
+
+// Helper (Sessions): Background box highlight for overlaps (no border, high transparency).
+// Indicator helper
+export method manage_window_box(WindowBox _id, bool _inWin, float _hi, float _lo, int _time, color _bg) =>
+    if _inWin and not _inWin[1]
+        _id.hi := _hi
+        _id.lo := _lo
+        _id.startT := _time
+        _id.active := true
+        if not na(_id.bx)
+            _id.bx.delete()
+        _id.bx := box.new(_id.startT, _id.hi, _time, _id.lo, xloc = xloc.bar_time, bgcolor = _bg, border_color = color.new(_bg, 100))
+    if _inWin and _id.active and not na(_id.bx)
+        _id.hi := math.max(_hi, _id.hi)
+        _id.lo := math.min(_lo, _id.lo)
+        box.set_top(_id.bx, _id.hi)
+        box.set_bottom(_id.bx, _id.lo)
+        box.set_right(_id.bx, _time)
+    if not _inWin and _id.active
+        _id.active := false
+
+// Helper (Sessions): Hard-reset overlap highlight.
+// Indicator helper
+export method reset_window_box(WindowBox _id) =>
+    if not na(_id.bx)
+        _id.bx.delete()
+    _id.bx := na
+    _id.hi := na
+    _id.lo := na
+    _id.startT := na
+    _id.active := false
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CANDLE PATTERN DETECTION & SCORING
+//  Reusable by any indicator. All logic centralised here.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── private helpers ────────────────────────────────────────────────────────
+_cp_body(o, c)      => math.abs(c - o)
+_cp_rng(h, l)       => h - l
+_cp_upWick(o, c, h) => h - math.max(o, c)
+_cp_loWick(o, c, l) => math.min(o, c) - l
+_cp_bull(o, c)      => c > o
+_cp_bear(o, c)      => c < o
+
+// Returns base reliability score (1-5) for a named pattern.
+// 5 = 3-candle high conviction  4 = kicker  3 = engulf/marubozu
+// 2 = single-bar moderate       1 = context-only (doji/inside/outside)
+// Local Helper
+export cp_base_score(string n) =>
+    bool is5 = n == "Three White Soldiers" or n == "Three Black Crows" or n == "Morning Star" or n == "Evening Star"
+    bool is4 = n == "Bullish Kicker" or n == "Bearish Kicker"
+    bool is3 = n == "Bullish Engulfing" or n == "Bearish Engulfing" or n == "Bullish Marubozu" or n == "Bearish Marubozu" or n == "Piercing Line" or n == "Dark Cloud Cover"
+    bool is2 = n == "Hammer" or n == "Hanging Man" or n == "Shooting Star" or n == "Inverted Hammer" or n == "Bullish Harami" or n == "Bearish Harami" or n == "Tweezer Bottom" or n == "Tweezer Top" or n == "Dragonfly Doji" or n == "Gravestone Doji"
+    if is5
+        5
+    else if is4
+        4
+    else if is3
+        3
+    else if is2
+        2
+    else
+        1
+
+// Returns a star-rating string for the given score value.
+// Indicator helper
+export cp_score_stars(int score) =>
+    if score >= 5
+        "★★★★★"
+    else if score == 4
+        "★★★★☆"
+    else if score == 3
+        "★★★☆☆"
+    else if score == 2
+        "★★☆☆☆"
+    else
+        "★☆☆☆☆"
+
+// Returns body bg color tinted by bias + score tier.
+// Uses Theme transparency constants:
+//   score 5 → T_NONE (0%) solid   4 → T_LOW (20%)   3 → T_MEDIUM (50%)
+//   score 2 → 70%              1 → T_NORMAL (80%) — barely visible
+// Indicator helper
+export cp_score_color(int score, int bias, color bull, color bear) =>
+    if bias == 0
+        na
+    else
+        color base  = bias == 1 ? bull : bear
+        Theme th    = Theme.new()
+        int   transp = score >= 5 ? th.T_NONE : score == 4 ? th.T_LOW : score == 3 ? th.T_MEDIUM : score == 2 ? 70 : th.T_NORMAL
+        color.new(base, transp)
+
+// Returns border color by conviction tier.
+// score ≥5 + any vol  → bright white (top signal)
+// score ≥4            → gold  #FFD700 (strong pattern)
+// score = 3            → bias-tinted (moderate)
+// score ≤2            → na (default thin border, no noise)
+// Indicator helper
+export cp_border_color(int score, int bias, color bull, color bear) =>
+    Theme th = Theme.new()
+    if score >= 5
+        color.new(th.TEXT_COLOR, th.T_NONE)   // white – top conviction
+    else if score >= 4
+        color.new(#FFD700, th.T_NONE)          // gold – strong signal
+    else if score == 3
+        color base = bias == 1 ? bull : bear
+        color.new(base, th.T_LOW)              // T_LOW = 20% transp (vivid tint)
+    else
+        na                                     // score ≤2: no border overlay
+
+// Returns wick color based on volume ratio vs average.
+// volRatio = volume / sma(volume, N)
+//   ≥2.0 → extreme vol → bright white (institutional move)
+//   ≥1.5 → high vol    → gold (#FFD700) — confirmed signal
+//   ≥1.0 → normal vol  → bias color, T_LOW transp (clear but not loud)
+//   < 1.0 → weak vol   → bias color, T_NORMAL transp (dim — caution: fake signal)
+// When no pattern (bias==0): returns na so plotcandle uses default
+// Indicator helper
+export cp_wick_color(int score, int bias, float volRatio, color bull, color bear) =>
+    if bias == 0 or score == 0
+        na
+    else
+        Theme th   = Theme.new()
+        color base = bias == 1 ? bull : bear
+        if volRatio >= 2.0
+            color.new(th.TEXT_COLOR, th.T_NONE)   // white — extreme volume
+        else if volRatio >= 1.5
+            color.new(#FFD700, th.T_NONE)          // gold — high volume
+        else if volRatio >= 1.0
+            color.new(base, th.T_LOW)              // tinted — average volume
+        else
+            color.new(base, th.T_NORMAL)           // dim — below-average (suspect)
+
+// Runs all 25 pattern detectors using a CandlePatternCfg.
+// Returns [patternName, bias, baseScore, confluenceVotes]
+//   bias: +1 bullish | -1 bearish | 0 none
+//   baseScore: 1-5 reliability of the dominant pattern
+//   confluenceVotes: count of patterns voting in dominant direction
+// Indicator helper
+export cp_detect(CandlePatternCfg cfg) =>
+    float dp  = cfg.dojiBodyMaxPct
+    float wb  = cfg.wickBodyMin
+    float ow  = cfg.oppositeWickMaxBody
+    float em  = cfg.engulfMinPrevBody
+    float ta  = cfg.tweezerTolAtr
+    float mw  = cfg.marubozuMaxWickBody
+    float tb  = cfg.threeLineMinBodyPct
+    float sb  = 0.33   // star body max pct (fixed, sensible default)
+
+    // ── 1. Doji ─────────────────────────────────────────────
+    float _b0 = _cp_body(open, close)
+    float _r0 = _cp_rng(high, low)
+    bool d_doji = _r0 > 0 and (_b0 / _r0) <= dp
+
+    // ── 2. Dragonfly Doji ───────────────────────────────────
+    float _lo2 = _cp_loWick(open, close, low)
+    float _up2 = _cp_upWick(open, close, high)
+    bool d_dfly = _r0 > 0 and (_b0 / _r0) <= dp and _lo2 >= wb * math.max(_up2, syminfo.mintick)
+    int   b_dfly = d_dfly ? 1 : 0
+
+    // ── 3. Gravestone Doji ──────────────────────────────────
+    bool d_grav = _r0 > 0 and (_b0 / _r0) <= dp and _up2 >= wb * math.max(_lo2, syminfo.mintick)
+    int  b_grav = d_grav ? -1 : 0
+
+    // ── 4. Hammer ───────────────────────────────────────────
+    bool d_hammer = _b0 > 0 and _lo2 >= wb * _b0 and _up2 <= ow * _b0
+    int  b_hammer = d_hammer ? 1 : 0
+
+    // ── 5. Inverted Hammer ──────────────────────────────────
+    bool d_iHam = _b0 > 0 and _up2 >= wb * _b0 and _lo2 <= ow * _b0
+    int  b_iHam = d_iHam ? 1 : 0
+
+    // ── 6. Hanging Man ──────────────────────────────────────
+    bool d_hang = _b0 > 0 and _lo2 >= wb * _b0 and _up2 <= 0.3 * _b0
+    int  b_hang = d_hang ? -1 : 0
+
+    // ── 7. Shooting Star ────────────────────────────────────
+    bool d_shoot = _b0 > 0 and _up2 >= wb * _b0 and _lo2 <= 0.3 * _b0
+    int  b_shoot = d_shoot ? -1 : 0
+
+    // ── 8. Bullish Marubozu ─────────────────────────────────
+    bool d_mBull = _cp_bull(open, close) and _b0 > 0 and _up2 <= mw * _b0 and _lo2 <= mw * _b0
+    int  b_mBull = d_mBull ? 1 : 0
+
+    // ── 9. Bearish Marubozu ─────────────────────────────────
+    bool d_mBear = _cp_bear(open, close) and _b0 > 0 and _up2 <= mw * _b0 and _lo2 <= mw * _b0
+    int  b_mBear = d_mBear ? -1 : 0
+
+    // ── 10. Bullish Engulfing ───────────────────────────────
+    float _pb10 = _cp_body(open[1], close[1])
+    bool d_bullEng = _cp_bear(open[1], close[1]) and _cp_bull(open, close) and close >= open[1] and open <= close[1] and _b0 >= em * math.max(_pb10, syminfo.mintick)
+    int  b_bullEng = d_bullEng ? 1 : 0
+
+    // ── 11. Bearish Engulfing ───────────────────────────────
+    bool d_bearEng = _cp_bull(open[1], close[1]) and _cp_bear(open, close) and close <= open[1] and open >= close[1] and _b0 >= em * math.max(_pb10, syminfo.mintick)
+    int  b_bearEng = d_bearEng ? -1 : 0
+
+    // ── 12. Bullish Harami ──────────────────────────────────
+    bool d_bullHar = _cp_bear(open[1], close[1]) and _cp_bull(open, close) and high <= math.max(open[1], close[1]) and low >= math.min(open[1], close[1])
+    int  b_bullHar = d_bullHar ? 1 : 0
+
+    // ── 13. Bearish Harami ──────────────────────────────────
+    bool d_bearHar = _cp_bull(open[1], close[1]) and _cp_bear(open, close) and high <= math.max(open[1], close[1]) and low >= math.min(open[1], close[1])
+    int  b_bearHar = d_bearHar ? -1 : 0
+
+    // ── 14. Piercing Line ───────────────────────────────────
+    float _mid14 = (open[1] + close[1]) / 2.0
+    bool d_pierce = _cp_bear(open[1], close[1]) and _cp_bull(open, close) and open <= close[1] and close > _mid14 and close < open[1]
+    int  b_pierce = d_pierce ? 1 : 0
+
+    // ── 15. Dark Cloud Cover ────────────────────────────────
+    float _mid15 = (open[1] + close[1]) / 2.0
+    bool d_dcc = _cp_bull(open[1], close[1]) and _cp_bear(open, close) and open >= close[1] and close < _mid15 and close > open[1]
+    int  b_dcc = d_dcc ? -1 : 0
+
+    // ── 16. Morning Star ────────────────────────────────────
+    float _c2b16 = _cp_body(open[2], close[2])
+    float _c1b16 = _cp_body(open[1], close[1])
+    bool d_morn = _cp_bear(open[2], close[2]) and _c1b16 <= sb * _c2b16 and _cp_bull(open, close) and close > (open[2] + close[2]) / 2.0
+    int  b_morn = d_morn ? 1 : 0
+
+    // ── 17. Evening Star ────────────────────────────────────
+    float _c2b17 = _cp_body(open[2], close[2])
+    float _c1b17 = _cp_body(open[1], close[1])
+    bool d_even = _cp_bull(open[2], close[2]) and _c1b17 <= sb * _c2b17 and _cp_bear(open, close) and close < (open[2] + close[2]) / 2.0
+    int  b_even = d_even ? -1 : 0
+
+    // ── 18. Three White Soldiers ────────────────────────────
+    float _r18a = _cp_rng(high, low)
+    float _r18b = _cp_rng(high[1], low[1])
+    float _r18c = _cp_rng(high[2], low[2])
+    bool _3ws_c0 = _cp_bull(open, close)    and _cp_body(open, close)    >= tb * _r18a
+    bool _3ws_c1 = _cp_bull(open[1], close[1]) and _cp_body(open[1], close[1]) >= tb * _r18b
+    bool _3ws_c2 = _cp_bull(open[2], close[2]) and _cp_body(open[2], close[2]) >= tb * _r18c
+    bool d_3ws = _3ws_c0 and _3ws_c1 and _3ws_c2 and close > close[1] and close[1] > close[2]
+    int  b_3ws = d_3ws ? 1 : 0
+
+    // ── 19. Three Black Crows ───────────────────────────────
+    bool _3bc_c0 = _cp_bear(open, close)    and _cp_body(open, close)    >= tb * _r18a
+    bool _3bc_c1 = _cp_bear(open[1], close[1]) and _cp_body(open[1], close[1]) >= tb * _r18b
+    bool _3bc_c2 = _cp_bear(open[2], close[2]) and _cp_body(open[2], close[2]) >= tb * _r18c
+    bool d_3bc = _3bc_c0 and _3bc_c1 and _3bc_c2 and close < close[1] and close[1] < close[2]
+    int  b_3bc = d_3bc ? -1 : 0
+
+    // ── 20. Bullish Kicker ──────────────────────────────────
+    bool d_bKick = _cp_bear(open[1], close[1]) and _cp_bull(open, close) and open >= open[1]
+    int  b_bKick = d_bKick ? 1 : 0
+
+    // ── 21. Bearish Kicker ──────────────────────────────────
+    bool d_brKick = _cp_bull(open[1], close[1]) and _cp_bear(open, close) and open <= open[1]
+    int  b_brKick = d_brKick ? -1 : 0
+
+    // ── 22. Tweezer Bottom ──────────────────────────────────
+    float _atr22 = ta.atr(14)
+    bool d_tBtm = math.abs(low - low[1]) <= _atr22 * ta and _cp_bear(open[1], close[1]) and _cp_bull(open, close)
+    int  b_tBtm = d_tBtm ? 1 : 0
+
+    // ── 23. Tweezer Top ─────────────────────────────────────
+    bool d_tTop = math.abs(high - high[1]) <= _atr22 * ta and _cp_bull(open[1], close[1]) and _cp_bear(open, close)
+    int  b_tTop = d_tTop ? -1 : 0
+
+    // ── 24. Inside Bar ──────────────────────────────────────
+    bool d_inside = high < high[1] and low > low[1]
+    int  b_inside = d_inside ? (_cp_bull(open[1], close[1]) ? 1 : -1) : 0
+
+    // ── 25. Outside Bar ─────────────────────────────────────
+    bool d_outside = high > high[1] and low < low[1]
+    int  b_outside = d_outside ? (_cp_bull(open, close) ? 1 : -1) : 0
+
+    // ── Vote accumulation ───────────────────────────────────
+    int bv = (b_dfly==1?1:0) + (b_hammer==1?1:0) + (b_iHam==1?1:0)  + (b_mBull==1?1:0)  + (b_bullEng==1?1:0) + (b_bullHar==1?1:0) + (b_pierce==1?1:0) + (b_morn==1?1:0) + (b_3ws==1?1:0) + (b_bKick==1?1:0) + (b_tBtm==1?1:0) + (b_inside==1?1:0) + (b_outside==1?1:0)
+    int rv = (b_grav==-1?1:0) + (b_hang==-1?1:0) + (b_shoot==-1?1:0) + (b_mBear==-1?1:0) + (b_bearEng==-1?1:0) + (b_bearHar==-1?1:0) + (b_dcc==-1?1:0) + (b_even==-1?1:0) + (b_3bc==-1?1:0) + (b_brKick==-1?1:0) + (b_tTop==-1?1:0) + (b_inside==-1?1:0) + (b_outside==-1?1:0)
+
+    int aggBias = bv > rv ? 1 : rv > bv ? -1 : 0
+    int votes   = math.max(bv, rv)
+
+    // ── Dominant pattern name (priority: 3-candle > kicker > 2-candle > 1-candle) ─
+    string name = d_3ws     and aggBias ==  1 ? "Three White Soldiers" :
+                  d_3bc     and aggBias == -1 ? "Three Black Crows"    :
+                  d_bKick   and aggBias ==  1 ? "Bullish Kicker"       :
+                  d_brKick  and aggBias == -1 ? "Bearish Kicker"       :
+                  d_morn    and aggBias ==  1 ? "Morning Star"         :
+                  d_even    and aggBias == -1 ? "Evening Star"         :
+                  d_bullEng and aggBias ==  1 ? "Bullish Engulfing"    :
+                  d_bearEng and aggBias == -1 ? "Bearish Engulfing"    :
+                  d_pierce  and aggBias ==  1 ? "Piercing Line"        :
+                  d_dcc     and aggBias == -1 ? "Dark Cloud Cover"     :
+                  d_mBull   and aggBias ==  1 ? "Bullish Marubozu"     :
+                  d_mBear   and aggBias == -1 ? "Bearish Marubozu"     :
+                  d_hammer  and aggBias ==  1 ? "Hammer"               :
+                  d_hang    and aggBias == -1 ? "Hanging Man"          :
+                  d_dfly    and aggBias ==  1 ? "Dragonfly Doji"       :
+                  d_grav    and aggBias == -1 ? "Gravestone Doji"      :
+                  d_tBtm    and aggBias ==  1 ? "Tweezer Bottom"       :
+                  d_tTop    and aggBias == -1 ? "Tweezer Top"          :
+                  d_bullHar and aggBias ==  1 ? "Bullish Harami"       :
+                  d_bearHar and aggBias == -1 ? "Bearish Harami"       :
+                  d_iHam    and aggBias ==  1 ? "Inverted Hammer"      :
+                  d_shoot   and aggBias == -1 ? "Shooting Star"        :
+                  d_inside                    ? "Inside Bar"           :
+                  d_outside                   ? "Outside Bar"          :
+                  d_doji                      ? "Doji"                 :
+                  "None"
+
+    [name, aggBias, cp_base_score(name), votes]
+
+// Renders generic strategy stats table using provided row names (bucket labels).
+// Indicator helper
+export render_strategy_stats_table(bool show, table t, array<float> statsMatrix, array<string> rowNames, Theme theme, int metricCount) =>
+    if show and barstate.islast
+        int rowCount = array.size(rowNames)
+        table.clear(t, 0, 0, 4, rowCount + 1)
+        color hdrBg = color.new(theme.COLOR_UI_BG, 60)
+        color rowBg = color.new(theme.COLOR_UI_BG, 75)
+        color totalBg = color.new(theme.COLOR_UI_BG, 60)
+        table.cell(t, 0, 0, "", text_color = theme.COLOR_UI_FG, bgcolor = hdrBg, text_size = size.tiny)
+        table.cell(t, 1, 0, "TP", text_color = theme.COLOR_BULLISH, bgcolor = hdrBg, text_size = size.tiny)
+        table.cell(t, 2, 0, "SL", text_color = theme.COLOR_BEARISH, bgcolor = hdrBg, text_size = size.tiny)
+        table.cell(t, 3, 0, "WR", text_color = theme.COLOR_UI_FG, bgcolor = hdrBg, text_size = size.tiny)
+        table.cell(t, 4, 0, "+R", text_color = theme.COLOR_UI_ACCENT, bgcolor = hdrBg, text_size = size.tiny)
+        float totalTp = 0.0
+        float totalSl = 0.0
+        float totalGr = 0.0
+        if rowCount > 0
+            for b = 0 to rowCount - 1
+                float tp = array.get(statsMatrix, get_signal_stat_idx(b, 0, metricCount))
+                float sl = array.get(statsMatrix, get_signal_stat_idx(b, 1, metricCount))
+                float gr = array.get(statsMatrix, get_signal_stat_idx(b, 2, metricCount))
+                totalTp += tp
+                totalSl += sl
+                totalGr += gr
+                float n = tp + sl
+                float wr = n > 0 ? tp * 100.0 / n : 0.0
+                table.cell(t, 0, b + 2, array.get(rowNames, b), text_color = theme.COLOR_UI_FG, bgcolor = rowBg, text_size = size.tiny)
+                table.cell(t, 1, b + 2, str.tostring(int(math.round(tp))), text_color = theme.COLOR_BULLISH, bgcolor = rowBg, text_size = size.tiny)
+                table.cell(t, 2, b + 2, str.tostring(int(math.round(sl))), text_color = theme.COLOR_BEARISH, bgcolor = rowBg, text_size = size.tiny)
+                table.cell(t, 3, b + 2, str.tostring(int(math.round(wr))), text_color = theme.COLOR_UI_FG, bgcolor = rowBg, text_size = size.tiny)
+                table.cell(t, 4, b + 2, str.tostring(gr, "#.##"), text_color = theme.COLOR_UI_ACCENT, bgcolor = rowBg, text_size = size.tiny)
+        float totalN = totalTp + totalSl
+        float totalWr = totalN > 0 ? totalTp * 100.0 / totalN : 0.0
+        table.cell(t, 0, 1, "Total", text_color = theme.COLOR_UI_FG, bgcolor = totalBg, text_size = size.tiny)
+        table.cell(t, 1, 1, str.tostring(int(math.round(totalTp))), text_color = theme.COLOR_BULLISH, bgcolor = totalBg, text_size = size.tiny)
+        table.cell(t, 2, 1, str.tostring(int(math.round(totalSl))), text_color = theme.COLOR_BEARISH, bgcolor = totalBg, text_size = size.tiny)
+        table.cell(t, 3, 1, str.tostring(int(math.round(totalWr))), text_color = theme.COLOR_UI_FG, bgcolor = totalBg, text_size = size.tiny)
+        table.cell(t, 4, 1, str.tostring(totalGr, "#.##"), text_color = theme.COLOR_UI_ACCENT, bgcolor = totalBg, text_size = size.tiny)
+    else if not show and barstate.islast
+        int rowCount = array.size(rowNames)
+        table.clear(t, 0, 0, 4, rowCount + 1)
+    bool(na)
+
+// Builds dynamic setup rows from resolved entries and renders TP/SL/WR/+R table.
+// SMC helper
+export render_entries_dashboard_from_entries(bool show, table t, array<Trade> entriesRef, int maxTypes, Theme theme, Const c, int metricCount) =>
+    var array<string> rowNames = array.new_string()
+    var array<float> statsMatrix = array.new_float()
+    array.clear(rowNames)
+    array.clear(statsMatrix)
+    if array.size(entriesRef) > 0
+        for i = 0 to array.size(entriesRef) - 1
+            Trade e = array.get(entriesRef, i)
+            bool resolved = e.state == c.SIGNAL_STATE_TP or e.state == c.SIGNAL_STATE_SL
+            if resolved
+                string setup = str.length(e.type) > 0 ? e.type : "N/A"
+                int idx = array.indexof(rowNames, setup)
+                if idx == -1 and array.size(rowNames) < maxTypes
+                    array.push(rowNames, setup)
+                    for _ = 0 to metricCount - 1
+                        array.push(statsMatrix, 0.0)
+                    idx := array.size(rowNames) - 1
+                if idx >= 0
+                    int base = idx * metricCount
+                    if e.state == c.SIGNAL_STATE_TP
+                        array.set(statsMatrix, base + c.SIG_METRIC_TP, array.get(statsMatrix, base + c.SIG_METRIC_TP) + 1)
+                        array.set(statsMatrix, base + c.SIG_METRIC_GAIN_R, array.get(statsMatrix, base + c.SIG_METRIC_GAIN_R) + e.rrValue)
+                    else
+                        array.set(statsMatrix, base + c.SIG_METRIC_SL, array.get(statsMatrix, base + c.SIG_METRIC_SL) + 1)
+                        array.set(statsMatrix, base + c.SIG_METRIC_GAIN_R, array.get(statsMatrix, base + c.SIG_METRIC_GAIN_R) - 1)
+    render_strategy_stats_table(show, t, statsMatrix, rowNames, theme, metricCount)
+
+// Returns line extension bars by source timeframe role.
+// SMC helper
+export get_tf_line_ext_bars(string sourceTf, string tf1Name, string tf2Name, int ltfExt, int htf1Ext, int htf2Ext) =>
+    sourceTf == tf2Name ? htf2Ext : sourceTf == tf1Name ? htf1Ext : ltfExt
+
+// Returns line color by source timeframe role.
+// SMC helper
+export get_tf_line_color(string sourceTf, string tf1Name, string tf2Name, color ltfColor, color htf1Color, color htf2Color) =>
+    sourceTf == tf2Name ? htf2Color : sourceTf == tf1Name ? htf1Color : ltfColor
+
+// Human-readable lifecycle name.
+// SMC helper
+export get_lifecycle_name(int state, int formed, int touched, int respected, int reclaimed) =>
+    state == formed ? "FORMED" :
+     state == touched ? "TOUCHED" :
+     state == respected ? "RESPECTED" :
+     state == reclaimed ? "RECLAIMED" :
+     "BROKEN"
+
+// Merge lifecycle states with BROKEN precedence.
+// SMC helper
+export merge_lifecycle_state(int a, int b, int brokenState) =>
+    a == brokenState or b == brokenState ? brokenState : math.max(a, b)
+
+// Builds SR tooltip from counters + lifecycle state.
+// SMC helper
+export build_sr_tooltip(string touchesPrefix, int touchCount, int rejectCount, int state, int formed, int touched, int respected, int reclaimed) =>
+    touchesPrefix + str.tostring(math.max(touchCount, 1)) + "\nRejects: " + str.tostring(math.max(rejectCount, 0)) + "\nState: " + get_lifecycle_name(state, formed, touched, respected, reclaimed)
+
+// Returns next lifecycle state from generic break/touch/respect/reclaim inputs.
+// SMC helper
+export lifecycle_next_state(bool breakCond, bool touchCond, bool respectCond, bool reclaimCond, bool cooldownOk, int prevState, int broken, int touched, int respected, int reclaimed) =>
+    int next = prevState
+    if breakCond
+        next := broken
+    else if touchCond and cooldownOk
+        next := respectCond ? (prevState == broken ? reclaimed : respected) : touched
+    else if reclaimCond and prevState == broken
+        next := reclaimed
+    next
+
+// Returns next [touchCount, rejectCount] from generic touch/respect flags.
+// SMC helper
+export lifecycle_next_counts(int touchCount, int rejectCount, bool touchCond, bool respectCond, bool cooldownOk) =>
+    int t = math.max(touchCount, 0)
+    int r = math.max(rejectCount, 0)
+    if touchCond and cooldownOk
+        t += 1
+        if respectCond
+            r += 1
+    [t, r]
+
+// Returns lifecycle line style mapped from state.
+// SMC helper
+export lifecycle_line_style(int state, int touched, int broken, int reclaimed, string formedStyle, string touchedStyle, string brokenStyle, string reclaimedStyle) =>
+    state == broken ? brokenStyle : state == touched ? touchedStyle : state == reclaimed ? reclaimedStyle : formedStyle
+
+// Returns lifecycle alpha mapped from state.
+// SMC helper
+export lifecycle_alpha(int state, int touched, int respected, int reclaimed, int broken, int formedAlpha, int touchedAlpha, int respectedAlpha, int reclaimedAlpha, int brokenAlpha) =>
+    state == broken ? brokenAlpha :
+     state == reclaimed ? reclaimedAlpha :
+     state == respected ? respectedAlpha :
+     state == touched ? touchedAlpha :
+     formedAlpha

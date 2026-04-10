@@ -1,0 +1,636 @@
+//@version=5
+// @kit-version: 17
+library("KitUI", dynamic_requests = true)
+
+export type Theme
+    color COLOR_BEARISH = color.red
+    color COLOR_BULLISH = color.teal
+    color COLOR_NEUTRAL = color.gray
+    color COLOR_TRANSPARENT = color.white
+    color COLOR_UI_BG = color.black
+    color COLOR_UI_FG = color.white
+    string STYLE_LABEL_NONE = label.style_none
+    string SIZE_TINY = size.tiny
+    string SIZE_SMALL = size.small
+    string SIZE_NORMAL = size.normal
+
+export type HTF_Data
+    array<box> boxes
+    array<line> wicks_h
+    array<line> wicks_l
+    array<float> hl
+    string name
+
+export type HTFCandleVisualCfg
+    int transparent = 60
+    string labelSize = size.normal
+    int patternBorderWidth = 1
+    int clearBorderWidth = 0
+
+export type HTFCandleLayoutCfg
+    bool dynamicEnabled = true
+    int fallbackCount0 = 16
+    int fallbackCount1 = 12
+    int firstSlotBaseOffsetBars = 15
+    int secondSlotGapBars = 5
+    int spanTrimBars = 3
+
+export type WindowLine
+    line ln = na
+    label lb = na
+    float extreme = na
+    int startT = na
+    bool active = false
+
+export type WindowBox
+    box bx = na
+    float hi = na
+    float lo = na
+    int startT = na
+    bool active = false
+
+export type ProjectedBoxVisualCfg
+    int borderWidth = 1
+    string textSize = size.small
+    string textHAlign = text.align_right
+    string textVAlign = text.align_center
+
+export type LineTextVisualCfg
+    string lineStyle = line.style_solid
+    int lineWidth = 1
+    string textSize = size.tiny
+    int vPos = 0
+    float yPadTicks = 0.0
+    float xRatio = 0.5
+    int xPadBars = 0
+    string textAlign = text.align_center
+
+color_sig(color c) =>
+    str.tostring(color.r(c)) + ":" + str.tostring(color.g(c)) + ":" + str.tostring(color.b(c)) + ":" + str.tostring(color.t(c))
+
+export tt_side(bool isBuy, string reason) =>
+    (isBuy ? "BUY • " : "SELL • ") + reason
+
+export get_htf_range(HTF_Data store) =>
+    float rHi = na
+    float rLo = na
+    if store.hl.size() > 0
+        for i = 0 to store.hl.size() - 1
+            float v = store.hl.get(i)
+            if not na(v)
+                rHi := na(rHi) ? v : math.max(rHi, v)
+                rLo := na(rLo) ? v : math.min(rLo, v)
+    [rHi, rLo]
+
+export get_tf_seconds(string tf_period) =>
+    tf_period == "1" ? 60 :
+     tf_period == "5" ? 300 :
+     tf_period == "15" ? 900 :
+     tf_period == "60" ? 3600 :
+     tf_period == "240" ? 14400 :
+     tf_period == "1D" or tf_period == "D" ? 86400 :
+     tf_period == "1W" or tf_period == "W" ? 604800 :
+     tf_period == "1M" or tf_period == "M" ? 2592000 :
+     (not na(str.tonumber(tf_period)) ? int(str.tonumber(tf_period)) * 60 : timeframe.in_seconds(timeframe.period))
+
+export get_friendly_tf(string simple_tf) =>
+    simple_tf == "1" ? "1m" :
+     simple_tf == "3" ? "3m" :
+     simple_tf == "5" ? "5m" :
+     simple_tf == "15" ? "15m" :
+     simple_tf == "30" ? "30m" :
+     simple_tf == "45" ? "45m" :
+     simple_tf == "60" ? "1h" :
+     simple_tf == "120" ? "2h" :
+     simple_tf == "180" ? "3h" :
+     simple_tf == "240" ? "4h" :
+     simple_tf == "1D" or simple_tf == "D" ? "1D" :
+     simple_tf == "1W" or simple_tf == "W" ? "1W" :
+     simple_tf == "1M" or simple_tf == "M" ? "1M" :
+     simple_tf
+
+export closest_bar_index_from_time(int t) =>
+    int msPerBar = math.max(time - time[1], 1)
+    int barsAgo = int(math.round((time - t) / msPerBar))
+    int idx = bar_index - barsAgo
+    idx >= 0 and idx <= bar_index + 500 ? idx : na
+
+export get_htf_chart_span(int count) =>
+    (count - 1) * 3 + 2
+
+get_candle_pattern_bias(int p) =>
+    p == 1 or p == 3 or p == 8 or p == 6 or p == 10 or p == 13 or p == 14 or p == 16 or p == 18 ? 1 :
+     p == 2 or p == 4 or p == 9 or p == 7 or p == 11 or p == 12 or p == 15 or p == 17 or p == 19 ? -1 :
+     0
+
+apply_htf_candle_pattern_marks(HTF_Data store, bool show, int patSeries, int count, color tfColor, color bullColor, color bearColor, HTFCandleVisualCfg cfg) =>
+    if not show
+        if array.size(store.boxes) > 0
+            for i = 0 to array.size(store.boxes) - 1
+                box bx = array.get(store.boxes, i)
+                bx.set_border_width(cfg.clearBorderWidth)
+    else
+        for i = 0 to count - 1
+            int currD = i * 3
+            int p = patSeries[currD]
+            bool hasPattern = not na(p) and p > 0
+            if i < array.size(store.boxes)
+                box bx = array.get(store.boxes, i)
+                if hasPattern
+                    int pb = get_candle_pattern_bias(p)
+                    color borderClr = pb > 0 ? bullColor : pb < 0 ? bearColor : tfColor
+                    bx.set_border_color(color.new(borderClr, 0))
+                    bx.set_border_width(cfg.patternBorderWidth)
+                else
+                    bx.set_border_width(cfg.clearBorderWidth)
+    bool(na)
+
+// Draws a small icon label with tooltip near the current bar.
+export draw_icon_tooltip(int idx, int lookbackBars, bool enabled, string dir, color txtColor, string icon, string tooltipText, string txtSize, Theme theme) =>
+    label out = na
+    bool inLookback = not na(idx) and idx >= math.max(last_bar_index - lookbackBars, 0)
+    if enabled and inLookback
+        ylocVal = dir == "Top" ? yloc.abovebar : yloc.belowbar
+        out := label.new(idx, na, icon, yloc = ylocVal, color = color.new(theme.COLOR_TRANSPARENT, 100), textcolor = txtColor, style = theme.STYLE_LABEL_NONE, size = txtSize, tooltip = tooltipText)
+    out
+
+// Sessions/time-event helper: draw one compact top label on a time anchor.
+export draw_time_event_top(int t, float yAnchor, string txt, string tip, color clr, Theme theme) =>
+    label.new(t, yAnchor + syminfo.mintick * 2, txt, xloc = xloc.bar_time, yloc = yloc.price, color = color.new(theme.COLOR_TRANSPARENT, 100), textcolor = clr, style = label.style_label_down, size = theme.SIZE_TINY, tooltip = tip)
+
+// Renders/updates one HTF mini-chart candle strip in-place.
+export create_htf_candle_objects(int bIdx, int offset, float o_p, float h_p, float l_p, float c_p, color up, color dn, int trans) =>
+    color col = o_p < c_p ? up : dn
+    box bx = box.new(bIdx + offset, math.max(o_p, c_p), bIdx + offset + 2, math.min(o_p, c_p), bgcolor = color.new(col, trans), border_color = na)
+    int wickX = bIdx + offset + 1
+    line wh = line.new(wickX, math.max(o_p, c_p), wickX, h_p, color = color.new(col, trans))
+    line wl = line.new(wickX, math.min(o_p, c_p), wickX, l_p, color = color.new(col, trans))
+    [bx, wh, wl]
+
+export render_htf_view(HTF_Data store, int count, int offset, float o_p, float h_p, float l_p, float c_p, color up, color dn, int trans) =>
+    int bIdx = bar_index
+    int safeCount = math.max(count, 1)
+    int storeN = array.size(store.boxes)
+    int renderN = math.min(storeN, safeCount)
+    // Hide stale candles when panel count shrinks to avoid overlap artifacts.
+    if storeN > safeCount
+        for k = safeCount to storeN - 1
+            box bxStale = array.get(store.boxes, k)
+            line whStale = array.get(store.wicks_h, k)
+            line wlStale = array.get(store.wicks_l, k)
+            bxStale.set_lefttop(na, na)
+            bxStale.set_rightbottom(na, na)
+            whStale.set_xy1(na, na)
+            whStale.set_xy2(na, na)
+            wlStale.set_xy1(na, na)
+            wlStale.set_xy2(na, na)
+    array<float> histO = array.new_float()
+    array<float> histH = array.new_float()
+    array<float> histL = array.new_float()
+    array<float> histC = array.new_float()
+    float prevBucketOpen = na
+    int maxScan = math.min(math.max(bar_index, 0), 5000)
+    for j = 0 to maxScan
+        float oHist = o_p[j]
+        if na(oHist)
+            break
+        bool newBucket = na(prevBucketOpen) or oHist != prevBucketOpen
+        if newBucket
+            array.push(histO, oHist)
+            array.push(histH, h_p[j])
+            array.push(histL, l_p[j])
+            array.push(histC, c_p[j])
+            prevBucketOpen := oHist
+            if array.size(histO) >= safeCount
+                break
+    int availN = math.min(array.size(histO), renderN)
+    int firstFilled = renderN - availN
+    int currD = offset - ((safeCount - 1) * 3)
+    for i = 0 to renderN - 1
+        box bx = store.boxes.get(i)
+        line wh = store.wicks_h.get(i)
+        line wl = store.wicks_l.get(i)
+        int wCenter = bIdx + currD + 1
+        float oVal = na
+        float hVal = na
+        float lVal = na
+        float cVal = na
+        if i >= firstFilled
+            int histIdx = availN - 1 - (i - firstFilled)
+            oVal := array.get(histO, histIdx)
+            hVal := array.get(histH, histIdx)
+            lVal := array.get(histL, histIdx)
+            cVal := array.get(histC, histIdx)
+        if not na(oVal) and not na(hVal) and not na(lVal) and not na(cVal)
+            int leftX = bIdx + currD
+            int rightX = bIdx + currD + 2
+            color candleClr = oVal < cVal ? up : dn
+            bx.set_lefttop(leftX, math.max(oVal, cVal))
+            bx.set_rightbottom(rightX, math.min(oVal, cVal))
+            bx.set_bgcolor(color.new(candleClr, trans))
+            wh.set_xy1(wCenter, math.max(oVal, cVal))
+            wh.set_xy2(wCenter, hVal)
+            wh.set_color(color.new(candleClr, trans))
+            wl.set_xy1(wCenter, math.min(oVal, cVal))
+            wl.set_xy2(wCenter, lVal)
+            wl.set_color(color.new(candleClr, trans))
+            store.hl.set(i * 2, hVal)
+            store.hl.set(i * 2 + 1, lVal)
+        else
+            bx.set_lefttop(na, na)
+            bx.set_rightbottom(na, na)
+            wh.set_xy1(na, na)
+            wh.set_xy2(na, na)
+            wl.set_xy1(na, na)
+            wl.set_xy2(na, na)
+            store.hl.set(i * 2, na)
+            store.hl.set(i * 2 + 1, na)
+        currD += 3
+    bool(na)
+
+// Updates/creates the label under one HTF mini chart.
+export update_htf_name_label(label lb, HTF_Data store, int count, int offset, string tfText, Theme theme) =>
+    label out = lb
+    [rHi, rLo] = get_htf_range(store)
+    bool valid = not na(rHi) and not na(rLo)
+    if valid
+        float pad = math.max((rHi - rLo) * 0.10, syminfo.mintick * 15)
+        float y = rLo - pad
+        float span = (count - 1) * 3 + 2
+        int x = bar_index + offset - int(math.floor(span / 2))
+        if na(out)
+            out := label.new(x, y, tfText, xloc = xloc.bar_index, style = theme.STYLE_LABEL_NONE, color = theme.COLOR_TRANSPARENT, textcolor = theme.COLOR_NEUTRAL, size = theme.SIZE_TINY)
+        else
+            if out.get_x() != x
+                out.set_x(x)
+            if out.get_y() != y
+                out.set_y(y)
+            if out.get_text() != tfText
+                out.set_text(tfText)
+            out.set_textcolor(theme.COLOR_NEUTRAL)
+    else if not na(out)
+        out.delete()
+        out := na
+    out
+
+// Renders one HTF mini-chart slot.
+export render_htf_slot(HTF_Data store, label lb, bool show, float _o, float _h, float _l, float _c, int count, int offset, string tfText, Theme theme, int trans) =>
+    label out = lb
+    if show
+        render_htf_view(store, count, offset, _o, _h, _l, _c, theme.COLOR_BULLISH, theme.COLOR_BEARISH, trans)
+        string tfLabel = tfText == "240" ? "4h" : tfText == "60" ? "1h" : tfText == "15" ? "15m" : tfText == "5" ? "5m" : tfText
+        out := update_htf_name_label(out, store, count, offset, tfLabel, theme)
+    else if not na(out)
+        out.delete()
+        out := na
+    out
+
+// Draws one HTF candle slot from prepared OHLC/pattern data.
+export draw_data_htf_candles(HTF_Data store, label tfLabel, bool show, float o, float h, float l, float c, int pat, int count, int offset, string tfText, color tfColor, Theme theme, HTFCandleVisualCfg cfg) =>
+    label out = render_htf_slot(store, tfLabel, show, o, h, l, c, count, offset, tfText, theme, cfg.transparent)
+    if not na(out)
+        out.set_textcolor(tfColor)
+        out.set_size(cfg.labelSize)
+    apply_htf_candle_pattern_marks(store, show, pat, count, tfColor, theme.COLOR_BULLISH, theme.COLOR_BEARISH, cfg)
+    out
+
+// Calculates slot TF/count/offset/reset data for the 2-slot HTF candle panel.
+export get_data_htf_candle_layout(string htf1, string htf2, int dynCachedHtf1Candles, int dynCachedHtf2Candles, string prevSlotTf0, string prevSlotTf1, int baseExtBars, HTFCandleLayoutCfg cfg) =>
+    string slotTf0 = htf1
+    string slotTf1 = htf2
+    int slotCount0 = cfg.dynamicEnabled ? math.max(dynCachedHtf1Candles, 1) : cfg.fallbackCount0
+    int slotCount1 = cfg.dynamicEnabled ? math.max(dynCachedHtf2Candles, 1) : cfg.fallbackCount1
+    bool show0 = not na(slotTf0)
+    bool show1 = not na(slotTf1)
+    int span0 = get_htf_chart_span(slotCount0)
+    int span1 = get_htf_chart_span(slotCount1)
+    int off0 = baseExtBars + cfg.firstSlotBaseOffsetBars + math.max(span0 - cfg.spanTrimBars, 0)
+    int off1 = off0 + (show0 ? (span1 + cfg.secondSlotGapBars) : 0)
+    bool needReset0 = barstate.isfirst or slotTf0 != prevSlotTf0
+    bool needReset1 = barstate.isfirst or slotTf1 != prevSlotTf1
+    [slotTf0, slotTf1, slotCount0, slotCount1, show0, show1, off0, off1, needReset0, needReset1]
+
+export cleanup_htf_arrays(array<box> boxes, array<line> wicksHigh, array<line> wicksLow, array<float> hl, int size) =>
+    if array.size(boxes) > 0
+        for i = 0 to array.size(boxes) - 1
+            box.delete(array.get(boxes, i))
+            line.delete(array.get(wicksHigh, i))
+            line.delete(array.get(wicksLow, i))
+    array.clear(boxes)
+    array.clear(wicksHigh)
+    array.clear(wicksLow)
+    array.clear(hl)
+    for i = 0 to size - 1
+        array.push(boxes, box.new(na, na, na, na))
+        array.push(wicksHigh, line.new(na, na, na, na))
+        array.push(wicksLow, line.new(na, na, na, na))
+    for i = 0 to (size * 2) - 1
+        array.push(hl, na)
+    bool(na)
+
+// Resets/draws the two-slot HTF candle panel and returns updated slot labels.
+export process_data_htf_candles(
+ HTF_Data htf1C, HTF_Data htf2C, label htfLabel0In, label htfLabel1In,
+ string slotTf0, string slotTf1, int slotCount0, int slotCount1, bool show0, bool show1, int off0, int off1, bool needReset0, bool needReset1,
+ float o1, float h1, float l1, float c1, int htfPat1, float o2, float h2, float l2, float c2, int htfPat2,
+ color tf1Color, color tf2Color, Theme theme, HTFCandleVisualCfg cfg) =>
+    if needReset0
+        cleanup_htf_arrays(htf1C.boxes, htf1C.wicks_h, htf1C.wicks_l, htf1C.hl, math.max(slotCount0, 1))
+    if needReset1 and slotCount1 > 0
+        cleanup_htf_arrays(htf2C.boxes, htf2C.wicks_h, htf2C.wicks_l, htf2C.hl, slotCount1)
+    label out0 = draw_data_htf_candles(htf1C, htfLabel0In, show0, o1, h1, l1, c1, htfPat1, slotCount0, off0, slotTf0, tf1Color, theme, cfg)
+    label out1 = draw_data_htf_candles(htf2C, htfLabel1In, show1, o2, h2, l2, c2, htfPat2, slotCount1, off1, slotTf1, tf2Color, theme, cfg)
+    [out0, out1]
+
+
+// Updates one projected-zone box lifecycle and visuals.
+export update_projected_box(box bx, bool isVisible, int leftTime, int extendBars, float top, float btm, color zoneColor, color txtColor, string txt,
+ int currentBarIndex, int currentTime, int previousTime, int fallbackSpanBars, bool allowDraw, color borderColor, string borderStyle, ProjectedBoxVisualCfg cfg) =>
+    box out = bx
+    bool valid = isVisible and not na(leftTime) and not na(top) and not na(btm) and top > btm and allowDraw
+    if valid
+        bool crossT = currentTime >= leftTime and previousTime < leftTime
+        int leftIdxExact = ta.valuewhen(time == leftTime, bar_index, 0)
+        int leftIdxCross = ta.valuewhen(crossT, bar_index, 0)
+        int leftResolved = not na(leftIdxExact) ? leftIdxExact : leftIdxCross
+        int leftIdx = not na(leftResolved) ? leftResolved : math.max(currentBarIndex - fallbackSpanBars, 0)
+        int rightIdx = currentBarIndex + math.max(extendBars, 0)
+        if na(out)
+            out := box.new(leftIdx, top, rightIdx, btm, xloc = xloc.bar_index, bgcolor = zoneColor, border_color = borderColor, border_style = borderStyle, border_width = cfg.borderWidth, text = txt, text_halign = cfg.textHAlign, text_valign = cfg.textVAlign, text_size = cfg.textSize, text_color = txtColor)
+        else
+            out.set_lefttop(leftIdx, top)
+            out.set_rightbottom(rightIdx, btm)
+            out.set_bgcolor(zoneColor)
+            out.set_border_color(borderColor)
+            out.set_border_style(borderStyle)
+            out.set_border_width(cfg.borderWidth)
+            out.set_text_color(txtColor)
+            out.set_text(txt)
+    else
+        if not na(out)
+            out.delete()
+            out := na
+    out
+
+// Updates one slot in projected-zone box array.
+export update_projected_box_slot(array<box> store, int slotIdx, bool isVisible, int leftTime, int extendBars, float top, float btm, color zoneColor, color txtColor, string txt,
+ int currentBarIndex, int currentTime, int previousTime, int fallbackSpanBars, bool allowDraw, color borderColor, string borderStyle, ProjectedBoxVisualCfg cfg) =>
+    if slotIdx >= 0 and slotIdx < array.size(store)
+        box bx = array.get(store, slotIdx)
+        bx := update_projected_box(bx, isVisible, leftTime, extendBars, top, btm, zoneColor, txtColor, txt, currentBarIndex, currentTime, previousTime, fallbackSpanBars, allowDraw, borderColor, borderStyle, cfg)
+        array.set(store, slotIdx, bx)
+
+// Shared dashboard helper: trend background color.
+export get_bias_bg_from_trend(int trendDir, color bullishColor, color bearishColor, color neutralColor) =>
+    trendDir == 1 ? color.new(bullishColor, 80) : trendDir == -1 ? color.new(bearishColor, 80) : color.new(neutralColor, 85)
+
+// Shared dashboard helper: short bias symbol.
+export get_bias_symbol(int biasDir, string upSym, string dnSym, string dashSym) =>
+    biasDir == 1 ? upSym : biasDir == -1 ? dnSym : dashSym
+
+// Deletes optional line+label visuals.
+export delete_line_label(line ln, label lb) =>
+    if not na(ln)
+        ln.delete()
+    if not na(lb)
+        lb.delete()
+    bool(na)
+
+// Draws a generic line segment (supports horizontal/diagonal and time/index xloc).
+export draw_line_segment(int x1, float y1, int x2, float y2, string xLocation, color lnColor, string lnStyle, int lnWidth) =>
+    line.new(x1, y1, x2, y2, xloc = xLocation, color = lnColor, style = lnStyle, width = lnWidth)
+
+// Updates/creates one horizontal line object with guarded coordinates.
+export draw_hline(line ln, int x1, float y, int x2, color lnColor, string lnStyle, int lnWidth) =>
+    line out = ln
+    int minSafeLeft = math.max(bar_index - 450, 0)
+    int safeX1 = math.max(x1, minSafeLeft)
+    int safeX2 = math.max(x2, minSafeLeft)
+    if safeX2 < safeX1
+        safeX2 := safeX1
+    if na(out)
+        out := line.new(safeX1, y, safeX2, y, xloc = xloc.bar_index, color = lnColor, style = lnStyle, width = lnWidth)
+    else
+        if out.get_x1() != safeX1
+            out.set_x1(safeX1)
+        if out.get_x2() != safeX2
+            out.set_x2(safeX2)
+        if out.get_y1() != y
+            out.set_y1(y)
+        if out.get_y2() != y
+            out.set_y2(y)
+        out.set_color(lnColor)
+        out.set_style(lnStyle)
+        out.set_width(lnWidth)
+    out
+
+// Updates/creates one diagonal line object.
+export draw_dline(line ln, int x1, float y1, int x2, float y2, color lnColor, string lnStyle, int lnWidth) =>
+    line out = ln
+    int minSafeLeft = math.max(bar_index - 450, 0)
+    int safeX1 = math.max(x1, minSafeLeft)
+    int safeX2 = math.max(x2, minSafeLeft)
+    if safeX2 < safeX1
+        safeX2 := safeX1
+    if na(out)
+        out := line.new(safeX1, y1, safeX2, y2, xloc = xloc.bar_index, color = lnColor, style = lnStyle, width = lnWidth)
+    else
+        out.set_xy1(safeX1, y1)
+        out.set_xy2(safeX2, y2)
+        out.set_color(lnColor)
+        out.set_style(lnStyle)
+        out.set_width(lnWidth)
+    out
+
+// Safely deletes a line object if it exists.
+export delete_line_safe(line ln) =>
+    if not na(ln)
+        ln.delete()
+    bool(na)
+
+// Draws text anchored on a line position with configurable placement.
+export draw_text_on_line(int x1, float y1, int x2, float y2, string xLocation, string txt, color txtColor, string txtSize, int vPos, float yPadTicks, float xRatio, int xPadBars, string tooltipText, string textAlign, Theme theme) =>
+    int barMs = int(math.max(time - time[1], 1))
+    int padX = xLocation == xloc.bar_time ? (xPadBars * barMs) : xPadBars
+    int baseX = int(math.round(x1 + (x2 - x1) * xRatio))
+    int labelX = baseX + padX
+    float baseY = y1 + (y2 - y1) * xRatio
+    float yPad = syminfo.mintick * yPadTicks
+    float labelY = vPos > 0 ? baseY + yPad : vPos < 0 ? baseY - yPad : baseY
+    label.new(labelX, labelY, txt, xloc = xLocation, color = color.new(theme.COLOR_TRANSPARENT, 100), style = theme.STYLE_LABEL_NONE, textcolor = txtColor, size = txtSize, tooltip = tooltipText, textalign = textAlign)
+
+// Updates/creates one plain text label for line endpoints.
+export draw_line_label(label lb, int x, float y, string txt, color txtColor, string txtSize, string tipText) =>
+    label out = lb
+    if na(out)
+        out := label.new(x, y, txt, xloc = xloc.bar_index, style = label.style_none, color = color.new(color.white, 100), textcolor = txtColor, size = txtSize, tooltip = tipText, textalign = text.align_left)
+    else
+        if out.get_x() != x
+            out.set_x(x)
+        if out.get_y() != y
+            out.set_y(y)
+        if out.get_text() != txt
+            out.set_text(txt)
+        out.set_textcolor(txtColor)
+        out.set_size(txtSize)
+        out.set_tooltip(tipText)
+    out
+
+export draw_pd_pw(line pdhLineIn, line pdlLineIn, label pdhLabelIn, label pdlLabelIn, bool showPd, int klRight, color klColor, string klStyle, bool showKlLabels, float d_h, float d_l, int d_t, Theme theme) =>
+    line outPdhLine = pdhLineIn
+    line outPdlLine = pdlLineIn
+    label outPdhLabel = pdhLabelIn
+    label outPdlLabel = pdlLabelIn
+    int SAFE_PDPW_BACK_BARS = 450
+    int minSafeLeft = math.max(bar_index - SAFE_PDPW_BACK_BARS, 0)
+    if showPd
+        int pdLeftRaw = closest_bar_index_from_time(d_t)
+        int pdLeft = na(pdLeftRaw) ? bar_index : math.max(pdLeftRaw, minSafeLeft)
+        outPdhLine := draw_hline(outPdhLine, pdLeft, d_h, klRight, klColor, klStyle, 1)
+        if showKlLabels
+            int lx = klRight + 1
+            outPdhLabel := draw_line_label(outPdhLabel, lx, d_h, "PDH", theme.COLOR_UI_FG, theme.SIZE_SMALL, tt_side(false, "PDH liq"))
+        else if not na(outPdhLabel)
+            outPdhLabel.delete()
+            outPdhLabel := na
+        outPdlLine := draw_hline(outPdlLine, pdLeft, d_l, klRight, klColor, klStyle, 1)
+        if showKlLabels
+            int lx = klRight + 1
+            outPdlLabel := draw_line_label(outPdlLabel, lx, d_l, "PDL", theme.COLOR_UI_FG, theme.SIZE_SMALL, tt_side(true, "PDL liq"))
+        else if not na(outPdlLabel)
+            outPdlLabel.delete()
+            outPdlLabel := na
+    else
+        if not na(outPdhLine)
+            outPdhLine.delete()
+            outPdhLine := na
+        if not na(outPdlLine)
+            outPdlLine.delete()
+            outPdlLine := na
+        if not na(outPdhLabel)
+            outPdhLabel.delete()
+            outPdhLabel := na
+        if not na(outPdlLabel)
+            outPdlLabel.delete()
+            outPdlLabel := na
+    [outPdhLine, outPdlLine, outPdhLabel, outPdlLabel]
+
+// Draws a line and optional text in one helper.
+export draw_line_with_text(int x1, float y1, int x2, float y2, string xLocation, color lnColor, string txt, bool showTxt, color txtColor, string tooltipText, LineTextVisualCfg cfg, Theme theme) =>
+    line outLine = draw_line_segment(x1, y1, x2, y2, xLocation, lnColor, cfg.lineStyle, cfg.lineWidth)
+    label outLabel = na
+    if showTxt
+        outLabel := draw_text_on_line(x1, y1, x2, y2, xLocation, txt, txtColor, cfg.textSize, cfg.vPos, cfg.yPadTicks, cfg.xRatio, cfg.xPadBars, tooltipText, cfg.textAlign, theme)
+    [outLine, outLabel]
+
+// Returns shared direction visual colors and primary style.
+export get_direction_colors(string direction, Theme theme) =>
+    bool isBull = direction == "Buy"
+    color txtCol = isBull ? color.new(theme.COLOR_BULLISH, 0) : color.new(theme.COLOR_BEARISH, 0)
+    color bgEvent = isBull ? color.new(theme.COLOR_BULLISH, 75) : color.new(theme.COLOR_BEARISH, 75)
+    color bgEntry = isBull ? color.new(theme.COLOR_BULLISH, 0) : color.new(theme.COLOR_BEARISH, 0)
+    string lblStyle = isBull ? label.style_label_up : label.style_label_down
+    [isBull, txtCol, bgEvent, bgEntry, lblStyle]
+
+// Draws one strategy marker according to display mode.
+export draw_strategy_marker(bool canDraw, string dispMode, string direction, string icon, string tip, Theme theme, string dispNone, string dispMarker, string dispEvent, string dispEntry) =>
+    if canDraw and dispMode != dispNone and direction != ""
+        [isBull, txtCol, bgEvent, bgEntry, _] = get_direction_colors(direction, theme)
+        if dispMode == dispMarker
+            label.new(bar_index, na, icon, yloc = isBull ? yloc.belowbar : yloc.abovebar, color = color.new(theme.COLOR_UI_BG, 100), textcolor = txtCol, style = label.style_none, size = theme.SIZE_TINY, tooltip = tip)
+        else if dispMode == dispEvent
+            label.new(bar_index, na, icon, yloc = isBull ? yloc.belowbar : yloc.abovebar, color = bgEvent, textcolor = theme.COLOR_UI_FG, style = isBull ? label.style_label_up : label.style_label_down, size = theme.SIZE_TINY, tooltip = tip)
+        else if dispMode == dispEntry
+            label.new(bar_index, na, icon, yloc = isBull ? yloc.belowbar : yloc.abovebar, color = bgEntry, textcolor = theme.COLOR_UI_FG, style = isBull ? label.style_label_up : label.style_label_down, size = theme.SIZE_TINY, tooltip = tip)
+    bool(na)
+
+// Draws one strategy signal/event marker with optional setup-name prefix.
+export draw_strategy(string strategyName, bool canDraw, string dispMode, string direction, string icon, string tip, Theme theme, string dispNone, string dispMarker, string dispEvent, string dispEntry) =>
+    string tt = dispMode == dispEntry and str.length(strategyName) > 0 ? (strategyName + "\n" + tip) : tip
+    draw_strategy_marker(canDraw, dispMode, direction, icon, tt, theme, dispNone, dispMarker, dispEvent, dispEntry)
+
+// Draws winning strategy signal (non-Trade modes). Trade mode is handled by Trade lifecycle visuals.
+export draw_trade_signal(bool show, int sigDir, string setupName, string sigReason, string shortName, string dispMode, Theme theme, bool canDraw, string ttBuy, string ttSell, string ttReason, string dispNone, string dispMarker, string dispEvent, string dispEntry) =>
+    if show and sigDir != 0 and dispMode != dispNone and dispMode != dispEntry
+        string tip = (sigDir == 1 ? ttBuy : ttSell) + " [" + shortName + "]" + ttReason + setupName + "\n" + str.replace_all(sigReason, ", ", "\n")
+        draw_strategy(setupName, canDraw, dispMode, sigDir == 1 ? "Buy" : "Sell", shortName, tip, theme, dispNone, dispMarker, dispEvent, dispEntry)
+    bool(na)
+
+// Updates one top/bottom session line+label object during an active window.
+export manage_window_line(WindowLine _id, bool _inWin, float _hi, float _lo, int _time, color _clr, string _txt, bool _labelIsTime, bool _useMax, int _width, bool _showLabel, string _labelSize, string _tooltip, string _timeFormat, string _timeZone, float _padBars) =>
+    float v = _useMax ? _hi : _lo
+    if _inWin and not _inWin[1]
+        _id.extreme := v
+        _id.startT := _time
+        _id.active := true
+        if not na(_id.ln)
+            _id.ln.delete()
+        if not na(_id.lb)
+            _id.lb.delete()
+        _id.ln := line.new(_id.startT, _id.extreme, _id.startT, _id.extreme, xloc.bar_time, color = _clr, style = line.style_solid, width = _width)
+        if _showLabel and _labelSize != "None"
+            string labelTxt = _labelIsTime ? str.replace(str.format_time(_id.startT, _timeFormat, _timeZone), ":00 ", " ") : _txt
+            int padMs = _padBars > 0 ? int(nz(_time - _time[1], 0) * _padBars) : 0
+            int xTxt = _id.startT + padMs
+            string lbStyle = _useMax ? label.style_label_down : label.style_label_up
+            _id.lb := label.new(xTxt, _id.extreme, labelTxt, xloc.bar_time, color = color.new(color.white, 100), style = lbStyle, textcolor = _clr, size = _labelSize, tooltip = _tooltip)
+    if _inWin and _id.active
+        _id.extreme := _useMax ? math.max(_hi, _id.extreme) : math.min(_lo, _id.extreme)
+        if not na(_id.ln)
+            line.set_y1(_id.ln, _id.extreme)
+            line.set_xy2(_id.ln, _time, _id.extreme)
+        if not na(_id.lb)
+            int padMs = _padBars > 0 ? int(nz(_time - _time[1], 0) * _padBars) : 0
+            int xTxt = _id.startT + padMs
+            label.set_x(_id.lb, xTxt)
+            label.set_y(_id.lb, _id.extreme)
+            string labelTxt = _labelIsTime ? str.replace(str.format_time(_id.startT, _timeFormat, _timeZone), ":00 ", " ") : _txt
+            if label.get_text(_id.lb) != labelTxt
+                label.set_text(_id.lb, labelTxt)
+    if not _inWin and _id.active
+        _id.active := false
+    bool(na)
+
+// Resets/deletes one window line+label object.
+export reset_window_line(WindowLine _id) =>
+    if not na(_id.ln)
+        _id.ln.delete()
+    if not na(_id.lb)
+        _id.lb.delete()
+    _id.ln := na
+    _id.lb := na
+    _id.extreme := na
+    _id.startT := na
+    _id.active := false
+    bool(na)
+
+// Updates one session overlap box object during active window.
+export manage_window_box(WindowBox _id, bool _inWin, float _hi, float _lo, int _time, color _bg) =>
+    if _inWin and not _inWin[1]
+        _id.hi := _hi
+        _id.lo := _lo
+        _id.startT := _time
+        _id.active := true
+        if not na(_id.bx)
+            _id.bx.delete()
+        _id.bx := box.new(_id.startT, _id.hi, _time, _id.lo, xloc = xloc.bar_time, bgcolor = _bg, border_color = color.new(_bg, 100))
+    if _inWin and _id.active and not na(_id.bx)
+        _id.hi := math.max(_hi, _id.hi)
+        _id.lo := math.min(_lo, _id.lo)
+        box.set_top(_id.bx, _id.hi)
+        box.set_bottom(_id.bx, _id.lo)
+        box.set_right(_id.bx, _time)
+    if not _inWin and _id.active
+        _id.active := false
+    bool(na)
+
+// Resets/deletes one window box object.
+export reset_window_box(WindowBox _id) =>
+    if not na(_id.bx)
+        _id.bx.delete()
+    _id.bx := na
+    _id.hi := na
+    _id.lo := na
+    _id.startT := na
+    _id.active := false
+    bool(na)

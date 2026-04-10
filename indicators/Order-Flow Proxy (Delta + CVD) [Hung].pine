@@ -1,0 +1,46 @@
+//@version=6
+indicator("Order-Flow Proxy (Delta + CVD) [Hung]", overlay=false, max_labels_count=200)
+
+// ===== Inputs =====
+deltaEmaLen     = input.int(8,  "Delta EMA Len")
+cvdEmaLen       = input.int(34, "CVD EMA Len")
+volNormLen      = input.int(20, "Volume Norm Len")
+deltaMult       = input.float(0.6, "Delta Strength Mult", step=0.1)
+showAbsorption  = input.bool(true, "Show Absorption Marks")
+
+// ===== Proxy Delta =====
+// +volume for bullish candle, -volume for bearish candle
+deltaRaw = close > open ? volume : close < open ? -volume : 0.0
+deltaEma = ta.ema(deltaRaw, deltaEmaLen)
+
+// ===== CVD =====
+cvd    = ta.cum(deltaRaw)
+cvdEma = ta.ema(cvd, cvdEmaLen)
+
+// ===== Strength Filter =====
+volBase    = ta.sma(volume, volNormLen)
+deltaStrong = math.abs(deltaEma) > (volBase * deltaMult)
+
+// ===== Directional State =====
+ofBull = deltaEma > 0 and cvd > cvdEma and deltaStrong
+ofBear = deltaEma < 0 and cvd < cvdEma and deltaStrong
+
+// ===== Simple Absorption Proxy =====
+// Bullish absorption: price pushes lower, but delta turns positive
+bullAbsorb = low < low[1] and close > open and deltaRaw > 0
+// Bearish absorption: price pushes higher, but delta turns negative
+bearAbsorb = high > high[1] and close < open and deltaRaw < 0
+
+// ===== Plots =====
+plot(deltaEma, "Delta EMA", color = deltaEma >= 0 ? color.lime : color.red, style=plot.style_histogram)
+plot(cvd, "CVD", color=color.new(color.aqua, 0))
+plot(cvdEma, "CVD EMA", color=color.new(color.orange, 0))
+
+bgcolor(ofBull ? color.new(color.lime, 88) : ofBear ? color.new(color.red, 88) : na)
+
+plotshape(showAbsorption and bullAbsorb, title="Bull Absorption", style=shape.triangleup, location=location.bottom, color=color.lime, size=size.tiny, text="Abs")
+plotshape(showAbsorption and bearAbsorb, title="Bear Absorption", style=shape.triangledown, location=location.top, color=color.red, size=size.tiny, text="Abs")
+
+// Signal markers
+plotshape(ofBull, title="OF Bull", style=shape.circle, location=location.bottom, size=size.tiny, color=color.lime, text="OF+")
+plotshape(ofBear, title="OF Bear", style=shape.circle, location=location.top, size=size.tiny, color=color.red, text="OF-")

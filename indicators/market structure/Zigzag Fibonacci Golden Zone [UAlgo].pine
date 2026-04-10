@@ -1,0 +1,112 @@
+//@version=5
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © UAlgo
+indicator("Zigzag Fibonacci Golden Zone [UAlgo]",overlay=true,max_bars_back=5000)
+
+length      = input.int(13,title = "Zig Zag Length",group = "Zig Zag Fibonacci Golden Zone",minval=5,maxval=300)
+showPrices = input.bool(true,'Show Prices',group ="Zig Zag Fibonacci Golden Zone",inline = "Labels") 
+zzTopColor = input.color(color.purple,'Zig Zag Top ',group='Zig Zag Fibonacci Golden Zone',inline = "Styling")
+zzColor = input.color(color.purple,'Zig Zag Color',group='Zig Zag Fibonacci Golden Zone',inline = "Styling")
+zzBotColor = input.color(color.purple,'Zig Zag Bottom ',group='Zig Zag Fibonacci Golden Zone',inline = "Styling")
+showBuySellSignals = input.bool(false,'Show Buy / Sell Signals',group ="Zig Zag Fibonacci Golden Zone",inline = "Labels" ) 
+
+var float valtop = na
+var float valbtm = na
+var float valBottomDraw = na
+var float valTopDraw = na
+var float[] btm_points = array.new_float()
+var float[] top_points = array.new_float()
+var line draw_bottom = na
+var line draw_top = na
+var line draw_500 = na
+var line draw_618 = na
+var line draw_786 = na
+var label draw_goldenZone = na
+var bool buySignal = na
+var bool sellSignal = na
+os = 0
+srcUpper = high
+srcLower = low
+
+upper = ta.highest(srcUpper,length)
+lower = ta.lowest(srcLower,length)
+os := srcUpper[length] >= upper ? 0 : srcLower[length] <= lower ? 1 : os[1]
+
+pl = os == 1 and os[1] != 1
+ph = os == 0 and os[1] != 0
+
+pl_n = ta.valuewhen(pl,bar_index,0)
+ph_n = ta.valuewhen(ph,bar_index,0)
+len = math.abs(pl_n - ph_n)
+
+if pl
+    valbtm := low[length]
+    line.new(bar_index[len+length],valtop,bar_index[length],low[length],color=zzColor)
+    if not na(draw_bottom)
+        line.delete(draw_bottom)
+        line.delete(draw_500)
+        line.delete(draw_618)
+        line.delete(draw_786)
+        label.delete(draw_goldenZone)
+    if array.size(btm_points) == 0
+        array.push(btm_points,valbtm)
+        valBottomDraw := array.get(btm_points, 0)
+        draw_bottom := line.new(bar_index[length], valBottomDraw, bar_index, valBottomDraw, color=color.purple,extend = extend.right)
+        draw_500 := line.new(bar_index[length], (valTopDraw+valBottomDraw)/2, bar_index, (valTopDraw+valBottomDraw)/2, color=color.rgb(82, 255, 226),extend = extend.right,style = line.style_solid)
+        draw_618 := line.new(bar_index[length], (valTopDraw-valBottomDraw)*0.382+valBottomDraw, bar_index, (valTopDraw-valBottomDraw)*0.382+valBottomDraw, color=color.yellow,extend = extend.right,style = line.style_solid)
+        draw_786 := line.new(bar_index[length], (valTopDraw-valBottomDraw)*0.236+valBottomDraw, bar_index, (valTopDraw-valBottomDraw)*0.236+valBottomDraw, color=color.yellow,extend = extend.right,style = line.style_solid)
+    else if array.size(btm_points) > 0
+        array.shift(btm_points)
+        array.push(btm_points,valbtm)
+        valBottomDraw := array.get(btm_points, 0)
+        draw_bottom := line.new(bar_index[length], valBottomDraw, bar_index, valBottomDraw, color=color.purple,extend = extend.right)
+        draw_500 := line.new(bar_index[length], (valTopDraw+valBottomDraw)/2, bar_index, (valTopDraw+valBottomDraw)/2, color=color.rgb(82, 255, 226),extend = extend.right,style = line.style_solid)
+        draw_618 := line.new(bar_index[length], (valTopDraw-valBottomDraw)*0.382+valBottomDraw, bar_index, (valTopDraw-valBottomDraw)*0.382+valBottomDraw, color=color.yellow,extend = extend.right,style = line.style_solid)
+        draw_786 := line.new(bar_index[length], (valTopDraw-valBottomDraw)*0.236+valBottomDraw, bar_index, (valTopDraw-valBottomDraw)*0.236+valBottomDraw, color=color.yellow,extend = extend.right,style = line.style_solid)
+    if showPrices
+        label.new(bar_index[length], low[length], text=str.tostring(low[length]), color=color.new(#00000000, 0), style=label.style_label_up, textcolor=zzBotColor, textalign=text.align_left, size=size.small)
+        draw_goldenZone := label.new(bar_index, (valTopDraw-valBottomDraw)*0.236+valBottomDraw, text="Golden Zone", color=color.new(#000000, 100), style=label.style_label_up, textcolor=color.yellow, textalign=text.align_left, size=size.small)
+if ph
+    valtop := high[length]
+    line.new(bar_index[len+length],valbtm,bar_index[length],high[length],color=zzColor)
+    if not na(draw_top)
+        line.delete(draw_top)
+        line.delete(draw_500)
+        line.delete(draw_618)
+        line.delete(draw_786)
+        label.delete(draw_goldenZone)
+    if array.size(top_points) == 0
+        array.push(top_points,valtop)
+        valTopDraw := array.get(top_points, 0)
+        draw_top := line.new(bar_index[length], valTopDraw, bar_index, valTopDraw, color=color.purple,extend = extend.right)
+        draw_500 := line.new(bar_index[length], (valTopDraw+valBottomDraw)/2, bar_index, (valTopDraw+valBottomDraw)/2, color=color.rgb(82, 255, 226),extend = extend.right,style = line.style_solid,width = 5)
+        draw_618 := line.new(bar_index[length], (valTopDraw-valBottomDraw)*0.618+valBottomDraw, bar_index, (valTopDraw-valBottomDraw)*0.618+valBottomDraw, color=color.yellow,extend = extend.right,style = line.style_solid)
+        draw_786 := line.new(bar_index[length], (valTopDraw-valBottomDraw)*0.786+valBottomDraw, bar_index, (valTopDraw-valBottomDraw)*0.786+valBottomDraw, color=color.yellow,extend = extend.right,style = line.style_solid)
+    else if array.size(top_points) > 0
+        array.shift(top_points)
+        array.push(top_points,valtop)
+        valTopDraw := array.get(top_points, 0)
+        draw_top := line.new(bar_index[length], valTopDraw, bar_index, valTopDraw, color=color.purple,extend = extend.right)
+        draw_500 := line.new(bar_index[length], (valTopDraw+valBottomDraw)/2, bar_index, (valTopDraw+valBottomDraw)/2, color=color.rgb(82, 255, 226),extend = extend.right,style = line.style_solid)
+        draw_618 := line.new(bar_index[length], (valTopDraw-valBottomDraw)*0.618+valBottomDraw, bar_index, (valTopDraw-valBottomDraw)*0.618+valBottomDraw, color=color.yellow,extend = extend.right,style = line.style_solid)
+        draw_786 := line.new(bar_index[length], (valTopDraw-valBottomDraw)*0.786+valBottomDraw, bar_index, (valTopDraw-valBottomDraw)*0.786+valBottomDraw, color=color.yellow,extend = extend.right,style = line.style_solid)
+    if showPrices
+        label.new(bar_index[length],high[length],str.tostring(high[length]),color=#00000000,style=label.style_label_down,textcolor=zzTopColor,textalign=text.align_left,size=size.small)
+        draw_goldenZone := label.new(bar_index, valBottomDraw + (valTopDraw-valBottomDraw), text="Golden Zone", color=color.new(#000000, 100), style=label.style_label_up, textcolor=color.yellow, textalign=text.align_left, size=size.small)
+    
+if (close[1] < (valTopDraw-valBottomDraw)*0.786+valBottomDraw and close[1] > (valTopDraw-valBottomDraw)*0.618+valBottomDraw and os == 0 and close[1] < open[1] and sellSignal[1] != true and sellSignal[2] != true and close < open) 
+    sellSignal := true
+    
+else
+    sellSignal := false
+
+if (close[1] > (valTopDraw-valBottomDraw)*0.236+valBottomDraw and close[1] < (valTopDraw-valBottomDraw)*0.382+valBottomDraw and os == 1 and close[1] > open[1] and buySignal[1] != true and buySignal[2] != true and close > open) 
+    buySignal := true
+else
+    buySignal := false
+    
+if buySignal and showBuySellSignals
+    label.new(bar_index, low-ta.atr(14), "Buy Pullback", style=label.style_label_up,textcolor = color.rgb(47, 255, 5),size = size.small)
+
+if sellSignal and showBuySellSignals
+    label.new(bar_index, high+ta.atr(14), "Sell Pullback", style=label.style_label_down,textcolor = color.rgb(255, 76, 5),size = size.small)

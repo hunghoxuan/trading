@@ -1,0 +1,61 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © hanabil
+
+//@version=5
+indicator("Double EMA Pullback - Buy Sell Signal", overlay=true, max_labels_count=500)
+
+gr0     = 'Pullback'
+pbStep  = input(5, 'Backstep of Pullback', group=gr0)
+
+gr1     = 'Double EMA'
+emaSrc  = input.source(close, 'EMA 1 Source', group=gr1)
+emaLen  = input(50, 'EMA 1 Period', group=gr1)
+emaCol  = input.color(color.blue, 'EMA 1 Color', group=gr1)
+ema1    = ta.ema(emaSrc, emaLen)
+plot(ema1, 'EMA 1', color=emaCol)
+
+emaSrc1 = input.source(close, 'EMA 2 Source', group=gr1)
+emaLen1 = input(200, 'EMA 2 Period', group=gr1)
+emaCol1 = input.color(color.red, 'EMA 2 Color', group=gr1)
+ema2    = ta.ema(emaSrc1, emaLen1)
+plot(ema2, 'EMA 2', color=emaCol1)
+
+buySignal   = ta.crossover (close, ema1) and ema1>ema2 and close[pbStep]>ema1
+sellSignal  = ta.crossunder(close, ema1) and ema1<ema2 and close[pbStep]<ema1
+
+gr4             = 'Styling'
+showPattern     = input(true, 'Show Pattern Name', group=gr4)
+textCol         = input.color(color.white, 'Text Color', group=gr4)
+bullText        = input.string('Buy', 'Buy Signal', inline='ul', group=gr4)
+bullCol         = input.color(color.green, '', '', 'ul', gr4)
+bearText        = input('Sell', 'Sell Signal', '', 'ms', gr4)
+bearCol         = input.color(color.red, '', '', 'ms', gr4)
+
+fLabel(x, y)=>
+    labelStyle  = y==high? label.style_label_down : label.style_label_up
+    labelCol    = y==high? bearCol  : bullCol
+    labelText   = y==high? bearText : bullText
+    //labelText   = showPattern? labelText_ + pn : labelText_
+    if x
+        label.new(bar_index, y, labelText, style=labelStyle, color=labelCol, size=size.small, textcolor=textCol)
+
+fLabel(buySignal , low )
+fLabel(sellSignal, high)
+
+alertcondition(buySignal, 'Buy Signal', 'Buy!!')
+alertcondition(sellSignal, 'Sell Signal', 'Sell!!')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

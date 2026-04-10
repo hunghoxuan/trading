@@ -1,0 +1,321 @@
+//@version=5
+// @version: 0.1.0
+// @trace_ts: 2026-03-07 22:29:54 +0100
+// @trace_update: refactor Wyckoff sideways-range detector to use TradingKit (Theme/UI helpers) + project naming/sections
+// @trace_features: sideways range box (ACC/DIST), optional merge, breakout projection, optional spring/upthrust markers
+// @trace_last_backup: /Users/macmini/Trade/Bot/Hung Bot/backups/wyckoff.pine.bak_20260307_222326_pre_tradingkit_refactor
+indicator("Hung - Wyckoff Ranges", overlay = true, max_boxes_count = 50, max_labels_count = 200, max_bars_back = 300)
+
+import hunghoxuan/TradingKit/45 as LIB
+
+// ==================== CONSTANTS (LOGIC) ====================
+// WY: state machine.
+WY_STATE_TREND = 0
+WY_STATE_RANGE = 1
+
+// WY: type labels (kept short for chart readability).
+WY_TXT_ACC = "ACC"
+WY_TXT_DIST = "DIST"
+WY_TXT_DEMAND = "DEMAND"
+WY_TXT_SUPPLY = "SUPPLY"
+
+// WY: range classification (1 = accumulation, -1 = distribution).
+WY_CLASS_ACC = 1
+WY_CLASS_DIST = -1
+WY_MIN_WIDTH_BARS = 3
+WY_PIVOT_MIN_COUNT = 2 // Number of pivot highs/lows required before using pivot clusters for edges.
+WY_PIVOT_LEDGER_MAX = 60 // Hard cap to keep cluster-fit computation bounded.
+WY_EDGE_TOL_ATR = 0.12 // Edge touch tolerance (ATR). Higher = more touches, wider band; lower = tighter.
+WY_EDGE_TOL_MIN_TICKS = 2.0 // Minimum tolerance in ticks (for low ATR symbols).
+WY_MAX_BAND_ATR = 1.8 // Max allowed band height in ATR once cluster edges are computed. Keeps range narrow.
+WY_EDGE_MIN_TOUCHES = 2 // Require at least this many pivot touches per side to accept fitted edge levels.
+WY_MODE_INNER = "INNER"
+WY_MODE_OUTER = "OUTER"
+WY_INNER_CONTAIN_PCT_MIN = 70.0 // INNER mode: minimum % of recent bars that must stay inside band.
+
+// ==================== CONSTANTS (UI/TEXT) ====================
+WY_GROUP = "Wyckoff"
+WY_FILL_TRANSP = 90
+WY_BORDER_TRANSP = 35
+WY_PROJ_FILL_TRANSP = 94
+WY_PROJ_BORDER_TRANSP = 55
+WY_LABEL_SIZE = size.small
+WY_EVENT_SIZE = size.small
+WY_RANGE_BORDER_STYLE = line.style_solid
+WY_PROJ_BORDER_STYLE = line.style_dashed
+
+// ==================== INPUTS ====================
+wyEnable = input.bool(true, "Enable", group = WY_GROUP)
+wyLookbackLen = input.int(40, "Lookback Length", minval = 10, maxval = 300, group = WY_GROUP)
+wyAdxLen = input.int(14, "ADX Length", minval = 5, maxval = 50, group = WY_GROUP)
+wyAdxThresh = input.float(25.0, "ADX Threshold", minval = 5.0, maxval = 60.0, step = 0.5, group = WY_GROUP)
+wyRangeAtrMult = input.float(15.0, "Max Range ATR Mult", minval = 1.0, maxval = 60.0, step = 0.5, group = WY_GROUP)
+wyMergeGapBars = input.int(20, "Max Merge Gap (Bars)", minval = 0, maxval = 200, group = WY_GROUP)
+wyMinRangeBars = input.int(15, "Min Range Length (Bars)", minval = 5, maxval = 200, group = WY_GROUP)
+wyDrawProjection = input.bool(true, "Project Supply/Demand", group = WY_GROUP)
+wyDrawManipulation = input.bool(true, "Show Spring/Upthrust", group = WY_GROUP)
+wyPivotLenInput = input.int(5, "Pivot Len", minval = 2, maxval = 20, group = WY_GROUP)
+wyRangeMode = input.string(WY_MODE_INNER, "Range Mode", options = [WY_MODE_INNER, WY_MODE_OUTER], group = WY_GROUP)
+wyInnerContainPctMin = input.float(WY_INNER_CONTAIN_PCT_MIN, "Inner Contain %", minval = 40.0, maxval = 95.0, step = 1.0, group = WY_GROUP)
+
+// ==================== GLOBAL STATE (PERSISTENT) ====================
+var THEME = LIB.Theme.new()
+var SETTINGS = LIB.Settings.new()
+
+// Active sideways range.
+var int wyCurrState = WY_STATE_TREND
+var int wyStartIdx = na
+var float wyHigh = na
+var float wyLow = na
+var int wyActiveClass = 0
+var box wyRangeBox = na
+var label wyRangeLabel = na
+var bool wyActiveMerged = false
+var bool wyHasSwingHigh = false
+var bool wyHasSwingLow = false
+var array<float> wyPivotHighs = array.new_float()
+var array<float> wyPivotLows = array.new_float()
+
+// Last confirmed range (for merge + projection).
+var box wyLastBox = na
+var label wyLastLabel = na
+var float wyLastHigh = na
+var float wyLastLow = na
+var int wyLastEndIdx = na
+var int wyLastClass = 0
+
+// Breakout projection.
+var box wyProjBox = na
+var label wyProjLabel = na
+
+// ==================== LOCAL (PER BAR) ====================
+// Indicator calculations.
+[_, _, wyAdx] = ta.dmi(wyAdxLen, wyAdxLen)
+float wyAtr = ta.atr(14)
+float wyHh = ta.highest(high, wyLookbackLen)
+float wyLl = ta.lowest(low, wyLookbackLen)
+float wyRangeH = wyHh - wyLl
+bool wyTightRange = wyRangeH < (wyAtr * wyRangeAtrMult)
+int wyState = (wyAdx < wyAdxThresh and wyTightRange) ? WY_STATE_RANGE : WY_STATE_TREND
+
+// CMF (Chaikin Money Flow) sign used only as a lightweight ACC/DIST proxy.
+float wyDen = (high - low)
+float wyFlow = volume * ((close - low) - (high - close)) / (wyDen == 0.0 ? 1.0 : wyDen)
+float wyVolEma = ta.ema(volume, wyLookbackLen)
+float wyCmf = ta.ema(wyFlow, wyLookbackLen) / (wyVolEma == 0.0 ? 1.0 : wyVolEma)
+
+bool wyChanged = wyState != wyCurrState
+bool inLookback = LIB.is_in_draw_lookback_current(SETTINGS.GLOBAL_MAX_LOOKBACK_BARS)
+
+// ==================== FEATURES ====================
+if wyEnable and inLookback
+    // Finalize active range when leaving sideways.
+    if wyChanged and wyCurrState == WY_STATE_RANGE
+        if not na(wyRangeBox)
+            wyLastBox := wyRangeBox
+            wyLastLabel := wyRangeLabel
+            wyLastHigh := wyHigh
+            wyLastLow := wyLow
+            wyLastEndIdx := bar_index[1]
+            wyLastClass := wyActiveClass
+            wyActiveMerged := false
+        wyRangeBox := na
+        wyRangeLabel := na
+
+    // Initialize a new range on transition into sideways.
+    if wyChanged and wyState == WY_STATE_RANGE
+        wyStartIdx := bar_index
+        wyHigh := high
+        wyLow := low
+        wyActiveClass := 0
+        wyActiveMerged := false
+        wyHasSwingHigh := false
+        wyHasSwingLow := false
+        array.clear(wyPivotHighs)
+        array.clear(wyPivotLows)
+
+    // Update while in sideways.
+    if wyState == WY_STATE_RANGE and not wyChanged
+        int duration = bar_index - wyStartIdx
+        // Pivot-driven range edges: once pivots print, update edges from swings to reduce wick-outlier expansion.
+        int wyPivotLen = math.max(wyPivotLenInput, 2)
+        float wyPh = ta.pivothigh(high, wyPivotLen, wyPivotLen)
+        float wyPl = ta.pivotlow(low, wyPivotLen, wyPivotLen)
+
+        // Collect pivots that occur during the range.
+        if not na(wyPh)
+            array.push(wyPivotHighs, wyPh)
+            if array.size(wyPivotHighs) > WY_PIVOT_LEDGER_MAX
+                array.shift(wyPivotHighs)
+        if not na(wyPl)
+            array.push(wyPivotLows, wyPl)
+            if array.size(wyPivotLows) > WY_PIVOT_LEDGER_MAX
+                array.shift(wyPivotLows)
+
+        float tol = math.max(wyAtr * WY_EDGE_TOL_ATR, syminfo.mintick * WY_EDGE_TOL_MIN_TICKS)
+
+        // Before both sides have enough pivots, expand with raw highs/lows so the box forms.
+        if array.size(wyPivotHighs) < WY_PIVOT_MIN_COUNT
+            wyHigh := math.max(nz(wyHigh, high), high)
+        if array.size(wyPivotLows) < WY_PIVOT_MIN_COUNT
+            wyLow := math.min(nz(wyLow, low), low)
+
+        // Once we have enough pivots, fit a narrow band that crosses as many pivot highs/lows as possible.
+        if array.size(wyPivotHighs) >= WY_PIVOT_MIN_COUNT and array.size(wyPivotLows) >= WY_PIVOT_MIN_COUNT
+            int nH = array.size(wyPivotHighs)
+            int nL = array.size(wyPivotLows)
+            float maxBand = wyAtr * WY_MAX_BAND_ATR
+
+            // Precompute touch counts per candidate (within tol).
+            array<int> hiTouch = array.new_int(nH, 0)
+            for iHi = 0 to nH - 1
+                float cand = array.get(wyPivotHighs, iHi)
+                int c = 0
+                for jHi = 0 to nH - 1
+                    if math.abs(array.get(wyPivotHighs, jHi) - cand) <= tol
+                        c += 1
+                array.set(hiTouch, iHi, c)
+
+            array<int> loTouch = array.new_int(nL, 0)
+            for iLo = 0 to nL - 1
+                float cand = array.get(wyPivotLows, iLo)
+                int c = 0
+                for jLo = 0 to nL - 1
+                    if math.abs(array.get(wyPivotLows, jLo) - cand) <= tol
+                        c += 1
+                array.set(loTouch, iLo, c)
+
+            // Choose best pair: minimize height first (narrow), then maximize total touches.
+            float bestTop = na
+            float bestBtm = na
+            float bestH = na
+            int bestTouches = -1
+            for iHi = 0 to nH - 1
+                int th = array.get(hiTouch, iHi)
+                if th < WY_EDGE_MIN_TOUCHES
+                    continue
+                float topCand = array.get(wyPivotHighs, iHi)
+                for iLo = 0 to nL - 1
+                    int tl = array.get(loTouch, iLo)
+                    if tl < WY_EDGE_MIN_TOUCHES
+                        continue
+                    float btmCand = array.get(wyPivotLows, iLo)
+                    float h = topCand - btmCand
+                    if h <= 0 or h > maxBand
+                        continue
+                    int touches = th + tl
+                    // INNER mode: require a large fraction of recent bars to stay inside the band (congestion).
+                    float insidePct = 0.0
+                    if wyRangeMode == WY_MODE_INNER
+                        int inside = 0
+                        int total = 0
+                        int bars = math.min(duration, wyLookbackLen)
+                        for k = 0 to bars
+                            bool ok = high[k] <= topCand and low[k] >= btmCand
+                            inside += ok ? 1 : 0
+                            total += 1
+                        insidePct := total > 0 ? (float(inside) * 100.0 / float(total)) : 0.0
+                        if insidePct < wyInnerContainPctMin
+                            continue
+
+                    bool better = na(bestH) or h < bestH or (h == bestH and touches > bestTouches)
+                    if better
+                        bestH := h
+                        bestTouches := touches
+                        bestTop := topCand
+                        bestBtm := btmCand
+
+            if not na(bestTop) and not na(bestBtm)
+                wyHasSwingHigh := true
+                wyHasSwingLow := true
+                wyHigh := bestTop
+                wyLow := bestBtm
+
+        wyActiveClass := wyCmf > 0 ? WY_CLASS_ACC : WY_CLASS_DIST
+        bool isAcc = wyActiveClass == WY_CLASS_ACC
+        color bd = color.new(isAcc ? THEME.COLOR_BULLISH : THEME.COLOR_BEARISH, 0)
+        color borderCol = color.new(bd, WY_BORDER_TRANSP)
+        color fillCol = color.new(THEME.COLOR_NEUTRAL, WY_FILL_TRANSP)
+        string txt = isAcc ? WY_TXT_ACC : WY_TXT_DIST
+
+        // Create or merge a new box once min duration is reached.
+        if duration == wyMinRangeBars
+            bool merged = false
+            if not na(wyLastBox) and not na(wyLastEndIdx) and (wyStartIdx - wyLastEndIdx) <= wyMergeGapBars
+                float center = (wyHigh + wyLow) * 0.5
+                if not na(wyLastHigh) and not na(wyLastLow) and center <= wyLastHigh and center >= wyLastLow
+                    wyRangeBox := wyLastBox
+                    wyRangeLabel := wyLastLabel
+                    wyActiveMerged := true
+                    merged := true
+            if not merged
+                int lblX = bar_index
+                float lblY = (wyHigh + wyLow) * 0.5
+                [bx, lb] = LIB.create_zone_visuals(wyStartIdx, wyHigh, bar_index, wyLow, WY_MIN_WIDTH_BARS, borderCol, WY_RANGE_BORDER_STYLE, fillCol, txt, bd, lblX, lblY, "", WY_LABEL_SIZE, THEME.COLOR_TRANSPARENT, THEME.STYLE_LABEL_NONE)
+                wyRangeBox := bx
+                wyRangeLabel := lb
+
+        // Update visuals.
+        if duration >= wyMinRangeBars and not na(wyRangeBox)
+            box.set_top(wyRangeBox, wyHigh)
+            box.set_bottom(wyRangeBox, wyLow)
+            box.set_right(wyRangeBox, bar_index)
+            box.set_bgcolor(wyRangeBox, fillCol)
+            box.set_border_color(wyRangeBox, borderCol)
+            box.set_border_style(wyRangeBox, WY_RANGE_BORDER_STYLE)
+            if not na(wyRangeLabel)
+                label.set_text(wyRangeLabel, txt)
+                label.set_textcolor(wyRangeLabel, bd)
+                label.set_x(wyRangeLabel, bar_index)
+                label.set_y(wyRangeLabel, (wyHigh + wyLow) * 0.5)
+
+            // If merged, keep last-range memory updated.
+            if wyActiveMerged
+                wyLastHigh := wyHigh
+                wyLastLow := wyLow
+                wyLastEndIdx := bar_index
+                wyLastClass := wyActiveClass
+
+    // Project a dashed S/D box based on breakout direction after a range ends.
+    if wyDrawProjection and wyState == WY_STATE_TREND and wyCurrState[1] == WY_STATE_RANGE and not na(wyLastHigh) and not na(wyLastLow)
+        bool brokeUp = close > wyLastHigh
+        bool brokeDown = close < wyLastLow
+        if brokeUp or brokeDown
+            if not na(wyProjBox)
+                wyProjBox.delete()
+            if not na(wyProjLabel)
+                wyProjLabel.delete()
+            bool isDemand = brokeUp
+            color bd = color.new(isDemand ? THEME.COLOR_BULLISH : THEME.COLOR_BEARISH, 0)
+            color borderCol = color.new(bd, WY_PROJ_BORDER_TRANSP)
+            color fillCol = color.new(THEME.COLOR_NEUTRAL, WY_PROJ_FILL_TRANSP)
+            string txt = isDemand ? WY_TXT_DEMAND : WY_TXT_SUPPLY
+            int leftX = nz(wyLastEndIdx, bar_index)
+            int lblX = bar_index
+            float lblY = (wyLastHigh + wyLastLow) * 0.5
+            [bx, lb] = LIB.create_zone_visuals(leftX, wyLastHigh, bar_index, wyLastLow, WY_MIN_WIDTH_BARS, borderCol, WY_PROJ_BORDER_STYLE, fillCol, txt, bd, lblX, lblY, "", WY_LABEL_SIZE, THEME.COLOR_TRANSPARENT, THEME.STYLE_LABEL_NONE)
+            wyProjBox := bx
+            wyProjLabel := lb
+
+    // Stretch projection.
+    if not na(wyProjBox)
+        box.set_right(wyProjBox, bar_index)
+        if not na(wyProjLabel)
+            label.set_x(wyProjLabel, bar_index)
+
+    // Manipulation markers (spring / upthrust) while in range.
+    if wyDrawManipulation and wyState == WY_STATE_RANGE and not na(wyRangeBox)
+        int manipSignal = 0
+        float prevLow = nz(wyLow[1], wyLow)
+        float prevHigh = nz(wyHigh[1], wyHigh)
+        if wyActiveClass == WY_CLASS_ACC and low < prevLow and close > prevLow
+            manipSignal := 1
+        if wyActiveClass == WY_CLASS_DIST and high > prevHigh and close < prevHigh
+            manipSignal := -1
+        if manipSignal != 0
+            string txt = manipSignal == 1 ? "Spring" : "Upthrust"
+            color col = manipSignal == 1 ? color.new(THEME.COLOR_BULLISH, 0) : color.new(THEME.COLOR_BEARISH, 0)
+            label.new(bar_index, na, txt, yloc = manipSignal == 1 ? yloc.belowbar : yloc.abovebar, style = THEME.STYLE_LABEL_NONE, color = THEME.COLOR_TRANSPARENT, textcolor = col, size = WY_EVENT_SIZE, tooltip = "")
+
+// Sync state.
+wyCurrState := wyState

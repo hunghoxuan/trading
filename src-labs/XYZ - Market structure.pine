@@ -1,0 +1,353 @@
+//@version=5
+indicator(title = "Multi Timeframe Break of Structure(BOS) & Market Structure Shift(MSS)", shorttitle = "MTF BOS & MSS", overlay = true, max_labels_count = 500, max_lines_count = 500, max_bars_back = 500)
+
+import hunghoxuan/TradingKitCore/54 as CORE
+import hunghoxuan/TradingKitUI/6 as UI
+
+var CORE.Theme THEME = CORE.Theme.new()
+var CORE.Const CONST = CORE.Const.new()
+
+// Constants
+Transparent_Color = color.new(color.white, 100)
+
+// ==================== CORE_local Compatibility Layer ====================
+// Core-like local helpers (runtime types use CORE.TFConfig / CORE.TFData directly).
+
+CORE_local_record_swing_if(bool enabled, array<float> prices, array<int> times, float val, int ts, int maxHistory) =>
+    bool added = false
+    if enabled and not na(val) and not na(ts)
+        bool shouldPush = true
+        int n = array.size(times)
+        if n > 0
+            shouldPush := array.get(times, n - 1) != ts
+        if shouldPush
+            array.push(prices, val)
+            array.push(times, ts)
+            if array.size(prices) > maxHistory
+                array.shift(prices)
+                array.shift(times)
+            added := true
+    added
+
+CORE_local_sanitize_swing_ledgers(array<float> highPrices, array<int> highTimes, array<float> lowPrices, array<int> lowTimes, int maxHistory) =>
+    int nH = array.size(highPrices)
+    int nL = array.size(lowPrices)
+    int nTot = nH + nL
+    if nTot > 1
+        array<int> mergedTimes = array.new_int()
+        array<float> mergedPrices = array.new_float()
+        array<bool> mergedIsHigh = array.new_bool()
+        int iH = 0
+        int iL = 0
+        while iH < nH or iL < nL
+            bool takeHigh = false
+            if iL >= nL
+                takeHigh := iH < nH
+            else if iH >= nH
+                takeHigh := false
+            else
+                int hT = array.get(highTimes, iH)
+                int lT = array.get(lowTimes, iL)
+                takeHigh := hT <= lT
+            if takeHigh
+                array.push(mergedTimes, array.get(highTimes, iH))
+                array.push(mergedPrices, array.get(highPrices, iH))
+                array.push(mergedIsHigh, true)
+                iH += 1
+            else
+                array.push(mergedTimes, array.get(lowTimes, iL))
+                array.push(mergedPrices, array.get(lowPrices, iL))
+                array.push(mergedIsHigh, false)
+                iL += 1
+
+        array<int> cleanTimes = array.new_int()
+        array<float> cleanPrices = array.new_float()
+        array<bool> cleanIsHigh = array.new_bool()
+        for i = 0 to array.size(mergedTimes) - 1
+            int t = array.get(mergedTimes, i)
+            float p = array.get(mergedPrices, i)
+            bool isHigh = array.get(mergedIsHigh, i)
+            int nClean = array.size(cleanTimes)
+            if nClean == 0
+                array.push(cleanTimes, t)
+                array.push(cleanPrices, p)
+                array.push(cleanIsHigh, isHigh)
+            else
+                int li = nClean - 1
+                bool lastIsHigh = array.get(cleanIsHigh, li)
+                if isHigh != lastIsHigh
+                    array.push(cleanTimes, t)
+                    array.push(cleanPrices, p)
+                    array.push(cleanIsHigh, isHigh)
+                else
+                    float lastP = array.get(cleanPrices, li)
+                    bool replace = isHigh ? p >= lastP : p <= lastP
+                    if replace
+                        array.set(cleanTimes, li, t)
+                        array.set(cleanPrices, li, p)
+
+        array.clear(highPrices)
+        array.clear(highTimes)
+        array.clear(lowPrices)
+        array.clear(lowTimes)
+        for i = 0 to array.size(cleanTimes) - 1
+            int t = array.get(cleanTimes, i)
+            float p = array.get(cleanPrices, i)
+            bool isHigh = array.get(cleanIsHigh, i)
+            if isHigh
+                array.push(highTimes, t)
+                array.push(highPrices, p)
+            else
+                array.push(lowTimes, t)
+                array.push(lowPrices, p)
+        while array.size(highPrices) > maxHistory
+            array.remove(highPrices, 0)
+            array.remove(highTimes, 0)
+        while array.size(lowPrices) > maxHistory
+            array.remove(lowPrices, 0)
+            array.remove(lowTimes, 0)
+    bool(na)
+
+CORE_local_process_tf_armed_state(CORE.TFData tfData, bool enabled, float swingHigh, int swingHighT, float swingLow, int swingLowT, int maxHistory) =>
+    if enabled
+        bool nextHighArmed = CORE_local_record_swing_if(enabled, tfData.swingHighPrices, tfData.swingHighTimes, swingHigh, swingHighT, maxHistory) ? true : tfData.highArmed
+        bool nextLowArmed = CORE_local_record_swing_if(enabled, tfData.swingLowPrices, tfData.swingLowTimes, swingLow, swingLowT, maxHistory) ? true : tfData.lowArmed
+        CORE_local_sanitize_swing_ledgers(tfData.swingHighPrices, tfData.swingHighTimes, tfData.swingLowPrices, tfData.swingLowTimes, maxHistory)
+        tfData.highArmed := nextHighArmed
+        tfData.lowArmed := nextLowArmed
+    bool(na)
+
+// General Settings
+Hide_All_MS = false
+Hide_All_Breaks = false
+
+// User Inputs
+// Timeframe 1 Settings
+TF_1_Use_Bos_Plot = true
+TF_1_Use_MSS_Plot = true
+TF_1_Chart_Feature = true
+TF_1_Use_High_Low = true
+TF_1_Display_Pivots = true
+TF_1_Display_Timeframe = true
+TF_1_BOS_Alert = true
+TF_1_MSS_Alert = true
+TF_1_Multip = 15
+TF_1_Period = "Minute"
+TF_1_Swing_Length = 5
+
+// Timeframe 2 Settings
+TF_2_Use_Bos_Plot = true
+TF_2_Use_MSS_Plot = true
+TF_2_Chart_Feature = true
+TF_2_Use_High_Low = true
+TF_2_Display_Pivots = true
+TF_2_Display_Timeframe = true
+TF_2_BOS_Alert = true
+TF_2_MSS_Alert = true
+TF_2_Multip = 4
+TF_2_Period = "Hour"
+TF_2_Swing_Length = 9
+
+// Timeframe 3 Settings
+TF_3_Use_Bos_Plot = false
+TF_3_Use_MSS_Plot = false
+TF_3_Chart_Feature = false
+TF_3_Use_High_Low = false
+TF_3_Display_Pivots = false
+TF_3_Display_Timeframe = false
+TF_3_BOS_Alert = true
+TF_3_MSS_Alert = true
+TF_3_Multip = 1
+TF_3_Period = "Hour"
+TF_3_Swing_Length = 7
+
+// Core-style runtime state (Hung - Core naming convention).
+var CORE.TFConfig msLtfCfg = CORE.TFConfig.new("LTF", true, true, color.white, color.white, size.tiny, color.white, line.style_dotted, 1, 0)
+var CORE.TFConfig msHtf1Cfg = CORE.TFConfig.new("HTF1", true, true, color.yellow, color.yellow, size.small, color.yellow, line.style_dotted, 2, 0)
+var CORE.TFConfig msHtf2Cfg = CORE.TFConfig.new("HTF2", true, true, color.purple, color.purple, size.small, color.purple, line.style_dotted, 1, 0)
+
+var CORE.TFData msLtfData = CORE.TFData.new("LTF", array.new_float(), array.new_int(), array.new_float(), array.new_int(), array.new_float(), array.new_int(), array.new_bool(), false, false, 0, 0, na, na, na, na, na, na, na, na, na, na)
+var CORE.TFData msHtf1Data = CORE.TFData.new("HTF1", array.new_float(), array.new_int(), array.new_float(), array.new_int(), array.new_float(), array.new_int(), array.new_bool(), false, false, 0, 0, na, na, na, na, na, na, na, na, na, na)
+var CORE.TFData msHtf2Data = CORE.TFData.new("HTF2", array.new_float(), array.new_int(), array.new_float(), array.new_int(), array.new_float(), array.new_int(), array.new_bool(), false, false, 0, 0, na, na, na, na, na, na, na, na, na, na)
+
+// Timeframe for security functions
+get_tf_string(TF_Period, TF_Multip) =>
+    switch TF_Period
+        "Minute" => str.tostring(TF_Multip)
+        "Hour" => str.tostring(TF_Multip * 60)
+        "Day" => str.tostring(TF_Multip) + "D"
+        "Week" => str.tostring(TF_Multip) + "W"
+        "Month" => str.tostring(TF_Multip) + "M"
+        => timeframe.period
+
+// Timeframe shortcut form
+get_tf_display(Chart_as_Timeframe, TF_Period, TF_Multip) =>
+    if Chart_as_Timeframe == false
+        switch TF_Period
+            "Minute" => str.tostring(TF_Multip) + "Min"
+            "Hour" => str.tostring(TF_Multip) + "H"
+            "Day" => str.tostring(TF_Multip) + "D"
+            "Week" => str.tostring(TF_Multip) + "W"
+            "Month" => str.tostring(TF_Multip) + "M"
+    else if Chart_as_Timeframe == true
+        switch
+            timeframe.isminutes and timeframe.multiplier % 60 != 0 => str.tostring(timeframe.multiplier) + "Min"
+            timeframe.isminutes and timeframe.multiplier % 60 == 0 => str.tostring(timeframe.multiplier / 60) + "H"
+            timeframe.isdaily => str.tostring(timeframe.multiplier) + "D"
+            timeframe.isweekly => str.tostring(timeframe.multiplier) + "W"
+            timeframe.ismonthly => str.tostring(timeframe.multiplier) + "M"
+
+get_mtf_ms_display(Chart_as_Timeframe, TF_Period, TF_Multip, Swing_Length) =>
+    if Chart_as_Timeframe == true
+        Swing_Length
+    else
+        switch
+            TF_Period == "Month" and timeframe.isminutes and timeframe.multiplier % 60 == 0 and (24 * 5 * 5 / ((TF_Multip * 1440 * 5 * 5) / timeframe.multiplier)) * 60 == timeframe.multiplier => ((TF_Multip * 1440) * 5 * 5 / timeframe.multiplier) * Swing_Length
+            TF_Period == "Month" and timeframe.isweekly and (5 / ((TF_Multip * 1440 * 5) / timeframe.multiplier)) * 1440 == timeframe.multiplier => ((TF_Multip * 1440) * 5 / 1440) * Swing_Length
+            TF_Period == "Month" and timeframe.isdaily and (5 * 5 / ((TF_Multip * 1440 * 5 * 5) / timeframe.multiplier)) * 1440 == timeframe.multiplier => ((TF_Multip * 1440) * 5 * 5 / 1440) * Swing_Length
+            timeframe.ismonthly and timeframe.multiplier == TF_Multip and TF_Period == "Month" => Swing_Length
+            TF_Period == "Week" and timeframe.isminutes and timeframe.multiplier % 60 == 0 and (24 * 5 / ((TF_Multip * 1440 * 5) / timeframe.multiplier)) * 60 == timeframe.multiplier => ((TF_Multip * 1440) * 5 / timeframe.multiplier) * Swing_Length
+            TF_Period == "Week" and timeframe.isdaily and (5 / ((TF_Multip * 1440 * 5) / timeframe.multiplier)) * 1440 == timeframe.multiplier => ((TF_Multip * 1440) * 5 / 1440) * Swing_Length
+            timeframe.isweekly and timeframe.multiplier == TF_Multip and TF_Period == "Week" => Swing_Length
+            TF_Period == "Day" and timeframe.isminutes and timeframe.multiplier % 60 == 0 and (24 / ((TF_Multip * 1440) / timeframe.multiplier)) * 60 == timeframe.multiplier => (TF_Multip * 1440 / timeframe.multiplier) * Swing_Length
+            timeframe.isdaily and timeframe.multiplier == TF_Multip and TF_Period == "Day" => Swing_Length
+            timeframe.isminutes and timeframe.multiplier % 60 != 0 and TF_Period == "Minute" and TF_Multip == timeframe.multiplier => Swing_Length
+            timeframe.isminutes and timeframe.multiplier % 60 != 0 and TF_Period == "Minute" and TF_Multip != timeframe.multiplier => ((TF_Multip / 60) * 60 / timeframe.multiplier) * Swing_Length
+            timeframe.isminutes and timeframe.multiplier % 60 != 0 and TF_Period == "Hour" and TF_Multip != timeframe.multiplier => ((TF_Multip * 60 / 60) * 60 / timeframe.multiplier) * Swing_Length
+            timeframe.isminutes and timeframe.multiplier % 60 != 0 and TF_Period == "Hour" and TF_Multip == timeframe.multiplier and timeframe.multiplier * 60 == 60 => ((TF_Multip * 60 / 60) * 60 / timeframe.multiplier) * Swing_Length
+            timeframe.isminutes and timeframe.multiplier % 60 != 0 and TF_Period == "Day" and TF_Multip != timeframe.multiplier => ((TF_Multip * 1440 / 60) * 60 / timeframe.multiplier) * Swing_Length
+            timeframe.isminutes and timeframe.multiplier % 60 == 0 and TF_Period == "Hour" and TF_Multip * 60 == timeframe.multiplier => Swing_Length
+            timeframe.isminutes and timeframe.multiplier % 60 == 0 and TF_Period == "Hour" and TF_Multip * 60 != timeframe.multiplier => (TF_Multip * 60 / timeframe.multiplier) * Swing_Length
+
+is_htf_structure_allowed(Chart_as_Timeframe, TF_Period, TF_Multip) =>
+    true
+
+[TF_1_SH, TF_1_SL] = request.security(symbol = syminfo.tickerid, timeframe = (TF_1_Chart_Feature ? timeframe.period : get_tf_string(TF_1_Period, TF_1_Multip)), expression = [ta.pivothigh(high, TF_1_Swing_Length, TF_1_Swing_Length), ta.pivotlow(low, TF_1_Swing_Length, TF_1_Swing_Length)], gaps = barmerge.gaps_on)
+[TF_2_SH, TF_2_SL] = request.security(symbol = syminfo.tickerid, timeframe = (TF_2_Chart_Feature ? timeframe.period : get_tf_string(TF_2_Period, TF_2_Multip)), expression = [ta.pivothigh(high, TF_2_Swing_Length, TF_2_Swing_Length), ta.pivotlow(low, TF_2_Swing_Length, TF_2_Swing_Length)], gaps = barmerge.gaps_on)
+[TF_3_SH, TF_3_SL] = request.security(symbol = syminfo.tickerid, timeframe = (TF_3_Chart_Feature ? timeframe.period : get_tf_string(TF_3_Period, TF_3_Multip)), expression = [ta.pivothigh(high, TF_3_Swing_Length, TF_3_Swing_Length), ta.pivotlow(low, TF_3_Swing_Length, TF_3_Swing_Length)], gaps = barmerge.gaps_on)
+
+CORE_local_count_candles_for_structure(Direction, Condition) =>
+    var int High_Count = 0
+    var int Low_Count = 0
+
+    if Direction == "Bullish"
+        for i = 0 to Condition
+            High_Count := i
+        High_Count
+    else if Direction == "Bearish"
+        for i = 0 to Condition
+            Low_Count := i
+        Low_Count
+
+draw_data_swing_dot(int swingTime, float swingPrice, color dotColor, string txtSize, string tooltipText) =>
+    label.new(swingTime, swingPrice, CONST.SYM_DOT, xloc = xloc.bar_time, yloc = yloc.price, color = Transparent_Color, style = label.style_none, textcolor = dotColor, size = txtSize, tooltip = tooltipText)
+
+draw_data_structure_line_with_text(int x1, float y, int x2, color lnColor, string txt, bool isLtf, string lineType, int lineWidth, string txtSize, bool isBull) =>
+    CORE.LineTextVisualCfg cfg = CORE.LineTextVisualCfg.new(lineStyle = lineType, lineWidth = lineWidth, textSize = txtSize, vPos = isBull ? 1 : -1, yPadTicks = isBull ? 8.0 : 25.0, xRatio = 0.5, xPadBars = 0, textAlign = text.align_center)
+    string tag = isLtf ? str.lower(txt) : str.upper(txt)
+    string eventTxt = tag + " " + (isBull ? CONST.SYM_ARR2_UP : CONST.SYM_ARR2_DN)
+    [_, _] = UI.draw_line_with_text(x1, y, x2, y, xloc.bar_time, lnColor, eventTxt, true, lnColor, "", cfg, THEME)
+
+process_data_market_structure(CORE.TFData tfData, CORE.TFConfig tfCfg, TF_SH, TF_SL, Swing_Length, Chart_as_Timeframe, TF_Period, TF_Multip, Display_Timeframe, Display_Structure, Use_High_Low, Use_BOS_Alert, Use_MSS_Alert, Use_Bos_Plot, Use_MSS_Plot) =>
+    float prevHigh = tfData.candHighPrice
+    float prevLow = tfData.candLowPrice
+    High_Count = 0
+    Low_Count = 0
+
+    string TF_Line_Type = tfCfg.zigzagStyle
+    int TF_Line_Width = tfCfg.zigzagWidth
+    string TF_Text_Size = tfCfg.swingSize
+    color Bul_Bos_Col = tfCfg.zigzagColor
+    color Bear_Bos_Col = tfCfg.zigzagColor
+    color Bul_Ms_Col = tfCfg.swingHighColor
+    color Bear_Ms_Col = tfCfg.swingLowColor
+
+    bool High_Broken = false
+    bool Low_Broken = false
+    End_High_Time = 0
+    End_Low_Time = 0
+
+    bool HH = false
+    bool LH = false
+    bool HL = false
+    bool LL = false
+
+    TF_High_Close_Price = request.security(symbol = syminfo.tickerid, timeframe = (Chart_as_Timeframe ? timeframe.period : get_tf_string(TF_Period, TF_Multip)), expression = (Use_High_Low ? high : close))
+    TF_Low_Close_Price = request.security(symbol = syminfo.tickerid, timeframe = (Chart_as_Timeframe ? timeframe.period : get_tf_string(TF_Period, TF_Multip)), expression = (Use_High_Low ? low : close))
+    int pivotTime = time[get_mtf_ms_display(Chart_as_Timeframe, TF_Period, TF_Multip, Swing_Length)]
+
+    if not na(TF_SH)
+        if TF_SH >= prevHigh
+            HH := true
+        else
+            LH := true
+
+    if not na(TF_SL)
+        if TF_SL >= prevLow
+            HL := true
+        else
+            LL := true
+
+    CORE_local_process_tf_armed_state(tfData, true, TF_SH, not na(TF_SH) ? pivotTime : na, TF_SL, not na(TF_SL) ? pivotTime : na, 120)
+    tfData.candHighPrice := array.size(tfData.swingHighPrices) > 0 ? array.get(tfData.swingHighPrices, array.size(tfData.swingHighPrices) - 1) : tfData.candHighPrice
+    tfData.candHighTime := array.size(tfData.swingHighTimes) > 0 ? array.get(tfData.swingHighTimes, array.size(tfData.swingHighTimes) - 1) : tfData.candHighTime
+    tfData.candLowPrice := array.size(tfData.swingLowPrices) > 0 ? array.get(tfData.swingLowPrices, array.size(tfData.swingLowPrices) - 1) : tfData.candLowPrice
+    tfData.candLowTime := array.size(tfData.swingLowTimes) > 0 ? array.get(tfData.swingLowTimes, array.size(tfData.swingLowTimes) - 1) : tfData.candLowTime
+
+    if TF_High_Close_Price > tfData.candHighPrice and tfData.highArmed
+        High_Broken := true
+        tfData.highArmed := false
+        End_High_Time := time
+
+    if TF_Low_Close_Price < tfData.candLowPrice and tfData.lowArmed
+        Low_Broken := true
+        tfData.lowArmed := false
+        End_Low_Time := time
+
+    if HH and Display_Timeframe and Display_Structure and not Hide_All_MS
+        draw_data_swing_dot(tfData.candHighTime, tfData.candHighPrice, Bul_Ms_Col, TF_Text_Size, "HH " + get_tf_display(Chart_as_Timeframe, TF_Period, TF_Multip))
+    if HL and Display_Timeframe and Display_Structure and not Hide_All_MS
+        draw_data_swing_dot(tfData.candLowTime, tfData.candLowPrice, Bul_Ms_Col, TF_Text_Size, "HL " + get_tf_display(Chart_as_Timeframe, TF_Period, TF_Multip))
+    if LH and Display_Timeframe and Display_Structure and not Hide_All_MS
+        draw_data_swing_dot(tfData.candHighTime, tfData.candHighPrice, Bear_Ms_Col, TF_Text_Size, "LH " + get_tf_display(Chart_as_Timeframe, TF_Period, TF_Multip))
+    if LL and Display_Timeframe and Display_Structure and not Hide_All_MS
+        draw_data_swing_dot(tfData.candLowTime, tfData.candLowPrice, Bear_Ms_Col, TF_Text_Size, "LL " + get_tf_display(Chart_as_Timeframe, TF_Period, TF_Multip))
+
+    High_Count := ta.barssince(HH == true or LH == true) + get_mtf_ms_display(Chart_as_Timeframe, TF_Period, TF_Multip, Swing_Length)
+    Low_Count := ta.barssince(HL == true or LL == true) + get_mtf_ms_display(Chart_as_Timeframe, TF_Period, TF_Multip, Swing_Length)
+
+    High_Count_Function = CORE_local_count_candles_for_structure("Bullish", High_Count)
+    Low_Count_Function = CORE_local_count_candles_for_structure("Bearish", Low_Count)
+    bool isLtfCtx = Chart_as_Timeframe
+
+    if High_Broken and Display_Timeframe and not Hide_All_Breaks and is_htf_structure_allowed(Chart_as_Timeframe, TF_Period, TF_Multip)
+        if tfData.prevBreakout == 1 and Use_Bos_Plot
+            draw_data_structure_line_with_text(time[High_Count_Function], tfData.candHighPrice, End_High_Time, Bul_Bos_Col, "BOS", isLtfCtx, TF_Line_Type, TF_Line_Width, TF_Text_Size, true)
+        else if tfData.prevBreakout == -1 and Use_MSS_Plot
+            draw_data_structure_line_with_text(time[High_Count_Function], tfData.candHighPrice, End_High_Time, Bul_Bos_Col, "MSS", isLtfCtx, TF_Line_Type, TF_Line_Width, TF_Text_Size, true)
+
+        if tfData.prevBreakout == -1 and Use_MSS_Alert
+            alert(message = "New bullish MSS formed on " + get_tf_display(Chart_as_Timeframe, TF_Period, TF_Multip), freq = alert.freq_once_per_bar_close)
+        else if tfData.prevBreakout == 1 and Use_BOS_Alert
+            alert(message = "New bullish BOS formed on " + get_tf_display(Chart_as_Timeframe, TF_Period, TF_Multip), freq = alert.freq_once_per_bar_close)
+
+        tfData.prevBreakout := 1
+        tfData.msBias := 1
+
+    if Low_Broken and Display_Timeframe and not Hide_All_Breaks and is_htf_structure_allowed(Chart_as_Timeframe, TF_Period, TF_Multip)
+        if tfData.prevBreakout == -1 and Use_Bos_Plot
+            draw_data_structure_line_with_text(time[Low_Count_Function], tfData.candLowPrice, End_Low_Time, Bear_Bos_Col, "BOS", isLtfCtx, TF_Line_Type, TF_Line_Width, TF_Text_Size, false)
+        else if tfData.prevBreakout == 1 and Use_MSS_Plot
+            draw_data_structure_line_with_text(time[Low_Count_Function], tfData.candLowPrice, End_Low_Time, Bear_Bos_Col, "MSS", isLtfCtx, TF_Line_Type, TF_Line_Width, TF_Text_Size, false)
+
+        if tfData.prevBreakout == 1 and Use_MSS_Alert
+            alert(message = "New bearish MSS formed on " + get_tf_display(Chart_as_Timeframe, TF_Period, TF_Multip), freq = alert.freq_once_per_bar_close)
+        else if tfData.prevBreakout == -1 and Use_BOS_Alert
+            alert(message = "New bearish BOS formed on " + get_tf_display(Chart_as_Timeframe, TF_Period, TF_Multip), freq = alert.freq_once_per_bar_close)
+
+        tfData.prevBreakout := -1
+        tfData.msBias := -1
+
+process_data_market_structure(msLtfData, msLtfCfg, TF_1_SH, TF_1_SL, TF_1_Swing_Length, TF_1_Chart_Feature, TF_1_Period, TF_1_Multip, TF_1_Display_Timeframe, TF_1_Display_Pivots, TF_1_Use_High_Low, TF_1_BOS_Alert, TF_1_MSS_Alert, TF_1_Use_Bos_Plot, TF_1_Use_MSS_Plot)
+process_data_market_structure(msHtf1Data, msHtf1Cfg, TF_2_SH, TF_2_SL, TF_2_Swing_Length, TF_2_Chart_Feature, TF_2_Period, TF_2_Multip, TF_2_Display_Timeframe, TF_2_Display_Pivots, TF_2_Use_High_Low, TF_2_BOS_Alert, TF_2_MSS_Alert, TF_2_Use_Bos_Plot, TF_2_Use_MSS_Plot)
+process_data_market_structure(msHtf2Data, msHtf2Cfg, TF_3_SH, TF_3_SL, TF_3_Swing_Length, TF_3_Chart_Feature, TF_3_Period, TF_3_Multip, TF_3_Display_Timeframe, TF_3_Display_Pivots, TF_3_Use_High_Low, TF_3_BOS_Alert, TF_3_MSS_Alert, TF_3_Use_Bos_Plot, TF_3_Use_MSS_Plot)

@@ -1,0 +1,149 @@
+//@version=5
+indicator("XYZ - Indicators", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// ==================== THEME ====================
+type Theme
+    color COLOR_BEARISH
+    color COLOR_BULLISH
+    color COLOR_NEUTRAL
+    color COLOR_LTF
+    color COLOR_HTF1
+    color COLOR_HTF2
+    int   LTF_TRANSP
+    int   HTF1_TRANSP
+    int   HTF2_TRANSP
+
+var Theme theme = Theme.new()
+theme.COLOR_BEARISH := color.red
+theme.COLOR_BULLISH := color.teal
+theme.COLOR_NEUTRAL := color.gray
+theme.COLOR_LTF     := color.gray
+theme.COLOR_HTF1    := color.orange
+theme.COLOR_HTF2    := color.purple
+theme.LTF_TRANSP    := 60
+theme.HTF1_TRANSP   := 60
+theme.HTF2_TRANSP   := 70
+
+// ==================== CONFIG ====================
+var int emaShort  = 0
+var int emaNormal = 0
+var int emaLong   = 0
+var int smaShort  = 0
+var int smaNormal = 0
+var int smaLong   = 0
+var int rsiShort  = 0
+var int rsiNormal = 0
+var int rsiLong   = 0
+
+tf = timeframe.period
+if tf == "1" or tf == "3" or tf == "5"
+    emaShort := 5
+    emaNormal := 13
+    emaLong := 34
+    smaShort := 10
+    smaNormal := 20
+    smaLong := 50
+    rsiShort := 7
+    rsiNormal := 14
+    rsiLong := 21
+else if tf == "15"
+    emaShort := 9
+    emaNormal := 21
+    emaLong := 89
+    smaShort := 20
+    smaNormal := 50
+    smaLong := 200
+    rsiShort := 9
+    rsiNormal := 14
+    rsiLong := 28
+else if tf == "60" or tf == "240"
+    emaShort := 21
+    emaNormal := 55
+    emaLong := 200
+    smaShort := 50
+    smaNormal := 100
+    smaLong := 200
+    rsiShort := 14
+    rsiNormal := 21
+    rsiLong := 28
+else
+    emaShort := 50
+    emaNormal := 100
+    emaLong := 200
+    smaShort := 100
+    smaNormal := 200
+    smaLong := 300
+    rsiShort := 14
+    rsiNormal := 21
+    rsiLong := 35
+
+// ==================== TÍNH INDICATORS ====================
+emaS = ta.ema(close, emaShort)
+emaN = ta.ema(close, emaNormal)
+emaL = ta.ema(close, emaLong)
+
+smaS = ta.sma(close, smaShort)
+smaN = ta.sma(close, smaNormal)
+smaL = ta.sma(close, smaLong)
+
+rsiS = ta.rsi(close, rsiShort)
+rsiN = ta.rsi(close, rsiNormal)
+rsiL = ta.rsi(close, rsiLong)
+
+[macdLine, signalLine, _] = ta.macd(close, 12, 26, 9)
+vwapVal = ta.vwap(hlc3)
+
+// ==================== TÍNH BIAS ====================
+bull = 0
+bear = 0
+if emaS > emaN and emaN > emaL and close > emaL
+    bull += 1
+else if emaS < emaN and emaN < emaL and close < emaL
+    bear += 1
+if smaS > smaN and smaN > smaL and close > smaL
+    bull += 1
+else if smaS < smaN and smaN < smaL and close < smaL
+    bear += 1
+if rsiN > 50
+    bull += 1
+else if rsiN < 50
+    bear += 1
+if close > vwapVal
+    bull += 1
+else if close < vwapVal
+    bear += 1
+
+bias = bull > bear * 1.5 ? "BULLISH" : bear > bull * 1.5 ? "BEARISH" : "NEUTRAL"
+
+// ==================== VẼ LINES ====================
+plot(emaS, "EMA Short",  color.new(theme.COLOR_LTF,  60), 1)
+plot(emaN, "EMA Normal", color.new(theme.COLOR_HTF1, 60), 1)
+plot(emaL, "EMA Long",   color.new(theme.COLOR_HTF2, 70), 1)
+plot(vwapVal, "VWAP", color.new(color.blue, 40), 2)
+
+// ==================== VẼ MARKER + TOOLTIP ====================
+biasColor = bias == "BULLISH" ? theme.COLOR_BULLISH : bias == "BEARISH" ? theme.COLOR_BEARISH : theme.COLOR_NEUTRAL
+
+// Bias marker với tooltip
+if barstate.islast
+    if bias == "BULLISH"
+        label.new(bar_index, low, "↑", color=biasColor, style=label.style_label_up, textcolor=color.white, tooltip="Bias: BULLISH\nEMA Short: " + str.tostring(emaS) + "\nRSI Normal: " + str.tostring(rsiN))
+    else if bias == "BEARISH"
+        label.new(bar_index, high, "↓", color=biasColor, style=label.style_label_down, textcolor=color.white, tooltip="Bias: BEARISH")
+
+// Entry signals với tooltip
+buyCond  = emaS > emaN and emaN > emaL and close > emaL and rsiN > 50 and close > vwapVal
+sellCond = emaS < emaN and emaN < emaL and close < emaL and rsiN < 50 and close < vwapVal
+
+if buyCond
+    label.new(bar_index, low, "▲", color=theme.COLOR_BULLISH, style=label.style_label_up, textcolor=color.white, tooltip="BUY SIGNAL\nBias: " + bias + "\nEMA Short: " + str.tostring(emaS) + "\nRSI: " + str.tostring(rsiN) + "\nPrice > VWAP")
+
+if sellCond
+    label.new(bar_index, high, "▼", color=theme.COLOR_BEARISH, style=label.style_label_down, textcolor=color.white, tooltip="SELL SIGNAL\nBias: " + bias + "\nEMA Short: " + str.tostring(emaS) + "\nRSI: " + str.tostring(rsiN) + "\nPrice < VWAP")
+
+bgcolor(bias == "BULLISH" ? color.new(theme.COLOR_BULLISH, 95) : bias == "BEARISH" ? color.new(theme.COLOR_BEARISH, 95) : na)
+
+if buyCond
+    alert("🚀 BUY on " + syminfo.ticker, alert.freq_once_per_bar_close)
+if sellCond
+    alert("🔻 SELL on " + syminfo.ticker, alert.freq_once_per_bar_close)

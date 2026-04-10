@@ -1,0 +1,280 @@
+//@version=5
+// @description: Candle Pattern Scanner Dashboard
+//   Imports CandlePatterns library and runs ALL 25 individual pattern detectors.
+//   Displays a structured table listing every pattern, its last detection bar,
+//   and its directional bias (+1 Bull / -1 Bear / 0 Neutral).
+//   Use this as a reference overlay to understand which patterns are firing.
+// @version: 1
+
+indicator("Candle Pattern Scanner [HungBot]", shorttitle = "CPS", overlay = true, max_labels_count = 50)
+
+import HungBot/CandlePatterns/1 as CP
+
+// ─────────────────────────────────────────────────────────
+//  SETTINGS
+// ─────────────────────────────────────────────────────────
+grpMain  = "Pattern Thresholds"
+grpDisp  = "Display"
+
+dojiPct         = input.float(0.10, "Doji body-to-range %",     group=grpMain, minval=0.01, step=0.01)
+wickBodyMin     = input.float(2.0,  "Wick : body min ratio",    group=grpMain, minval=0.5,  step=0.1)
+engulfMin       = input.float(1.0,  "Engulf body min ratio",    group=grpMain, minval=0.5,  step=0.1)
+tweezerTol      = input.float(0.05, "Tweezer tolerance (ATR×)", group=grpMain, minval=0.01, step=0.01)
+marubozuMax     = input.float(0.05, "Marubozu max wick/body",   group=grpMain, minval=0.01, step=0.01)
+threeLineBody   = input.float(0.60, "3-candle min body %",      group=grpMain, minval=0.1,  step=0.05)
+starBodyMax     = input.float(0.33, "Star body max ratio",      group=grpMain, minval=0.05, step=0.05)
+
+tablePos        = input.string("Top Right", "Table position",   group=grpDisp, options=["Top Right","Bottom Right","Top Left","Bottom Left","Middle Right","Middle Left"])
+freshBars       = input.int(3,  "Highlight if fired within N bars", group=grpDisp, minval=1, maxval=20)
+showOnlyActive  = input.bool(false, "Show only active patterns", group=grpDisp, tooltip="Hides rows where pattern has not fired in the lookback window.")
+
+colBull  = input.color(color.new(#00e5b0, 0), "Bullish colour", group=grpDisp)
+colBear  = input.color(color.new(#ff3366, 0), "Bearish colour", group=grpDisp)
+colNone  = input.color(color.new(#888888, 0), "Neutral colour", group=grpDisp)
+
+// ─────────────────────────────────────────────────────────
+//  RUN ALL INDIVIDUAL DETECTORS
+// ─────────────────────────────────────────────────────────
+[d_doji,       _b0]  = CP.detect_doji(dojiPct)
+[d_dflyDoji,   b1]   = CP.detect_dragonfly_doji(dojiPct, wickBodyMin)
+[d_gravDoji,   b2]   = CP.detect_gravestone_doji(dojiPct, wickBodyMin)
+[d_hammer,     b3]   = CP.detect_hammer(wickBodyMin)
+[d_iHammer,    b4]   = CP.detect_inverted_hammer(wickBodyMin)
+[d_hangMan,    b5]   = CP.detect_hanging_man(wickBodyMin)
+[d_shootStar,  b6]   = CP.detect_shooting_star(wickBodyMin)
+[d_marBull,    b7]   = CP.detect_marubozu_bull(marubozuMax)
+[d_marBear,    b8]   = CP.detect_marubozu_bear(marubozuMax)
+[d_bullEng,    b9]   = CP.detect_bullish_engulfing(engulfMin)
+[d_bearEng,    b10]  = CP.detect_bearish_engulfing(engulfMin)
+[d_bullHar,    b11]  = CP.detect_bullish_harami()
+[d_bearHar,    b12]  = CP.detect_bearish_harami()
+[d_pierce,     b13]  = CP.detect_piercing_line()
+[d_dcc,        b14]  = CP.detect_dark_cloud_cover()
+[d_mornStar,   b15]  = CP.detect_morning_star(starBodyMax)
+[d_evenStar,   b16]  = CP.detect_evening_star(starBodyMax)
+[d_3ws,        b17]  = CP.detect_three_white_soldiers(threeLineBody)
+[d_3bc,        b18]  = CP.detect_three_black_crows(threeLineBody)
+[d_bullKick,   b19]  = CP.detect_bullish_kicker()
+[d_bearKick,   b20]  = CP.detect_bearish_kicker()
+[d_tweezBtm,   b21]  = CP.detect_tweezer_bottom(tweezerTol)
+[d_tweezTop,   b22]  = CP.detect_tweezer_top(tweezerTol)
+[d_insideBar,  b23]  = CP.detect_inside_bar()
+[d_outsideBar, b24]  = CP.detect_outside_bar()
+
+// ─────────────────────────────────────────────────────────
+//  TRACK LAST DETECTION BAR for each pattern
+//  (persistent variable updated each bar)
+// ─────────────────────────────────────────────────────────
+var int last_doji     = na
+var int last_dfly     = na
+var int last_grav     = na
+var int last_hammer   = na
+var int last_iHammer  = na
+var int last_hangMan  = na
+var int last_shoot    = na
+var int last_marBull  = na
+var int last_marBear  = na
+var int last_bullEng  = na
+var int last_bearEng  = na
+var int last_bullHar  = na
+var int last_bearHar  = na
+var int last_pierce   = na
+var int last_dcc      = na
+var int last_morn     = na
+var int last_even     = na
+var int last_3ws      = na
+var int last_3bc      = na
+var int last_bullKick = na
+var int last_bearKick = na
+var int last_tweezBtm = na
+var int last_tweezTop = na
+var int last_inside   = na
+var int last_outside  = na
+
+if d_doji       last_doji     := bar_index
+if d_dflyDoji   last_dfly     := bar_index
+if d_gravDoji   last_grav     := bar_index
+if d_hammer     last_hammer   := bar_index
+if d_iHammer    last_iHammer  := bar_index
+if d_hangMan    last_hangMan  := bar_index
+if d_shootStar  last_shoot    := bar_index
+if d_marBull    last_marBull  := bar_index
+if d_marBear    last_marBear  := bar_index
+if d_bullEng    last_bullEng  := bar_index
+if d_bearEng    last_bearEng  := bar_index
+if d_bullHar    last_bullHar  := bar_index
+if d_bearHar    last_bearHar  := bar_index
+if d_pierce     last_pierce   := bar_index
+if d_dcc        last_dcc      := bar_index
+if d_mornStar   last_morn     := bar_index
+if d_evenStar   last_even     := bar_index
+if d_3ws        last_3ws      := bar_index
+if d_3bc        last_3bc      := bar_index
+if d_bullKick   last_bullKick := bar_index
+if d_bearKick   last_bearKick := bar_index
+if d_tweezBtm   last_tweezBtm := bar_index
+if d_tweezTop   last_tweezTop := bar_index
+if d_insideBar  last_inside   := bar_index
+if d_outsideBar last_outside  := bar_index
+
+// ─────────────────────────────────────────────────────────
+//  AGGREGATE  (from detect_all)
+// ─────────────────────────────────────────────────────────
+[aggName, aggBias, aggStrength] = CP.detect_all(dojiPct, wickBodyMin, engulfMin, tweezerTol, marubozuMax, threeLineBody, starBodyMax)
+
+// ─────────────────────────────────────────────────────────
+//  TABLE RENDERING (only on last bar)
+// ─────────────────────────────────────────────────────────
+// Convert table position string to Pine position constant
+_pos(s) =>
+    s == "Top Left"     ? position.top_left    :
+    s == "Bottom Left"  ? position.bottom_left :
+    s == "Bottom Right" ? position.bottom_right:
+    s == "Middle Right" ? position.middle_right :
+    s == "Middle Left"  ? position.middle_left  :
+    position.top_right
+
+// Helper: format "N bars ago" or "Now" or "—"
+_lastSeen(lastBar) =>
+    if na(lastBar)
+        "—"
+    else
+        int ago = bar_index - lastBar
+        ago == 0 ? "NOW" : str.tostring(ago) + "b ago"
+
+// Helper: bias label string
+_biasStr(b) =>
+    b == 1 ? "▲ BULL" : b == -1 ? "▼ BEAR" : "● NEUT"
+
+_biasCol(b) =>
+    b == 1 ? colBull : b == -1 ? colBear : colNone
+
+// Helper: highlight row bg if recently fired
+_rowBg(lastBar) =>
+    if na(lastBar)
+        color.new(#111122, 0)
+    else
+        int ago = bar_index - lastBar
+        ago <= freshBars ? color.new(#1f2a1f, 0) : color.new(#111122, 0)
+
+// ── Pattern registry (arrays mimic a struct table) ─────────────────────────
+// Each entry: [name, bias, lastBar]
+// We build them inline inside barstate.islast for lowest overhead.
+
+var table scanTable = na
+
+if barstate.islast
+    // Total rows = 1 header + 25 patterns + 1 separator + 1 aggregate = 28
+    int ROWS = 28
+    scanTable := table.new(
+         _pos(tablePos), 3, ROWS,
+         bgcolor      = color.new(#0a0a1a, 5),
+         border_color = color.new(#2a2a4a, 0),
+         border_width = 1,
+         frame_color  = color.new(#4444aa, 0),
+         frame_width  = 1)
+
+    // ── Header ─────────────────────────────────────────────
+    _hCell(col, txt) =>
+        table.cell(scanTable, col, 0, txt,
+             bgcolor    = color.new(#1e1e4f, 0),
+             text_color = color.new(#aaaaff, 0),
+             text_size  = size.tiny,
+             text_halign = text.align_center)
+
+    _hCell(0, "Pattern")
+    _hCell(1, "Bias")
+    _hCell(2, "Last Seen")
+
+    // ── Reusable row builder ────────────────────────────────
+    _pRow(row, pName, pBias, lastBar) =>
+        bool skip = showOnlyActive and na(lastBar)
+        bool recent = not na(lastBar) and (bar_index - lastBar) <= freshBars
+        color bg = _rowBg(lastBar)
+        color tc = color.new(recent ? #ffffff : #777788, 0)
+
+        if not skip
+            table.cell(scanTable, 0, row, pName,
+                 bgcolor     = bg,
+                 text_color  = tc,
+                 text_size   = size.tiny,
+                 text_halign = text.align_left)
+            table.cell(scanTable, 1, row, _biasStr(pBias),
+                 bgcolor     = bg,
+                 text_color  = _biasCol(pBias),
+                 text_size   = size.tiny,
+                 text_halign = text.align_center)
+            table.cell(scanTable, 2, row, _lastSeen(lastBar),
+                 bgcolor     = bg,
+                 text_color  = recent ? color.new(#ffdd00, 0) : color.new(#555566, 0),
+                 text_size   = size.tiny,
+                 text_halign = text.align_right)
+
+    // ── Pattern rows (row 1–25) ─────────────────────────────
+    _pRow(1,  "Doji",                  0,   last_doji)
+    _pRow(2,  "Dragonfly Doji",        1,   last_dfly)
+    _pRow(3,  "Gravestone Doji",      -1,   last_grav)
+    _pRow(4,  "Hammer",                1,   last_hammer)
+    _pRow(5,  "Inverted Hammer",       1,   last_iHammer)
+    _pRow(6,  "Hanging Man",          -1,   last_hangMan)
+    _pRow(7,  "Shooting Star",        -1,   last_shoot)
+    _pRow(8,  "Bullish Marubozu",      1,   last_marBull)
+    _pRow(9,  "Bearish Marubozu",     -1,   last_marBear)
+    _pRow(10, "Bullish Engulfing",     1,   last_bullEng)
+    _pRow(11, "Bearish Engulfing",    -1,   last_bearEng)
+    _pRow(12, "Bullish Harami",        1,   last_bullHar)
+    _pRow(13, "Bearish Harami",       -1,   last_bearHar)
+    _pRow(14, "Piercing Line",         1,   last_pierce)
+    _pRow(15, "Dark Cloud Cover",     -1,   last_dcc)
+    _pRow(16, "Morning Star",          1,   last_morn)
+    _pRow(17, "Evening Star",         -1,   last_even)
+    _pRow(18, "Three White Soldiers",  1,   last_3ws)
+    _pRow(19, "Three Black Crows",    -1,   last_3bc)
+    _pRow(20, "Bullish Kicker",        1,   last_bullKick)
+    _pRow(21, "Bearish Kicker",       -1,   last_bearKick)
+    _pRow(22, "Tweezer Bottom",        1,   last_tweezBtm)
+    _pRow(23, "Tweezer Top",          -1,   last_tweezTop)
+    _pRow(24, "Inside Bar",            0,   last_inside)
+    _pRow(25, "Outside Bar",           0,   last_outside)
+
+    // ── Separator ──────────────────────────────────────────
+    table.cell(scanTable, 0, 26, "─────────────────",
+         bgcolor    = color.new(#0a0a2a, 0),
+         text_color = color.new(#333355, 0),
+         text_size  = size.tiny,
+         text_halign = text.align_left)
+    table.cell(scanTable, 1, 26, "",  bgcolor = color.new(#0a0a2a, 0), text_color = color.new(#0a0a2a, 0), text_size = size.tiny)
+    table.cell(scanTable, 2, 26, "",  bgcolor = color.new(#0a0a2a, 0), text_color = color.new(#0a0a2a, 0), text_size = size.tiny)
+
+    // ── Aggregate row ──────────────────────────────────────
+    string aggStr  = aggName + (aggStrength > 1 ? " ×" + str.tostring(aggStrength) : "")
+    color  aggBG   = aggBias == 1 ? color.new(#0d2a1a, 0) : aggBias == -1 ? color.new(#2a0d0d, 0) : color.new(#1a1a2a, 0)
+    table.cell(scanTable, 0, 27, aggStr,
+         bgcolor    = aggBG,
+         text_color = _biasCol(aggBias),
+         text_size  = size.small,
+         text_halign = text.align_left)
+    table.cell(scanTable, 1, 27, _biasStr(aggBias),
+         bgcolor    = aggBG,
+         text_color = _biasCol(aggBias),
+         text_size  = size.small,
+         text_halign = text.align_center)
+    table.cell(scanTable, 2, 27, "≡ NET",
+         bgcolor    = aggBG,
+         text_color = _biasCol(aggBias),
+         text_size  = size.small,
+         text_halign = text.align_right)
+
+// ─────────────────────────────────────────────────────────
+//  ALERTS
+// ─────────────────────────────────────────────────────────
+alertcondition(aggBias == 1,  "Scanner: Bullish Bias", "Candle patterns showing BULLISH bias")
+alertcondition(aggBias == -1, "Scanner: Bearish Bias", "Candle patterns showing BEARISH bias")
+alertcondition(d_3ws,         "Three White Soldiers",  "Three White Soldiers pattern detected")
+alertcondition(d_3bc,         "Three Black Crows",     "Three Black Crows pattern detected")
+alertcondition(d_bullKick,    "Bullish Kicker",        "Bullish Kicker detected")
+alertcondition(d_bearKick,    "Bearish Kicker",        "Bearish Kicker detected")
+alertcondition(d_mornStar,    "Morning Star",          "Morning Star detected")
+alertcondition(d_evenStar,    "Evening Star",          "Evening Star detected")
+alertcondition(d_bullEng,     "Bullish Engulfing",     "Bullish Engulfing detected")
+alertcondition(d_bearEng,     "Bearish Engulfing",     "Bearish Engulfing detected")

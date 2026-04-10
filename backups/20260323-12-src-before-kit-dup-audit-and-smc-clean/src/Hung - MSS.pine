@@ -1,0 +1,936 @@
+//@version=5
+// @version: 0.1.0
+// @trace_ts: 2026-03-13 22:19:45 +0100
+// @trace_update: step-1 case2 split bootstrap: extracted PD Array lines (SR/LIQ/EQ) + Market Structure (BOS/MSS) into standalone indicator
+// @trace_features: temporary migration file before KIT refactor step-2
+// @trace_last_backup: /Users/macmini/Trade/Bot/Hung Bot/backups/20260323-08-full-before-step1-market-structure-split
+indicator("Hung - MSS", overlay = true, scale = scale.right, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 100, max_bars_back = 100, dynamic_requests = true)
+
+import hunghoxuan/TradingKitCore/56 as CORE
+import hunghoxuan/TradingKitUI/13 as UI
+import hunghoxuan/TradingKitSMC/82 as SMC
+import hunghoxuan/TradingKitMSS/1 as MSS
+
+
+// ==================== CONSTANTS (LOGIC) ====================
+// Library singletons (persistent)
+var THEME = CORE.Theme.new()
+var SETTINGS = CORE.Settings.new()
+var CONST = CORE.Const.new()
+
+// ==================== VISUAL CONFIG OVERRIDES (SINGLE SOURCE OF TRUTH) ====================
+// Keep all indicator-level visual overrides in this section (no inline cfg.new in logic).
+
+// Persistent runtime state across bars.
+var array<CORE.Trigger> eventsQueue = array.new<CORE.Trigger>() // Used for LIQ sweep event memory.
+
+// UI theme-derived colors (declared after THEME exists).
+type DetectionCfg
+    int method = 0 // 0 = state, 1 = cross.
+    int methodCross = 1 // Cross method value.
+    string basis = "Wick" // Wick/Close basis.
+    bool useImpulse = false // Enable impulse filter.
+    float impulseAtr = 0.5 // Impulse threshold in ATR.
+
+type UIConfig
+    color colorBearish = color.red // Bearish text/line base color.
+    color colorBullish = color.teal // Bullish text/line base color.
+    color colorBg = color.gray // Zone fill neutral color.
+    color colorText = color.white // Generic text color.
+    color ltfColor = color.gray // Base-TF color.
+    int ltfBarsExt = 5 // LTF zone extension.
+    int ltfLineBarsExt = 8 // LTF line extension.
+    bool msShowSwings = true // Show base-TF swings by default.
+    bool msShowBosMss = true // Show BOS/MSS labels by default.
+    bool msShowZigzag = true // Show base-TF zigzag by default.
+    bool msHtf1SwingShow = true // Show HTF1 swings by default.
+    bool msHtf1ZigzagShow = true // Show HTF1 zigzag by default.
+    bool msHtf2SwingShow = true // Show HTF2 swings by default.
+    bool msHtf2ZigzagShow = true // Show HTF2 zigzag by default.
+    int htfZoneBgTransp = 90 // HTF projected-zone background alpha.
+    int zoneCurrMinWidthBars = 6 // Minimum zone width in bars.
+    bool htfShowProjectedZones = true // Toggle projected HTF zones.
+    bool zoneTooltipEnable = true // Toggle zone tooltips.
+
+get_detection_cfg(int setup) =>
+    DetectionCfg cfg = DetectionCfg.new()
+    if setup >= 3
+        cfg.basis := "Close"
+        cfg.useImpulse := true
+        cfg.impulseAtr := 0.7
+    else if setup == 2
+        cfg.basis := "Wick"
+        cfg.useImpulse := true
+        cfg.impulseAtr := 0.6
+    cfg
+
+get_ui_cfg(int setup, CORE.Theme th) =>
+    UIConfig cfg = UIConfig.new()
+    cfg.colorBearish := color.new(th.COLOR_BEARISH, th.T_NORMAL)
+    cfg.colorBullish := color.new(th.COLOR_BULLISH, th.T_NORMAL)
+    cfg.colorBg := color.new(th.COLOR_NEUTRAL, th.T_NORMAL)
+    cfg.colorText := color.new(th.TEXT_COLOR, th.T_NORMAL)
+    cfg.ltfColor := color.new(color.rgb(215, 215, 215), 0)
+    if setup >= 3
+        cfg.ltfBarsExt := 4
+        cfg.ltfLineBarsExt := 7
+    else if setup == 2
+        cfg.ltfBarsExt := 5
+        cfg.ltfLineBarsExt := 8
+    cfg
+
+// Limitation config: all caps/thresholds that limit detection/entry volume.
+type LimitationCfg
+    bool entryZoneFilterEnable = true // Apply pre-filter before add_entry.
+    float entryZoneMinQualityPct = 0.0 // Min zone quality to allow entry.
+    bool entryFilterNearLegEnable = false // Require zone to be near current leg.
+    int entryFilterNearLegMaxSeq = 99 // Max zone sequence in current leg.
+    bool entryFilterNearLegRequireDirMatch = false // Require leg direction matches side.
+    bool entryFilterNearLegAllowUnknown = true // Allow unknown leg metadata to pass.
+    bool entryFilterHtfOnlyEnable = false // Restrict entry candidates to HTF zones only.
+    int entryFilterHtfMinRank = 2 // Min source TF rank when HTF-only mode is on.
+    int zoneCapPerType = 16 // Max zones per family.
+    int zoneCapTotal = 96 // Max zones total across families.
+    int zoneCurrMaxPerTypeSide = 10 // Max current-TF zones per family per side.
+    float zonePriorityAgeDecay = 0.01 // Age penalty for prune ranking.
+    int zoneMergeTolTicks = 4 // Merge tolerance for near-overlap zones.
+    int zoneFormationLockBars = 1 // Ignore freshly forming unclosed zones.
+    float zoneMinHeightAtr = 0.05 // Min zone height in ATR.
+    int htfZoneLookbackBars = 1000000 // HTF projection lookback bars.
+    int htfZoneMaxPerTypeSide = 2 // HTF projected zones per family per side.
+    float htfProjectionMinQualityPct = 0.0 // Min HTF projected zone quality.
+    int signalMinConfluenceScore = 1 // Min score to emit/create entry.
+    int sweepReclaimMinBars = 2 // Min bars for sweep reclaim validity window.
+    int sweepReclaimMaxBars = 14 // Max bars for sweep reclaim validity window.
+    float sweepMinWickTicks = 1.0 // Min wick penetration for sweep.
+    float sweepMinReclaimAtr = 0.08 // Min reclaim displacement in ATR.
+    int breakRetestMinBars = 6 // Min bars for break-retest window.
+    int breakRetestMaxBars = 34 // Max bars for break-retest window.
+    float srTolAtrMult = 0.25 // SR merge/touch tolerance in ATR.
+    float srNearbyMergeMult = 2.0 // SR min-distance multiplier for de-dup.
+    float srTouchBandAtrMult = 0.10 // SR touch band in ATR.
+    float srTouchBandMinTicks = 2.0 // SR touch band minimum ticks.
+    int srTouchCountCooldownBars = 2 // Cooldown between SR touch increments.
+    int srSeedSwingsPerTf = 2 // Number of latest swings used as SR seeds per TF.
+    bool srUseLtfSeeds = false // Include LTF swings as SR seeds.
+    int eqPivotLedgerMin = 20 // Min pivot ledger points for EQ detection.
+    float eqTolAtr = 0.1 // EQ matching ATR tolerance.
+
+get_limitation_cfg(int strict, int globalLookbackBars) =>
+    LimitationCfg cfg = LimitationCfg.new()
+    cfg.htfZoneLookbackBars := globalLookbackBars <= 0 ? 1000000 : globalLookbackBars
+    if strict >= 3
+        cfg.entryFilterNearLegEnable := true
+        cfg.entryFilterNearLegMaxSeq := 2
+        cfg.entryFilterNearLegRequireDirMatch := true
+        cfg.entryFilterNearLegAllowUnknown := false
+        cfg.entryFilterHtfOnlyEnable := true
+        cfg.entryZoneMinQualityPct := 55.0
+        cfg.signalMinConfluenceScore := 3
+        cfg.htfProjectionMinQualityPct := 35.0
+        cfg.zoneCapPerType := 8
+        cfg.zoneCapTotal := 48
+        cfg.sweepMinWickTicks := 2.0
+        cfg.sweepMinReclaimAtr := 0.15
+    else if strict == 2
+        cfg.entryFilterNearLegEnable := true
+        cfg.entryFilterNearLegMaxSeq := 3
+        cfg.entryFilterNearLegRequireDirMatch := true
+        cfg.entryFilterNearLegAllowUnknown := false
+        cfg.entryFilterHtfOnlyEnable := false
+        cfg.entryZoneMinQualityPct := 25.0
+        cfg.signalMinConfluenceScore := 2
+        cfg.htfProjectionMinQualityPct := 20.0
+        cfg.zoneCapPerType := 12
+        cfg.zoneCapTotal := 72
+        cfg.sweepMinWickTicks := 1.5
+        cfg.sweepMinReclaimAtr := 0.12
+    cfg
+// PIVOTS: base/current and HTF-mimic model.
+PIVOT_LEN_SCALP = 15 // <= 5m
+PIVOT_LEN_INTRADAY = 12 // > 5m and <= 1h
+PIVOT_LEN_MULTI_DAY = 8 // > 1h and <= 4h
+PIVOT_LEN_SWING = 6 // > 4h and <= 1D
+PIVOT_LEN_POSITION = 4 // > 1D
+PIVOT_LEN_BASE = "" == CONST.PIVOT_MODE_FIXED ? 10 :
+ (CORE.get_tf_seconds(timeframe.period) <= 300 ? PIVOT_LEN_SCALP :
+  CORE.get_tf_seconds(timeframe.period) <= 3600 ? PIVOT_LEN_INTRADAY :
+  CORE.get_tf_seconds(timeframe.period) <= 14400 ? PIVOT_LEN_MULTI_DAY :
+  CORE.get_tf_seconds(timeframe.period) <= 86400 ? PIVOT_LEN_SWING : PIVOT_LEN_POSITION)
+
+// EQ: equal highs/lows parameters.
+EQ_SAFE_HISTORY_OFFSET = 100 // Safety cap for any `[offset]` checks inside EQ (avoid historical buffer runtime errors).
+SR_SOURCE_PRIO_LTF = 1
+SR_SOURCE_PRIO_HTF1 = 2
+SR_SOURCE_PRIO_HTF2 = 3
+
+// BREAK: detection mode and sensitivity basis.
+
+// Active trading area: auto from nearest HTF1 swings around current price.
+
+HL_KIND_LIQ = 0
+HL_KIND_EQ = 1
+HL_KIND_SR = 2
+
+SCORE_PROFILE_LOOSE = "Loose"
+SCORE_PROFILE_BALANCED = "Balanced"
+SCORE_PROFILE_STRICT = "Strict"
+SCORE_PROFILE_EXTREME = "Extreme"
+
+// ==================== CONSTANTS (UI/TEXT) ====================
+// ==================== GLOBAL STATE (PERSISTENT) ====================
+
+
+// Derived working-range constants (depend on SETTINGS).
+LOOKBACK_BARS_WORK = SETTINGS.GLOBAL_MAX_LOOKBACK_BARS <= 0 ? 1000000 : SETTINGS.GLOBAL_MAX_LOOKBACK_BARS
+
+// Derived globals (depend on SETTINGS / dynamic lookback).
+htfProjectionSpanBars = LOOKBACK_BARS_WORK
+perfLookbackBars = LOOKBACK_BARS_WORK
+effectiveCurrLookbackBars = LOOKBACK_BARS_WORK
+var CORE.ChartContext chartCtx = CORE.ChartContext.new()
+var CORE.DataContextCfg ctxDataCfg = CORE.DataContextCfg.new()
+var CORE.BiasToggles BIAS_TOG = CORE.BiasToggles.new()
+var array<CORE.PDArray> ctxZonesRef = array.new<CORE.PDArray>()
+var array<CORE.Trigger> ctxSignalHistRef = array.new<CORE.Trigger>()
+
+var DetectionCfg detCfg = get_detection_cfg(1)
+var UIConfig uiCfg = get_ui_cfg(1, THEME)
+// Visual families: zones, projected HTF zones, SR/EQ/LIQ/Trigger lines.
+var SMC.ZoneDrawConfig CFG_SR = SMC.ZoneDrawConfig.new(color.new(THEME.COLOR_NEUTRAL, SETTINGS.SR_LINE_TRANSP), line.style_dotted, 1, THEME.SIZE_TINY, true)
+var CORE.ZoneVisualCfg ZONE_VIS_CFG = CORE.ZoneVisualCfg.new(minWidthBars = uiCfg.zoneCurrMinWidthBars, borderWidth = 1, textSize = THEME.SIZE_TINY, transparentColor = THEME.COLOR_TRANSPARENT, labelStyle = THEME.STYLE_LABEL_NONE, textHAlign = text.align_right, textVAlign = text.align_bottom)
+var CORE.ProjectedBoxVisualCfg HTF_BOX_VIS_CFG = CORE.ProjectedBoxVisualCfg.new(borderWidth = 1, textSize = THEME.SIZE_SMALL, textHAlign = text.align_right, textVAlign = text.align_center)
+var CORE.PriceZoneLineVisualCfg SR_VIS_CFG = CORE.PriceZoneLineVisualCfg.new(lineStyle = CFG_SR.lineStyle, lineWidth = CFG_SR.lineWidth, labelSize = CFG_SR.labelSize, showLabel = CFG_SR.showLabel)
+var CORE.LineTextVisualCfg EQ_LINE_VIS_CFG = CORE.LineTextVisualCfg.new(lineStyle = line.style_dotted, lineWidth = 1, textSize = THEME.SIZE_TINY, vPos = 0, yPadTicks = 0.0, xRatio = 0.5, xPadBars = 0, textAlign = text.align_center)
+var CORE.LineTextVisualCfg LIQ_LINE_VIS_CFG = CORE.LineTextVisualCfg.new(lineStyle = line.style_dotted, lineWidth = 1, textSize = THEME.SIZE_TINY, vPos = 0, yPadTicks = 0.0, xRatio = 0.5, xPadBars = 0, textAlign = text.align_center)
+
+// Horizontal level families stored in one unified PDArray array.
+var array<CORE.PDArray> levels = array.new<CORE.PDArray>() // Unified levels storage: SR, LIQ, eqh, eql.
+
+// EQ swing-processing guards (prevent re-processing same swing point every bar).
+var array<int> eqLastHighTimeProcessed = array.new_int(1, na)
+var array<int> eqLastLowTimeProcessed = array.new_int(1, na)
+var int dynCachedCurrLookbackBars = LOOKBACK_BARS_WORK // Dynamic current-TF lookback bars. This becomes `effectiveCurrLookbackBars`.
+var CORE.TFConfig htf1Cfg = CORE.TFConfig.new("HTF1", uiCfg.msHtf1SwingShow, uiCfg.msHtf1ZigzagShow, color.new(THEME.COLOR_HTF1, 70), color.new(THEME.COLOR_HTF1, 70), size.tiny, color.new(THEME.COLOR_HTF1, 70), line.style_dotted, 1, SETTINGS.MS_HTF1_SWING_Y_SHIFT_TICKS)
+var CORE.TFConfig htf2Cfg = CORE.TFConfig.new("HTF2", uiCfg.msHtf2SwingShow, uiCfg.msHtf2ZigzagShow, color.new(THEME.COLOR_HTF2, 30), color.new(THEME.COLOR_HTF2, 30), size.small, color.new(THEME.COLOR_HTF2, 30), line.style_dotted, 1, SETTINGS.MS_HTF2_SWING_Y_SHIFT_TICKS)
+var CORE.TFConfig msLtfCfg = CORE.TFConfig.new("LTF", uiCfg.msShowSwings, uiCfg.msShowZigzag, color.new(color.rgb(215, 215, 215), 35), color.new(color.rgb(215, 215, 215), 35), size.tiny, color.new(color.rgb(215, 215, 215), 25), line.style_dotted, 1, int(SETTINGS.MS_CURR_SWING_Y_SHIFT_TICKS))
+var CORE.TFConfig msHtf1Cfg = CORE.TFConfig.new("HTF1", uiCfg.msHtf1SwingShow, uiCfg.msHtf1ZigzagShow, color.new(THEME.COLOR_HTF1, 70), color.new(THEME.COLOR_HTF1, 70), size.small, color.new(THEME.COLOR_HTF1, 70), line.style_dotted, 1, SETTINGS.MS_HTF1_SWING_Y_SHIFT_TICKS)
+var CORE.TFConfig msHtf2Cfg = CORE.TFConfig.new("HTF2", uiCfg.msHtf2SwingShow, uiCfg.msHtf2ZigzagShow, color.new(THEME.COLOR_HTF2, 30), color.new(THEME.COLOR_HTF2, 30), size.normal, color.new(THEME.COLOR_HTF2, 30), line.style_dotted, 1, SETTINGS.MS_HTF2_SWING_Y_SHIFT_TICKS)
+var CORE.TFData ltfData = CORE.TFData.new("LTF", array.new_float(), array.new_int(), array.new_float(), array.new_int(), array.new_float(), array.new_int(), array.new_bool(), false, false, 0, 0, na, na, na, na, na, na, na, na, na, na)
+var CORE.TFData htf1Data = CORE.TFData.new("HTF1", array.new_float(), array.new_int(), array.new_float(), array.new_int(), array.new_float(), array.new_int(), array.new_bool(), false, false, 0, 0, na, na, na, na, na, na, na, na, na, na)
+var CORE.TFData htf2Data = CORE.TFData.new("HTF2", array.new_float(), array.new_int(), array.new_float(), array.new_int(), array.new_float(), array.new_int(), array.new_bool(), false, false, 0, 0, na, na, na, na, na, na, na, na, na, na)
+var array<string> msEmitTf = array.new_string()
+var array<int> msEmitSide = array.new_int()
+var array<int> msEmitPivotTime = array.new_int()
+var line pdhLine = na
+var line pdlLine = na
+var label pdhLabel = na
+var label pdlLabel = na
+
+// Shared series used across features (keep above any function references).
+commonAtr = ta.atr(14)
+var LimitationCfg limCfg = get_limitation_cfg(1, SETTINGS.GLOBAL_MAX_LOOKBACK_BARS)
+
+// ==================== INPUTS ====================
+
+string G_PDAS = "1. PD ARRAYS & LIQUIDITY"
+string G_POS = "3. POSITION"
+string G_MS = "5. MARKET STRUCTURE"
+
+showSR = input.bool(true, "S/R", inline="pda", group=G_PDAS)
+
+liquidityBool = input.bool(true, "Swing Liq", inline = "kl", group = G_PDAS)
+show_eql = input.bool(true, "EqH/EqL", inline = "kl", group = G_PDAS)
+showPDH_PDL = input.bool(true, "PDH/PDL", inline = "kl", group = G_PDAS)
+scoreProfile = input.string(SCORE_PROFILE_BALANCED, "Score Profile", options = [SCORE_PROFILE_LOOSE, SCORE_PROFILE_BALANCED, SCORE_PROFILE_STRICT, SCORE_PROFILE_EXTREME], inline = "en1", group = G_POS)
+msShowLtf = input.bool(true, "LTF", inline = "ms0", group = G_MS)
+msShowTf1 = input.bool(true, "TF1", inline = "ms0", group = G_MS)
+msShowTf2 = input.bool(true, "TF2", inline = "ms0", group = G_MS)
+msShowBosMss = input.bool(true, "BOS/MSS", inline = "ms1", group = G_MS)
+msShowZigzag = input.bool(true, "Zigzag", inline = "ms1", group = G_MS)
+msShowSwings = input.bool(true, "Swings", inline = "ms1", group = G_MS)
+
+int limitStrict = 1
+limCfg := get_limitation_cfg(limitStrict, SETTINGS.GLOBAL_MAX_LOOKBACK_BARS)
+int scoreProfileId = scoreProfile == SCORE_PROFILE_LOOSE ? 0 : scoreProfile == SCORE_PROFILE_STRICT ? 2 : scoreProfile == SCORE_PROFILE_EXTREME ? 3 : 1
+limCfg.entryZoneMinQualityPct := scoreProfileId == 0 ? 20.0 : scoreProfileId == 2 ? 50.0 : scoreProfileId == 3 ? 65.0 : 35.0
+limCfg.htfProjectionMinQualityPct := scoreProfileId == 0 ? 10.0 : scoreProfileId == 2 ? 40.0 : scoreProfileId == 3 ? 55.0 : 25.0
+limCfg.signalMinConfluenceScore := scoreProfileId == 0 ? 1 : scoreProfileId == 2 ? 3 : scoreProfileId == 3 ? 4 : 2
+limCfg.zoneCapTotal := scoreProfileId == 0 ? 96 : scoreProfileId == 2 ? 48 : scoreProfileId == 3 ? 32 : 72
+limCfg.zonePriorityAgeDecay := scoreProfileId == 0 ? 0.005 : scoreProfileId == 2 ? 0.020 : scoreProfileId == 3 ? 0.035 : 0.010
+detCfg := get_detection_cfg(limitStrict)
+uiCfg := get_ui_cfg(limitStrict, THEME)
+ZONE_VIS_CFG.minWidthBars := uiCfg.zoneCurrMinWidthBars
+
+// ==================== FEATURES ====================
+
+refresh_tf_leg_state(CORE.TFData tfData) =>
+    if not na(tfData.legEventTime) and tfData.legEventTime != tfData.legLastEventSeen
+        tfData.legId += 1
+        tfData.legDir := tfData.prevBreakout
+        tfData.legSeqAll := 0
+        tfData.legSeqOb := 0
+        tfData.legSeqFvg := 0
+        tfData.legSeqRjb := 0
+        tfData.legSeqLevel := 0
+        tfData.legLastEventSeen := tfData.legEventTime
+
+// Lightweight MS trend updater (data-only, no visuals).
+// Cost: O(1) per TF per bar (reads latest swing high/low only).
+process_tf_ms_trend_light(CORE.TFData tfData, bool enabled) =>
+    if not enabled
+        bool(na)
+    else
+        int hiN = array.size(tfData.swingHighPrices)
+        int loN = array.size(tfData.swingLowPrices)
+        float lastHi = hiN > 0 ? array.get(tfData.swingHighPrices, hiN - 1) : na
+        float lastLo = loN > 0 ? array.get(tfData.swingLowPrices, loN - 1) : na
+        bool breakUp = not na(lastHi) and close > lastHi
+        bool breakDn = not na(lastLo) and close < lastLo
+        int nextDir = tfData.prevBreakout
+        if breakUp and not breakDn
+            nextDir := 1
+        else if breakDn and not breakUp
+            nextDir := -1
+        if nextDir != tfData.prevBreakout and nextDir != 0
+            tfData.prevBreakout := nextDir
+            tfData.msBias := nextDir
+            tfData.legEventTime := time
+        else if tfData.msBias == 0 and tfData.prevBreakout != 0
+            tfData.msBias := tfData.prevBreakout
+        refresh_tf_leg_state(tfData)
+        bool(na)
+
+ms_process_structure_from_ledger(CORE.TFData tfData, CORE.TFConfig cfg, string tfName, int recentTsCut, string htf1Name, string htf2Name) =>
+    bool highArmedNext = tfData.highArmed
+    bool lowArmedNext = tfData.lowArmed
+    int prevBreakoutNext = tfData.prevBreakout
+    int msBiasNext = tfData.msBias
+    bool highBroken = false
+    bool lowBroken = false
+    float lastHigh = array.size(tfData.swingHighPrices) > 0 ? array.get(tfData.swingHighPrices, array.size(tfData.swingHighPrices) - 1) : na
+    int lastHighTime = array.size(tfData.swingHighTimes) > 0 ? array.get(tfData.swingHighTimes, array.size(tfData.swingHighTimes) - 1) : na
+    float lastLow = array.size(tfData.swingLowPrices) > 0 ? array.get(tfData.swingLowPrices, array.size(tfData.swingLowPrices) - 1) : na
+    int lastLowTime = array.size(tfData.swingLowTimes) > 0 ? array.get(tfData.swingLowTimes, array.size(tfData.swingLowTimes) - 1) : na
+
+    if highArmedNext and not na(lastHigh) and high > lastHigh
+        highBroken := true
+        highArmedNext := false
+    if lowArmedNext and not na(lastLow) and low < lastLow
+        lowBroken := true
+        lowArmedNext := false
+
+    bool highRecent = not na(lastHighTime) and lastHighTime >= recentTsCut
+    bool lowRecent = not na(lastLowTime) and lastLowTime >= recentTsCut
+    CORE.LineTextVisualCfg evtCfg = CORE.LineTextVisualCfg.new(lineStyle = cfg.zigzagStyle, lineWidth = math.max(cfg.zigzagWidth, 1), textSize = MSS.ms_get_tf_text_size(tfName, htf1Name, htf2Name), vPos = 1, yPadTicks = 8.0, xRatio = 0.5, xPadBars = 0, textAlign = text.align_center)
+
+    if msShowBosMss and highBroken and highRecent and CORE.is_in_draw_lookback_current(perfLookbackBars)
+        if MSS.ms_should_emit_structure_event(tfName, 1, lastHighTime, msEmitTf, msEmitSide, msEmitPivotTime)
+            bool isMssUp = prevBreakoutNext == -1
+            string eventTxt = (tfName == timeframe.period ? str.lower(isMssUp ? "MSS" : "BOS") : (isMssUp ? "MSS" : "BOS")) + " " + CONST.SYM_ARR2_UP
+            [_, _] = UI.draw_line_with_text(lastHighTime, lastHigh, time, lastHigh, xloc.bar_time, color.new(cfg.zigzagColor, 55), eventTxt, true, color.new(cfg.zigzagColor, 0), "", evtCfg, THEME)
+            prevBreakoutNext := 1
+            msBiasNext := 1
+            tfData.legEventTime := lastHighTime
+
+    if msShowBosMss and lowBroken and lowRecent and CORE.is_in_draw_lookback_current(perfLookbackBars)
+        if MSS.ms_should_emit_structure_event(tfName, -1, lastLowTime, msEmitTf, msEmitSide, msEmitPivotTime)
+            bool isMssDn = prevBreakoutNext == 1
+            string eventTxt = (tfName == timeframe.period ? str.lower(isMssDn ? "MSS" : "BOS") : (isMssDn ? "MSS" : "BOS")) + " " + CONST.SYM_ARR2_DN
+            evtCfg.vPos := -1
+            evtCfg.yPadTicks := 25.0
+            [_, _] = UI.draw_line_with_text(lastLowTime, lastLow, time, lastLow, xloc.bar_time, color.new(cfg.zigzagColor, 55), eventTxt, true, color.new(cfg.zigzagColor, 0), "", evtCfg, THEME)
+            prevBreakoutNext := -1
+            msBiasNext := -1
+            tfData.legEventTime := lastLowTime
+
+    tfData.highArmed := highArmedNext
+    tfData.lowArmed := lowArmedNext
+    tfData.prevBreakout := prevBreakoutNext
+    tfData.msBias := msBiasNext
+
+draw_data_market_structure(string htf1NameRaw, string htf2NameRaw, int currPivotOffSafe, int structRecentTsCut, int structRecentIdxCut, float currSh, float currSl, float sh1Mimic, float sl1Mimic, int sh1MimicT, int sl1MimicT, int sh1MimicIdx, int sl1MimicIdx, float sh2Mimic, float sl2Mimic, int sh2MimicT, int sl2MimicT, int sh2MimicIdx, int sl2MimicIdx) =>
+    msLtfCfg.showSwings := msShowLtf and msShowSwings
+    msLtfCfg.showZigzag := msShowLtf and msShowZigzag
+    msHtf1Cfg.showSwings := msShowTf1 and msShowSwings
+    msHtf1Cfg.showZigzag := msShowTf1 and msShowZigzag
+    msHtf2Cfg.showSwings := msShowTf2 and msShowSwings
+    msHtf2Cfg.showZigzag := msShowTf2 and msShowZigzag
+
+    string htf1Name = na(htf1NameRaw) ? "" : htf1NameRaw
+    string htf2Name = na(htf2NameRaw) ? "" : htf2NameRaw
+    UI.process_tf_swing_markers(ltfData, msLtfCfg, true, timeframe.period, currSh, not na(currSh) ? int(time[currPivotOffSafe]) : na, not na(currSh) ? bar_index - currPivotOffSafe : na, currSl, not na(currSl) ? int(time[currPivotOffSafe]) : na, not na(currSl) ? bar_index - currPivotOffSafe : na, structRecentTsCut, CONST.SYM_DOT)
+    UI.process_tf_swing_markers(htf1Data, msHtf1Cfg, not na(htf1NameRaw), htf1NameRaw, sh1Mimic, sh1MimicT, sh1MimicIdx, sl1Mimic, sl1MimicT, sl1MimicIdx, structRecentTsCut, CONST.SYM_DOT)
+    UI.process_tf_swing_markers(htf2Data, msHtf2Cfg, not na(htf2NameRaw), htf2NameRaw, sh2Mimic, sh2MimicT, sh2MimicIdx, sl2Mimic, sl2MimicT, sl2MimicIdx, structRecentTsCut, CONST.SYM_DOT)
+
+    UI.process_tf_zigzag_from_pivots(ltfData, msLtfCfg, true, currSh, not na(currSh) ? int(time[currPivotOffSafe]) : na, not na(currSh) ? bar_index - currPivotOffSafe : na, currSl, not na(currSl) ? int(time[currPivotOffSafe]) : na, not na(currSl) ? bar_index - currPivotOffSafe : na, structRecentIdxCut)
+    UI.process_tf_zigzag_from_pivots(htf1Data, msHtf1Cfg, not na(htf1NameRaw), sh1Mimic, sh1MimicT, sh1MimicIdx, sl1Mimic, sl1MimicT, sl1MimicIdx, structRecentIdxCut)
+    UI.process_tf_zigzag_from_pivots(htf2Data, msHtf2Cfg, not na(htf2NameRaw), sh2Mimic, sh2MimicT, sh2MimicIdx, sl2Mimic, sl2MimicT, sl2MimicIdx, structRecentIdxCut)
+
+    ms_process_structure_from_ledger(ltfData, msLtfCfg, timeframe.period, structRecentTsCut, htf1Name, htf2Name)
+    if not na(htf1NameRaw)
+        ms_process_structure_from_ledger(htf1Data, msHtf1Cfg, htf1NameRaw, structRecentTsCut, htf1Name, htf2Name)
+    if not na(htf2NameRaw)
+        ms_process_structure_from_ledger(htf2Data, msHtf2Cfg, htf2NameRaw, structRecentTsCut, htf1Name, htf2Name)
+    bool(na)
+
+get_label_size_for_source_tf(string sourceTf) =>
+    [tf1, tf2] = CORE.get_htf_pair()
+    sourceTf == tf2 ? THEME.SIZE_SMALL : sourceTf == tf1 ? THEME.SIZE_SMALL : THEME.SIZE_SMALL
+
+[htf1, htf2] = CORE.get_htf_pair()
+process_data_chart_context() =>
+    ctxDataCfg.needBias := true
+    ctxDataCfg.needMsTrendDirs := true
+    ctxDataCfg.needPdPw := true
+    ctxDataCfg.needPriceRange := true
+    ctxDataCfg.needHtfCandles := false
+    ctxDataCfg.needMsSwingArrays := true
+    ctxDataCfg.initBiasFactorArrays := true
+    ctxDataCfg.rangeLookbackBars := math.max(effectiveCurrLookbackBars, 50)
+    CORE.get_data_context(ctxDataCfg, SETTINGS, BIAS_TOG, ctxZonesRef, levels, eventsQueue, ctxSignalHistRef, ltfData, htf1Data, htf2Data)
+
+// Keep TF swing ledgers updated in ICT (data-only; no structure drawing here),
+// because SR/LIQ/IDM/Sweep pipelines still seed from TFData swings.
+int currPivotLen = PIVOT_LEN_BASE
+int maxSafeHistOff = 90
+int currPivotOffSafe = math.max(0, math.min(currPivotLen, maxSafeHistOff))
+int htf1MimicPivotLen = not na(htf1) ? CORE.get_mimic_pivot_len(timeframe.period, htf1, PIVOT_LEN_BASE, PIVOT_LEN_SCALP, PIVOT_LEN_INTRADAY, PIVOT_LEN_MULTI_DAY, PIVOT_LEN_SWING, PIVOT_LEN_POSITION) : na
+int htf2MimicPivotLen = not na(htf2) ? CORE.get_mimic_pivot_len(timeframe.period, htf2, PIVOT_LEN_BASE, PIVOT_LEN_SCALP, PIVOT_LEN_INTRADAY, PIVOT_LEN_MULTI_DAY, PIVOT_LEN_SWING, PIVOT_LEN_POSITION) : na
+int htf1PivotOffSafe = not na(htf1MimicPivotLen) ? math.max(0, math.min(htf1MimicPivotLen, maxSafeHistOff)) : na
+int htf2PivotOffSafe = not na(htf2MimicPivotLen) ? math.max(0, math.min(htf2MimicPivotLen, maxSafeHistOff)) : na
+float currSh = ta.pivothigh(high, currPivotLen, currPivotLen)
+float currSl = ta.pivotlow(low, currPivotLen, currPivotLen)
+int htf1LenSafe = not na(htf1MimicPivotLen) ? htf1MimicPivotLen : currPivotLen
+float sh1Raw = ta.pivothigh(high, htf1LenSafe, htf1LenSafe)
+float sl1Raw = ta.pivotlow(low, htf1LenSafe, htf1LenSafe)
+float sh1Mimic = not na(htf1MimicPivotLen) ? sh1Raw : na
+float sl1Mimic = not na(htf1MimicPivotLen) ? sl1Raw : na
+int sh1MimicT = not na(sh1Mimic) and not na(htf1PivotOffSafe) ? time[htf1PivotOffSafe] : na
+int sl1MimicT = not na(sl1Mimic) and not na(htf1PivotOffSafe) ? time[htf1PivotOffSafe] : na
+int sh1MimicIdx = not na(sh1Mimic) and not na(htf1PivotOffSafe) ? bar_index[htf1PivotOffSafe] : na
+int sl1MimicIdx = not na(sl1Mimic) and not na(htf1PivotOffSafe) ? bar_index[htf1PivotOffSafe] : na
+int htf2LenSafe = not na(htf2MimicPivotLen) ? htf2MimicPivotLen : currPivotLen
+float sh2Raw = ta.pivothigh(high, htf2LenSafe, htf2LenSafe)
+float sl2Raw = ta.pivotlow(low, htf2LenSafe, htf2LenSafe)
+float sh2Mimic = not na(htf2MimicPivotLen) ? sh2Raw : na
+float sl2Mimic = not na(htf2MimicPivotLen) ? sl2Raw : na
+int sh2MimicT = not na(sh2Mimic) and not na(htf2PivotOffSafe) ? time[htf2PivotOffSafe] : na
+int sl2MimicT = not na(sl2Mimic) and not na(htf2PivotOffSafe) ? time[htf2PivotOffSafe] : na
+int sh2MimicIdx = not na(sh2Mimic) and not na(htf2PivotOffSafe) ? bar_index[htf2PivotOffSafe] : na
+int sl2MimicIdx = not na(sl2Mimic) and not na(htf2PivotOffSafe) ? bar_index[htf2PivotOffSafe] : na
+int structRecentTsCut = CORE.get_recent_time_cutoff(effectiveCurrLookbackBars)
+int structRecentIdxCut = math.max(last_bar_index - math.max(effectiveCurrLookbackBars, 1), 0)
+CORE.process_tf_armed_state(ltfData, true, currSh, not na(currSh) ? int(time[currPivotOffSafe]) : na, currSl, not na(currSl) ? int(time[currPivotOffSafe]) : na, SETTINGS.SWING_HISTORY_MAX)
+CORE.process_tf_armed_state(htf1Data, not na(htf1), sh1Mimic, int(sh1MimicT), sl1Mimic, int(sl1MimicT), SETTINGS.SWING_HISTORY_MAX)
+CORE.process_tf_armed_state(htf2Data, not na(htf2), sh2Mimic, int(sh2MimicT), sl2Mimic, int(sl2MimicT), SETTINGS.SWING_HISTORY_MAX)
+process_tf_ms_trend_light(ltfData, true)
+process_tf_ms_trend_light(htf1Data, not na(htf1))
+process_tf_ms_trend_light(htf2Data, not na(htf2))
+draw_data_market_structure(htf1, htf2, currPivotOffSafe, structRecentTsCut, structRecentIdxCut, currSh, currSl, sh1Mimic, sl1Mimic, sh1MimicT, sl1MimicT, sh1MimicIdx, sl1MimicIdx, sh2Mimic, sl2Mimic, sh2MimicT, sl2MimicT, sh2MimicIdx, sl2MimicIdx)
+int h2LastHiT = array.size(htf2Data.swingHighTimes) > 0 ? array.get(htf2Data.swingHighTimes, array.size(htf2Data.swingHighTimes) - 1) : na
+int h2LastLoT = array.size(htf2Data.swingLowTimes) > 0 ? array.get(htf2Data.swingLowTimes, array.size(htf2Data.swingLowTimes) - 1) : na
+int htf2SwingAnchorTs = CORE.get_latest_time4(h2LastHiT, h2LastLoT, int(na), int(na))
+int htf2AnchorTsFinal = htf2SwingAnchorTs
+bool recalcByHtf2 = not na(htf2) and ta.change(time(htf2)) != 0
+bool recalcByN = false
+bool shouldDynRecalc = SETTINGS.DYN_LOOKBACK_ENABLE and (barstate.isfirst or recalcByHtf2 or recalcByN) // Controls how often dynamic lookback/candle widths update.
+if shouldDynRecalc
+    int dynHtf1Candles = SETTINGS.DYN_LOOKBACK_ENABLE and not na(htf1) ? CORE.get_candles_to_anchor(htf1, htf2AnchorTsFinal, SETTINGS.DYN_HTF1_CANDLES_MIN, SETTINGS.DYN_HTF1_CANDLES_MAX, SETTINGS.HTF_CANDLES_BASE) : SETTINGS.HTF_CANDLES_BASE
+    int htf1SecForDyn = not na(htf1) ? math.max(CORE.get_tf_seconds(htf1), 1) : na
+    int htf2SecForDyn = not na(htf2) ? math.max(CORE.get_tf_seconds(htf2), 1) : na
+    float htf2PerHtf1Dyn = not na(htf1SecForDyn) and not na(htf2SecForDyn) and htf2SecForDyn > htf1SecForDyn ? float(htf2SecForDyn) / float(htf1SecForDyn) : na
+    // Keep HTF1/HTF2 panels on equivalent time span:
+    // pass-1: derive HTF2 from HTF1 / ratio
+    int dynHtf2Candles = not na(htf2PerHtf1Dyn) ? int(math.round(float(dynHtf1Candles) / htf2PerHtf1Dyn)) : SETTINGS.DYN_HTF2_CANDLES_FALLBACK
+    dynHtf2Candles := math.max(SETTINGS.DYN_HTF2_CANDLES_MIN, math.min(dynHtf2Candles, SETTINGS.DYN_HTF2_CANDLES_MAX))
+    // pass-2: back-project HTF1 from HTF2 * ratio and keep the larger (stability against rounding loss)
+    int dynHtf1FromHtf2 = not na(htf2PerHtf1Dyn) ? int(math.ceil(float(dynHtf2Candles) * htf2PerHtf1Dyn)) : dynHtf1Candles
+    dynHtf1Candles := math.max(dynHtf1Candles, dynHtf1FromHtf2)
+    dynHtf1Candles := math.max(SETTINGS.DYN_HTF1_CANDLES_MIN, math.min(dynHtf1Candles, SETTINGS.DYN_HTF1_CANDLES_MAX))
+    int dynCurrLookbackBars = CORE.get_curr_lookback_from_htf2(htf2, dynHtf2Candles, SETTINGS.DYN_CURR_LOOKBACK_MIN_BARS, SETTINGS.DYN_CURR_LOOKBACK_MAX_BARS)
+    dynCachedCurrLookbackBars := dynCurrLookbackBars
+effectiveCurrLookbackBars := SETTINGS.DYN_LOOKBACK_ENABLE ? dynCachedCurrLookbackBars : LOOKBACK_BARS_WORK // Master working lookback for pruning + keylevel lifecycle.
+perfLookbackBars := effectiveCurrLookbackBars
+htfProjectionSpanBars := effectiveCurrLookbackBars
+chartCtx := process_data_chart_context()
+float d_h = chartCtx.pdh
+float d_l = chartCtx.pdl
+int d_t = chartCtx.pdTime
+
+should_drop_level(CORE.PDArray z, int srcIdx) =>
+    bar_index - srcIdx > effectiveCurrLookbackBars
+
+// Finds matching EQ structure from confirmed swings (market-structure source).
+get_data_equal_level_match(bool isHigh, array<float> prices, array<int> times, int currPos, float tolerance, int lookback, color levelColor) =>
+    CORE.PDArray result = na
+    int n = array.size(prices)
+    if n > 1 and currPos > 0 and currPos < n and currPos < array.size(times)
+        float price = array.get(prices, currPos)
+        int t = array.get(times, currPos)
+        int currIdx = CORE.closest_bar_index_from_time(t)
+        if not na(currIdx)
+            int fromPos = math.max(0, currPos - math.max(lookback, 1))
+            int steps = (currPos - 1) - fromPos
+            if steps >= 0
+                for step = 0 to steps
+                    int i = (currPos - 1) - step
+                    float prevPrice = array.get(prices, i)
+                    int prevTime = array.get(times, i)
+                    int prevIdx = CORE.closest_bar_index_from_time(prevTime)
+                    if na(prevIdx)
+                        continue
+                    if math.abs(price - prevPrice) <= tolerance and prevTime != t
+                        int prevOff = bar_index - prevIdx
+                        int currOff = bar_index - currIdx
+                        if prevOff < 0 or prevOff > EQ_SAFE_HISTORY_OFFSET or currOff < 0 or currOff > EQ_SAFE_HISTORY_OFFSET
+                            continue
+
+                        bool invalidated = false
+                        float limitPrice = (prevPrice + price) / 2
+                        int startBar = prevIdx + 1
+                        int endBar = currIdx - 1
+                        if startBar <= endBar
+                            for k = 0 to (endBar - startBar)
+                                int checkOff = bar_index - (startBar + k)
+                                if checkOff < 0 or checkOff > EQ_SAFE_HISTORY_OFFSET
+                                    invalidated := true
+                                    break
+                                bool crossed = isHigh ? (high[checkOff] > limitPrice) : (low[checkOff] < limitPrice)
+                                if crossed
+                                    invalidated := true
+                                    break
+
+                        if not invalidated
+                            CORE.PDArray newEQ = CORE.PDArray.new()
+                            newEQ.type := isHigh ? "eqh" : "eql"
+                            newEQ.price := (price + prevPrice) / 2
+                            newEQ.top := newEQ.price
+                            newEQ.bottom := newEQ.price
+                            newEQ.barStart := prevTime
+                            newEQ.barEnd := t
+                            newEQ.isHigh := isHigh
+                            newEQ.broken := false
+                            newEQ.lifeState := CONST.LIFE_FORMED
+                            newEQ.touchCount := 1
+                            newEQ.rejectCount := 0
+                            string eqText = isHigh ? "eqh" : "eql"
+                            bool isBuy = not isHigh
+                            [eqLine, eqLabel] = UI.draw_line_with_text(prevTime, newEQ.price, t, newEQ.price, xloc.bar_time, color.new(THEME.COLOR_NEUTRAL, 40), eqText, true, levelColor, CORE.tt_side(isBuy, eqText + " liq"), EQ_LINE_VIS_CFG, THEME)
+                            newEQ.visualLine := eqLine
+                            newEQ.visualLabel := eqLabel
+                            result := newEQ
+                            break
+    result
+
+draw_data_sr_visual(CORE.PDArray z, int srRightIdx, int srLabelIdx, string tooltipText) =>
+    CORE.PDArray out = z
+    bool isResNow = SMC.is_sr_res_now(z, close)
+    string txt = isResNow ? "R" : "S"
+    color baseColor = CORE.get_tf_line_color(out.labelText, htf1, htf2, uiCfg.ltfColor, htf1Cfg.zigzagColor, htf2Cfg.zigzagColor)
+    color txtColor = color.new(baseColor, 0)
+    string labelSize = get_label_size_for_source_tf(out.labelText)
+    SR_VIS_CFG.lineStyle := CFG_SR.lineStyle
+    SR_VIS_CFG.lineWidth := CFG_SR.lineWidth
+    SR_VIS_CFG.labelSize := labelSize
+    SR_VIS_CFG.showLabel := CFG_SR.showLabel
+    out := UI.draw_price_zone(out, na(out.barEnd) ? bar_index : out.barEnd, srRightIdx, out.price, out.price, CFG_SR.lineColor, CFG_SR.lineColor, line.style_solid, txt, txtColor, tooltipText, srLabelIdx, out.price, ZONE_VIS_CFG, SR_VIS_CFG, false, true, out.price, CFG_SR.lineColor, "LINE", CFG_SR.showLabel)
+    if not na(out.visualLine)
+        string srStyle = CORE.lifecycle_line_style(out.lifeState, CONST.LIFE_TOUCHED, CONST.LIFE_BROKEN, CONST.LIFE_RECLAIMED, line.style_dotted, line.style_dotted, line.style_dashed, line.style_dotted)
+        int srAlpha = CORE.lifecycle_alpha(out.lifeState, CONST.LIFE_TOUCHED, CONST.LIFE_RESPECTED, CONST.LIFE_RECLAIMED, CONST.LIFE_BROKEN, SETTINGS.SR_LINE_TRANSP, 72, 65, 55, 85)
+        color srColor = color.new(baseColor, srAlpha)
+        if out.visualLine.get_x2() != srRightIdx
+            out.visualLine.set_x2(srRightIdx)
+        out.visualLine.set_color(srColor)
+        out.visualLine.set_style(srStyle)
+    if not na(out.visualLabel)
+        if out.visualLabel.get_x() != srLabelIdx
+            out.visualLabel.set_x(srLabelIdx)
+        if out.visualLabel.get_y() != out.price
+            out.visualLabel.set_y(out.price)
+        out.visualLabel.set_size(labelSize)
+        out.visualLabel.set_tooltip(tooltipText)
+    out
+
+// Shared lifecycle engine for horizontal PDArray families (LIQ/EQ/SR).
+process_data_horizontal_levels(int kind, array<CORE.PDArray> levels, float areaTop, float areaBottom, float srBand, int maxShow, float atrVal) =>
+    int srRightIdx = na
+    int srLabelIdx = na
+    if array.size(levels) > 0
+        for i = array.size(levels) - 1 to 0 by 1
+            z = array.get(levels, i)
+            z := MSS.normalize_pricezone_state(z, CONST)
+            if not MSS.get_data_level_matches_kind(kind, z.type, HL_KIND_LIQ, HL_KIND_EQ, HL_KIND_SR)
+                continue
+            if not na(z.visualBox)
+                z.visualBox.delete()
+                z.visualBox := na
+            int srcIdx = kind == HL_KIND_EQ ? (not na(z.barEnd) ? CORE.closest_bar_index_from_time(z.barEnd) : bar_index) : (na(z.barEnd) ? bar_index : z.barEnd)
+            if should_drop_level(z, srcIdx)
+                SMC.delete_level_at(levels, i)
+                continue
+            if kind == HL_KIND_LIQ
+                bool isBearishLiq = z.isHigh
+                bool liqPenetrated = SMC.check_break(isBearishLiq, z.price, detCfg.method, detCfg.methodCross, detCfg.basis, detCfg.useImpulse, atrVal, detCfg.impulseAtr, open, high, low, close, open[1], high[1], low[1], close[1])
+                bool liqSwept = liqPenetrated
+                if liqSwept and not z.mitigated
+                    z.mitigated := true
+                    if not na(z.visualLine)
+                        color liqMitigatedColor = color.new(CORE.get_tf_line_color(z.labelText, htf1, htf2, uiCfg.ltfColor, htf1Cfg.zigzagColor, htf2Cfg.zigzagColor), 50)
+                        z.visualLine.set_color(liqMitigatedColor)
+                        z.visualLine.set_style(line.style_dotted)
+                    if na(z.visualLabel)
+                        z.visualLabel := UI.draw_text_on_line(z.barStart, z.price, time, z.price, xloc.bar_time, "xxx", color.new(CORE.get_tf_line_color(z.labelText, htf1, htf2, uiCfg.ltfColor, htf1Cfg.zigzagColor, htf2Cfg.zigzagColor), 0), get_label_size_for_source_tf(z.labelText), 0, 0, 0.8, 1, "", text.align_center, THEME)
+                    
+                    // Emit SWEEP Trigger for LSR Phase A tracking
+                    SMC.register_sweep_reclaim_event(eventsQueue, isBearishLiq ? "Sell" : "Buy", z.price, bar_index, syminfo.mintick)
+
+                bool liqTouched = SMC.check_touch(z.price, z.price, detCfg.basis, open, high, low, close)
+                bool liqReclaimed = isBearishLiq ? close < z.price : close > z.price
+                bool liqCooldownOk = na(z.barEnd) or (bar_index - z.barEnd >= limCfg.srTouchCountCooldownBars)
+                int liqState = CORE.lifecycle_next_state(liqPenetrated and not liqReclaimed, liqTouched, false, liqSwept and liqReclaimed, liqCooldownOk, z.lifeState, CONST.LIFE_BROKEN, CONST.LIFE_TOUCHED, CONST.LIFE_RESPECTED, CONST.LIFE_RECLAIMED)
+                [liqTouchCnt, _] = CORE.lifecycle_next_counts(z.touchCount, z.rejectCount, liqTouched, false, liqCooldownOk)
+                if liqTouched and liqCooldownOk
+                    z.barEnd := bar_index
+                z.touchCount := liqTouchCnt
+                z.lifeState := liqState
+                z.broken := liqState == CONST.LIFE_BROKEN
+                if not na(z.visualLine)
+                    string liqStyle = CORE.lifecycle_line_style(liqState, CONST.LIFE_TOUCHED, CONST.LIFE_BROKEN, CONST.LIFE_RECLAIMED, line.style_solid, line.style_dotted, line.style_dashed, line.style_dotted)
+                    int liqAlpha = CORE.lifecycle_alpha(liqState, CONST.LIFE_TOUCHED, CONST.LIFE_RESPECTED, CONST.LIFE_RECLAIMED, CONST.LIFE_BROKEN, 35, 45, 45, 50, 65)
+                    color liqBaseColor = CORE.get_tf_line_color(z.labelText, htf1, htf2, uiCfg.ltfColor, htf1Cfg.zigzagColor, htf2Cfg.zigzagColor)
+                    z.visualLine.set_style(liqStyle)
+                    z.visualLine.set_color(color.new(liqBaseColor, liqAlpha))
+                    if z.visualLine.get_x2() != time
+                        z.visualLine.set_x2(time)
+            else if kind == HL_KIND_EQ
+                bool breakDown = z.isHigh
+                bool eqTouched = SMC.check_touch(z.price, z.price, detCfg.basis, open, high, low, close)
+                bool eqRespected = z.isHigh ? close < z.price : close > z.price
+                bool eqCooldownOk = na(z.barEnd) or (bar_index - z.barEnd >= limCfg.srTouchCountCooldownBars)
+                bool eqBreak = SMC.check_break(breakDown, z.price, detCfg.method, detCfg.methodCross, detCfg.basis, detCfg.useImpulse, atrVal, detCfg.impulseAtr, open, high, low, close, open[1], high[1], low[1], close[1]) and not z.broken
+                int eqState = CORE.lifecycle_next_state(eqBreak, eqTouched, eqRespected, eqRespected, eqCooldownOk, z.lifeState, CONST.LIFE_BROKEN, CONST.LIFE_TOUCHED, CONST.LIFE_RESPECTED, CONST.LIFE_RECLAIMED)
+                [eqTouchCnt, eqRejectCnt] = CORE.lifecycle_next_counts(z.touchCount, z.rejectCount, eqTouched, eqRespected, eqCooldownOk)
+                if eqBreak
+                    z.broken := true
+                    if not na(z.visualLine)
+                        color eqBrokenColor = color.new(THEME.COLOR_NEUTRAL, 50)
+                        z.visualLine.set_style(line.style_dotted)
+                        z.visualLine.set_color(eqBrokenColor)
+                    if not na(z.visualLabel)
+                        string eqBrokenTxt = (z.isHigh ? "eqh" : "eql") + " " + CONST.SYM_CHECK
+                        if z.visualLabel.get_text() != eqBrokenTxt
+                            z.visualLabel.set_text(eqBrokenTxt)
+                        z.visualLabel.set_style(THEME.STYLE_LABEL_NONE)
+                        z.visualLabel.set_color(THEME.COLOR_TRANSPARENT)
+                        z.visualLabel.set_textcolor(THEME.COLOR_NEUTRAL)
+                else if eqTouched and eqCooldownOk
+                    z.barEnd := bar_index
+                z.touchCount := eqTouchCnt
+                z.rejectCount := eqRejectCnt
+                z.lifeState := eqState
+                z.broken := eqState == CONST.LIFE_BROKEN
+                if not na(z.visualLine)
+                    string eqStyle = CORE.lifecycle_line_style(eqState, CONST.LIFE_TOUCHED, CONST.LIFE_BROKEN, CONST.LIFE_RECLAIMED, line.style_solid, line.style_dotted, line.style_dashed, line.style_dotted)
+                    int eqAlpha = CORE.lifecycle_alpha(eqState, CONST.LIFE_TOUCHED, CONST.LIFE_RESPECTED, CONST.LIFE_RECLAIMED, CONST.LIFE_BROKEN, 40, 45, 45, 50, 60)
+                    z.visualLine.set_style(eqStyle)
+                    z.visualLine.set_color(color.new(THEME.COLOR_NEUTRAL, eqAlpha))
+            else
+                int srExt = CORE.get_tf_line_ext_bars(z.labelText, htf1, htf2, uiCfg.ltfLineBarsExt, 17, 28)
+                srRightIdx := SMC.get_sr_x(bar_index, srExt, false)
+                srLabelIdx := SMC.get_sr_x(bar_index, srExt, false)
+                int rejectN = math.max(z.rejectCount, 0)
+                z.top := z.price + srBand
+                z.bottom := z.price - srBand
+                bool bodyCross = SMC.is_body_cross_level(z.price, open, close)
+                bool touchedBand = SMC.is_level_wick_touch(z.price, srBand, open, high, low, close, syminfo.mintick)
+                bool cooldownOk = na(z.barEnd) or (bar_index - z.barEnd >= limCfg.srTouchCountCooldownBars)
+                bool sideRespected = z.isHigh ? close < z.price : close > z.price
+                int state = CORE.lifecycle_next_state(bodyCross, touchedBand, sideRespected, sideRespected, cooldownOk, z.lifeState, CONST.LIFE_BROKEN, CONST.LIFE_TOUCHED, CONST.LIFE_RESPECTED, CONST.LIFE_RECLAIMED)
+                [nextTouchCnt, nextRejectCnt] = CORE.lifecycle_next_counts(z.touchCount, rejectN, touchedBand, sideRespected, cooldownOk)
+                if touchedBand and cooldownOk
+                    z.qualityPct := math.max(nz(z.qualityPct, 1.0), 1.0) + 1.0
+                    z.barEnd := bar_index
+                z.touchCount := nextTouchCnt
+                z.rejectCount := nextRejectCnt
+                z.lifeState := state
+                z.broken := state == CONST.LIFE_BROKEN
+                z.touchCount := math.max(z.touchCount, int(math.max(nz(z.qualityPct, 1.0), 1.0)))
+                string nextTip = MSS.get_data_sr_tooltip_text(nextRejectCnt, state, CONST)
+                z := draw_data_sr_visual(z, srRightIdx, srLabelIdx, nextTip)
+            if not na(z.visualLabel)
+                z.visualLabel.set_size(get_label_size_for_source_tf(z.labelText))
+            array.set(levels, i, z)
+    int kindCount = 0
+    if array.size(levels) > 0
+        for i = 0 to array.size(levels) - 1
+            z = array.get(levels, i)
+            if MSS.get_data_level_matches_kind(kind, z.type, HL_KIND_LIQ, HL_KIND_EQ, HL_KIND_SR)
+                kindCount += 1
+    if kind == HL_KIND_LIQ
+        while kindCount > 14
+            int dropIdx = na
+            for i = 0 to array.size(levels) - 1
+                z = array.get(levels, i)
+                if MSS.get_data_level_matches_kind(kind, z.type, HL_KIND_LIQ, HL_KIND_EQ, HL_KIND_SR)
+                    dropIdx := i
+                    break
+            if na(dropIdx)
+                break
+            SMC.delete_level_at(levels, dropIdx)
+            kindCount -= 1
+    else if kind == HL_KIND_EQ
+        int eqCap = maxShow * 2
+        while kindCount > eqCap
+            int dropIdx = na
+            for i = 0 to array.size(levels) - 1
+                z = array.get(levels, i)
+                if MSS.get_data_level_matches_kind(kind, z.type, HL_KIND_LIQ, HL_KIND_EQ, HL_KIND_SR)
+                    dropIdx := i
+                    break
+            if na(dropIdx)
+                break
+            SMC.delete_level_at(levels, dropIdx)
+            kindCount -= 1
+    else
+        bool(na)
+    bool(na)
+
+// Updates state/drawings for unified EQ levels.
+update_eq_levels(levels, _maxShow, _atr) =>
+    process_data_horizontal_levels(HL_KIND_EQ, levels, na, na, 0.0, _maxShow, _atr)
+
+process_data_register_sr_seed(array<CORE.PDArray> levels, float price, int pivotIdx, int pivotTime, bool isRes, float tol, float srBand, string sourceTf, int sourcePrio, float areaTop, float areaBottom) =>
+    float vTop = price + srBand
+    float vBtm = price - srBand
+    bool inArea = na(areaTop) or na(areaBottom) or (price <= areaTop and price >= areaBottom)
+    if not inArea
+        bool(na)
+    else
+        if sourcePrio == SR_SOURCE_PRIO_LTF and MSS.get_data_has_keylevel_overlap_in_zone(levels, vTop, vBtm)
+            bool(na)
+        else
+            int srExt = CORE.get_tf_line_ext_bars(sourceTf, htf1, htf2, uiCfg.ltfLineBarsExt, 17, 28)
+            int srRightIdx = SMC.get_sr_x(bar_index, srExt, false)
+            int srLabelIdx = SMC.get_sr_x(bar_index, srExt, false)
+            int matchIdx = na
+            if array.size(levels) > 0
+                for mi = 0 to array.size(levels) - 1
+                    mz = array.get(levels, mi)
+                    if mz.type == "SR" and math.abs(mz.price - price) <= tol
+                        matchIdx := mi
+                        break
+            if not na(matchIdx)
+                z = array.get(levels, matchIdx)
+                int rejectN = math.max(z.rejectCount, 0)
+                bool sameSeed = z.barStart == pivotTime and z.isHigh == isRes
+                if not sameSeed
+                    float touches = math.max(nz(z.qualityPct, 1.0), 1.0) + 1.0
+                    z.price := ((z.price * (touches - 1.0)) + price) / touches
+                    z.qualityPct := touches
+                    z.barEnd := na(z.barEnd) ? pivotIdx : math.min(z.barEnd, pivotIdx)
+                int prevPrio = int(math.max(nz(z.extendBars, 0), 0))
+                if sourcePrio >= prevPrio
+                    z.labelText := sourceTf
+                    z.isHigh := isRes
+                z.extendBars := math.max(prevPrio, sourcePrio)
+                z.top := z.price + srBand
+                z.bottom := z.price - srBand
+                int state = z.lifeState
+                z.touchCount := int(math.max(nz(z.qualityPct, 1.0), 1.0))
+                string tip = MSS.get_data_sr_tooltip_text(rejectN, state, CONST)
+                z := draw_data_sr_visual(z, srRightIdx, srLabelIdx, tip)
+                array.set(levels, matchIdx, z)
+            else
+                CORE.PDArray z = CORE.PDArray.new()
+                z.type := "SR"
+                z.price := price
+                z.top := vTop
+                z.bottom := vBtm
+                z.barStart := pivotTime
+                z.barEnd := pivotIdx
+                z.qualityPct := 1.0
+                z.isHigh := isRes
+                z.labelText := sourceTf
+                z.extendBars := sourcePrio
+                z.lifeState := CONST.LIFE_FORMED
+                z.touchCount := 1
+                z.rejectCount := 0
+                z := draw_data_sr_visual(z, srRightIdx, srLabelIdx, MSS.get_data_sr_tooltip_text(0, CONST.LIFE_FORMED, CONST))
+                array.push(levels, z)
+            bool(na)
+
+process_data_register_liquidity_seed(array<CORE.PDArray> levels, float price, int pivotIdx, int pivotTime, bool isHigh, float tol, string sourceTf, int sourcePrio, float areaTop, float areaBottom) =>
+    bool inArea = na(areaTop) or na(areaBottom) or (price <= areaTop and price >= areaBottom)
+    if not inArea
+        bool(na)
+    else
+        int matchIdx = na
+        if array.size(levels) > 0
+            for mi = 0 to array.size(levels) - 1
+                mz = array.get(levels, mi)
+                if mz.type == "LIQ" and math.abs(mz.price - price) <= tol
+                    matchIdx := mi
+                    break
+        if not na(matchIdx)
+            z = array.get(levels, matchIdx)
+            bool sameSeed = z.barStart == pivotTime and z.isHigh == isHigh
+            if not sameSeed
+                float touches = math.max(nz(z.qualityPct, 1.0), 1.0) + 1.0
+                z.price := ((z.price * (touches - 1.0)) + price) / touches
+                z.qualityPct := touches
+            int prevPrio = int(math.max(nz(z.extendBars, 0), 0))
+            if sourcePrio >= prevPrio
+                z.isHigh := isHigh
+                z.labelText := sourceTf
+            z.extendBars := math.max(prevPrio, sourcePrio)
+            z.top := z.price
+            z.bottom := z.price
+            if not na(z.visualLine) and z.visualLine.get_x2() != time
+                z.visualLine.set_x2(time)
+            array.set(levels, matchIdx, z)
+        else
+            CORE.PDArray z = CORE.PDArray.new()
+            z.type := "LIQ"
+            z.price := price
+            z.top := price
+            z.bottom := price
+            z.barStart := pivotTime
+            z.barEnd := pivotIdx
+            z.isHigh := isHigh
+            z.labelText := sourceTf
+            z.extendBars := sourcePrio
+            z.qualityPct := 1.0
+            z.lifeState := CONST.LIFE_FORMED
+            z.touchCount := 1
+            z.rejectCount := 0
+            color lvlColor = CORE.get_tf_line_color(sourceTf, htf1, htf2, uiCfg.ltfColor, htf1Cfg.zigzagColor, htf2Cfg.zigzagColor)
+            [liqLine, liqLabel] = UI.draw_line_with_text(z.barStart, z.price, time, z.price, xloc.bar_time, color.new(lvlColor, 35), "", false, THEME.COLOR_NEUTRAL, "", LIQ_LINE_VIS_CFG, THEME)
+            z.visualLine := liqLine
+            z.visualLabel := liqLabel
+            array.push(levels, z)
+    bool(na)
+
+process_data_seed_from_swings(bool isSrSeed, array<CORE.PDArray> levels, array<float> prices, array<int> times, bool isHigh, string sourceTf, int sourcePrio, float tol, float srBand, float areaTop, float areaBottom) =>
+    int n = array.size(prices)
+    int i = n - 1
+    int seeded = 0
+    while i >= 0 and seeded < limCfg.srSeedSwingsPerTf
+        float p = array.get(prices, i)
+        int t = array.get(times, i)
+        int idx = CORE.closest_bar_index_from_time(t)
+        if isSrSeed
+            process_data_register_sr_seed(levels, p, idx, t, isHigh, tol, srBand, sourceTf, sourcePrio, areaTop, areaBottom)
+        else
+            process_data_register_liquidity_seed(levels, p, idx, t, isHigh, tol, sourceTf, sourcePrio, areaTop, areaBottom)
+        seeded += 1
+        i -= 1
+    bool(na)
+
+// process_data_liquidity: updates liquidity seeds + lifecycle.
+process_data_liquidity() =>
+    if liquidityBool
+        float areaTop = na
+        float areaBottom = na
+        float liqTol = commonAtr * limCfg.srTolAtrMult
+        if not na(htf2)
+            process_data_seed_from_swings(false, levels, htf2Data.swingHighPrices, htf2Data.swingHighTimes, true, htf2, SR_SOURCE_PRIO_HTF2, liqTol, 0.0, areaTop, areaBottom)
+            process_data_seed_from_swings(false, levels, htf2Data.swingLowPrices, htf2Data.swingLowTimes, false, htf2, SR_SOURCE_PRIO_HTF2, liqTol, 0.0, areaTop, areaBottom)
+        if not na(htf1)
+            process_data_seed_from_swings(false, levels, htf1Data.swingHighPrices, htf1Data.swingHighTimes, true, htf1, SR_SOURCE_PRIO_HTF1, liqTol, 0.0, areaTop, areaBottom)
+            process_data_seed_from_swings(false, levels, htf1Data.swingLowPrices, htf1Data.swingLowTimes, false, htf1, SR_SOURCE_PRIO_HTF1, liqTol, 0.0, areaTop, areaBottom)
+        process_data_horizontal_levels(HL_KIND_LIQ, levels, areaTop, areaBottom, 0.0, 0, 0.0)
+
+// process_data_sr: updates SR seeds + lifecycle.
+process_data_sr() =>
+    if showSR
+        float areaTop = na
+        float areaBottom = na
+        float srTol = commonAtr * limCfg.srTolAtrMult
+        float srBand = math.max(commonAtr * limCfg.srTouchBandAtrMult, syminfo.mintick * limCfg.srTouchBandMinTicks)
+        float srMinDist = math.max(commonAtr * limCfg.zoneMinHeightAtr * limCfg.srNearbyMergeMult, syminfo.mintick * 30.0)
+        int srLookbackBars = math.max(5, SETTINGS.GLOBAL_MAX_LOOKBACK_BARS)
+        
+        int div = 50
+        float _maxRange = ta.highest(high, srLookbackBars)
+        float _minRange = ta.lowest(low, srLookbackBars)
+        
+        array<SMC.DensitySeed> dsL = SMC.get_density_seeds(ltfData, _maxRange, _minRange, timeframe.period, SR_SOURCE_PRIO_LTF, srLookbackBars, div, bar_index, close)
+        for s in dsL
+            array<float> ltfSw = s.isRes ? ltfData.swingHighPrices : ltfData.swingLowPrices
+            array<float> h1Sw = s.isRes ? htf1Data.swingHighPrices : htf1Data.swingLowPrices
+            array<float> h2Sw = s.isRes ? htf2Data.swingHighPrices : htf2Data.swingLowPrices
+            float snapPrice = MSS.get_data_sr_price_snapped_to_swing(s.lPrice, srTol, ltfSw, h1Sw, h2Sw)
+            process_data_register_sr_seed(levels, snapPrice, bar_index, time, s.isRes, srTol, srBand, s.tfLbl, SR_SOURCE_PRIO_LTF, areaTop, areaBottom)
+        if not na(htf2)
+            array<SMC.DensitySeed> ds2 = SMC.get_density_seeds(htf2Data, _maxRange, _minRange, htf2, SR_SOURCE_PRIO_HTF2, srLookbackBars, div, bar_index, close)
+            for s in ds2
+                array<float> ltfSw = s.isRes ? ltfData.swingHighPrices : ltfData.swingLowPrices
+                array<float> h1Sw = s.isRes ? htf1Data.swingHighPrices : htf1Data.swingLowPrices
+                array<float> h2Sw = s.isRes ? htf2Data.swingHighPrices : htf2Data.swingLowPrices
+                float snapPrice = MSS.get_data_sr_price_snapped_to_swing(s.lPrice, srTol, ltfSw, h1Sw, h2Sw)
+                process_data_register_sr_seed(levels, snapPrice, bar_index, time, s.isRes, srTol, srBand, s.tfLbl, SR_SOURCE_PRIO_HTF2, areaTop, areaBottom)
+        if not na(htf1)
+            array<SMC.DensitySeed> ds1 = SMC.get_density_seeds(htf1Data, _maxRange, _minRange, htf1, SR_SOURCE_PRIO_HTF1, srLookbackBars, div, bar_index, close)
+            for s in ds1
+                array<float> ltfSw = s.isRes ? ltfData.swingHighPrices : ltfData.swingLowPrices
+                array<float> h1Sw = s.isRes ? htf1Data.swingHighPrices : htf1Data.swingLowPrices
+                array<float> h2Sw = s.isRes ? htf2Data.swingHighPrices : htf2Data.swingLowPrices
+                float snapPrice = MSS.get_data_sr_price_snapped_to_swing(s.lPrice, srTol, ltfSw, h1Sw, h2Sw)
+                process_data_register_sr_seed(levels, snapPrice, bar_index, time, s.isRes, srTol, srBand, s.tfLbl, SR_SOURCE_PRIO_HTF1, areaTop, areaBottom)
+            
+        SMC.prune_nearby_sr_levels(levels, srMinDist)
+        SMC.prune_sr_source_cap(levels, SR_SOURCE_PRIO_HTF2, 2, close)
+        SMC.prune_sr_side_cap(levels, 7, close)
+        process_data_horizontal_levels(HL_KIND_SR, levels, areaTop, areaBottom, srBand, 0, 0.0)
+        SMC.draw_sr_rank_labels(levels, close)
+
+// process_data_eq: updates EQ seeds + lifecycle.
+process_data_eq() =>
+    if show_eql
+        float eqlAtr = commonAtr
+        float eqTolAtrVal = eqlAtr * limCfg.eqTolAtr
+        int lookback = math.max(limCfg.eqPivotLedgerMin, 20)
+        int hiN = array.size(ltfData.swingHighPrices)
+        int loN = array.size(ltfData.swingLowPrices)
+
+        if hiN > 1 and hiN == array.size(ltfData.swingHighTimes)
+            int currHiPos = hiN - 1
+            int currHiTime = array.get(ltfData.swingHighTimes, currHiPos)
+            int lastHiProcessed = array.get(eqLastHighTimeProcessed, 0)
+            if na(lastHiProcessed) or currHiTime != lastHiProcessed
+                CORE.PDArray found_eqh = get_data_equal_level_match(true, ltfData.swingHighPrices, ltfData.swingHighTimes, currHiPos, eqTolAtrVal, lookback, uiCfg.ltfColor)
+                if not na(found_eqh)
+                    array.push(levels, found_eqh)
+                array.set(eqLastHighTimeProcessed, 0, currHiTime)
+
+        if loN > 1 and loN == array.size(ltfData.swingLowTimes)
+            int currLoPos = loN - 1
+            int currLoTime = array.get(ltfData.swingLowTimes, currLoPos)
+            int lastLoProcessed = array.get(eqLastLowTimeProcessed, 0)
+            if na(lastLoProcessed) or currLoTime != lastLoProcessed
+                CORE.PDArray found_eql = get_data_equal_level_match(false, ltfData.swingLowPrices, ltfData.swingLowTimes, currLoPos, eqTolAtrVal, lookback, uiCfg.ltfColor)
+                if not na(found_eql)
+                    array.push(levels, found_eql)
+                array.set(eqLastLowTimeProcessed, 0, currLoTime)
+        update_eq_levels(levels, array.size(levels), commonAtr)
+
+process_data_liquidity()
+process_data_eq()
+process_data_sr()
+
+if barstate.islast
+    bool showPd = showPDH_PDL and timeframe.isintraday
+    int klRight = bar_index + 28
+    color klColor = THEME.STYLE_STRONG == "None" ? na : color.new(uiCfg.colorText, 50)
+    string klStyle = THEME.STYLE_STRONG == "None" ? line.style_solid : THEME.STYLE_STRONG
+    bool showKlLabels = THEME.SIZE_SMALL != "None"
+    [nextPdhLine, nextPdlLine, nextPdhLabel, nextPdlLabel] = UI.draw_pd_pw(pdhLine, pdlLine, pdhLabel, pdlLabel, showPd, klRight, klColor, klStyle, showKlLabels, d_h, d_l, d_t, THEME)
+    pdhLine := nextPdhLine
+    pdlLine := nextPdlLine
+    pdhLabel := nextPdhLabel
+    pdlLabel := nextPdlLabel
+// Divergence scan moved to bias/signals module.
+
+
+// Market structure (MTF BOS/MSS + swings) runs above using HTF pair (TF1/TF2).
