@@ -4,7 +4,6 @@ const crypto = require("crypto");
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const { DatabaseSync } = require("node:sqlite");
 const { URL, URLSearchParams } = require("url");
 
 function loadEnvFile() {
@@ -557,6 +556,12 @@ async function mt5InitBackend() {
   }
 
   if (storage === "sqlite") {
+    let DatabaseSync;
+    try {
+      ({ DatabaseSync } = require("node:sqlite"));
+    } catch {
+      throw new Error("MT5_STORAGE=sqlite requires Node.js 22+ (module node:sqlite not found). Use MT5_STORAGE=json|postgres or upgrade Node.");
+    }
     const db = new DatabaseSync(CFG.mt5DbPath);
     db.exec(`
       PRAGMA journal_mode = WAL;
