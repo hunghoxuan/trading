@@ -1,1 +1,3 @@
-telegram-signal-bot/.env
+webhook/.env
+
+.local/
