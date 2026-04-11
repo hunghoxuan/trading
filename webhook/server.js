@@ -31,10 +31,14 @@ function loadEnvFile() {
 }
 
 function asBool(value, fallback = false) {
-  if (value === undefined || value === null || value === "") {
+  if (value === undefined || value === null) {
     return fallback;
   }
-  const v = String(value).toLowerCase();
+  const raw = String(value).trim();
+  if (raw === "") {
+    return fallback;
+  }
+  const v = raw.toLowerCase();
   return v === "1" || v === "true" || v === "yes" || v === "on";
 }
 
@@ -50,48 +54,56 @@ function asNum(value, fallback = NaN) {
 }
 
 function parseKeySet(value) {
-  return new Set(String(value || "").split(",").map((s) => s.trim()).filter(Boolean));
+  return new Set(envStr(value).split(",").map((s) => s.trim()).filter(Boolean));
+}
+
+function envStr(value, fallback = "") {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+  const s = String(value).trim();
+  return s === "" ? fallback : s;
 }
 
 loadEnvFile();
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
-  signalApiKey: process.env.SIGNAL_API_KEY || "",
+  signalApiKey: envStr(process.env.SIGNAL_API_KEY),
 
-  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || "",
-  telegramChatId: process.env.TELEGRAM_CHAT_ID || "",
+  telegramBotToken: envStr(process.env.TELEGRAM_BOT_TOKEN),
+  telegramChatId: envStr(process.env.TELEGRAM_CHAT_ID),
 
-  allowSymbols: (process.env.ALLOW_SYMBOLS || "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean),
+  allowSymbols: envStr(process.env.ALLOW_SYMBOLS).split(",").map((s) => s.trim().toUpperCase()).filter(Boolean),
 
-  binanceMode: (process.env.BINANCE_MODE || "").trim().toLowerCase(),
-  binanceProduct: (process.env.BINANCE_PRODUCT || "spot").toLowerCase(),
-  binanceApiKey: process.env.BINANCE_API_KEY || "",
-  binanceApiSecret: process.env.BINANCE_API_SECRET || "",
+  binanceMode: envStr(process.env.BINANCE_MODE).toLowerCase(),
+  binanceProduct: envStr(process.env.BINANCE_PRODUCT, "spot").toLowerCase(),
+  binanceApiKey: envStr(process.env.BINANCE_API_KEY),
+  binanceApiSecret: envStr(process.env.BINANCE_API_SECRET),
   binanceRecvWindow: asNum(process.env.BINANCE_RECV_WINDOW, 5000),
   binanceDefaultQty: asNum(process.env.BINANCE_DEFAULT_QTY, NaN),
   binanceDefaultQuoteQty: asNum(process.env.BINANCE_DEFAULT_QUOTE_QTY, NaN),
 
-  ctraderMode: (process.env.CTRADER_MODE || "").trim().toLowerCase(),
-  ctraderExecutorUrl: process.env.CTRADER_EXECUTOR_URL || "",
-  ctraderExecutorApiKey: process.env.CTRADER_EXECUTOR_API_KEY || "",
+  ctraderMode: envStr(process.env.CTRADER_MODE).toLowerCase(),
+  ctraderExecutorUrl: envStr(process.env.CTRADER_EXECUTOR_URL),
+  ctraderExecutorApiKey: envStr(process.env.CTRADER_EXECUTOR_API_KEY),
 
   maxRiskPct: asNum(process.env.MAX_RISK_PCT, NaN),
 
   // MT5 bridge (merged into this same server.js)
   mt5Enabled: asBool(process.env.MT5_ENABLED, true),
-  mt5Storage: (process.env.MT5_STORAGE || "sqlite").trim().toLowerCase(),
+  mt5Storage: envStr(process.env.MT5_STORAGE, "sqlite").toLowerCase(),
   mt5TvAlertApiKeys: parseKeySet(process.env.MT5_TV_ALERT_API_KEYS),
   mt5EaApiKeys: parseKeySet(process.env.MT5_EA_API_KEYS),
   mt5DefaultLot: asNum(process.env.MT5_DEFAULT_LOT, 0.01),
   mt5DbPath: path.resolve(
     __dirname,
-    process.env.MT5_DB_PATH ||
-      (((process.env.MT5_STORAGE || "sqlite").trim().toLowerCase() === "json")
+    envStr(process.env.MT5_DB_PATH) ||
+      ((envStr(process.env.MT5_STORAGE, "sqlite").toLowerCase() === "json")
         ? "./mt5-signals.json"
         : "./mt5-signals.db"),
   ),
-  mt5PostgresUrl: process.env.MT5_POSTGRES_URL || process.env.POSTGRES_URL || process.env.POSTGRE_URL || "",
+  mt5PostgresUrl: envStr(process.env.MT5_POSTGRES_URL) || envStr(process.env.POSTGRES_URL) || envStr(process.env.POSTGRE_URL),
 };
 
 CFG.binanceEnabled = ["paper", "live"].includes(CFG.binanceMode);
