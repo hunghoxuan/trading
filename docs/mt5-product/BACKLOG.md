@@ -8,7 +8,7 @@
 - [x] Keep legacy EA endpoints stable (`/mt5/ea/pull`, `/mt5/ea/ack`).
 
 ## Phase 2
-- [ ] Add `signal_events` write path on each state transition.
+- [x] Add `signal_events` write path on each state transition.
 - [ ] Add user CRUD endpoints (admin-only).
 - [ ] Add login/session layer for UI (JWT or session cookie).
 - [ ] Improve trade detail chart with actual OHLC feed backend.

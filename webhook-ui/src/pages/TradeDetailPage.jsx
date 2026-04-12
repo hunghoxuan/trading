@@ -28,6 +28,7 @@ export default function TradeDetailPage() {
   if (!data) return <div className="loading">Loading trade...</div>;
 
   const t = data.trade;
+  const events = Array.isArray(data.events) ? data.events : [];
   return (
     <section>
       <p><Link to="/trades">Back to trades</Link></p>
@@ -49,6 +50,27 @@ export default function TradeDetailPage() {
 
       <h2>Trade Visual (Levels)</h2>
       <TradeLevelChart trade={data.chart} />
+
+      <h2>Event Timeline</h2>
+      <div className="panel">
+        {events.length === 0 ? (
+          <div className="muted">No events yet.</div>
+        ) : (
+          <div className="trade-list">
+            {events.map((ev) => (
+              <article key={`${ev.id}-${ev.event_time}`} className="trade-card">
+                <div className="trade-head">
+                  <strong>{ev.event_type}</strong>
+                  <span className="muted">{new Date(ev.event_time).toLocaleString()}</span>
+                </div>
+                <div className="muted">
+                  {JSON.stringify(ev.payload_json || {})}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

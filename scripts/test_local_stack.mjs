@@ -116,6 +116,11 @@ async function main() {
   const tradeDetail = await requestJson(`/mt5/trades/${encodeURIComponent(signalId)}`);
   assert(tradeDetail.ok === true && tradeDetail.trade, "trade detail should exist");
   assert(tradeDetail.trade.status === "DONE", `expected DONE after ACK OK, got ${tradeDetail.trade.status}`);
+  assert(Array.isArray(tradeDetail.events), "trade detail events should be array");
+  assert(
+    tradeDetail.events.some((e) => String(e.event_type || "").startsWith("EA_ACK_")),
+    "trade detail events should include ack event",
+  );
   log("/mt5/trades/:id ok");
 
   const search = await requestJson(`/mt5/trades/search?q=${encodeURIComponent(signalId)}&page=1&pageSize=5`);

@@ -112,4 +112,12 @@ test("EA pull endpoint can pull signal by signal_id", async () => {
   assert.ok(out.signal, "signal should not be null");
   assert.equal(out.signal.signal_id, signalId);
   assert.equal(out.signal.account, ACCOUNT);
+
+  const detail = await requestJson(`/mt5/trades/${encodeURIComponent(signalId)}`);
+  assert.equal(detail.ok, true);
+  assert.ok(Array.isArray(detail.events), "events should be array");
+  assert.ok(
+    detail.events.some((e) => String(e.event_type || "") === "EA_PULLED"),
+    "events should include EA_PULLED",
+  );
 });

@@ -223,7 +223,7 @@ Body example:
 - `GET /mt5/dashboard/pnl-series?period=today|week|month` (admin API)
 - `GET /mt5/filters/symbols` (admin API)
 - `GET /mt5/trades/search?page=1&pageSize=20&symbol=&status=&range=` (admin API)
-- `GET /mt5/trades/:signal_id` (admin API; detail + chart levels)
+- `GET /mt5/trades/:signal_id` (admin API; detail + chart levels + `events[]` timeline)
 - `GET /csv?apiKey=...&limit=2000&status=&header=1` (admin API, download EA backtest CSV)
 - `GET /mt5/csv?apiKey=...&limit=2000&status=&header=1` (same as `/csv`)
 - `GET /mt5/ui` (lightweight web monitor, admin protected)

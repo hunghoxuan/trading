@@ -569,13 +569,16 @@ function mt5NormalizeStorage(storageRaw) {
 
 function mt5EnsureJsonDbFile() {
   if (!fs.existsSync(CFG.mt5DbPath)) {
-    fs.writeFileSync(CFG.mt5DbPath, JSON.stringify({ signals: [] }, null, 2));
+    fs.writeFileSync(CFG.mt5DbPath, JSON.stringify({ signals: [], signal_events: [] }, null, 2));
   }
 }
 
 function mt5ReadJsonDb() {
   mt5EnsureJsonDbFile();
-  return JSON.parse(fs.readFileSync(CFG.mt5DbPath, "utf8"));
+  const db = JSON.parse(fs.readFileSync(CFG.mt5DbPath, "utf8"));
+  if (!Array.isArray(db.signals)) db.signals = [];
+  if (!Array.isArray(db.signal_events)) db.signal_events = [];
+  return db;
 }
 
 function mt5WriteJsonDb(db) {
@@ -680,6 +683,24 @@ async function mt5InitBackend() {
           .slice(0, limit);
         return rows.map((r) => ({ ...r }));
       },
+      async appendSignalEvent(signalId, eventType, payload = {}) {
+        const db = mt5ReadJsonDb();
+        db.signal_events.push({
+          id: String(crypto.randomUUID()),
+          signal_id: String(signalId),
+          event_type: String(eventType),
+          event_time: mt5NowIso(),
+          payload_json: payload || {},
+        });
+        mt5WriteJsonDb(db);
+      },
+      async listSignalEvents(signalId, limit = 200) {
+        const db = mt5ReadJsonDb();
+        return db.signal_events
+          .filter((e) => String(e.signal_id) === String(signalId))
+          .sort((a, b) => (String(a.event_time) > String(b.event_time) ? -1 : 1))
+          .slice(0, Math.max(1, Math.min(2000, Number(limit) || 200)));
+      },
       async pruneOldSignals(days) {
         const db = mt5ReadJsonDb();
         const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
@@ -751,6 +772,16 @@ async function mt5InitBackend() {
         ON signals(status, created_at);
       CREATE INDEX IF NOT EXISTS idx_signals_user_created
         ON signals(user_id, created_at);
+      CREATE TABLE IF NOT EXISTS signal_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        signal_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        event_time TEXT NOT NULL DEFAULT (datetime('now')),
+        payload_json TEXT,
+        FOREIGN KEY (signal_id) REFERENCES signals(signal_id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_signal_events_signal_time
+        ON signal_events(signal_id, event_time);
     `);
 
     // Backward-compatible migration from legacy table name.
@@ -958,6 +989,25 @@ async function mt5InitBackend() {
           raw_json: r.raw_json ? JSON.parse(r.raw_json) : {},
         }));
       },
+      async appendSignalEvent(signalId, eventType, payload = {}) {
+        db.prepare(`
+          INSERT INTO signal_events (signal_id, event_type, event_time, payload_json)
+          VALUES (?, ?, ?, ?)
+        `).run(String(signalId), String(eventType), mt5NowIso(), JSON.stringify(payload || {}));
+      },
+      async listSignalEvents(signalId, limit = 200) {
+        const safeLimit = Math.max(1, Math.min(2000, Number(limit) || 200));
+        return db.prepare(`
+          SELECT id, signal_id, event_type, event_time, payload_json
+          FROM signal_events
+          WHERE signal_id = ?
+          ORDER BY event_time DESC
+          LIMIT ?
+        `).all(String(signalId), safeLimit).map((r) => ({
+          ...r,
+          payload_json: r.payload_json ? JSON.parse(r.payload_json) : {},
+        }));
+      },
       async pruneOldSignals(days) {
         const placeholders = mt5TerminalStatuses().map(() => "?").join(", ");
         const cutoffIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -1030,6 +1080,19 @@ async function mt5InitBackend() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_signals_user_created
     ON signals(user_id, created_at)
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS signal_events (
+      id BIGSERIAL PRIMARY KEY,
+      signal_id TEXT NOT NULL REFERENCES signals(signal_id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      event_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      payload_json JSONB
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_signal_events_signal_time
+    ON signal_events(signal_id, event_time)
   `);
   await pool.query(`
     INSERT INTO users (user_id, user_name, email, balance_start, created_at)
@@ -1305,6 +1368,26 @@ async function mt5InitBackend() {
       `, [limit]);
       return res.rows.map((r) => mt5MapDbRow(r));
     },
+    async appendSignalEvent(signalId, eventType, payload = {}) {
+      await pool.query(`
+        INSERT INTO signal_events (signal_id, event_type, event_time, payload_json)
+        VALUES ($1, $2, $3, $4::jsonb)
+      `, [String(signalId), String(eventType), mt5NowIso(), JSON.stringify(payload || {})]);
+    },
+    async listSignalEvents(signalId, limit = 200) {
+      const safeLimit = Math.max(1, Math.min(2000, Number(limit) || 200));
+      const res = await pool.query(`
+        SELECT id, signal_id, event_type, event_time, payload_json
+        FROM signal_events
+        WHERE signal_id = $1
+        ORDER BY event_time DESC
+        LIMIT $2
+      `, [String(signalId), safeLimit]);
+      return res.rows.map((r) => ({
+        ...r,
+        payload_json: r.payload_json || {},
+      }));
+    },
     async pruneOldSignals(days) {
       const res = await pool.query(`
         DELETE FROM signals
@@ -1440,6 +1523,18 @@ async function mt5AckSignal(signalId, status, ticket, error, extra = {}) {
 async function mt5ListSignals(limit, statusFilter) {
   const b = await mt5Backend();
   return b.listSignals(limit, statusFilter);
+}
+
+async function mt5AppendSignalEvent(signalId, eventType, payload = {}) {
+  const b = await mt5Backend();
+  if (!b.appendSignalEvent) return;
+  return b.appendSignalEvent(signalId, eventType, payload);
+}
+
+async function mt5ListSignalEvents(signalId, limit = 200) {
+  const b = await mt5Backend();
+  if (!b.listSignalEvents) return [];
+  return b.listSignalEvents(signalId, limit);
 }
 
 async function mt5PruneSignals(days) {
@@ -1700,6 +1795,12 @@ async function executeMt5(signal) {
     ack_ticket: null,
     ack_error: null,
   });
+  await mt5AppendSignalEvent(signalId, "QUEUED_FROM_SIGNAL", {
+    source: "signal",
+    action: signal.side,
+    symbol: signal.symbol,
+    timeframe: signal.timeframe || null,
+  });
 
   return {
     broker: "mt5",
@@ -1892,9 +1993,13 @@ const server = http.createServer(async (req, res) => {
       const rows = await mt5ListSignals(50000, "");
       const trade = rows.find((r) => String(r.signal_id) === signalId);
       if (!trade) return json(res, 404, { ok: false, error: "signal not found" });
+      const eventLimitRaw = Number(url.searchParams.get("event_limit") || 200);
+      const eventLimit = Math.max(1, Math.min(2000, Number.isFinite(eventLimitRaw) ? eventLimitRaw : 200));
+      const events = await mt5ListSignalEvents(signalId, eventLimit);
       return json(res, 200, {
         ok: true,
         trade: mt5PublicState(trade),
+        events,
         chart: {
           symbol: trade.symbol,
           action: trade.action,
@@ -2042,6 +2147,13 @@ const server = http.createServer(async (req, res) => {
         ack_ticket: null,
         ack_error: null,
       });
+      await mt5AppendSignalEvent(signalId, "QUEUED_FROM_TV", {
+        source: "tradingview",
+        action,
+        symbol,
+        timeframe: payload.timeframe || null,
+        strategy: payload.strategy || null,
+      });
 
       return json(res, 200, { ok: true, signal_id: signalId, action, symbol });
     } catch (error) {
@@ -2066,6 +2178,10 @@ const server = http.createServer(async (req, res) => {
     if (!signal) {
       return json(res, 200, { ok: true, signal: null });
     }
+    await mt5AppendSignalEvent(signal.signal_id, "EA_PULLED", {
+      account: account || null,
+      requested_signal_id: signalId || null,
+    });
 
     return json(res, 200, {
       ok: true,
@@ -2113,6 +2229,14 @@ const server = http.createServer(async (req, res) => {
       const slExec = asNum(payload.sl_exec ?? payload.sl, NaN);
       const tpExec = asNum(payload.tp_exec ?? payload.tp, NaN);
       await mt5AckSignal(signalId, status, payload.ticket, payload.error, {
+        pnl_money_realized: Number.isFinite(pnlRealized) ? pnlRealized : null,
+        entry_price_exec: Number.isFinite(entryExec) ? entryExec : null,
+        sl_exec: Number.isFinite(slExec) ? slExec : null,
+        tp_exec: Number.isFinite(tpExec) ? tpExec : null,
+      });
+      await mt5AppendSignalEvent(signalId, `EA_ACK_${status}`, {
+        ticket: payload.ticket ?? null,
+        error: payload.error ?? null,
         pnl_money_realized: Number.isFinite(pnlRealized) ? pnlRealized : null,
         entry_price_exec: Number.isFinite(entryExec) ? entryExec : null,
         sl_exec: Number.isFinite(slExec) ? slExec : null,

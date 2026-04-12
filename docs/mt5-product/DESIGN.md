@@ -21,7 +21,7 @@
 - `GET /mt5/dashboard/pnl-series?period=today|week|month`
 - `GET /mt5/filters/symbols`
 - `GET /mt5/trades/search?page=1&pageSize=20&symbol=&status=&range=`
-- `GET /mt5/trades/:signal_id`
+- `GET /mt5/trades/:signal_id` (includes `events[]` timeline)
 
 ## Security notes
 - DB credentials loaded from env (`MT5_POSTGRES_URL`), not hardcoded.
