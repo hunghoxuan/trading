@@ -1,0 +1,54 @@
+import { useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { api } from "../api";
+import TradeLevelChart from "../components/TradeLevelChart";
+
+export default function TradeDetailPage() {
+  const { signalId } = useParams();
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    api.trade(signalId)
+      .then((res) => {
+        if (!live) return;
+        setData(res);
+      })
+      .catch((e) => {
+        if (!live) return;
+        setError(e.message);
+      });
+    return () => {
+      live = false;
+    };
+  }, [signalId]);
+
+  if (error) return <div className="error">{error}</div>;
+  if (!data) return <div className="loading">Loading trade...</div>;
+
+  const t = data.trade;
+  return (
+    <section>
+      <p><Link to="/trades">Back to trades</Link></p>
+      <h1>Trade Detail</h1>
+      <div className="panel">
+        <div className="trade-grid two-cols">
+          <div>Signal ID: {t.signal_id}</div>
+          <div>Status: <span className={`badge ${t.status}`}>{t.status}</span></div>
+          <div>Symbol: {t.symbol}</div>
+          <div>Action: {t.action}</div>
+          <div>Volume: {t.volume}</div>
+          <div>RR Planned: {t.rr_planned ?? "-"}</div>
+          <div>Risk Money Planned: {t.risk_money_planned ?? "-"}</div>
+          <div>PnL Realized: {t.pnl_money_realized ?? "-"}</div>
+          <div>Created: {new Date(t.created_at).toLocaleString()}</div>
+          <div>Note: {t.note || "-"}</div>
+        </div>
+      </div>
+
+      <h2>Trade Visual (Levels)</h2>
+      <TradeLevelChart trade={data.chart} />
+    </section>
+  );
+}

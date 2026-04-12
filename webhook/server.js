@@ -96,6 +96,7 @@ const CFG = {
   mt5TvAlertApiKeys: parseKeySet(process.env.MT5_TV_ALERT_API_KEYS),
   mt5EaApiKeys: parseKeySet(process.env.MT5_EA_API_KEYS),
   mt5DefaultLot: asNum(process.env.MT5_DEFAULT_LOT, 0.01),
+  mt5DefaultUserId: envStr(process.env.MT5_DEFAULT_USER_ID, "default"),
   mt5PruneEnabled: asBool(process.env.MT5_PRUNE_ENABLED, true),
   mt5PruneDays: asNum(process.env.MT5_PRUNE_DAYS, 14),
   mt5PruneIntervalMinutes: asNum(process.env.MT5_PRUNE_INTERVAL_MINUTES, 60),
@@ -161,6 +162,9 @@ function normalizeSignal(payload) {
   const note = String(payload.note || payload.comment || "");
   const signalTime = payload.time || payload.timestamp || new Date().toISOString();
   const quantity = asNum(payload.quantity ?? payload.qty, NaN);
+  const userId = envStr(payload.user_id ?? payload.userId ?? payload.user ?? CFG.mt5DefaultUserId, CFG.mt5DefaultUserId);
+  const rrPlanned = asNum(payload.rr ?? payload.risk_reward, NaN);
+  const riskMoneyPlanned = asNum(payload.risk_money ?? payload.money_risk ?? payload.riskMoney, NaN);
 
   if (!symbol) throw new Error("Missing symbol");
   if (!Number.isFinite(price) || price <= 0) throw new Error("Invalid price");
@@ -176,6 +180,9 @@ function normalizeSignal(payload) {
     note,
     signalTime,
     quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : null,
+    user_id: userId,
+    rr_planned: Number.isFinite(rrPlanned) ? rrPlanned : null,
+    risk_money_planned: Number.isFinite(riskMoneyPlanned) ? riskMoneyPlanned : null,
     raw: payload,
   };
 }
@@ -497,17 +504,26 @@ function mt5MapDbRow(row) {
   return {
     signal_id: String(row.signal_id),
     created_at: String(row.created_at),
+    user_id: String(row.user_id || CFG.mt5DefaultUserId || "default"),
     source: String(row.source || ""),
     action: String(row.action || ""),
     symbol: String(row.symbol || ""),
     volume: Number(row.volume),
     sl: row.sl === null || row.sl === undefined ? null : Number(row.sl),
     tp: row.tp === null || row.tp === undefined ? null : Number(row.tp),
+    rr_planned: row.rr_planned === null || row.rr_planned === undefined ? null : Number(row.rr_planned),
+    risk_money_planned: row.risk_money_planned === null || row.risk_money_planned === undefined ? null : Number(row.risk_money_planned),
+    pnl_money_realized: row.pnl_money_realized === null || row.pnl_money_realized === undefined ? null : Number(row.pnl_money_realized),
+    entry_price_exec: row.entry_price_exec === null || row.entry_price_exec === undefined ? null : Number(row.entry_price_exec),
+    sl_exec: row.sl_exec === null || row.sl_exec === undefined ? null : Number(row.sl_exec),
+    tp_exec: row.tp_exec === null || row.tp_exec === undefined ? null : Number(row.tp_exec),
     note: String(row.note || ""),
     raw_json: row.raw_json || {},
     status: String(row.status || ""),
     locked_at: row.locked_at ?? null,
     ack_at: row.ack_at ?? null,
+    opened_at: row.opened_at ?? null,
+    closed_at: row.closed_at ?? null,
     ack_status: row.ack_status ?? null,
     ack_ticket: row.ack_ticket ?? null,
     ack_error: row.ack_error ?? null,
@@ -603,55 +619,107 @@ async function mt5InitBackend() {
     db.exec(`
       PRAGMA journal_mode = WAL;
       PRAGMA busy_timeout = 5000;
-      CREATE TABLE IF NOT EXISTS mt5_signals (
+      CREATE TABLE IF NOT EXISTS users (
+        user_id TEXT PRIMARY KEY,
+        user_name TEXT,
+        email TEXT,
+        password_hash TEXT,
+        balance_start REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS signals (
         signal_id TEXT PRIMARY KEY,
         created_at TEXT NOT NULL,
+        user_id TEXT NOT NULL DEFAULT 'default',
         source TEXT,
         action TEXT NOT NULL,
         symbol TEXT NOT NULL,
         volume REAL NOT NULL,
         sl REAL,
         tp REAL,
+        rr_planned REAL,
+        risk_money_planned REAL,
+        pnl_money_realized REAL,
+        entry_price_exec REAL,
+        sl_exec REAL,
+        tp_exec REAL,
         note TEXT,
         raw_json TEXT,
         status TEXT NOT NULL,
         locked_at TEXT,
         ack_at TEXT,
+        opened_at TEXT,
+        closed_at TEXT,
         ack_status TEXT,
         ack_ticket TEXT,
-        ack_error TEXT
+        ack_error TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(user_id)
       );
-      CREATE INDEX IF NOT EXISTS idx_mt5_signals_status_created
-        ON mt5_signals(status, created_at);
+      CREATE INDEX IF NOT EXISTS idx_signals_status_created
+        ON signals(status, created_at);
+      CREATE INDEX IF NOT EXISTS idx_signals_user_created
+        ON signals(user_id, created_at);
     `);
 
-    const count = db.prepare("SELECT COUNT(*) AS n FROM mt5_signals").get().n;
+    // Backward-compatible migration from legacy table name.
+    const oldTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='mt5_signals'").get();
+    if (oldTable) {
+      db.exec(`
+        INSERT OR IGNORE INTO signals (
+          signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
+          rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
+          note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
+        )
+        SELECT
+          signal_id, created_at, 'default', source, action, symbol, volume, sl, tp,
+          NULL, NULL, NULL, NULL, NULL, NULL,
+          note, raw_json, status, locked_at, ack_at, NULL, NULL, ack_status, ack_ticket, ack_error
+        FROM mt5_signals
+      `);
+    }
+
+    db.prepare(`
+      INSERT OR IGNORE INTO users (user_id, user_name, email, balance_start, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(CFG.mt5DefaultUserId, "Default User", "", 0, mt5NowIso());
+
+    const count = db.prepare("SELECT COUNT(*) AS n FROM signals").get().n;
     if (count === 0) {
       try {
         const rows = mt5GetLegacyRows();
         if (rows.length > 0) {
           const insert = db.prepare(`
-            INSERT OR REPLACE INTO mt5_signals (
-              signal_id, created_at, source, action, symbol, volume, sl, tp, note, raw_json,
-              status, locked_at, ack_at, ack_status, ack_ticket, ack_error
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO signals (
+              signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
+              rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
+              note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `);
           const tx = db.transaction((list) => {
             for (const r of list) {
               insert.run(
                 String(r.signal_id || crypto.randomUUID()),
                 String(r.created_at || mt5NowIso()),
+                String(r.user_id || CFG.mt5DefaultUserId),
                 String(r.source || "legacy"),
                 String(r.action || "BUY"),
                 String(r.symbol || ""),
                 Number(r.volume ?? CFG.mt5DefaultLot),
                 r.sl ?? null,
                 r.tp ?? null,
+                r.rr_planned ?? null,
+                r.risk_money_planned ?? null,
+                r.pnl_money_realized ?? null,
+                r.entry_price_exec ?? null,
+                r.sl_exec ?? null,
+                r.tp_exec ?? null,
                 String(r.note || ""),
                 JSON.stringify(r.raw_json || {}),
                 String(r.status || "NEW"),
                 r.locked_at ?? null,
                 r.ack_at ?? null,
+                r.opened_at ?? null,
+                r.closed_at ?? null,
                 r.ack_status ?? null,
                 r.ack_ticket ?? null,
                 r.ack_error ?? null,
@@ -672,24 +740,34 @@ async function mt5InitBackend() {
       info: { path: CFG.mt5DbPath },
       async upsertSignal(signal) {
         db.prepare(`
-          INSERT OR REPLACE INTO mt5_signals (
-            signal_id, created_at, source, action, symbol, volume, sl, tp, note, raw_json,
-            status, locked_at, ack_at, ack_status, ack_ticket, ack_error
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT OR REPLACE INTO signals (
+            signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
+            rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
+            note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           signal.signal_id,
           signal.created_at,
+          signal.user_id || CFG.mt5DefaultUserId,
           signal.source,
           signal.action,
           signal.symbol,
           signal.volume,
           signal.sl,
           signal.tp,
+          signal.rr_planned ?? null,
+          signal.risk_money_planned ?? null,
+          signal.pnl_money_realized ?? null,
+          signal.entry_price_exec ?? null,
+          signal.sl_exec ?? null,
+          signal.tp_exec ?? null,
           signal.note,
           JSON.stringify(signal.raw_json || {}),
           signal.status,
           signal.locked_at,
           signal.ack_at,
+          signal.opened_at,
+          signal.closed_at,
           signal.ack_status,
           signal.ack_ticket,
           signal.ack_error,
@@ -698,14 +776,14 @@ async function mt5InitBackend() {
       async pullAndLockNextSignal() {
         const next = db.prepare(`
           SELECT signal_id, created_at, action, symbol, volume, sl, tp, note
-          FROM mt5_signals
+          FROM signals
           WHERE status = 'NEW'
           ORDER BY created_at ASC
           LIMIT 1
         `).get();
         if (!next) return null;
         const upd = db.prepare(`
-          UPDATE mt5_signals
+          UPDATE signals
           SET status = 'LOCKED', locked_at = ?
           WHERE signal_id = ? AND status = 'NEW'
         `).run(mt5NowIso(), next.signal_id);
@@ -715,15 +793,20 @@ async function mt5InitBackend() {
       async findSignalById(signalId) {
         return db.prepare(`
           SELECT signal_id
-          FROM mt5_signals
+          FROM signals
           WHERE signal_id = ?
           LIMIT 1
         `).get(signalId) || null;
       },
-      async ackSignal(signalId, status, ticket, error) {
+      async ackSignal(signalId, status, ticket, error, extra = {}) {
         return db.prepare(`
-          UPDATE mt5_signals
-          SET status = ?, ack_at = ?, ack_status = ?, ack_ticket = ?, ack_error = ?
+          UPDATE signals
+          SET status = ?, ack_at = ?, ack_status = ?, ack_ticket = ?, ack_error = ?,
+              pnl_money_realized = COALESCE(?, pnl_money_realized),
+              entry_price_exec = COALESCE(?, entry_price_exec),
+              sl_exec = COALESCE(?, sl_exec),
+              tp_exec = COALESCE(?, tp_exec),
+              closed_at = CASE WHEN ? LIKE 'CLOSED%' THEN ? ELSE closed_at END
           WHERE signal_id = ?
         `).run(
           mt5StatusToInternal(status),
@@ -731,15 +814,22 @@ async function mt5InitBackend() {
           status,
           ticket ?? null,
           error ?? null,
+          extra.pnl_money_realized ?? null,
+          extra.entry_price_exec ?? null,
+          extra.sl_exec ?? null,
+          extra.tp_exec ?? null,
+          status,
+          mt5NowIso(),
           signalId,
         );
       },
       async listSignals(limit, statusFilter) {
         if (statusFilter) {
           return db.prepare(`
-            SELECT signal_id, created_at, source, action, symbol, volume, sl, tp, note, raw_json,
-                   status, locked_at, ack_at, ack_status, ack_ticket, ack_error
-            FROM mt5_signals
+            SELECT signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
+                   rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
+                   note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
+            FROM signals
             WHERE status = ?
             ORDER BY created_at DESC
             LIMIT ?
@@ -749,9 +839,10 @@ async function mt5InitBackend() {
           }));
         }
         return db.prepare(`
-          SELECT signal_id, created_at, source, action, symbol, volume, sl, tp, note, raw_json,
-                 status, locked_at, ack_at, ack_status, ack_ticket, ack_error
-          FROM mt5_signals
+          SELECT signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
+                 rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
+                 note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
+          FROM signals
           ORDER BY created_at DESC
           LIMIT ?
         `).all(limit).map((r) => ({
@@ -763,10 +854,10 @@ async function mt5InitBackend() {
         const placeholders = mt5TerminalStatuses().map(() => "?").join(", ");
         const cutoffIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
         const result = db.prepare(`
-          DELETE FROM mt5_signals
+          DELETE FROM signals
           WHERE status IN (${placeholders}) AND created_at < ?
         `).run(...mt5TerminalStatuses(), cutoffIso);
-        const remaining = db.prepare("SELECT COUNT(*) AS n FROM mt5_signals").get().n;
+        const remaining = db.prepare("SELECT COUNT(*) AS n FROM signals").get().n;
         return { removed: result.changes || 0, remaining };
       },
     };
@@ -785,71 +876,134 @@ async function mt5InitBackend() {
   const { Pool } = pgModule;
   const pool = new Pool({ connectionString: CFG.mt5PostgresUrl });
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS mt5_signals (
+    CREATE TABLE IF NOT EXISTS users (
+      user_id TEXT PRIMARY KEY,
+      user_name TEXT,
+      email TEXT,
+      password_hash TEXT,
+      balance_start DOUBLE PRECISION NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS signals (
       signal_id TEXT PRIMARY KEY,
       created_at TIMESTAMPTZ NOT NULL,
+      user_id TEXT NOT NULL DEFAULT 'default',
       source TEXT,
       action TEXT NOT NULL,
       symbol TEXT NOT NULL,
       volume DOUBLE PRECISION NOT NULL,
       sl DOUBLE PRECISION NULL,
       tp DOUBLE PRECISION NULL,
+      rr_planned DOUBLE PRECISION NULL,
+      risk_money_planned DOUBLE PRECISION NULL,
+      pnl_money_realized DOUBLE PRECISION NULL,
+      entry_price_exec DOUBLE PRECISION NULL,
+      sl_exec DOUBLE PRECISION NULL,
+      tp_exec DOUBLE PRECISION NULL,
       note TEXT,
       raw_json JSONB,
       status TEXT NOT NULL,
       locked_at TIMESTAMPTZ NULL,
       ack_at TIMESTAMPTZ NULL,
+      opened_at TIMESTAMPTZ NULL,
+      closed_at TIMESTAMPTZ NULL,
       ack_status TEXT NULL,
       ack_ticket TEXT NULL,
-      ack_error TEXT NULL
+      ack_error TEXT NULL,
+      CONSTRAINT fk_signals_user FOREIGN KEY (user_id) REFERENCES users(user_id)
     )
   `);
   await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_mt5_signals_status_created
-    ON mt5_signals(status, created_at)
+    CREATE INDEX IF NOT EXISTS idx_signals_status_created
+    ON signals(status, created_at)
   `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_signals_user_created
+    ON signals(user_id, created_at)
+  `);
+  await pool.query(`
+    INSERT INTO users (user_id, user_name, email, balance_start, created_at)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (user_id) DO NOTHING
+  `, [CFG.mt5DefaultUserId, "Default User", "", 0, mt5NowIso()]);
 
-  const countRes = await pool.query("SELECT COUNT(*)::int AS n FROM mt5_signals");
+  // Backward-compatible migration from legacy table mt5_signals -> signals.
+  await pool.query(`
+    INSERT INTO signals (
+      signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
+      note, raw_json, status, locked_at, ack_at, ack_status, ack_ticket, ack_error
+    )
+    SELECT
+      s.signal_id, s.created_at, 'default', s.source, s.action, s.symbol, s.volume, s.sl, s.tp,
+      s.note, s.raw_json, s.status, s.locked_at, s.ack_at, s.ack_status, s.ack_ticket, s.ack_error
+    FROM mt5_signals s
+    ON CONFLICT (signal_id) DO NOTHING
+  `).catch(() => {
+    // Legacy table may not exist; safe to ignore.
+  });
+
+  const countRes = await pool.query("SELECT COUNT(*)::int AS n FROM signals");
   if (countRes.rows[0].n === 0) {
     try {
       const rows = mt5GetLegacyRows();
       if (rows.length > 0) {
         for (const r of rows) {
           await pool.query(`
-            INSERT INTO mt5_signals (
-              signal_id, created_at, source, action, symbol, volume, sl, tp, note, raw_json,
-              status, locked_at, ack_at, ack_status, ack_ticket, ack_error
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14,$15,$16)
+            INSERT INTO signals (
+              signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
+              rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
+              note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22,$23,$24,$25)
             ON CONFLICT (signal_id) DO UPDATE SET
               created_at=EXCLUDED.created_at,
+              user_id=EXCLUDED.user_id,
               source=EXCLUDED.source,
               action=EXCLUDED.action,
               symbol=EXCLUDED.symbol,
               volume=EXCLUDED.volume,
               sl=EXCLUDED.sl,
               tp=EXCLUDED.tp,
+              rr_planned=EXCLUDED.rr_planned,
+              risk_money_planned=EXCLUDED.risk_money_planned,
+              pnl_money_realized=EXCLUDED.pnl_money_realized,
+              entry_price_exec=EXCLUDED.entry_price_exec,
+              sl_exec=EXCLUDED.sl_exec,
+              tp_exec=EXCLUDED.tp_exec,
               note=EXCLUDED.note,
               raw_json=EXCLUDED.raw_json,
               status=EXCLUDED.status,
               locked_at=EXCLUDED.locked_at,
               ack_at=EXCLUDED.ack_at,
+              opened_at=EXCLUDED.opened_at,
+              closed_at=EXCLUDED.closed_at,
               ack_status=EXCLUDED.ack_status,
               ack_ticket=EXCLUDED.ack_ticket,
               ack_error=EXCLUDED.ack_error
           `, [
             String(r.signal_id || crypto.randomUUID()),
             String(r.created_at || mt5NowIso()),
+            String(r.user_id || CFG.mt5DefaultUserId),
             String(r.source || "legacy"),
             String(r.action || "BUY"),
             String(r.symbol || ""),
             Number(r.volume ?? CFG.mt5DefaultLot),
             r.sl ?? null,
             r.tp ?? null,
+            r.rr_planned ?? null,
+            r.risk_money_planned ?? null,
+            r.pnl_money_realized ?? null,
+            r.entry_price_exec ?? null,
+            r.sl_exec ?? null,
+            r.tp_exec ?? null,
             String(r.note || ""),
             JSON.stringify(r.raw_json || {}),
             String(r.status || "NEW"),
             r.locked_at ?? null,
             r.ack_at ?? null,
+            r.opened_at ?? null,
+            r.closed_at ?? null,
             r.ack_status ?? null,
             r.ack_ticket ?? null,
             r.ack_error ?? null,
@@ -868,40 +1022,59 @@ async function mt5InitBackend() {
     info: { url: CFG.mt5PostgresUrl.replace(/:[^:@/]+@/, ":***@") },
     async upsertSignal(signal) {
       await pool.query(`
-        INSERT INTO mt5_signals (
-          signal_id, created_at, source, action, symbol, volume, sl, tp, note, raw_json,
-          status, locked_at, ack_at, ack_status, ack_ticket, ack_error
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14,$15,$16)
+        INSERT INTO signals (
+          signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
+          rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
+          note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22,$23,$24,$25)
         ON CONFLICT (signal_id) DO UPDATE SET
           created_at=EXCLUDED.created_at,
+          user_id=EXCLUDED.user_id,
           source=EXCLUDED.source,
           action=EXCLUDED.action,
           symbol=EXCLUDED.symbol,
           volume=EXCLUDED.volume,
           sl=EXCLUDED.sl,
           tp=EXCLUDED.tp,
+          rr_planned=EXCLUDED.rr_planned,
+          risk_money_planned=EXCLUDED.risk_money_planned,
+          pnl_money_realized=EXCLUDED.pnl_money_realized,
+          entry_price_exec=EXCLUDED.entry_price_exec,
+          sl_exec=EXCLUDED.sl_exec,
+          tp_exec=EXCLUDED.tp_exec,
           note=EXCLUDED.note,
           raw_json=EXCLUDED.raw_json,
           status=EXCLUDED.status,
           locked_at=EXCLUDED.locked_at,
           ack_at=EXCLUDED.ack_at,
+          opened_at=EXCLUDED.opened_at,
+          closed_at=EXCLUDED.closed_at,
           ack_status=EXCLUDED.ack_status,
           ack_ticket=EXCLUDED.ack_ticket,
           ack_error=EXCLUDED.ack_error
       `, [
         signal.signal_id,
         signal.created_at,
+        signal.user_id || CFG.mt5DefaultUserId,
         signal.source,
         signal.action,
         signal.symbol,
         signal.volume,
         signal.sl,
         signal.tp,
+        signal.rr_planned ?? null,
+        signal.risk_money_planned ?? null,
+        signal.pnl_money_realized ?? null,
+        signal.entry_price_exec ?? null,
+        signal.sl_exec ?? null,
+        signal.tp_exec ?? null,
         signal.note,
         JSON.stringify(signal.raw_json || {}),
         signal.status,
         signal.locked_at,
         signal.ack_at,
+        signal.opened_at,
+        signal.closed_at,
         signal.ack_status,
         signal.ack_ticket,
         signal.ack_error,
@@ -913,7 +1086,7 @@ async function mt5InitBackend() {
         await client.query("BEGIN");
         const sel = await client.query(`
           SELECT signal_id, created_at, action, symbol, volume, sl, tp, note
-          FROM mt5_signals
+          FROM signals
           WHERE status = 'NEW'
           ORDER BY created_at ASC
           LIMIT 1
@@ -925,7 +1098,7 @@ async function mt5InitBackend() {
         }
         const next = sel.rows[0];
         await client.query(`
-          UPDATE mt5_signals
+          UPDATE signals
           SET status = 'LOCKED', locked_at = $1
           WHERE signal_id = $2
         `, [mt5NowIso(), next.signal_id]);
@@ -941,23 +1114,32 @@ async function mt5InitBackend() {
     async findSignalById(signalId) {
       const res = await pool.query(`
         SELECT signal_id
-        FROM mt5_signals
+        FROM signals
         WHERE signal_id = $1
         LIMIT 1
       `, [signalId]);
       return res.rows[0] || null;
     },
-    async ackSignal(signalId, status, ticket, error) {
+    async ackSignal(signalId, status, ticket, error, extra = {}) {
       const res = await pool.query(`
-        UPDATE mt5_signals
-        SET status = $1, ack_at = $2, ack_status = $3, ack_ticket = $4, ack_error = $5
-        WHERE signal_id = $6
+        UPDATE signals
+        SET status = $1, ack_at = $2, ack_status = $3, ack_ticket = $4, ack_error = $5,
+            pnl_money_realized = COALESCE($6, pnl_money_realized),
+            entry_price_exec = COALESCE($7, entry_price_exec),
+            sl_exec = COALESCE($8, sl_exec),
+            tp_exec = COALESCE($9, tp_exec),
+            closed_at = CASE WHEN $3 LIKE 'CLOSED%' THEN $2 ELSE closed_at END
+        WHERE signal_id = $10
       `, [
         mt5StatusToInternal(status),
         mt5NowIso(),
         status,
         ticket ?? null,
         error ?? null,
+        extra.pnl_money_realized ?? null,
+        extra.entry_price_exec ?? null,
+        extra.sl_exec ?? null,
+        extra.tp_exec ?? null,
         signalId,
       ]);
       return { changes: res.rowCount || 0 };
@@ -965,9 +1147,10 @@ async function mt5InitBackend() {
     async listSignals(limit, statusFilter) {
       if (statusFilter) {
         const res = await pool.query(`
-          SELECT signal_id, created_at, source, action, symbol, volume, sl, tp, note, raw_json,
-                 status, locked_at, ack_at, ack_status, ack_ticket, ack_error
-          FROM mt5_signals
+          SELECT signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
+                 rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
+                 note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
+          FROM signals
           WHERE status = $1
           ORDER BY created_at DESC
           LIMIT $2
@@ -975,9 +1158,10 @@ async function mt5InitBackend() {
         return res.rows.map((r) => mt5MapDbRow(r));
       }
       const res = await pool.query(`
-        SELECT signal_id, created_at, source, action, symbol, volume, sl, tp, note, raw_json,
-               status, locked_at, ack_at, ack_status, ack_ticket, ack_error
-        FROM mt5_signals
+        SELECT signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
+               rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
+               note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
+        FROM signals
         ORDER BY created_at DESC
         LIMIT $1
       `, [limit]);
@@ -985,11 +1169,11 @@ async function mt5InitBackend() {
     },
     async pruneOldSignals(days) {
       const res = await pool.query(`
-        DELETE FROM mt5_signals
+        DELETE FROM signals
         WHERE status = ANY($1::text[])
           AND created_at < NOW() - ($2 || ' days')::interval
       `, [mt5TerminalStatuses(), String(days)]);
-      const left = await pool.query("SELECT COUNT(*)::int AS n FROM mt5_signals");
+      const left = await pool.query("SELECT COUNT(*)::int AS n FROM signals");
       return { removed: res.rowCount || 0, remaining: left.rows[0].n };
     },
   };
@@ -1105,9 +1289,9 @@ async function mt5FindSignalById(signalId) {
   return b.findSignalById(signalId);
 }
 
-async function mt5AckSignal(signalId, status, ticket, error) {
+async function mt5AckSignal(signalId, status, ticket, error, extra = {}) {
   const b = await mt5Backend();
-  return b.ackSignal(signalId, status, ticket, error);
+  return b.ackSignal(signalId, status, ticket, error, extra);
 }
 
 async function mt5ListSignals(limit, statusFilter) {
@@ -1157,6 +1341,71 @@ function mt5SignalsToBacktestCsv(rows, includeHeader = true) {
     ].join(";"));
   }
   return lines.join("\n");
+}
+
+function mt5PeriodRange(period) {
+  const now = new Date();
+  const end = now.toISOString();
+  if (period === "today") {
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+    return { start, end };
+  }
+  if (period === "week") {
+    const day = now.getUTCDay() || 7; // Monday=1 ... Sunday=7
+    const startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (day - 1)));
+    return { start: startDate.toISOString(), end };
+  }
+  if (period === "month") {
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+    return { start, end };
+  }
+  return { start: null, end };
+}
+
+function mt5ToMs(value) {
+  const t = Date.parse(String(value || ""));
+  return Number.isFinite(t) ? t : NaN;
+}
+
+function mt5FilterRows(rows, opts = {}) {
+  const userId = envStr(opts.userId);
+  const symbol = envStr(opts.symbol).toUpperCase();
+  const statuses = Array.isArray(opts.statuses) ? opts.statuses.filter(Boolean) : [];
+  const fromMs = opts.from ? mt5ToMs(opts.from) : NaN;
+  const toMs = opts.to ? mt5ToMs(opts.to) : NaN;
+  return rows.filter((r) => {
+    if (userId && String(r.user_id || "") !== userId) return false;
+    if (symbol && String(r.symbol || "").toUpperCase() !== symbol) return false;
+    if (statuses.length > 0 && !statuses.includes(String(r.status || ""))) return false;
+    const t = mt5ToMs(r.created_at);
+    if (Number.isFinite(fromMs) && (!Number.isFinite(t) || t < fromMs)) return false;
+    if (Number.isFinite(toMs) && (!Number.isFinite(t) || t > toMs)) return false;
+    return true;
+  });
+}
+
+function mt5ComputeMetrics(rows) {
+  const closed = rows.filter((r) => String(r.status || "").startsWith("CLOSED") || String(r.status || "") === "DONE");
+  const wins = rows.filter((r) => {
+    const pnl = Number(r.pnl_money_realized);
+    return Number.isFinite(pnl) && pnl > 0;
+  });
+  const losses = rows.filter((r) => {
+    const pnl = Number(r.pnl_money_realized);
+    return Number.isFinite(pnl) && pnl < 0;
+  });
+  const pnl = rows.reduce((acc, r) => {
+    const v = Number(r.pnl_money_realized);
+    return Number.isFinite(v) ? acc + v : acc;
+  }, 0);
+  return {
+    total_trades: rows.length,
+    closed_trades: closed.length,
+    wins: wins.length,
+    losses: losses.length,
+    win_rate: closed.length > 0 ? (wins.length / closed.length) * 100 : 0,
+    pnl_money_realized: pnl,
+  };
 }
 
 function getApiKeyFromReq(req, payload = null, urlObj = null) {
@@ -1284,17 +1533,26 @@ async function executeMt5(signal) {
   await mt5UpsertSignal({
     signal_id: signalId,
     created_at: mt5NowIso(),
+    user_id: signal.user_id || CFG.mt5DefaultUserId,
     source: "signal",
     action: signal.side,
     symbol: signal.symbol,
     volume,
     sl: signal.sl ?? null,
     tp: signal.tp ?? null,
+    rr_planned: signal.rr_planned ?? null,
+    risk_money_planned: signal.risk_money_planned ?? null,
+    pnl_money_realized: null,
+    entry_price_exec: signal.price ?? null,
+    sl_exec: null,
+    tp_exec: null,
     note,
     raw_json: signal.raw || {},
     status: "NEW",
     locked_at: null,
     ack_at: null,
+    opened_at: null,
+    closed_at: null,
     ack_status: null,
     ack_ticket: null,
     ack_error: null,
@@ -1352,6 +1610,158 @@ const server = http.createServer(async (req, res) => {
       pruneDays: CFG.mt5PruneDays,
       pruneIntervalMinutes: CFG.mt5PruneIntervalMinutes,
     });
+  }
+
+  if (req.method === "GET" && url.pathname === "/mt5/dashboard/summary") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const limitRaw = Number(url.searchParams.get("limit") || 5000);
+      const limit = Math.max(100, Math.min(50000, Number.isFinite(limitRaw) ? limitRaw : 5000));
+      const userId = envStr(url.searchParams.get("user_id"));
+      const allRows = await mt5ListSignals(limit, "");
+      const rows = mt5FilterRows(allRows, { userId });
+      const notProcessed = rows.filter((r) => ["NEW", "LOCKED"].includes(String(r.status || "")));
+
+      const dayRange = mt5PeriodRange("today");
+      const weekRange = mt5PeriodRange("week");
+      const monthRange = mt5PeriodRange("month");
+
+      const dayRows = mt5FilterRows(rows, { from: dayRange.start, to: dayRange.end });
+      const weekRows = mt5FilterRows(rows, { from: weekRange.start, to: weekRange.end });
+      const monthRows = mt5FilterRows(rows, { from: monthRange.start, to: monthRange.end });
+
+      return json(res, 200, {
+        ok: true,
+        user_id: userId || null,
+        metrics: mt5ComputeMetrics(rows),
+        benefit: {
+          today: mt5ComputeMetrics(dayRows).pnl_money_realized,
+          week: mt5ComputeMetrics(weekRows).pnl_money_realized,
+          month: mt5ComputeMetrics(monthRows).pnl_money_realized,
+        },
+        latest_unprocessed: notProcessed.slice(0, 20).map(mt5PublicState),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/mt5/dashboard/pnl-series") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const limitRaw = Number(url.searchParams.get("limit") || 5000);
+      const limit = Math.max(100, Math.min(50000, Number.isFinite(limitRaw) ? limitRaw : 5000));
+      const period = envStr(url.searchParams.get("period"), "month").toLowerCase();
+      const userId = envStr(url.searchParams.get("user_id"));
+      const range = mt5PeriodRange(period);
+      const rows = mt5FilterRows(await mt5ListSignals(limit, ""), {
+        userId,
+        from: range.start,
+        to: range.end,
+      });
+      const bucket = period === "today" ? "hour" : "day";
+      const map = new Map();
+      for (const r of rows) {
+        const pnl = Number(r.pnl_money_realized);
+        if (!Number.isFinite(pnl)) continue;
+        const d = new Date(r.closed_at || r.ack_at || r.created_at);
+        if (!Number.isFinite(d.getTime())) continue;
+        const key = bucket === "hour"
+          ? `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")} ${String(d.getUTCHours()).padStart(2, "0")}:00`
+          : `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+        map.set(key, (map.get(key) || 0) + pnl);
+      }
+      const points = [...map.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([x, y]) => ({ x, y }));
+      return json(res, 200, { ok: true, period, points });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/mt5/filters/symbols") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const limitRaw = Number(url.searchParams.get("limit") || 10000);
+      const limit = Math.max(100, Math.min(50000, Number.isFinite(limitRaw) ? limitRaw : 10000));
+      const userId = envStr(url.searchParams.get("user_id"));
+      const rows = mt5FilterRows(await mt5ListSignals(limit, ""), { userId });
+      const symbols = [...new Set(rows.map((r) => String(r.symbol || "").toUpperCase()).filter(Boolean))].sort();
+      return json(res, 200, { ok: true, symbols });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/mt5/trades/search") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const limitRaw = Number(url.searchParams.get("limit") || 10000);
+      const limit = Math.max(100, Math.min(50000, Number.isFinite(limitRaw) ? limitRaw : 10000));
+      const pageRaw = Number(url.searchParams.get("page") || 1);
+      const pageSizeRaw = Number(url.searchParams.get("pageSize") || 20);
+      const page = Math.max(1, Number.isFinite(pageRaw) ? pageRaw : 1);
+      const pageSize = Math.max(5, Math.min(200, Number.isFinite(pageSizeRaw) ? pageSizeRaw : 20));
+      const userId = envStr(url.searchParams.get("user_id"));
+      const symbol = envStr(url.searchParams.get("symbol"));
+      const statuses = envStr(url.searchParams.get("status")).toUpperCase().split(",").map((s) => s.trim()).filter(Boolean);
+      const range = envStr(url.searchParams.get("range")).toLowerCase();
+      const period = mt5PeriodRange(range);
+      const from = envStr(url.searchParams.get("from")) || period.start;
+      const to = envStr(url.searchParams.get("to")) || period.end;
+      const q = envStr(url.searchParams.get("q")).toLowerCase();
+
+      let rows = mt5FilterRows(await mt5ListSignals(limit, ""), { userId, symbol, statuses, from, to });
+      if (q) {
+        rows = rows.filter((r) =>
+          String(r.signal_id || "").toLowerCase().includes(q)
+          || String(r.note || "").toLowerCase().includes(q)
+          || String(r.symbol || "").toLowerCase().includes(q),
+        );
+      }
+
+      const total = rows.length;
+      const start = (page - 1) * pageSize;
+      const data = rows.slice(start, start + pageSize).map(mt5PublicState);
+      return json(res, 200, { ok: true, page, pageSize, total, pages: Math.max(1, Math.ceil(total / pageSize)), trades: data });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname.startsWith("/mt5/trades/")) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const signalId = decodeURIComponent(url.pathname.slice("/mt5/trades/".length));
+      if (!signalId) return json(res, 400, { ok: false, error: "signal_id is required" });
+      const rows = await mt5ListSignals(50000, "");
+      const trade = rows.find((r) => String(r.signal_id) === signalId);
+      if (!trade) return json(res, 404, { ok: false, error: "signal not found" });
+      return json(res, 200, {
+        ok: true,
+        trade: mt5PublicState(trade),
+        chart: {
+          symbol: trade.symbol,
+          action: trade.action,
+          entry: trade.entry_price_exec ?? null,
+          sl: trade.sl_exec ?? trade.sl ?? null,
+          tp: trade.tp_exec ?? trade.tp ?? null,
+          opened_at: trade.opened_at ?? trade.ack_at ?? trade.created_at,
+          closed_at: trade.closed_at ?? null,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
   }
 
   if (req.method === "GET" && url.pathname === "/mt5/trades") {
@@ -1451,6 +1861,9 @@ const server = http.createServer(async (req, res) => {
       const symbol = mt5NormalizeSymbol(payload);
       const volume = mt5NormalizeVolume(payload);
       const signalId = String(payload.id || crypto.randomUUID());
+      const userId = envStr(payload.user_id ?? payload.userId ?? payload.user ?? CFG.mt5DefaultUserId, CFG.mt5DefaultUserId);
+      const rrPlanned = asNum(payload.rr ?? payload.risk_reward, NaN);
+      const riskMoneyPlanned = asNum(payload.risk_money ?? payload.money_risk ?? payload.riskMoney, NaN);
 
       const noteParts = [payload.strategy, payload.timeframe, payload.reason, payload.note].filter(Boolean);
       const note = noteParts.join(" | ");
@@ -1458,17 +1871,26 @@ const server = http.createServer(async (req, res) => {
       await mt5UpsertSignal({
         signal_id: signalId,
         created_at: mt5NowIso(),
+        user_id: userId,
         source: "tradingview",
         action,
         symbol,
         volume,
         sl: payload.sl ?? null,
         tp: payload.tp ?? null,
+        rr_planned: Number.isFinite(rrPlanned) ? rrPlanned : null,
+        risk_money_planned: Number.isFinite(riskMoneyPlanned) ? riskMoneyPlanned : null,
+        pnl_money_realized: null,
+        entry_price_exec: payload.entry ?? payload.price ?? null,
+        sl_exec: null,
+        tp_exec: null,
         note,
         raw_json: payload,
         status: "NEW",
         locked_at: null,
         ack_at: null,
+        opened_at: null,
+        closed_at: null,
         ack_status: null,
         ack_ticket: null,
         ack_error: null,
@@ -1501,11 +1923,14 @@ const server = http.createServer(async (req, res) => {
         signal_id: signal.signal_id,
         timestamp: signal.created_at || null,
         created_at_ts: signal.created_at ? Math.floor(new Date(signal.created_at).getTime() / 1000) : null,
+        user_id: signal.user_id || CFG.mt5DefaultUserId,
         action: signal.action,
         symbol: signal.symbol,
         volume: signal.volume,
         sl: signal.sl,
         tp: signal.tp,
+        rr_planned: signal.rr_planned ?? null,
+        risk_money_planned: signal.risk_money_planned ?? null,
         note: signal.note || "",
         account,
       },
@@ -1533,7 +1958,16 @@ const server = http.createServer(async (req, res) => {
         return json(res, 404, { ok: false, error: "signal not found" });
       }
 
-      await mt5AckSignal(signalId, status, payload.ticket, payload.error);
+      const pnlRealized = asNum(payload.pnl_money_realized ?? payload.pnl ?? payload.profit, NaN);
+      const entryExec = asNum(payload.entry_price_exec ?? payload.entry, NaN);
+      const slExec = asNum(payload.sl_exec ?? payload.sl, NaN);
+      const tpExec = asNum(payload.tp_exec ?? payload.tp, NaN);
+      await mt5AckSignal(signalId, status, payload.ticket, payload.error, {
+        pnl_money_realized: Number.isFinite(pnlRealized) ? pnlRealized : null,
+        entry_price_exec: Number.isFinite(entryExec) ? entryExec : null,
+        sl_exec: Number.isFinite(slExec) ? slExec : null,
+        tp_exec: Number.isFinite(tpExec) ? tpExec : null,
+      });
 
       return json(res, 200, { ok: true });
     } catch (error) {

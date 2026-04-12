@@ -219,6 +219,11 @@ Body example:
 - `POST /mt5/ea/ack`
 - `GET /mt5/health`
 - `GET /mt5/trades?limit=200&status=NEW` (admin API, add `apiKey` or `x-api-key`)
+- `GET /mt5/dashboard/summary` (admin API; KPI cards + latest unprocessed)
+- `GET /mt5/dashboard/pnl-series?period=today|week|month` (admin API)
+- `GET /mt5/filters/symbols` (admin API)
+- `GET /mt5/trades/search?page=1&pageSize=20&symbol=&status=&range=` (admin API)
+- `GET /mt5/trades/:signal_id` (admin API; detail + chart levels)
 - `GET /csv?apiKey=...&limit=2000&status=&header=1` (admin API, download EA backtest CSV)
 - `GET /mt5/csv?apiKey=...&limit=2000&status=&header=1` (same as `/csv`)
 - `GET /mt5/ui` (lightweight web monitor, admin protected)
@@ -242,6 +247,72 @@ MT5 storage options:
 - `MT5_STORAGE=sqlite` (default): uses `MT5_DB_PATH` like `./mt5-signals.db`
 - `MT5_STORAGE=json`: uses `MT5_DB_PATH` like `./mt5-signals.json`
 - `MT5_STORAGE=postgres`: uses `MT5_POSTGRES_URL` (or `POSTGRES_URL` / `POSTGRE_URL`)
+
+Postgres config example (`webhook/.env`):
+
+```env
+MT5_STORAGE=postgres
+MT5_POSTGRES_URL=postgresql://mt5_user:<password>@127.0.0.1:5432/mt5_bridge
+```
+
+MT5 Postgres schema (created automatically by `server.js`):
+
+```sql
+CREATE TABLE IF NOT EXISTS users (
+  user_id TEXT PRIMARY KEY,
+  user_name TEXT,
+  email TEXT,
+  password_hash TEXT,
+  balance_start DOUBLE PRECISION NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS signals (
+  signal_id TEXT PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL,
+  user_id TEXT NOT NULL DEFAULT 'default',
+  source TEXT,
+  action TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  volume DOUBLE PRECISION NOT NULL,
+  sl DOUBLE PRECISION NULL,
+  tp DOUBLE PRECISION NULL,
+  rr_planned DOUBLE PRECISION NULL,
+  risk_money_planned DOUBLE PRECISION NULL,
+  pnl_money_realized DOUBLE PRECISION NULL,
+  entry_price_exec DOUBLE PRECISION NULL,
+  sl_exec DOUBLE PRECISION NULL,
+  tp_exec DOUBLE PRECISION NULL,
+  note TEXT,
+  raw_json JSONB,
+  status TEXT NOT NULL,
+  locked_at TIMESTAMPTZ NULL,
+  ack_at TIMESTAMPTZ NULL,
+  opened_at TIMESTAMPTZ NULL,
+  closed_at TIMESTAMPTZ NULL,
+  ack_status TEXT NULL,
+  ack_ticket TEXT NULL,
+  ack_error TEXT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_signals_status_created
+ON signals(status, created_at);
+```
+
+React UI app (Dashboard + Trades + Trade detail):
+
+```bash
+cd /Users/macmini/Trade/Bot/trading/webhook-ui
+npm install
+VITE_API_BASE=https://signal.mozasolution.com VITE_API_KEY=<SIGNAL_API_KEY> npm run dev
+```
+
+Production build:
+
+```bash
+cd /Users/macmini/Trade/Bot/trading/webhook-ui
+npm run build
+```
 
 MT5 prune options:
 - `MT5_PRUNE_ENABLED=true|false`
