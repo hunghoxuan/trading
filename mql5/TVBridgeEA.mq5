@@ -18,6 +18,9 @@ input string InpBacktestFileCommon  = "tvbridge_signals.csv"; // Common/Files CS
 input bool   InpBacktestHasHeader   = true;
 input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comment().
 
+// Bump this on every code update so running build is obvious on chart/logs.
+string EA_BUILD_VERSION = "2026-04-12.01";
+
 CTrade trade;
 
 string   g_seenIds[];
@@ -209,6 +212,7 @@ void RefreshDebugPanel()
    string lastTime = g_dbgLastTime > 0 ? TimeToString(g_dbgLastTime, TIME_DATE | TIME_SECONDS) : "-";
    string text =
       "TVBridgeEA Debug\n" +
+      "Build: " + EA_BUILD_VERSION + "\n" +
       "Mode: " + mode + "\n" +
       "Chart: " + _Symbol + " " + EnumToString((ENUM_TIMEFRAMES)_Period) + "\n" +
       "Positions: " + IntegerToString(PositionsTotal()) + "\n" +
@@ -314,6 +318,121 @@ void CloseBySymbol(const string symbol)
    }
 }
 
+void NormalizeStopsForMarket(const string action,
+                             const string symbol,
+                             double &sl,
+                             double &tp,
+                             string &adjustNote)
+{
+   adjustNote = "";
+   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   if(point <= 0.0)
+      point = 0.00001;
+
+   double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
+   if(bid <= 0.0 || ask <= 0.0)
+   {
+      MqlTick tick;
+      if(SymbolInfoTick(symbol, tick))
+      {
+         bid = tick.bid;
+         ask = tick.ask;
+      }
+   }
+   if(bid <= 0.0 || ask <= 0.0)
+      return;
+
+   int stopsLevelPts = (int)SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   double minDist = MathMax(0, stopsLevelPts) * point;
+
+   if(action == "BUY")
+   {
+      // BUY: SL must be below bid by at least min distance, TP above ask by at least min distance.
+      if(sl > 0.0 && sl >= (bid - minDist))
+      {
+         sl = 0.0;
+         adjustNote += "[SL dropped]";
+      }
+      if(tp > 0.0 && tp <= (ask + minDist))
+      {
+         tp = 0.0;
+         adjustNote += "[TP dropped]";
+      }
+   }
+   else if(action == "SELL")
+   {
+      // SELL: SL must be above ask by at least min distance, TP below bid by at least min distance.
+      if(sl > 0.0 && sl <= (ask + minDist))
+      {
+         sl = 0.0;
+         adjustNote += "[SL dropped]";
+      }
+      if(tp > 0.0 && tp >= (bid - minDist))
+      {
+         tp = 0.0;
+         adjustNote += "[TP dropped]";
+      }
+   }
+
+   if(sl > 0.0)
+      sl = NormalizeDouble(sl, digits);
+   if(tp > 0.0)
+      tp = NormalizeDouble(tp, digits);
+}
+
+bool ApplyStopsAfterOpen(const string action,
+                         const string symbol,
+                         const double slIn,
+                         const double tpIn,
+                         string &infoOut)
+{
+   infoOut = "";
+   if(slIn <= 0.0 && tpIn <= 0.0)
+   {
+      infoOut = "no stops requested";
+      return true;
+   }
+
+   double sl = slIn;
+   double tp = tpIn;
+   string adjustNote = "";
+   NormalizeStopsForMarket(action, symbol, sl, tp, adjustNote);
+   if(sl <= 0.0 && tp <= 0.0)
+   {
+      infoOut = "stops skipped after normalize";
+      return false;
+   }
+
+   // Position can appear with a tiny delay in tester/live; retry briefly.
+   bool found = false;
+   for(int i = 0; i < 10; ++i)
+   {
+      if(PositionSelect(symbol))
+      {
+         found = true;
+         break;
+      }
+      Sleep(100);
+   }
+   if(!found)
+   {
+      infoOut = "position not found for modify";
+      return false;
+   }
+
+   bool ok = trade.PositionModify(symbol, sl > 0.0 ? sl : 0.0, tp > 0.0 ? tp : 0.0);
+   if(!ok)
+   {
+      infoOut = "PositionModify retcode=" + IntegerToString((int)trade.ResultRetcode()) + " msg=" + trade.ResultRetcodeDescription();
+      return false;
+   }
+
+   infoOut = "stops set" + (StringLen(adjustNote) > 0 ? (" " + adjustNote) : "");
+   return true;
+}
+
 bool ExecuteSignal(const string signalId,
                    const string actionRaw,
                    const string symbolRaw,
@@ -389,10 +508,20 @@ bool ExecuteSignal(const string signalId,
    trade.SetDeviationInPoints(InpDeviationPts);
 
    bool ok = false;
+   double slUse = sl;
+   double tpUse = tp;
+   string stopAdjustNote = "";
+   NormalizeStopsForMarket(action, symbol, slUse, tpUse, stopAdjustNote);
+   if(StringLen(stopAdjustNote) > 0)
+   {
+      Print("Stops adjusted for ", signalId, " ", symbol, " ", action, " ", stopAdjustNote,
+            " (input sl=", DoubleToString(sl, 8), ", tp=", DoubleToString(tp, 8),
+            " => used sl=", DoubleToString(slUse, 8), ", tp=", DoubleToString(tpUse, 8), ")");
+   }
    if(action == "BUY")
-      ok = trade.Buy(volume, symbol, 0.0, sl, tp, comment);
+      ok = trade.Buy(volume, symbol, 0.0, 0.0, 0.0, comment);
    else if(action == "SELL")
-      ok = trade.Sell(volume, symbol, 0.0, sl, tp, comment);
+      ok = trade.Sell(volume, symbol, 0.0, 0.0, 0.0, comment);
    else if(action == "CLOSE")
    {
       CloseBySymbol(symbol);
@@ -410,11 +539,41 @@ bool ExecuteSignal(const string signalId,
 
    if(!ok)
    {
-      errOut = "retcode=" + IntegerToString((int)trade.ResultRetcode()) + " msg=" + trade.ResultRetcodeDescription();
-      g_dbgLastStatus = "ORDER_FAILED";
-      g_dbgLastError = errOut;
-      RefreshDebugPanel();
-      return false;
+      uint rc = trade.ResultRetcode();
+      // Broker rejected stops (10016). Retry market order without SL/TP.
+      if((action == "BUY" || action == "SELL") && rc == TRADE_RETCODE_INVALID_STOPS)
+      {
+         Print("Invalid stops for ", signalId, " -> retry without SL/TP");
+         if(action == "BUY")
+            ok = trade.Buy(volume, symbol, 0.0, 0.0, 0.0, comment);
+         else
+            ok = trade.Sell(volume, symbol, 0.0, 0.0, 0.0, comment);
+      }
+
+      if(!ok)
+      {
+         errOut = "retcode=" + IntegerToString((int)trade.ResultRetcode()) + " msg=" + trade.ResultRetcodeDescription();
+         g_dbgLastStatus = "ORDER_FAILED";
+         g_dbgLastError = errOut;
+         RefreshDebugPanel();
+         return false;
+      }
+   }
+
+   if(action == "BUY" || action == "SELL")
+   {
+      string stopInfo = "";
+      bool stopOk = ApplyStopsAfterOpen(action, symbol, slUse, tpUse, stopInfo);
+      if(!stopOk)
+      {
+         Print("Post-open stops skipped/failed for ", signalId, " ", symbol, " ", action, ": ", stopInfo);
+         if(StringLen(g_dbgLastError) == 0)
+            g_dbgLastError = stopInfo;
+      }
+      else if(StringLen(stopInfo) > 0)
+      {
+         Print("Post-open stops for ", signalId, ": ", stopInfo);
+      }
    }
 
    ticketOut = IntegerToString((int)trade.ResultOrder());
@@ -602,6 +761,7 @@ int OnInit()
          return(INIT_FAILED);
       }
       Print("TVBridgeEA backtest mode initialized.");
+      Print("TVBridgeEA build: ", EA_BUILD_VERSION);
       g_dbgLastStatus = "BT_READY";
       g_dbgLastTime = TimeCurrent();
       RefreshDebugPanel();
@@ -610,6 +770,7 @@ int OnInit()
 
    EventSetTimer(MathMax(InpPollSeconds, 1));
    Print("TVBridgeEA initialized. Add URL to MT5 WebRequest allow-list: ", InpServerBaseUrl);
+   Print("TVBridgeEA build: ", EA_BUILD_VERSION);
    g_dbgLastStatus = "LIVE_READY";
    g_dbgLastTime = TimeCurrent();
    RefreshDebugPanel();

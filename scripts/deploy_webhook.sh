@@ -60,7 +60,7 @@ for i in {1..20}; do
   fi
   sleep 2
 done
-if [[ "${OK}" != "1" ]]; then
+if [[ "\${OK}" != "1" ]]; then
   echo "[vps] health check failed on port ${HEALTH_PORT}" >&2
   if [[ "${SERVICE_MODE}" == "pm2" ]]; then
     pm2 logs "${SERVICE_NAME}" --lines 120 --nostream || true
