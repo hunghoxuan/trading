@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "check": "node --check server.js",
-    "test:smoke": "node ../scripts/test_local_stack.mjs"
+    "test:smoke": "node ../scripts/test_local_stack.mjs",
+    "test:remote": "bash ../scripts/test_remote_api.sh"
   },
   "dependencies": {
     "pg": "^8.13.1"

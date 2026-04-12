@@ -647,6 +647,15 @@ async function mt5InitBackend() {
         mt5WriteJsonDb(db);
         return signal;
       },
+      async pullAndLockSignalById(signalId) {
+        const db = mt5ReadJsonDb();
+        const sig = db.signals.find((s) => String(s.signal_id) === String(signalId) && s.status === "NEW");
+        if (!sig) return null;
+        sig.status = "LOCKED";
+        sig.locked_at = mt5NowIso();
+        mt5WriteJsonDb(db);
+        return sig;
+      },
       async findSignalById(signalId) {
         const db = mt5ReadJsonDb();
         return db.signals.find((s) => s.signal_id === signalId) || null;
@@ -870,6 +879,22 @@ async function mt5InitBackend() {
           SET status = 'LOCKED', locked_at = ?
           WHERE signal_id = ? AND status = 'NEW'
         `).run(mt5NowIso(), next.signal_id);
+        if (upd.changes < 1) return null;
+        return next;
+      },
+      async pullAndLockSignalById(signalId) {
+        const next = db.prepare(`
+          SELECT signal_id, created_at, action, symbol, volume, sl, tp, note
+          FROM signals
+          WHERE signal_id = ? AND status = 'NEW'
+          LIMIT 1
+        `).get(signalId);
+        if (!next) return null;
+        const upd = db.prepare(`
+          UPDATE signals
+          SET status = 'LOCKED', locked_at = ?
+          WHERE signal_id = ? AND status = 'NEW'
+        `).run(mt5NowIso(), signalId);
         if (upd.changes < 1) return null;
         return next;
       },
@@ -1194,6 +1219,36 @@ async function mt5InitBackend() {
         client.release();
       }
     },
+    async pullAndLockSignalById(signalId) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const sel = await client.query(`
+          SELECT signal_id, created_at, action, symbol, volume, sl, tp, note
+          FROM signals
+          WHERE signal_id = $1 AND status = 'NEW'
+          LIMIT 1
+          FOR UPDATE SKIP LOCKED
+        `, [signalId]);
+        if (!sel.rows.length) {
+          await client.query("COMMIT");
+          return null;
+        }
+        const next = sel.rows[0];
+        await client.query(`
+          UPDATE signals
+          SET status = 'LOCKED', locked_at = $1
+          WHERE signal_id = $2 AND status = 'NEW'
+        `, [mt5NowIso(), signalId]);
+        await client.query("COMMIT");
+        return mt5MapDbRow(next);
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
     async findSignalById(signalId) {
       const res = await pool.query(`
         SELECT signal_id
@@ -1365,6 +1420,11 @@ async function mt5UpsertSignal(signal) {
 async function mt5PullAndLockNextSignal() {
   const b = await mt5Backend();
   return b.pullAndLockNextSignal();
+}
+
+async function mt5PullAndLockSignalById(signalId) {
+  const b = await mt5Backend();
+  return b.pullAndLockSignalById(signalId);
 }
 
 async function mt5FindSignalById(signalId) {
@@ -1998,8 +2058,11 @@ const server = http.createServer(async (req, res) => {
       return json(res, 401, { ok: false, error: "invalid ea api key" });
     }
 
+    const signalId = String(url.searchParams.get("signal_id") || "").trim();
     const account = String(url.searchParams.get("account") || "");
-    const signal = await mt5PullAndLockNextSignal();
+    const signal = signalId
+      ? await mt5PullAndLockSignalById(signalId)
+      : await mt5PullAndLockNextSignal();
     if (!signal) {
       return json(res, 200, { ok: true, signal: null });
     }

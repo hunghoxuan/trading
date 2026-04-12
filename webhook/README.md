@@ -373,3 +373,29 @@ Direct Node entrypoint (same test):
 ```bash
 node /Users/macmini/Trade/Bot/trading/scripts/test_local_stack.mjs
 ```
+
+## Remote API Test Framework (lightweight)
+
+For remote-only validation (VPS URL + live API), use the Node built-in test runner:
+
+- test file: `/Users/macmini/Trade/Bot/trading/tests/remote/mt5-remote.test.mjs`
+- runner script: `/Users/macmini/Trade/Bot/trading/scripts/test_remote_api.sh`
+- report output directory: `/Users/macmini/Trade/Bot/trading/test-results/`
+
+What it tests:
+- TradingView webhook push: `POST /mt5/tv/webhook`
+- CSV download: `GET /csv`
+- EA pull: `GET /mt5/ea/pull` (supports `signal_id` for deterministic pull)
+
+Run from repo root:
+
+```bash
+cd /Users/macmini/Trade/Bot/trading
+API_KEY="$(sed -n 's/^SIGNAL_API_KEY=//p' webhook/.env | head -n 1)" \
+BASE_URL="http://139.59.211.192" \
+bash scripts/test_remote_api.sh
+```
+
+Report files:
+- latest: `/Users/macmini/Trade/Bot/trading/test-results/remote-api-latest.log`
+- timestamped: `/Users/macmini/Trade/Bot/trading/test-results/remote-api-YYYYMMDD-HHMMSS.log`
