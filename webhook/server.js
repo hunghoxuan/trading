@@ -108,6 +108,7 @@ const CFG = {
         : "./mt5-signals.db"),
   ),
   mt5PostgresUrl: envStr(process.env.MT5_POSTGRES_URL) || envStr(process.env.POSTGRES_URL) || envStr(process.env.POSTGRE_URL),
+  uiDistPath: path.resolve(__dirname, envStr(process.env.WEBHOOK_UI_DIST_PATH, "../webhook-ui/dist")),
 };
 
 CFG.binanceEnabled = ["paper", "live"].includes(CFG.binanceMode);
@@ -130,6 +131,72 @@ function json(res, statusCode, data) {
     "Content-Length": Buffer.byteLength(body),
   });
   res.end(body);
+}
+
+function contentTypeByExt(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  switch (ext) {
+    case ".html":
+      return "text/html; charset=utf-8";
+    case ".js":
+      return "application/javascript; charset=utf-8";
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".json":
+      return "application/json; charset=utf-8";
+    case ".svg":
+      return "image/svg+xml";
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".ico":
+      return "image/x-icon";
+    case ".map":
+      return "application/json; charset=utf-8";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+function serveUiFile(res, filePath) {
+  const body = fs.readFileSync(filePath);
+  res.writeHead(200, {
+    "Content-Type": contentTypeByExt(filePath),
+    "Content-Length": body.length,
+    "Cache-Control": filePath.endsWith(".html") ? "no-store" : "public, max-age=86400",
+  });
+  res.end(body);
+}
+
+function tryServeUi(url, req, res) {
+  if (req.method !== "GET") return false;
+  if (!url.pathname.startsWith("/ui")) return false;
+  if (!fs.existsSync(CFG.uiDistPath)) {
+    return json(res, 404, { ok: false, error: `UI dist folder not found: ${CFG.uiDistPath}` });
+  }
+
+  let rel = url.pathname.slice("/ui".length);
+  if (!rel || rel === "/") rel = "/index.html";
+  if (rel.includes("..")) {
+    return json(res, 400, { ok: false, error: "Invalid UI path" });
+  }
+
+  const normalizedRel = rel.replace(/^\/+/, "");
+  const requested = path.join(CFG.uiDistPath, normalizedRel);
+  if (fs.existsSync(requested) && fs.statSync(requested).isFile()) {
+    serveUiFile(res, requested);
+    return true;
+  }
+
+  // SPA fallback
+  const indexPath = path.join(CFG.uiDistPath, "index.html");
+  if (fs.existsSync(indexPath)) {
+    serveUiFile(res, indexPath);
+    return true;
+  }
+  return json(res, 404, { ok: false, error: `UI entry not found: ${indexPath}` });
 }
 
 async function readJson(req) {
@@ -1567,6 +1634,10 @@ async function executeMt5(signal) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+
+  if (tryServeUi(url, req, res)) {
+    return;
+  }
 
   if (req.method === "GET" && url.pathname === "/health") {
     return json(res, 200, {
