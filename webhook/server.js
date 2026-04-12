@@ -160,25 +160,37 @@ function contentTypeByExt(filePath) {
   }
 }
 
-function serveUiFile(res, filePath) {
+function serveUiFile(res, filePath, method = "GET") {
   const body = fs.readFileSync(filePath);
-  res.writeHead(200, {
+  const headers = {
     "Content-Type": contentTypeByExt(filePath),
     "Content-Length": body.length,
     "Cache-Control": filePath.endsWith(".html") ? "no-store" : "public, max-age=86400",
-  });
+  };
+  res.writeHead(200, headers);
+  if (method === "HEAD") {
+    res.end();
+    return;
+  }
   res.end(body);
 }
 
 function tryServeUi(url, req, res) {
-  if (req.method !== "GET") return false;
-  if (!url.pathname.startsWith("/ui")) return false;
+  if (!["GET", "HEAD"].includes(req.method)) return false;
+  const isUiPath = url.pathname.startsWith("/ui");
+  const isUiAssetPath = url.pathname.startsWith("/assets/");
+  if (!isUiPath && !isUiAssetPath) return false;
   if (!fs.existsSync(CFG.uiDistPath)) {
     return json(res, 404, { ok: false, error: `UI dist folder not found: ${CFG.uiDistPath}` });
   }
 
-  let rel = url.pathname.slice("/ui".length);
-  if (!rel || rel === "/") rel = "/index.html";
+  let rel;
+  if (isUiAssetPath) {
+    rel = url.pathname;
+  } else {
+    rel = url.pathname.slice("/ui".length);
+    if (!rel || rel === "/") rel = "/index.html";
+  }
   if (rel.includes("..")) {
     return json(res, 400, { ok: false, error: "Invalid UI path" });
   }
@@ -186,14 +198,18 @@ function tryServeUi(url, req, res) {
   const normalizedRel = rel.replace(/^\/+/, "");
   const requested = path.join(CFG.uiDistPath, normalizedRel);
   if (fs.existsSync(requested) && fs.statSync(requested).isFile()) {
-    serveUiFile(res, requested);
+    serveUiFile(res, requested, req.method);
     return true;
+  }
+
+  if (isUiAssetPath) {
+    return json(res, 404, { ok: false, error: "UI asset not found" });
   }
 
   // SPA fallback
   const indexPath = path.join(CFG.uiDistPath, "index.html");
   if (fs.existsSync(indexPath)) {
-    serveUiFile(res, indexPath);
+    serveUiFile(res, indexPath, req.method);
     return true;
   }
   return json(res, 404, { ok: false, error: `UI entry not found: ${indexPath}` });
