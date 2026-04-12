@@ -1,7 +1,12 @@
-const API_BASE_CONFIG = (import.meta.env.VITE_API_BASE || "").trim();
-
 function runtimeApiBase() {
-  if (API_BASE_CONFIG) return API_BASE_CONFIG;
+  const u = new URL(window.location.href);
+  const apiBaseQuery = (u.searchParams.get("apiBase") || "").trim();
+  if (apiBaseQuery) {
+    localStorage.setItem("tvbridge_api_base", apiBaseQuery);
+    return apiBaseQuery;
+  }
+  const apiBaseStored = (localStorage.getItem("tvbridge_api_base") || "").trim();
+  if (apiBaseStored) return apiBaseStored;
   const { protocol, hostname, port, origin } = window.location;
   if (port && port !== "80" && port !== "443") {
     return `${protocol}//${hostname}`;
