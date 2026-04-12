@@ -63,38 +63,55 @@ export function setRuntimeApiBase(value) {
   localStorage.setItem("tvbridge_api_base", v);
 }
 
-function withApiKey(url) {
-  const API_KEY = runtimeApiKey();
-  if (!API_KEY) return url;
-  const u = new URL(url, window.location.origin);
-  u.searchParams.set("apiKey", API_KEY);
-  return u.toString();
+function buildUrl(base, path) {
+  return new URL(path, `${base.replace(/\/+$/, "")}/`).toString();
 }
 
 async function get(path) {
   const API_KEY = runtimeApiKey();
   const base = runtimeApiBase();
-  const ctrl = new AbortController();
-  const timer = window.setTimeout(() => ctrl.abort(), 12000);
+  const primaryUrl = buildUrl(base, path);
+  const fallbackUrl = buildUrl(window.location.origin, path);
+
+  async function doFetch(url) {
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(() => ctrl.abort(), 12000);
+    try {
+      return await fetch(url, {
+        signal: ctrl.signal,
+        headers: API_KEY ? { "x-api-key": API_KEY } : {},
+      });
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        throw new Error("Request timeout (12s). Check API URL and server status.");
+      }
+      throw err;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
   let res;
   try {
-    res = await fetch(withApiKey(`${base}${path}`), {
-      signal: ctrl.signal,
-      headers: API_KEY ? { "x-api-key": API_KEY } : {},
-    });
-  } catch (err) {
-    if (err?.name === "AbortError") {
-      throw new Error("Request timeout (12s). Check API URL and server status.");
+    res = await doFetch(primaryUrl);
+  } catch (primaryError) {
+    // If user configured a remote API URL, fallback to same-origin /mt5 endpoints.
+    if (primaryUrl !== fallbackUrl) {
+      try {
+        res = await doFetch(fallbackUrl);
+      } catch {
+        throw primaryError;
+      }
+    } else {
+      throw primaryError;
     }
-    throw err;
-  } finally {
-    window.clearTimeout(timer);
   }
+
   let data;
   try {
     data = await res.json();
   } catch {
-    throw new Error("Server returned non-JSON response");
+    throw new Error(`Server returned non-JSON response (${res.status})`);
   }
   if (!res.ok || !data.ok) {
     throw new Error(data.error || `Request failed: ${res.status}`);
