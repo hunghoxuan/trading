@@ -19,9 +19,15 @@ function runtimeApiBase() {
     localStorage.setItem("tvbridge_api_base", apiBaseQuery);
     return apiBaseQuery;
   }
+  const { protocol, hostname, port, origin } = window.location;
+
+  // On deployed server UI, always use same-origin API to avoid stale/bad saved API URLs.
+  if (hostname !== "localhost" && hostname !== "127.0.0.1") {
+    return origin;
+  }
+
   const apiBaseStored = normalizeApiBase(localStorage.getItem("tvbridge_api_base"));
   if (apiBaseStored) return apiBaseStored;
-  const { protocol, hostname, port, origin } = window.location;
   if (hostname === "localhost" || hostname === "127.0.0.1") {
     return DEFAULT_REMOTE_BASE;
   }
