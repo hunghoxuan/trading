@@ -70,6 +70,7 @@ VPS_HOST=root@139.59.211.192 \
 VPS_APP_DIR=/root/trading \
 SERVICE_MODE=pm2 \
 SERVICE_NAME=webhook \
+HEALTH_PORT=80 \
 bash scripts/deploy_webhook.sh
 ```
 
@@ -120,6 +121,7 @@ Required GitHub repository secrets:
 - `VPS_SSH_KEY` (private key content)
 - `VPS_APP_DIR` (example: `/root/trading`)
 - Optional: `VPS_PORT` (defaults to `22`)
+- Optional: `VPS_HEALTH_PORT` (defaults to `80`)
 
 Step-by-step (for non-technical users):
 1. Open GitHub repository page.

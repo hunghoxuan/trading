@@ -12,13 +12,14 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BRANCH="${BRANCH:-main}"
 PUSH_FIRST="${PUSH_FIRST:-1}"
 VPS_HOST="${VPS_HOST:-root@139.59.211.192}"
-VPS_APP_DIR="${VPS_APP_DIR:-/root/trading/webhook}"
+VPS_APP_DIR="${VPS_APP_DIR:-/root/trading}"
 SERVICE_MODE="${SERVICE_MODE:-pm2}"      # pm2|systemd
 SERVICE_NAME="${SERVICE_NAME:-webhook}"  # pm2 process name or systemd unit name
+HEALTH_PORT="${HEALTH_PORT:-80}"
 
 echo "[deploy] root=${ROOT_DIR}"
 echo "[deploy] branch=${BRANCH} push_first=${PUSH_FIRST}"
-echo "[deploy] vps_host=${VPS_HOST} app_dir=${VPS_APP_DIR} service_mode=${SERVICE_MODE} service_name=${SERVICE_NAME}"
+echo "[deploy] vps_host=${VPS_HOST} app_dir=${VPS_APP_DIR} service_mode=${SERVICE_MODE} service_name=${SERVICE_NAME} health_port=${HEALTH_PORT}"
 
 cd "${ROOT_DIR}"
 
@@ -49,8 +50,25 @@ else
   echo "Unsupported SERVICE_MODE=${SERVICE_MODE} (use pm2 or systemd)" >&2
   exit 1
 fi
-curl -fsS "http://127.0.0.1:80/health" >/dev/null
-curl -fsS "http://127.0.0.1:80/mt5/health" >/dev/null
+# Wait for app to be ready and health endpoints to respond.
+OK=0
+for i in {1..20}; do
+  if curl -fsS "http://127.0.0.1:${HEALTH_PORT}/health" >/dev/null \
+     && curl -fsS "http://127.0.0.1:${HEALTH_PORT}/mt5/health" >/dev/null; then
+    OK=1
+    break
+  fi
+  sleep 2
+done
+if [[ "${OK}" != "1" ]]; then
+  echo "[vps] health check failed on port ${HEALTH_PORT}" >&2
+  if [[ "${SERVICE_MODE}" == "pm2" ]]; then
+    pm2 logs "${SERVICE_NAME}" --lines 120 --nostream || true
+  elif [[ "${SERVICE_MODE}" == "systemd" ]]; then
+    journalctl -u "${SERVICE_NAME}" -n 120 --no-pager || true
+  fi
+  exit 1
+fi
 echo "[vps] deploy success"
 EOF
 )
@@ -58,4 +76,3 @@ EOF
 echo "[deploy] running remote deployment over ssh"
 ssh "${VPS_HOST}" "${REMOTE_CMD}"
 echo "[deploy] done"
-

@@ -42,6 +42,8 @@ jobs:
             SERVICE_MODE="${{ github.event.inputs.service_mode || 'pm2' }}"
             SERVICE_NAME="${{ github.event.inputs.service_name || 'webhook' }}"
             APP_DIR="${{ secrets.VPS_APP_DIR }}"
+            HEALTH_PORT="${{ secrets.VPS_HEALTH_PORT }}"
+            if [ -z "${HEALTH_PORT}" ]; then HEALTH_PORT="80"; fi
 
             cd "$APP_DIR"
             echo "[vps] cwd=$(pwd)"
@@ -59,7 +61,22 @@ jobs:
               exit 1
             fi
 
-            curl -fsS "http://127.0.0.1:80/health" >/dev/null
-            curl -fsS "http://127.0.0.1:80/mt5/health" >/dev/null
+            OK=0
+            for i in $(seq 1 20); do
+              if curl -fsS "http://127.0.0.1:${HEALTH_PORT}/health" >/dev/null \
+                 && curl -fsS "http://127.0.0.1:${HEALTH_PORT}/mt5/health" >/dev/null; then
+                OK=1
+                break
+              fi
+              sleep 2
+            done
+            if [ "$OK" != "1" ]; then
+              echo "[vps] health check failed on port ${HEALTH_PORT}" >&2
+              if [ "$SERVICE_MODE" = "pm2" ]; then
+                pm2 logs "$SERVICE_NAME" --lines 120 --nostream || true
+              elif [ "$SERVICE_MODE" = "systemd" ]; then
+                journalctl -u "$SERVICE_NAME" -n 120 --no-pager || true
+              fi
+              exit 1
+            fi
             echo "[vps] deploy success"
-
