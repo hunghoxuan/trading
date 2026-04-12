@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import KpiCard from "../components/KpiCard";
 import TradeCard from "../components/TradeCard";
@@ -12,14 +12,19 @@ function asMoney(v) {
 export default function DashboardPage() {
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState("");
+  const inFlightRef = useRef(false);
 
   async function load() {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     try {
-      setError("");
       const data = await api.dashboardSummary();
       setSummary(data);
+      setError("");
     } catch (e) {
-      setError(e.message);
+      setError(e?.message || "Failed to load dashboard");
+    } finally {
+      inFlightRef.current = false;
     }
   }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import TradeCard from "../components/TradeCard";
 
@@ -12,6 +12,7 @@ export default function TradesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const inFlightRef = useRef(false);
 
   const [filter, setFilter] = useState({
     q: "",
@@ -36,17 +37,20 @@ export default function TradesPage() {
   }
 
   async function loadTrades() {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     try {
       setLoading(true);
-      setError("");
       const data = await api.trades(query);
       setRows(data.trades || []);
       setTotal(data.total || 0);
       setPages(data.pages || 1);
+      setError("");
     } catch (e) {
-      setError(e.message);
+      setError(e?.message || "Failed to load trades");
     } finally {
       setLoading(false);
+      inFlightRef.current = false;
     }
   }
 
