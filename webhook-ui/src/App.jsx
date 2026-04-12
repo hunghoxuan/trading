@@ -2,11 +2,12 @@ import { Link, Navigate, Route, Routes } from "react-router-dom";
 import DashboardPage from "./pages/DashboardPage";
 import TradesPage from "./pages/TradesPage";
 import TradeDetailPage from "./pages/TradeDetailPage";
-import { setRuntimeApiKey } from "./api";
+import { getRuntimeApiBase, setRuntimeApiBase, setRuntimeApiKey } from "./api";
 import { useState } from "react";
 
 export default function App() {
   const [apiKey, setApiKey] = useState(localStorage.getItem("tvbridge_api_key") || "");
+  const [apiBase, setApiBase] = useState(getRuntimeApiBase());
 
   return (
     <div className="app-shell">
@@ -18,6 +19,12 @@ export default function App() {
         </nav>
         <div className="keybar">
           <input
+            type="text"
+            placeholder="API URL (e.g. http://139.59.211.192)"
+            value={apiBase}
+            onChange={(e) => setApiBase(e.target.value)}
+          />
+          <input
             type="password"
             placeholder="API key"
             value={apiKey}
@@ -25,11 +32,12 @@ export default function App() {
           />
           <button
             onClick={() => {
+              setRuntimeApiBase(apiBase);
               setRuntimeApiKey(apiKey);
               window.location.reload();
             }}
           >
-            Save Key
+            Save
           </button>
         </div>
       </header>
