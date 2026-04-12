@@ -63,13 +63,20 @@ Body example:
 - `POST /mt5/ea/ack`
 - `GET /mt5/health`
 - `GET /mt5/trades?limit=200&status=NEW` (admin API, add `apiKey` or `x-api-key`)
+- `GET /csv?apiKey=...&limit=2000&status=&header=1` (admin API, download EA backtest CSV)
+- `GET /mt5/csv?apiKey=...&limit=2000&status=&header=1` (same as `/csv`)
 - `GET /mt5/ui` (lightweight web monitor, admin protected)
+- `POST /mt5/prune` (admin API, optional body: `{"days":14}`)
 
 Open UI:
 - `https://<your-domain>/mt5/ui?apiKey=<SIGNAL_API_KEY>`
 
 EA file:
 - `/Users/macmini/Trade/Bot/trading/mql5/TVBridgeEA.mq5`
+
+Backtest CSV columns:
+- `timestamp;signal_id;action;symbol;volume;sl;tp;note`
+- timestamp format is UTC: `YYYY.MM.DD HH:MM:SS`
 
 EA key behavior:
 - If `MT5_EA_API_KEYS` is empty, server reuses `SIGNAL_API_KEY`.
@@ -79,6 +86,12 @@ MT5 storage options:
 - `MT5_STORAGE=sqlite` (default): uses `MT5_DB_PATH` like `./mt5-signals.db`
 - `MT5_STORAGE=json`: uses `MT5_DB_PATH` like `./mt5-signals.json`
 - `MT5_STORAGE=postgres`: uses `MT5_POSTGRES_URL` (or `POSTGRES_URL` / `POSTGRE_URL`)
+
+MT5 prune options:
+- `MT5_PRUNE_ENABLED=true|false`
+- `MT5_PRUNE_DAYS=14` (delete terminal records older than N days)
+- `MT5_PRUNE_INTERVAL_MINUTES=60` (scheduler frequency)
+- Prune only affects terminal statuses: `DONE`, `FAILED`, `CANCELED`, `CLOSED_*`
 
 MT5 status lifecycle:
 - `NEW`: queued, not pulled yet

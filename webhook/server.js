@@ -96,6 +96,9 @@ const CFG = {
   mt5TvAlertApiKeys: parseKeySet(process.env.MT5_TV_ALERT_API_KEYS),
   mt5EaApiKeys: parseKeySet(process.env.MT5_EA_API_KEYS),
   mt5DefaultLot: asNum(process.env.MT5_DEFAULT_LOT, 0.01),
+  mt5PruneEnabled: asBool(process.env.MT5_PRUNE_ENABLED, true),
+  mt5PruneDays: asNum(process.env.MT5_PRUNE_DAYS, 14),
+  mt5PruneIntervalMinutes: asNum(process.env.MT5_PRUNE_INTERVAL_MINUTES, 60),
   mt5DbPath: path.resolve(
     __dirname,
     envStr(process.env.MT5_DB_PATH) ||
@@ -569,6 +572,22 @@ async function mt5InitBackend() {
           .slice(0, limit);
         return rows.map((r) => ({ ...r }));
       },
+      async pruneOldSignals(days) {
+        const db = mt5ReadJsonDb();
+        const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
+        const terminals = new Set(mt5TerminalStatuses());
+        const before = db.signals.length;
+        db.signals = db.signals.filter((s) => {
+          const status = String(s.status || "");
+          if (!terminals.has(status)) return true;
+          const t = Date.parse(String(s.created_at || ""));
+          if (!Number.isFinite(t)) return true;
+          return t >= cutoffMs;
+        });
+        const removed = before - db.signals.length;
+        if (removed > 0) mt5WriteJsonDb(db);
+        return { removed, remaining: db.signals.length };
+      },
     };
     return MT5_BACKEND;
   }
@@ -739,6 +758,16 @@ async function mt5InitBackend() {
           ...r,
           raw_json: r.raw_json ? JSON.parse(r.raw_json) : {},
         }));
+      },
+      async pruneOldSignals(days) {
+        const placeholders = mt5TerminalStatuses().map(() => "?").join(", ");
+        const cutoffIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+        const result = db.prepare(`
+          DELETE FROM mt5_signals
+          WHERE status IN (${placeholders}) AND created_at < ?
+        `).run(...mt5TerminalStatuses(), cutoffIso);
+        const remaining = db.prepare("SELECT COUNT(*) AS n FROM mt5_signals").get().n;
+        return { removed: result.changes || 0, remaining };
       },
     };
     return MT5_BACKEND;
@@ -954,6 +983,15 @@ async function mt5InitBackend() {
       `, [limit]);
       return res.rows.map((r) => mt5MapDbRow(r));
     },
+    async pruneOldSignals(days) {
+      const res = await pool.query(`
+        DELETE FROM mt5_signals
+        WHERE status = ANY($1::text[])
+          AND created_at < NOW() - ($2 || ' days')::interval
+      `, [mt5TerminalStatuses(), String(days)]);
+      const left = await pool.query("SELECT COUNT(*)::int AS n FROM mt5_signals");
+      return { removed: res.rowCount || 0, remaining: left.rows[0].n };
+    },
   };
   return MT5_BACKEND;
 }
@@ -1048,6 +1086,10 @@ function mt5PublicState(row) {
   };
 }
 
+function mt5TerminalStatuses() {
+  return ["DONE", "FAILED", "CANCELED", "CLOSED_TP", "CLOSED_SL", "CLOSED_MANUAL", "CLOSED"];
+}
+
 async function mt5UpsertSignal(signal) {
   const b = await mt5Backend();
   return b.upsertSignal(signal);
@@ -1071,6 +1113,50 @@ async function mt5AckSignal(signalId, status, ticket, error) {
 async function mt5ListSignals(limit, statusFilter) {
   const b = await mt5Backend();
   return b.listSignals(limit, statusFilter);
+}
+
+async function mt5PruneSignals(days) {
+  const safeDays = Math.max(1, Math.min(3650, Number.isFinite(days) ? days : 14));
+  const b = await mt5Backend();
+  return b.pruneOldSignals(safeDays);
+}
+
+function mt5CsvTimestamp(value) {
+  const d = new Date(String(value || ""));
+  if (!Number.isFinite(d.getTime())) {
+    return "";
+  }
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}.${pad(d.getUTCMonth() + 1)}.${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+}
+
+function csvField(v) {
+  if (v === undefined || v === null) return "";
+  const s = String(v);
+  if (/[;"\r\n]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function mt5SignalsToBacktestCsv(rows, includeHeader = true) {
+  const lines = [];
+  if (includeHeader) {
+    lines.push("timestamp;signal_id;action;symbol;volume;sl;tp;note");
+  }
+  for (const r of rows) {
+    lines.push([
+      csvField(mt5CsvTimestamp(r.created_at)),
+      csvField(r.signal_id || ""),
+      csvField(r.action || ""),
+      csvField(r.symbol || ""),
+      csvField(r.volume ?? ""),
+      csvField(r.sl ?? ""),
+      csvField(r.tp ?? ""),
+      csvField(r.note || ""),
+    ].join(";"));
+  }
+  return lines.join("\n");
 }
 
 function getApiKeyFromReq(req, payload = null, urlObj = null) {
@@ -1247,6 +1333,9 @@ const server = http.createServer(async (req, res) => {
         hasEaApiKeys: CFG.mt5EaApiKeys.size > 0,
         dbPath: CFG.mt5DbPath,
         postgresConfigured: false,
+        pruneEnabled: CFG.mt5PruneEnabled,
+        pruneDays: CFG.mt5PruneDays,
+        pruneIntervalMinutes: CFG.mt5PruneIntervalMinutes,
       });
     }
     const b = await mt5Backend();
@@ -1259,6 +1348,9 @@ const server = http.createServer(async (req, res) => {
       hasEaApiKeys: CFG.mt5EaApiKeys.size > 0,
       dbPath: b.info.path || null,
       postgresConfigured: b.storage === "postgres",
+      pruneEnabled: CFG.mt5PruneEnabled,
+      pruneDays: CFG.mt5PruneDays,
+      pruneIntervalMinutes: CFG.mt5PruneIntervalMinutes,
     });
   }
 
@@ -1278,6 +1370,56 @@ const server = http.createServer(async (req, res) => {
         storage: b.storage,
         trades: trades.map(mt5PublicState),
       });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "GET" && (url.pathname === "/csv" || url.pathname === "/mt5/csv")) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const limitRaw = Number(url.searchParams.get("limit") || 2000);
+      const limit = Math.max(1, Math.min(20000, Number.isFinite(limitRaw) ? limitRaw : 2000));
+      const status = String(url.searchParams.get("status") || "").trim().toUpperCase();
+      const statusFilter = status || "";
+      const includeHeader = String(url.searchParams.get("header") || "1").toLowerCase() !== "0";
+
+      // listSignals returns newest-first; reverse for chronological backtest replay.
+      const rows = await mt5ListSignals(limit, statusFilter);
+      const chronological = rows.slice().reverse();
+      const csv = mt5SignalsToBacktestCsv(chronological, includeHeader);
+
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const suffix = statusFilter ? `-${statusFilter}` : "";
+      const filename = `mt5-backtest${suffix}-${stamp}.csv`;
+      res.writeHead(200, {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "no-store",
+        "Content-Length": Buffer.byteLength(csv),
+      });
+      res.end(csv);
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if ((req.method === "POST" || req.method === "GET") && url.pathname === "/mt5/prune") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      let payload = {};
+      if (req.method === "POST") {
+        payload = await readJson(req);
+      }
+      const daysRaw = Number(payload.days ?? url.searchParams.get("days") ?? CFG.mt5PruneDays);
+      const days = Math.max(1, Math.min(3650, Number.isFinite(daysRaw) ? daysRaw : CFG.mt5PruneDays));
+      const result = await mt5PruneSignals(days);
+      return json(res, 200, { ok: true, days, ...result });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });
@@ -1429,6 +1571,27 @@ async function start() {
     const b = await mt5Backend();
     const where = b.info.path || b.info.url || "configured";
     console.log(`MT5 bridge enabled=true, storage=${b.storage}, target=${where}`);
+    if (CFG.mt5PruneEnabled) {
+      const safeDays = Math.max(1, Math.min(3650, Number.isFinite(CFG.mt5PruneDays) ? CFG.mt5PruneDays : 14));
+      const safeMins = Math.max(1, Math.min(1440, Number.isFinite(CFG.mt5PruneIntervalMinutes) ? CFG.mt5PruneIntervalMinutes : 60));
+      const runPrune = async () => {
+        try {
+          const out = await mt5PruneSignals(safeDays);
+          if (out.removed > 0) {
+            console.log(`MT5 prune removed=${out.removed}, remaining=${out.remaining}, days=${safeDays}`);
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.log(`MT5 prune failed: ${msg}`);
+        }
+      };
+      await runPrune();
+      const handle = setInterval(runPrune, safeMins * 60 * 1000);
+      handle.unref();
+      console.log(`MT5 prune enabled=true, days=${safeDays}, intervalMinutes=${safeMins}`);
+    } else {
+      console.log("MT5 prune enabled=false");
+    }
   } else {
     console.log("MT5 bridge enabled=false");
   }

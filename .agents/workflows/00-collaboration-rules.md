@@ -30,6 +30,7 @@
 5. Do not add new user-facing Settings/inputs unless the user explicitly asks for them.
 6. Avoid introducing hardcoded behavior constants in logic blocks; place configurable defaults in `LocalCfg` (without exposing new Settings unless requested).
 7. Before adding any new Setting/input, `LocalCfg` field, or constant, always confirm with the user first on name, label, and meaning/semantics.
+8. When updating server/backend code, always provide detailed deployment instructions in the final response (restart process/service, env/config changes, verification commands, and rollback note if relevant).
 
 ## BIG-PASS / Overnight Mode
 1. Trigger phrase examples:
