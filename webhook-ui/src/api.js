@@ -1,7 +1,35 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "";
-const API_KEY = import.meta.env.VITE_API_KEY || "";
+const API_BASE_CONFIG = (import.meta.env.VITE_API_BASE || "").trim();
+
+function runtimeApiBase() {
+  if (API_BASE_CONFIG) return API_BASE_CONFIG;
+  const { protocol, hostname, port, origin } = window.location;
+  if (port && port !== "80" && port !== "443") {
+    return `${protocol}//${hostname}`;
+  }
+  return origin;
+}
+
+function runtimeApiKey() {
+  const u = new URL(window.location.href);
+  const keyFromQuery = (u.searchParams.get("apiKey") || "").trim();
+  if (keyFromQuery) {
+    localStorage.setItem("tvbridge_api_key", keyFromQuery);
+    return keyFromQuery;
+  }
+  return (localStorage.getItem("tvbridge_api_key") || "").trim();
+}
+
+export function setRuntimeApiKey(value) {
+  const v = String(value || "").trim();
+  if (!v) {
+    localStorage.removeItem("tvbridge_api_key");
+    return;
+  }
+  localStorage.setItem("tvbridge_api_key", v);
+}
 
 function withApiKey(url) {
+  const API_KEY = runtimeApiKey();
   if (!API_KEY) return url;
   const u = new URL(url, window.location.origin);
   u.searchParams.set("apiKey", API_KEY);
@@ -9,7 +37,9 @@ function withApiKey(url) {
 }
 
 async function get(path) {
-  const res = await fetch(withApiKey(`${API_BASE}${path}`), {
+  const API_KEY = runtimeApiKey();
+  const base = runtimeApiBase();
+  const res = await fetch(withApiKey(`${base}${path}`), {
     headers: API_KEY ? { "x-api-key": API_KEY } : {},
   });
   const data = await res.json();

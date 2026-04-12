@@ -304,7 +304,7 @@ React UI app (Dashboard + Trades + Trade detail):
 ```bash
 cd /Users/macmini/Trade/Bot/trading/webhook-ui
 npm install
-VITE_API_BASE=https://signal.mozasolution.com VITE_API_KEY=<SIGNAL_API_KEY> npm run dev
+VITE_API_BASE=https://signal.mozasolution.com npm run dev
 ```
 
 Production build:
@@ -339,3 +339,37 @@ MT5 status lifecycle:
 - `MT5_DB_PATH=./mt5-signals.db` is a local SQLite file for MT5 queue storage.
 - For production with higher throughput, move queue storage to Redis/Postgres if you need horizontal scaling.
 - If you use Postgres backend, install dependency: `npm install` (includes `pg`).
+
+## Local Smoke Test (health + db + api + ui)
+
+Run one command from repo root:
+
+```bash
+cd /Users/macmini/Trade/Bot/trading
+API_KEY=<SIGNAL_API_KEY> \
+BASE_URL=http://127.0.0.1:80 \
+UI_URL=http://127.0.0.1:5174 \
+EXPECT_STORAGE=postgres \
+bash scripts/test_local_stack.sh
+```
+
+What this script validates:
+- `/health`
+- `/mt5/health` (and optional storage expectation)
+- create signal via `/mt5/tv/webhook`
+- pull signal via `/mt5/ea/pull`
+- ack signal via `/mt5/ea/ack`
+- query trade via `/mt5/trades/:signal_id`
+- `/mt5/trades/search`
+- `/mt5/dashboard/summary`
+- `/mt5/dashboard/pnl-series`
+- `/mt5/filters/symbols`
+- `/mt5/trades` (legacy endpoint)
+- `/csv`
+- UI page reachable at `${UI_URL}/dashboard`
+
+Direct Node entrypoint (same test):
+
+```bash
+node /Users/macmini/Trade/Bot/trading/scripts/test_local_stack.mjs
+```

@@ -15,6 +15,9 @@ a { color: var(--accent); text-decoration: none; }
 .topbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--border); backdrop-filter: blur(6px); }
 .topbar nav { display: flex; gap: 14px; }
 .brand { font-weight: 700; }
+.keybar { display: flex; gap: 8px; align-items: center; width: min(420px, 45vw); }
+.keybar input { width: 100%; }
+.keybar button { width: auto; white-space: nowrap; }
 .page-wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
 
 .panel { background: rgba(18, 27, 43, 0.88); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
@@ -52,6 +55,8 @@ button { cursor: pointer; }
 .loading, .muted { color: var(--muted); }
 
 @media (max-width: 900px) {
+  .topbar { flex-wrap: wrap; gap: 8px; }
+  .keybar { width: 100%; }
   .split-layout { grid-template-columns: 1fr; }
   .trade-grid.two-cols { grid-template-columns: 1fr; }
 }
