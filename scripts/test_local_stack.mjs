@@ -91,7 +91,7 @@ async function main() {
   assert(enqueue.signal_id === signalId, "enqueue signal_id mismatch");
   log("/mt5/tv/webhook enqueue ok");
 
-  const pulled = await requestJson(`/mt5/ea/pull?api_key=${encodeURIComponent(API_KEY)}&account=${encodeURIComponent(ACCOUNT)}`);
+  const pulled = await requestJson(`/mt5/ea/pull?api_key=${encodeURIComponent(API_KEY)}&account=${encodeURIComponent(ACCOUNT)}&signal_id=${encodeURIComponent(signalId)}`);
   assert(pulled.ok === true, "pull should return ok=true");
   assert(pulled.signal && pulled.signal.signal_id === signalId, `pull returned unexpected signal: ${JSON.stringify(pulled.signal || null)}`);
   log("/mt5/ea/pull ok");

@@ -374,6 +374,24 @@ Direct Node entrypoint (same test):
 node /Users/macmini/Trade/Bot/trading/scripts/test_local_stack.mjs
 ```
 
+## Remote UI E2E Test (Playwright)
+
+Run browser-level integration tests against deployed UI/API:
+
+```bash
+cd /Users/macmini/Trade/Bot/trading
+bash scripts/test_remote_ui.sh
+```
+
+What it validates:
+- `/ui/dashboard` renders dashboard content (not stuck on loading/error)
+- `/ui/trades` renders trade list page (not stuck on loading/error)
+- API key and API base are injected from local `webhook/.env` and remote URL defaults
+
+Reports:
+- latest: `/Users/macmini/Trade/Bot/trading/test-results/remote-ui-latest.log`
+- Playwright HTML report: `/Users/macmini/Trade/Bot/trading/webhook-ui/playwright-report/index.html`
+
 ## Remote API Test Framework (lightweight)
 
 For remote-only validation (VPS URL + live API), use the Node built-in test runner:
