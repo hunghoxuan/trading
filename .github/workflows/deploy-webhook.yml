@@ -1,0 +1,65 @@
+name: Deploy Webhook
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Git branch to deploy"
+        required: false
+        default: "main"
+      service_mode:
+        description: "Service manager on VPS (pm2 or systemd)"
+        required: false
+        default: "pm2"
+      service_name:
+        description: "PM2 process name or systemd unit"
+        required: false
+        default: "webhook"
+  push:
+    branches: ["main"]
+    paths:
+      - "webhook/**"
+      - ".github/workflows/deploy-webhook.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy Over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            BRANCH="${{ github.event.inputs.branch || 'main' }}"
+            SERVICE_MODE="${{ github.event.inputs.service_mode || 'pm2' }}"
+            SERVICE_NAME="${{ github.event.inputs.service_name || 'webhook' }}"
+            APP_DIR="${{ secrets.VPS_APP_DIR }}"
+
+            cd "$APP_DIR"
+            echo "[vps] cwd=$(pwd)"
+            git fetch --all --prune
+            git checkout "$BRANCH"
+            git pull --ff-only origin "$BRANCH"
+            node --check webhook/server.js
+
+            if [ "$SERVICE_MODE" = "pm2" ]; then
+              pm2 restart "$SERVICE_NAME"
+            elif [ "$SERVICE_MODE" = "systemd" ]; then
+              sudo systemctl restart "$SERVICE_NAME"
+            else
+              echo "Unsupported service mode: $SERVICE_MODE" >&2
+              exit 1
+            fi
+
+            curl -fsS "http://127.0.0.1:80/health" >/dev/null
+            curl -fsS "http://127.0.0.1:80/mt5/health" >/dev/null
+            echo "[vps] deploy success"
+

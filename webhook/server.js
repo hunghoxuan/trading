@@ -697,7 +697,7 @@ async function mt5InitBackend() {
       },
       async pullAndLockNextSignal() {
         const next = db.prepare(`
-          SELECT signal_id, action, symbol, volume, sl, tp, note
+          SELECT signal_id, created_at, action, symbol, volume, sl, tp, note
           FROM mt5_signals
           WHERE status = 'NEW'
           ORDER BY created_at ASC
@@ -912,7 +912,7 @@ async function mt5InitBackend() {
       try {
         await client.query("BEGIN");
         const sel = await client.query(`
-          SELECT signal_id, action, symbol, volume, sl, tp, note
+          SELECT signal_id, created_at, action, symbol, volume, sl, tp, note
           FROM mt5_signals
           WHERE status = 'NEW'
           ORDER BY created_at ASC
@@ -1499,6 +1499,8 @@ const server = http.createServer(async (req, res) => {
       ok: true,
       signal: {
         signal_id: signal.signal_id,
+        timestamp: signal.created_at || null,
+        created_at_ts: signal.created_at ? Math.floor(new Date(signal.created_at).getTime() / 1000) : null,
         action: signal.action,
         symbol: signal.symbol,
         volume: signal.volume,
