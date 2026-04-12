@@ -110,3 +110,9 @@ When fixing a bug:
 1. After confirming the fix works, add a record to `.agents/docs/common-errors.md`.
 2. Format: `## [ErrorType] Short title` → cause → fix → prevention.
 3. This prevents the same bug from being diagnosed again in future sessions.
+
+## 12) Filesystem Safety Boundary
+
+1. Never delete files or directories outside the project root (`/Users/macmini/Trade/Bot/trading`).
+2. Never run destructive commands (`rm`, `mv`, overwrite/redirection) outside the project root.
+3. If a task appears to require touching paths outside the project root, stop and ask for explicit user confirmation first.
