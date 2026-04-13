@@ -1433,6 +1433,73 @@ function mt5NormalizeVolume(payload) {
   return n;
 }
 
+function mt5BuildSignalId(payload, fallbackPrefix = "tv") {
+  const provided = String(payload.id || "").trim();
+  if (provided) {
+    return provided.replace(/[^a-zA-Z0-9_:-]/g, "_").slice(0, 96);
+  }
+  return `${fallbackPrefix}_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+}
+
+function mt5BuildNote(payload) {
+  const noteParts = [payload.strategy, payload.timeframe, payload.reason, payload.note].filter(Boolean);
+  return noteParts.join(" | ");
+}
+
+async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
+  const source = String(opts.source || "tradingview");
+  const eventType = String(opts.eventType || "QUEUED");
+  const fallbackIdPrefix = String(opts.fallbackIdPrefix || "tv");
+
+  const action = mt5NormalizeAction(payload);
+  const symbol = mt5NormalizeSymbol(payload);
+  const volume = mt5NormalizeVolume(payload);
+  const signalId = mt5BuildSignalId(payload, fallbackIdPrefix);
+  const userId = envStr(payload.user_id ?? payload.userId ?? payload.user ?? CFG.mt5DefaultUserId, CFG.mt5DefaultUserId);
+  const rrPlanned = asNum(payload.rr ?? payload.risk_reward, NaN);
+  const riskMoneyPlanned = asNum(payload.risk_money ?? payload.money_risk ?? payload.riskMoney, NaN);
+  const note = mt5BuildNote(payload);
+
+  await mt5UpsertSignal({
+    signal_id: signalId,
+    created_at: mt5NowIso(),
+    user_id: userId,
+    source,
+    action,
+    symbol,
+    volume,
+    sl: payload.sl ?? null,
+    tp: payload.tp ?? null,
+    rr_planned: Number.isFinite(rrPlanned) ? rrPlanned : null,
+    risk_money_planned: Number.isFinite(riskMoneyPlanned) ? riskMoneyPlanned : null,
+    pnl_money_realized: null,
+    entry_price_exec: payload.entry ?? payload.price ?? null,
+    sl_exec: null,
+    tp_exec: null,
+    note,
+    raw_json: payload.raw_json || payload,
+    status: "NEW",
+    locked_at: null,
+    ack_at: null,
+    opened_at: null,
+    closed_at: null,
+    ack_status: null,
+    ack_ticket: null,
+    ack_error: null,
+  });
+
+  await mt5AppendSignalEvent(signalId, eventType, {
+    source,
+    action,
+    symbol,
+    timeframe: payload.timeframe || null,
+    strategy: payload.strategy || null,
+    provider: payload.provider || null,
+  });
+
+  return { signal_id: signalId, action, symbol, status: "NEW" };
+}
+
 function mt5NormalizeAckStatus(value) {
   const s = String(value || "").trim().toUpperCase();
   if (!s) throw new Error("status is required");
@@ -1764,48 +1831,32 @@ async function executeMt5(signal) {
     return { broker: "mt5", status: "skipped", reason: "Missing MT5_EA_API_KEYS (or SIGNAL_API_KEY fallback)" };
   }
 
-  const signalId = `tv_${signal.strategy}_${signal.symbol}_${Date.now()}`.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 64);
-  const volume = signal.quantity && signal.quantity > 0 ? signal.quantity : CFG.mt5DefaultLot;
-  const note = [signal.strategy, signal.timeframe, signal.note].filter(Boolean).join(" | ");
-
-  await mt5UpsertSignal({
-    signal_id: signalId,
-    created_at: mt5NowIso(),
-    user_id: signal.user_id || CFG.mt5DefaultUserId,
-    source: "signal",
+  const enqueue = await mt5EnqueueSignalFromPayload({
+    id: signal.raw?.id || "",
     action: signal.side,
     symbol: signal.symbol,
-    volume,
+    volume: signal.quantity && signal.quantity > 0 ? signal.quantity : CFG.mt5DefaultLot,
     sl: signal.sl ?? null,
     tp: signal.tp ?? null,
-    rr_planned: signal.rr_planned ?? null,
-    risk_money_planned: signal.risk_money_planned ?? null,
-    pnl_money_realized: null,
-    entry_price_exec: signal.price ?? null,
-    sl_exec: null,
-    tp_exec: null,
-    note,
-    raw_json: signal.raw || {},
-    status: "NEW",
-    locked_at: null,
-    ack_at: null,
-    opened_at: null,
-    closed_at: null,
-    ack_status: null,
-    ack_ticket: null,
-    ack_error: null,
-  });
-  await mt5AppendSignalEvent(signalId, "QUEUED_FROM_SIGNAL", {
-    source: "signal",
-    action: signal.side,
-    symbol: signal.symbol,
+    rr: signal.rr_planned ?? null,
+    risk_money: signal.risk_money_planned ?? null,
+    price: signal.price ?? null,
+    strategy: signal.strategy || null,
     timeframe: signal.timeframe || null,
+    note: signal.note || "",
+    user_id: signal.user_id || CFG.mt5DefaultUserId,
+    provider: "signal",
+    raw_json: signal.raw || {},
+  }, {
+    source: "signal",
+    eventType: "QUEUED_FROM_SIGNAL",
+    fallbackIdPrefix: "sig",
   });
 
   return {
     broker: "mt5",
     status: "queued",
-    signal_id: signalId,
+    signal_id: enqueue.signal_id,
   };
 }
 
@@ -2108,54 +2159,13 @@ const server = http.createServer(async (req, res) => {
       if (CFG.mt5TvAlertApiKeys.size > 0 && !CFG.mt5TvAlertApiKeys.has(apiKey)) {
         return json(res, 401, { ok: false, error: "invalid api key" });
       }
-
-      const action = mt5NormalizeAction(payload);
-      const symbol = mt5NormalizeSymbol(payload);
-      const volume = mt5NormalizeVolume(payload);
-      const signalId = String(payload.id || crypto.randomUUID());
-      const userId = envStr(payload.user_id ?? payload.userId ?? payload.user ?? CFG.mt5DefaultUserId, CFG.mt5DefaultUserId);
-      const rrPlanned = asNum(payload.rr ?? payload.risk_reward, NaN);
-      const riskMoneyPlanned = asNum(payload.risk_money ?? payload.money_risk ?? payload.riskMoney, NaN);
-
-      const noteParts = [payload.strategy, payload.timeframe, payload.reason, payload.note].filter(Boolean);
-      const note = noteParts.join(" | ");
-
-      await mt5UpsertSignal({
-        signal_id: signalId,
-        created_at: mt5NowIso(),
-        user_id: userId,
+      const enqueue = await mt5EnqueueSignalFromPayload(payload, {
         source: "tradingview",
-        action,
-        symbol,
-        volume,
-        sl: payload.sl ?? null,
-        tp: payload.tp ?? null,
-        rr_planned: Number.isFinite(rrPlanned) ? rrPlanned : null,
-        risk_money_planned: Number.isFinite(riskMoneyPlanned) ? riskMoneyPlanned : null,
-        pnl_money_realized: null,
-        entry_price_exec: payload.entry ?? payload.price ?? null,
-        sl_exec: null,
-        tp_exec: null,
-        note,
-        raw_json: payload,
-        status: "NEW",
-        locked_at: null,
-        ack_at: null,
-        opened_at: null,
-        closed_at: null,
-        ack_status: null,
-        ack_ticket: null,
-        ack_error: null,
-      });
-      await mt5AppendSignalEvent(signalId, "QUEUED_FROM_TV", {
-        source: "tradingview",
-        action,
-        symbol,
-        timeframe: payload.timeframe || null,
-        strategy: payload.strategy || null,
+        eventType: "QUEUED_FROM_TV",
+        fallbackIdPrefix: "tv",
       });
 
-      return json(res, 200, { ok: true, signal_id: signalId, action, symbol });
+      return json(res, 200, { ok: true, signal_id: enqueue.signal_id, action: enqueue.action, symbol: enqueue.symbol });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });
