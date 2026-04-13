@@ -667,13 +667,18 @@ async function mt5InitBackend() {
         const db = mt5ReadJsonDb();
         const sig = db.signals.find((s) => s.signal_id === signalId);
         if (!sig) return { changes: 0 };
-        const internalStatus = mt5StatusToInternal(status);
+        const retryable = mt5IsRetryableConnectivityFail(status, error);
+        const internalStatus = retryable ? "NEW" : mt5StatusToInternal(status);
+        const ackStatus = mt5CanonicalStoredStatus(status);
         const now = mt5NowIso();
         sig.status = internalStatus;
         sig.ack_at = mt5NowIso();
-        sig.ack_status = internalStatus;
+        sig.ack_status = ackStatus;
         sig.ack_ticket = ticket ?? null;
         sig.ack_error = error ?? null;
+        if (retryable) {
+          sig.locked_at = null;
+        }
         if ((internalStatus === "OK" || internalStatus === "START") && !sig.opened_at) {
           sig.opened_at = now;
         }
@@ -946,7 +951,9 @@ async function mt5InitBackend() {
         `).get(signalId) || null;
       },
       async ackSignal(signalId, status, ticket, error, extra = {}) {
-        const internalStatus = mt5StatusToInternal(status);
+        const retryable = mt5IsRetryableConnectivityFail(status, error);
+        const internalStatus = retryable ? "NEW" : mt5StatusToInternal(status);
+        const ackStatus = mt5CanonicalStoredStatus(status);
         const now = mt5NowIso();
         return db.prepare(`
           UPDATE signals
@@ -955,19 +962,21 @@ async function mt5InitBackend() {
               entry_price_exec = COALESCE(?, entry_price_exec),
               sl_exec = COALESCE(?, sl_exec),
               tp_exec = COALESCE(?, tp_exec),
+              locked_at = CASE WHEN ? = 1 THEN NULL ELSE locked_at END,
               opened_at = CASE WHEN (? = 'OK' OR ? = 'START') AND opened_at IS NULL THEN ? ELSE opened_at END,
               closed_at = CASE WHEN (? = 'TP' OR ? = 'SL' OR ? = 'FAIL') THEN ? ELSE closed_at END
           WHERE signal_id = ?
         `).run(
           internalStatus,
           now,
-          internalStatus,
+          ackStatus,
           ticket ?? null,
           error ?? null,
           extra.pnl_money_realized ?? null,
           extra.entry_price_exec ?? null,
           extra.sl_exec ?? null,
           extra.tp_exec ?? null,
+          retryable ? 1 : 0,
           internalStatus,
           internalStatus,
           now,
@@ -1338,7 +1347,9 @@ async function mt5InitBackend() {
       return res.rows[0] || null;
     },
     async ackSignal(signalId, status, ticket, error, extra = {}) {
-      const internalStatus = mt5StatusToInternal(status);
+      const retryable = mt5IsRetryableConnectivityFail(status, error);
+      const internalStatus = retryable ? "NEW" : mt5StatusToInternal(status);
+      const ackStatus = mt5CanonicalStoredStatus(status);
       const now = mt5NowIso();
       const res = await pool.query(`
         UPDATE signals
@@ -1347,13 +1358,14 @@ async function mt5InitBackend() {
             entry_price_exec = COALESCE($7, entry_price_exec),
             sl_exec = COALESCE($8, sl_exec),
             tp_exec = COALESCE($9, tp_exec),
+            locked_at = CASE WHEN $11 THEN NULL ELSE locked_at END,
             opened_at = CASE WHEN ($1 = 'OK' OR $1 = 'START') AND opened_at IS NULL THEN $2 ELSE opened_at END,
             closed_at = CASE WHEN ($1 = 'TP' OR $1 = 'SL' OR $1 = 'FAIL') THEN $2 ELSE closed_at END
         WHERE signal_id = $10
       `, [
         internalStatus,
         now,
-        internalStatus,
+        ackStatus,
         ticket ?? null,
         error ?? null,
         extra.pnl_money_realized ?? null,
@@ -1361,6 +1373,7 @@ async function mt5InitBackend() {
         extra.sl_exec ?? null,
         extra.tp_exec ?? null,
         signalId,
+        retryable,
       ]);
       return { changes: res.rowCount || 0 };
     },
@@ -1558,6 +1571,16 @@ function mt5CanonicalStoredStatus(value) {
     CLOSED: "OK",
   };
   return legacyToCurrent[s] || s;
+}
+
+function mt5IsRetryableConnectivityFail(status, errorText) {
+  const st = mt5CanonicalStoredStatus(status);
+  if (st !== "FAIL") return false;
+  const msg = String(errorText || "").toLowerCase();
+  return msg.includes("retcode=10031")
+    || msg.includes("no connection")
+    || msg.includes("trade server")
+    || msg.includes("off quotes");
 }
 
 function mt5PublicState(row) {
@@ -2274,6 +2297,7 @@ const server = http.createServer(async (req, res) => {
         .filter((v) => v !== null && v !== undefined && String(v).trim() !== "")
         .join(" | ");
       const ackErrorCombined = payload.error ?? (ackSummary || null);
+      const retryableConnectivityFail = mt5IsRetryableConnectivityFail(status, ackErrorCombined);
 
       await mt5AckSignal(signalId, status, payload.ticket, ackErrorCombined, {
         pnl_money_realized: Number.isFinite(pnlRealized) ? pnlRealized : null,
@@ -2281,12 +2305,14 @@ const server = http.createServer(async (req, res) => {
         sl_exec: Number.isFinite(slExec) ? slExec : null,
         tp_exec: Number.isFinite(tpExec) ? tpExec : null,
       });
-      await mt5AppendSignalEvent(signalId, `EA_ACK_${status}`, {
+      const eventType = retryableConnectivityFail ? "EA_REQUEUE_CONNECTION" : `EA_ACK_${status}`;
+      await mt5AppendSignalEvent(signalId, eventType, {
         ticket: payload.ticket ?? null,
         error: ackErrorCombined,
         result: ackResult,
         message: ackMessage,
         note: ackNote,
+        retryable: retryableConnectivityFail,
         pnl_money_realized: Number.isFinite(pnlRealized) ? pnlRealized : null,
         entry_price_exec: Number.isFinite(entryExec) ? entryExec : null,
         sl_exec: Number.isFinite(slExec) ? slExec : null,
@@ -2297,6 +2323,7 @@ const server = http.createServer(async (req, res) => {
         ok: true,
         signal_id: signalId,
         status,
+        requeued: retryableConnectivityFail,
         ack: {
           ticket: payload.ticket ?? null,
           result: ackResult,
