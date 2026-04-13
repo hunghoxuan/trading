@@ -5,6 +5,7 @@ import TradeCard from "../components/TradeCard";
 const STATUS_OPTIONS = ["", "NEW", "LOCKED", "OK", "START", "FAIL", "TP", "SL"];
 const BULK_ACTIONS = ["", "Download CSV", "Cancel All", "Delete All"];
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 200];
+const RANGE_OPTIONS = ["", "today", "week", "month"];
 
 export default function TradesPage() {
   const [symbols, setSymbols] = useState([]);
@@ -21,6 +22,7 @@ export default function TradesPage() {
     q: "",
     symbol: "",
     status: "",
+    range: "",
     page: 1,
     pageSize: 20,
   });
@@ -74,6 +76,7 @@ export default function TradesPage() {
       q: filter.q || "",
       symbol: filter.symbol || "",
       status: filter.status || "",
+      range: filter.range || "",
     };
   }
 
@@ -174,7 +177,7 @@ export default function TradesPage() {
   return (
     <section className="stack-layout">
       <section className="trades-toolbar">
-        <div className="filters-top">
+        <div className="filters-top compact single-line">
           <input value={filter.q} onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value, page: 1 }))} placeholder="Search signal id, note..." />
           <select value={filter.symbol} onChange={(e) => setFilter((f) => ({ ...f, symbol: e.target.value, page: 1 }))}>
             <option value="">All symbols</option>
@@ -183,9 +186,9 @@ export default function TradesPage() {
           <select value={filter.status} onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value, page: 1 }))}>
             {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s || "All statuses"}</option>)}
           </select>
-          <div />
-        </div>
-        <div className="filters-top" style={{ gridTemplateColumns: "1fr 100px" }}>
+          <select value={filter.range} onChange={(e) => setFilter((f) => ({ ...f, range: e.target.value, page: 1 }))}>
+            {RANGE_OPTIONS.map((r) => <option key={r} value={r}>{r ? (r === "week" ? "This week" : r === "month" ? "This month" : "Today") : "All time"}</option>)}
+          </select>
           <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)} disabled={bulkBusy}>
             {BULK_ACTIONS.map((s) => <option key={s} value={s}>{s || "Bulk Action..."}</option>)}
           </select>

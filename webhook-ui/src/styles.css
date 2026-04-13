@@ -25,6 +25,10 @@ a { color: var(--accent); text-decoration: none; }
 .filters { display: grid; gap: 8px; align-content: start; }
 .stack-layout { display: grid; gap: 12px; }
 .filters-top { display: grid; gap: 8px; grid-template-columns: 2fr 1fr 1fr 120px; }
+.filters-top.single-line { grid-template-columns: 1.4fr 0.8fr 0.8fr 0.8fr 1fr 86px; align-items: center; }
+.filters-top.compact input,
+.filters-top.compact select,
+.filters-top.compact button { padding: 6px 8px; font-size: 13px; min-height: 32px; }
 .trades-toolbar { padding: 0; border: 0; background: transparent; }
 .small { font-size: 12px; }
 .blur { opacity: 0.75; }
@@ -82,7 +86,7 @@ button { cursor: pointer; }
   .topbar { flex-wrap: wrap; gap: 8px; }
   .keybar { width: 100%; }
   .split-layout { grid-template-columns: 1fr; }
-  .filters-top { grid-template-columns: 1fr; }
+  .filters-top, .filters-top.single-line { grid-template-columns: 1fr; }
   .trade-bottom-line { flex-direction: column; align-items: flex-start; }
   .trade-bottom-line .ack-right { margin-left: 0; text-align: left; }
   .trade-status-col { align-items: flex-start; }
