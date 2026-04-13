@@ -3,6 +3,7 @@ import { api } from "../api";
 import TradeCard from "../components/TradeCard";
 
 const RANGE_OPTIONS = ["", "today", "week", "month"];
+const STATUS_OPTIONS = ["", "NEW", "LOCKED", "OK", "START", "FAIL", "TP", "SL"];
 
 export default function TradesPage() {
   const [symbols, setSymbols] = useState([]);
@@ -69,40 +70,32 @@ export default function TradesPage() {
   }, [autoRefresh, query]);
 
   return (
-    <section className="split-layout">
-      <aside className="panel filters">
-        <h2>Filters</h2>
-        <label>Search</label>
-        <input value={filter.q} onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value, page: 1 }))} placeholder="signal id, note..." />
-
-        <label>Symbol</label>
-        <select value={filter.symbol} onChange={(e) => setFilter((f) => ({ ...f, symbol: e.target.value, page: 1 }))}>
-          <option value="">All</option>
-          {symbols.map((s) => <option key={s}>{s}</option>)}
-        </select>
-
-        <label>Status</label>
-        <input value={filter.status} onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value.toUpperCase(), page: 1 }))} placeholder="NEW,DONE,CLOSED_TP" />
-
-        <label>Range</label>
-        <select value={filter.range} onChange={(e) => setFilter((f) => ({ ...f, range: e.target.value, page: 1 }))}>
-          {RANGE_OPTIONS.map((r) => <option key={r} value={r}>{r || "custom"}</option>)}
-        </select>
-
-        <label>From</label>
-        <input type="date" value={filter.from} onChange={(e) => setFilter((f) => ({ ...f, from: e.target.value, page: 1 }))} />
-
-        <label>To</label>
-        <input type="date" value={filter.to} onChange={(e) => setFilter((f) => ({ ...f, to: e.target.value, page: 1 }))} />
-
-        <label>Page Size</label>
-        <input type="number" min={5} max={200} value={filter.pageSize} onChange={(e) => setFilter((f) => ({ ...f, pageSize: Number(e.target.value) || 20, page: 1 }))} />
-
-        <label className="row-check">
-          <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
-          Auto refresh (5s)
-        </label>
-      </aside>
+    <section className="stack-layout">
+      <section className="panel">
+        <div className="panel-head">
+          <h2>Filters</h2>
+          <label className="row-check">
+            <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
+            Auto refresh (5s)
+          </label>
+        </div>
+        <div className="filters-top">
+          <input value={filter.q} onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value, page: 1 }))} placeholder="Search signal id, note..." />
+          <select value={filter.symbol} onChange={(e) => setFilter((f) => ({ ...f, symbol: e.target.value, page: 1 }))}>
+            <option value="">All symbols</option>
+            {symbols.map((s) => <option key={s}>{s}</option>)}
+          </select>
+          <select value={filter.status} onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value, page: 1 }))}>
+            {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s || "All statuses"}</option>)}
+          </select>
+          <select value={filter.range} onChange={(e) => setFilter((f) => ({ ...f, range: e.target.value, page: 1 }))}>
+            {RANGE_OPTIONS.map((r) => <option key={r} value={r}>{r || "Custom range"}</option>)}
+          </select>
+          <input type="date" value={filter.from} onChange={(e) => setFilter((f) => ({ ...f, from: e.target.value, page: 1 }))} />
+          <input type="date" value={filter.to} onChange={(e) => setFilter((f) => ({ ...f, to: e.target.value, page: 1 }))} />
+          <input type="number" min={5} max={200} value={filter.pageSize} onChange={(e) => setFilter((f) => ({ ...f, pageSize: Number(e.target.value) || 20, page: 1 }))} />
+        </div>
+      </section>
 
       <section className="panel">
         <div className="panel-head">

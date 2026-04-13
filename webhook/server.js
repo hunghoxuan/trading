@@ -667,11 +667,19 @@ async function mt5InitBackend() {
         const db = mt5ReadJsonDb();
         const sig = db.signals.find((s) => s.signal_id === signalId);
         if (!sig) return { changes: 0 };
-        sig.status = mt5StatusToInternal(status);
+        const internalStatus = mt5StatusToInternal(status);
+        const now = mt5NowIso();
+        sig.status = internalStatus;
         sig.ack_at = mt5NowIso();
-        sig.ack_status = status;
+        sig.ack_status = internalStatus;
         sig.ack_ticket = ticket ?? null;
         sig.ack_error = error ?? null;
+        if ((internalStatus === "OK" || internalStatus === "START") && !sig.opened_at) {
+          sig.opened_at = now;
+        }
+        if (internalStatus === "TP" || internalStatus === "SL" || internalStatus === "FAIL") {
+          sig.closed_at = now;
+        }
         mt5WriteJsonDb(db);
         return { changes: 1 };
       },
@@ -938,6 +946,8 @@ async function mt5InitBackend() {
         `).get(signalId) || null;
       },
       async ackSignal(signalId, status, ticket, error, extra = {}) {
+        const internalStatus = mt5StatusToInternal(status);
+        const now = mt5NowIso();
         return db.prepare(`
           UPDATE signals
           SET status = ?, ack_at = ?, ack_status = ?, ack_ticket = ?, ack_error = ?,
@@ -945,20 +955,26 @@ async function mt5InitBackend() {
               entry_price_exec = COALESCE(?, entry_price_exec),
               sl_exec = COALESCE(?, sl_exec),
               tp_exec = COALESCE(?, tp_exec),
-              closed_at = CASE WHEN ? LIKE 'CLOSED%' THEN ? ELSE closed_at END
+              opened_at = CASE WHEN (? = 'OK' OR ? = 'START') AND opened_at IS NULL THEN ? ELSE opened_at END,
+              closed_at = CASE WHEN (? = 'TP' OR ? = 'SL' OR ? = 'FAIL') THEN ? ELSE closed_at END
           WHERE signal_id = ?
         `).run(
-          mt5StatusToInternal(status),
-          mt5NowIso(),
-          status,
+          internalStatus,
+          now,
+          internalStatus,
           ticket ?? null,
           error ?? null,
           extra.pnl_money_realized ?? null,
           extra.entry_price_exec ?? null,
           extra.sl_exec ?? null,
           extra.tp_exec ?? null,
-          status,
-          mt5NowIso(),
+          internalStatus,
+          internalStatus,
+          now,
+          internalStatus,
+          internalStatus,
+          internalStatus,
+          now,
           signalId,
         );
       },
@@ -1322,6 +1338,8 @@ async function mt5InitBackend() {
       return res.rows[0] || null;
     },
     async ackSignal(signalId, status, ticket, error, extra = {}) {
+      const internalStatus = mt5StatusToInternal(status);
+      const now = mt5NowIso();
       const res = await pool.query(`
         UPDATE signals
         SET status = $1, ack_at = $2, ack_status = $3, ack_ticket = $4, ack_error = $5,
@@ -1329,12 +1347,13 @@ async function mt5InitBackend() {
             entry_price_exec = COALESCE($7, entry_price_exec),
             sl_exec = COALESCE($8, sl_exec),
             tp_exec = COALESCE($9, tp_exec),
-            closed_at = CASE WHEN $3 LIKE 'CLOSED%' THEN $2 ELSE closed_at END
+            opened_at = CASE WHEN ($1 = 'OK' OR $1 = 'START') AND opened_at IS NULL THEN $2 ELSE opened_at END,
+            closed_at = CASE WHEN ($1 = 'TP' OR $1 = 'SL' OR $1 = 'FAIL') THEN $2 ELSE closed_at END
         WHERE signal_id = $10
       `, [
-        mt5StatusToInternal(status),
-        mt5NowIso(),
-        status,
+        internalStatus,
+        now,
+        internalStatus,
         ticket ?? null,
         error ?? null,
         extra.pnl_money_realized ?? null,
@@ -1503,63 +1522,68 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
 function mt5NormalizeAckStatus(value) {
   const s = String(value || "").trim().toUpperCase();
   if (!s) throw new Error("status is required");
-  const allowed = [
-    "OK",
-    "FAIL",
-    "CANCELED",
-    "CANCELLED",
-    "CLOSED_TP",
-    "CLOSED_SL",
-    "CLOSED_MANUAL",
-    "CLOSED",
-  ];
-  if (!allowed.includes(s)) {
-    throw new Error("status must be one of: OK, FAIL, CANCELED, CLOSED_TP, CLOSED_SL, CLOSED_MANUAL, CLOSED");
+  const legacyToCurrent = {
+    DONE: "OK",
+    FAILED: "FAIL",
+    CANCELED: "FAIL",
+    CANCELLED: "FAIL",
+    CLOSED_TP: "TP",
+    CLOSED_SL: "SL",
+    CLOSED_MANUAL: "FAIL",
+    CLOSED: "OK",
+  };
+  const normalized = legacyToCurrent[s] || s;
+  const allowed = ["OK", "FAIL", "START", "TP", "SL"];
+  if (!allowed.includes(normalized)) {
+    throw new Error("status must be one of: OK, FAIL, START, TP, SL");
   }
-  return s === "CANCELLED" ? "CANCELED" : s;
+  return normalized;
 }
 
 function mt5StatusToInternal(status) {
-  switch (status) {
-    case "OK":
-      return "DONE";
-    case "FAIL":
-      return "FAILED";
-    case "CANCELED":
-      return "CANCELED";
-    case "CLOSED_TP":
-      return "CLOSED_TP";
-    case "CLOSED_SL":
-      return "CLOSED_SL";
-    case "CLOSED_MANUAL":
-      return "CLOSED_MANUAL";
-    case "CLOSED":
-      return "CLOSED";
-    default:
-      return "FAILED";
-  }
+  return mt5NormalizeAckStatus(status);
+}
+
+function mt5CanonicalStoredStatus(value) {
+  const s = String(value || "").trim().toUpperCase();
+  if (!s) return "";
+  const legacyToCurrent = {
+    DONE: "OK",
+    FAILED: "FAIL",
+    CANCELED: "FAIL",
+    CANCELLED: "FAIL",
+    CLOSED_TP: "TP",
+    CLOSED_SL: "SL",
+    CLOSED_MANUAL: "FAIL",
+    CLOSED: "OK",
+  };
+  return legacyToCurrent[s] || s;
 }
 
 function mt5PublicState(row) {
-  const status = String(row.status || "");
+  const status = mt5CanonicalStoredStatus(row.status);
+  const ackStatus = row.ack_status ? mt5CanonicalStoredStatus(row.ack_status) : null;
   let stage = "unknown";
   if (status === "NEW") stage = "queued";
   else if (status === "LOCKED") stage = "pulled_by_mt5";
-  else if (status === "DONE") stage = "opened_or_processed";
-  else if (status === "FAILED") stage = "failed";
-  else if (status === "CANCELED") stage = "canceled";
-  else if (status.startsWith("CLOSED")) stage = "closed";
+  else if (status === "START") stage = "position_active";
+  else if (status === "OK") stage = "ack_ok";
+  else if (status === "FAIL") stage = "execute_failed";
+  else if (status === "TP") stage = "take_profit_hit";
+  else if (status === "SL") stage = "stop_loss_hit";
 
   return {
     ...row,
+    status,
+    ack_status: ackStatus,
     stage,
-    is_open_candidate: status === "NEW" || status === "LOCKED" || status === "DONE",
+    is_open_candidate: status === "NEW" || status === "LOCKED" || status === "START" || status === "OK",
     dedupe_safe: status !== "NEW",
   };
 }
 
 function mt5TerminalStatuses() {
-  return ["DONE", "FAILED", "CANCELED", "CLOSED_TP", "CLOSED_SL", "CLOSED_MANUAL", "CLOSED"];
+  return ["FAIL", "TP", "SL"];
 }
 
 async function mt5UpsertSignal(signal) {
@@ -1675,13 +1699,16 @@ function mt5ToMs(value) {
 function mt5FilterRows(rows, opts = {}) {
   const userId = envStr(opts.userId);
   const symbol = envStr(opts.symbol).toUpperCase();
-  const statuses = Array.isArray(opts.statuses) ? opts.statuses.filter(Boolean) : [];
+  const statuses = Array.isArray(opts.statuses)
+    ? opts.statuses.map((s) => mt5CanonicalStoredStatus(s)).filter(Boolean)
+    : [];
   const fromMs = opts.from ? mt5ToMs(opts.from) : NaN;
   const toMs = opts.to ? mt5ToMs(opts.to) : NaN;
   return rows.filter((r) => {
+    const rs = mt5CanonicalStoredStatus(r.status);
     if (userId && String(r.user_id || "") !== userId) return false;
     if (symbol && String(r.symbol || "").toUpperCase() !== symbol) return false;
-    if (statuses.length > 0 && !statuses.includes(String(r.status || ""))) return false;
+    if (statuses.length > 0 && !statuses.includes(rs)) return false;
     const t = mt5ToMs(r.created_at);
     if (Number.isFinite(fromMs) && (!Number.isFinite(t) || t < fromMs)) return false;
     if (Number.isFinite(toMs) && (!Number.isFinite(t) || t > toMs)) return false;
@@ -1690,7 +1717,10 @@ function mt5FilterRows(rows, opts = {}) {
 }
 
 function mt5ComputeMetrics(rows) {
-  const closed = rows.filter((r) => String(r.status || "").startsWith("CLOSED") || String(r.status || "") === "DONE");
+  const closed = rows.filter((r) => {
+    const s = mt5CanonicalStoredStatus(r.status);
+    return s === "TP" || s === "SL" || s === "FAIL" || s === "OK";
+  });
   const wins = rows.filter((r) => {
     const pnl = Number(r.pnl_money_realized);
     return Number.isFinite(pnl) && pnl > 0;
@@ -1748,9 +1778,10 @@ function mt5DashboardHtml() {
     .badge { border-radius:999px; padding:2px 8px; font-size:11px; font-weight:bold; display:inline-block; }
     .NEW { background:#1f2937; color:#d1d5db; }
     .LOCKED { background:#1d4ed8; color:#dbeafe; }
-    .DONE { background:#065f46; color:#d1fae5; }
-    .FAILED, .CANCELED, .CLOSED_SL { background:#7f1d1d; color:#fee2e2; }
-    .CLOSED_TP, .CLOSED, .CLOSED_MANUAL { background:#14532d; color:#dcfce7; }
+    .OK { background:#065f46; color:#d1fae5; }
+    .START { background:#0f766e; color:#ccfbf1; }
+    .FAIL, .SL { background:#7f1d1d; color:#fee2e2; }
+    .TP { background:#14532d; color:#dcfce7; }
     .muted { color:#8b9db2; }
   </style>
 </head>
@@ -1761,8 +1792,8 @@ function mt5DashboardHtml() {
       <span class="muted" id="meta"></span>
       <select id="status">
         <option value="">All statuses</option>
-        <option>NEW</option><option>LOCKED</option><option>DONE</option><option>FAILED</option>
-        <option>CANCELED</option><option>CLOSED_TP</option><option>CLOSED_SL</option><option>CLOSED_MANUAL</option><option>CLOSED</option>
+        <option>NEW</option><option>LOCKED</option><option>OK</option><option>START</option>
+        <option>FAIL</option><option>TP</option><option>SL</option>
       </select>
       <input id="limit" type="number" min="10" max="1000" value="200" />
       <input id="apiKey" type="password" placeholder="apiKey (if required)" />
@@ -2074,8 +2105,7 @@ const server = http.createServer(async (req, res) => {
       const limitRaw = Number(url.searchParams.get("limit") || 200);
       const limit = Math.max(10, Math.min(1000, Number.isFinite(limitRaw) ? limitRaw : 200));
       const status = String(url.searchParams.get("status") || "").trim().toUpperCase();
-      const statusFilter = status || "";
-      const trades = await mt5ListSignals(limit, statusFilter);
+      const trades = mt5FilterRows(await mt5ListSignals(limit, ""), { statuses: status ? [status] : [] });
       const b = await mt5Backend();
       return json(res, 200, {
         ok: true,
@@ -2096,16 +2126,15 @@ const server = http.createServer(async (req, res) => {
       const limitRaw = Number(url.searchParams.get("limit") || 2000);
       const limit = Math.max(1, Math.min(20000, Number.isFinite(limitRaw) ? limitRaw : 2000));
       const status = String(url.searchParams.get("status") || "").trim().toUpperCase();
-      const statusFilter = status || "";
       const includeHeader = String(url.searchParams.get("header") || "1").toLowerCase() !== "0";
 
       // listSignals returns newest-first; reverse for chronological backtest replay.
-      const rows = await mt5ListSignals(limit, statusFilter);
+      const rows = mt5FilterRows(await mt5ListSignals(limit, ""), { statuses: status ? [status] : [] });
       const chronological = rows.slice().reverse();
       const csv = mt5SignalsToBacktestCsv(chronological, includeHeader);
 
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const suffix = statusFilter ? `-${statusFilter}` : "";
+      const suffix = status ? `-${mt5CanonicalStoredStatus(status)}` : "";
       const filename = `mt5-backtest${suffix}-${stamp}.csv`;
       res.writeHead(200, {
         "Content-Type": "text/csv; charset=utf-8",
@@ -2238,7 +2267,15 @@ const server = http.createServer(async (req, res) => {
       const entryExec = asNum(payload.entry_price_exec ?? payload.entry, NaN);
       const slExec = asNum(payload.sl_exec ?? payload.sl, NaN);
       const tpExec = asNum(payload.tp_exec ?? payload.tp, NaN);
-      await mt5AckSignal(signalId, status, payload.ticket, payload.error, {
+      const ackResult = payload.result ?? payload.retcode ?? payload.code ?? null;
+      const ackMessage = payload.message ?? payload.msg ?? payload.comment ?? null;
+      const ackNote = payload.note ?? payload.reason ?? null;
+      const ackSummary = [ackResult, ackMessage, ackNote]
+        .filter((v) => v !== null && v !== undefined && String(v).trim() !== "")
+        .join(" | ");
+      const ackErrorCombined = payload.error ?? (ackSummary || null);
+
+      await mt5AckSignal(signalId, status, payload.ticket, ackErrorCombined, {
         pnl_money_realized: Number.isFinite(pnlRealized) ? pnlRealized : null,
         entry_price_exec: Number.isFinite(entryExec) ? entryExec : null,
         sl_exec: Number.isFinite(slExec) ? slExec : null,
@@ -2246,14 +2283,28 @@ const server = http.createServer(async (req, res) => {
       });
       await mt5AppendSignalEvent(signalId, `EA_ACK_${status}`, {
         ticket: payload.ticket ?? null,
-        error: payload.error ?? null,
+        error: ackErrorCombined,
+        result: ackResult,
+        message: ackMessage,
+        note: ackNote,
         pnl_money_realized: Number.isFinite(pnlRealized) ? pnlRealized : null,
         entry_price_exec: Number.isFinite(entryExec) ? entryExec : null,
         sl_exec: Number.isFinite(slExec) ? slExec : null,
         tp_exec: Number.isFinite(tpExec) ? tpExec : null,
       });
 
-      return json(res, 200, { ok: true });
+      return json(res, 200, {
+        ok: true,
+        signal_id: signalId,
+        status,
+        ack: {
+          ticket: payload.ticket ?? null,
+          result: ackResult,
+          message: ackMessage,
+          note: ackNote,
+          error: ackErrorCombined,
+        },
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });
