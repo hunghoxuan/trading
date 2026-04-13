@@ -40,7 +40,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand">TVBridge Control</div>
+        <div className="brand">📈 Trading</div>
         <nav>
           <Link to="/dashboard">Dashboard</Link>
           <Link to="/trades">Trades</Link>

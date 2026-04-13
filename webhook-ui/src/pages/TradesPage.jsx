@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import TradeCard from "../components/TradeCard";
 
-const RANGE_OPTIONS = ["", "today", "week", "month"];
 const STATUS_OPTIONS = ["", "NEW", "LOCKED", "OK", "START", "FAIL", "TP", "SL"];
 
 export default function TradesPage() {
@@ -12,16 +11,12 @@ export default function TradesPage() {
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const inFlightRef = useRef(false);
 
   const [filter, setFilter] = useState({
     q: "",
     symbol: "",
     status: "",
-    range: "month",
-    from: "",
-    to: "",
     page: 1,
     pageSize: 20,
   });
@@ -64,10 +59,9 @@ export default function TradesPage() {
   }, [query]);
 
   useEffect(() => {
-    if (!autoRefresh) return undefined;
-    const t = setInterval(loadTrades, 5000);
+    const t = setInterval(loadTrades, 30000);
     return () => clearInterval(t);
-  }, [autoRefresh, query]);
+  }, [query]);
 
   return (
     <section className="stack-layout">
@@ -81,16 +75,7 @@ export default function TradesPage() {
           <select value={filter.status} onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value, page: 1 }))}>
             {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s || "All statuses"}</option>)}
           </select>
-          <select value={filter.range} onChange={(e) => setFilter((f) => ({ ...f, range: e.target.value, page: 1 }))}>
-            {RANGE_OPTIONS.map((r) => <option key={r} value={r}>{r || "Custom range"}</option>)}
-          </select>
-          <input type="date" value={filter.from} onChange={(e) => setFilter((f) => ({ ...f, from: e.target.value, page: 1 }))} />
-          <input type="date" value={filter.to} onChange={(e) => setFilter((f) => ({ ...f, to: e.target.value, page: 1 }))} />
           <input type="number" min={5} max={200} value={filter.pageSize} onChange={(e) => setFilter((f) => ({ ...f, pageSize: Number(e.target.value) || 20, page: 1 }))} />
-          <label className="row-check compact-check">
-            <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
-            Auto
-          </label>
         </div>
       </section>
 
