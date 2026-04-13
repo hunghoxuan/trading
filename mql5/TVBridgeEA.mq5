@@ -738,7 +738,10 @@ void OnTimer()
    {
       g_dbgPollExecFail++;
       g_dbgLastPollSummary = "poll#" + IntegerToString(g_dbgPollCount) + " EXEC_FAIL id=" + signalId + " action=" + action + " err=" + err;
-      Ack(signalId, "FAIL", "", err);
+      string ackStatus = "FAIL";
+      if(StringFind(err, "Expired signal ignored:") == 0)
+         ackStatus = "EXPIRED";
+      Ack(signalId, ackStatus, "", err);
    }
    Print("TVBridgeEA poll summary: ", g_dbgLastPollSummary);
    RefreshDebugPanel();

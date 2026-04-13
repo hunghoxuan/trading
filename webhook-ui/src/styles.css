@@ -69,6 +69,8 @@ a { color: var(--accent); text-decoration: none; }
 .badge.START { color: #99f6e4; background: #155e75; }
 .badge.FAIL, .badge.SL { color: #fecdd3; background: #881337; }
 .badge.TP { color: #bbf7d0; background: #14532d; }
+.badge.CANCEL { color: #ffedd5; background: #9a3412; }
+.badge.EXPIRED { color: #fef3c7; background: #78350f; }
 
 input, select, button { width: 100%; background: #0f172a; border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px; }
 button { cursor: pointer; }

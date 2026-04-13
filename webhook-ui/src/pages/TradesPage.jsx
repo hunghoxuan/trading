@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import TradeCard from "../components/TradeCard";
 
-const STATUS_OPTIONS = ["", "NEW", "LOCKED", "OK", "START", "FAIL", "TP", "SL"];
+const STATUS_OPTIONS = ["", "NEW", "LOCKED", "OK", "START", "FAIL", "TP", "SL", "CANCEL", "EXPIRED"];
 const BULK_ACTIONS = ["", "Download CSV", "Cancel All", "Delete All"];
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 200];
 const RANGE_OPTIONS = ["", "today", "week", "month"];
@@ -130,7 +130,7 @@ export default function TradesPage() {
     const scopeQ = filter.q || "-";
     const estimate = total || 0;
     const ok = window.confirm(
-      `Cancel trades in current filter?\n\nSymbol: ${scopeSymbol}\nStatus: ${scopeStatus}\nSearch: ${scopeQ}\nMatched: ${estimate}\n\nOnly NEW trades will be changed to LOCKED.`,
+      `Cancel trades in current filter?\n\nSymbol: ${scopeSymbol}\nStatus: ${scopeStatus}\nSearch: ${scopeQ}\nMatched: ${estimate}\n\nOnly NEW/LOCKED/START/OK trades will be changed to CANCEL.`,
     );
     if (!ok) return;
     try {
@@ -139,7 +139,7 @@ export default function TradesPage() {
       await loadTrades();
       await loadSymbols();
       setError("");
-      window.alert(`Cancelled ${res.updated || 0} trade(s) to LOCKED.`);
+      window.alert(`Cancelled ${res.updated || 0} trade(s) to CANCEL.`);
     } catch (e) {
       setError(e?.message || "Failed to cancel trades");
     } finally {

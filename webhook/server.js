@@ -681,7 +681,7 @@ async function mt5InitBackend() {
         if ((internalStatus === "OK" || internalStatus === "START") && !sig.opened_at) {
           sig.opened_at = now;
         }
-        if (internalStatus === "TP" || internalStatus === "SL" || internalStatus === "FAIL") {
+        if (internalStatus === "TP" || internalStatus === "SL" || internalStatus === "FAIL" || internalStatus === "CANCEL" || internalStatus === "EXPIRED") {
           sig.closed_at = now;
         }
         mt5WriteJsonDb(db);
@@ -740,7 +740,7 @@ async function mt5InitBackend() {
         if (deleted > 0) mt5WriteJsonDb(db);
         return { deleted };
       },
-      async lockSignalsByIds(signalIds) {
+      async cancelSignalsByIds(signalIds) {
         const ids = new Set((signalIds || []).map((s) => String(s || "")).filter(Boolean));
         if (!ids.size) return { updated: 0, updated_ids: [] };
         const db = mt5ReadJsonDb();
@@ -749,9 +749,10 @@ async function mt5InitBackend() {
         for (const s of db.signals) {
           const id = String(s.signal_id || "");
           if (!ids.has(id)) continue;
-          if (String(s.status || "") !== "NEW") continue;
-          s.status = "LOCKED";
-          s.locked_at = now;
+          const cur = mt5CanonicalStoredStatus(s.status);
+          if (!(cur === "NEW" || cur === "LOCKED" || cur === "START" || cur === "OK")) continue;
+          s.status = "CANCEL";
+          s.closed_at = now;
           updatedIds.push(id);
         }
         if (updatedIds.length > 0) mt5WriteJsonDb(db);
@@ -991,7 +992,7 @@ async function mt5InitBackend() {
               tp_exec = COALESCE(?, tp_exec),
               locked_at = CASE WHEN ? = 1 THEN NULL ELSE locked_at END,
               opened_at = CASE WHEN (? = 'OK' OR ? = 'START') AND opened_at IS NULL THEN ? ELSE opened_at END,
-              closed_at = CASE WHEN (? = 'TP' OR ? = 'SL' OR ? = 'FAIL') THEN ? ELSE closed_at END
+              closed_at = CASE WHEN (? = 'TP' OR ? = 'SL' OR ? = 'FAIL' OR ? = 'CANCEL' OR ? = 'EXPIRED') THEN ? ELSE closed_at END
           WHERE signal_id = ?
         `).run(
           internalStatus,
@@ -1007,6 +1008,8 @@ async function mt5InitBackend() {
           internalStatus,
           internalStatus,
           now,
+          internalStatus,
+          internalStatus,
           internalStatus,
           internalStatus,
           internalStatus,
@@ -1088,7 +1091,7 @@ async function mt5InitBackend() {
         tx(ids);
         return { deleted };
       },
-      async lockSignalsByIds(signalIds) {
+      async cancelSignalsByIds(signalIds) {
         const ids = Array.isArray(signalIds)
           ? signalIds.map((s) => String(s || "")).filter(Boolean)
           : [];
@@ -1096,8 +1099,8 @@ async function mt5InitBackend() {
         const now = mt5NowIso();
         const update = db.prepare(`
           UPDATE signals
-          SET status = 'LOCKED', locked_at = ?
-          WHERE signal_id = ? AND status = 'NEW'
+          SET status = 'CANCEL', closed_at = ?
+          WHERE signal_id = ? AND status IN ('NEW','LOCKED','START','OK')
         `);
         const updatedIds = [];
         const tx = db.transaction((arr) => {
@@ -1450,7 +1453,7 @@ async function mt5InitBackend() {
             tp_exec = COALESCE($9, tp_exec),
             locked_at = CASE WHEN $11 THEN NULL ELSE locked_at END,
             opened_at = CASE WHEN ($1 = 'OK' OR $1 = 'START') AND opened_at IS NULL THEN $2 ELSE opened_at END,
-            closed_at = CASE WHEN ($1 = 'TP' OR $1 = 'SL' OR $1 = 'FAIL') THEN $2 ELSE closed_at END
+            closed_at = CASE WHEN ($1 = 'TP' OR $1 = 'SL' OR $1 = 'FAIL' OR $1 = 'CANCEL' OR $1 = 'EXPIRED') THEN $2 ELSE closed_at END
         WHERE signal_id = $10
       `, [
         internalStatus,
@@ -1528,7 +1531,7 @@ async function mt5InitBackend() {
       const res = await pool.query(`DELETE FROM signals WHERE signal_id = ANY($1::text[])`, [ids]);
       return { deleted: res.rowCount || 0 };
     },
-    async lockSignalsByIds(signalIds) {
+    async cancelSignalsByIds(signalIds) {
       const ids = Array.isArray(signalIds)
         ? signalIds.map((s) => String(s || "")).filter(Boolean)
         : [];
@@ -1536,8 +1539,8 @@ async function mt5InitBackend() {
       const now = mt5NowIso();
       const res = await pool.query(`
         UPDATE signals
-        SET status = 'LOCKED', locked_at = $1
-        WHERE signal_id = ANY($2::text[]) AND status = 'NEW'
+        SET status = 'CANCEL', closed_at = $1
+        WHERE signal_id = ANY($2::text[]) AND status IN ('NEW','LOCKED','START','OK')
         RETURNING signal_id
       `, [now, ids]);
       return { updated: res.rowCount || 0, updated_ids: (res.rows || []).map((r) => String(r.signal_id || "")) };
@@ -1657,17 +1660,17 @@ function mt5NormalizeAckStatus(value) {
   const legacyToCurrent = {
     DONE: "OK",
     FAILED: "FAIL",
-    CANCELED: "FAIL",
-    CANCELLED: "FAIL",
+    CANCELED: "CANCEL",
+    CANCELLED: "CANCEL",
     CLOSED_TP: "TP",
     CLOSED_SL: "SL",
-    CLOSED_MANUAL: "FAIL",
+    CLOSED_MANUAL: "CANCEL",
     CLOSED: "OK",
   };
   const normalized = legacyToCurrent[s] || s;
-  const allowed = ["OK", "FAIL", "START", "TP", "SL"];
+  const allowed = ["OK", "FAIL", "START", "TP", "SL", "CANCEL", "EXPIRED"];
   if (!allowed.includes(normalized)) {
-    throw new Error("status must be one of: OK, FAIL, START, TP, SL");
+    throw new Error("status must be one of: OK, FAIL, START, TP, SL, CANCEL, EXPIRED");
   }
   return normalized;
 }
@@ -1682,11 +1685,11 @@ function mt5CanonicalStoredStatus(value) {
   const legacyToCurrent = {
     DONE: "OK",
     FAILED: "FAIL",
-    CANCELED: "FAIL",
-    CANCELLED: "FAIL",
+    CANCELED: "CANCEL",
+    CANCELLED: "CANCEL",
     CLOSED_TP: "TP",
     CLOSED_SL: "SL",
-    CLOSED_MANUAL: "FAIL",
+    CLOSED_MANUAL: "CANCEL",
     CLOSED: "OK",
   };
   return legacyToCurrent[s] || s;
@@ -1726,6 +1729,8 @@ function mt5PublicState(row) {
   else if (status === "FAIL") stage = "execute_failed";
   else if (status === "TP") stage = "take_profit_hit";
   else if (status === "SL") stage = "stop_loss_hit";
+  else if (status === "CANCEL") stage = "manually_cancelled";
+  else if (status === "EXPIRED") stage = "expired_ignored";
 
   return {
     ...row,
@@ -1739,7 +1744,7 @@ function mt5PublicState(row) {
 }
 
 function mt5TerminalStatuses() {
-  return ["FAIL", "TP", "SL"];
+  return ["FAIL", "TP", "SL", "CANCEL", "EXPIRED"];
 }
 
 async function mt5UpsertSignal(signal) {
@@ -1800,14 +1805,14 @@ async function mt5DeleteSignalsByIds(signalIds) {
   return b.deleteSignalsByIds(ids);
 }
 
-async function mt5LockSignalsByIds(signalIds) {
+async function mt5CancelSignalsByIds(signalIds) {
   const ids = Array.isArray(signalIds)
     ? signalIds.map((s) => String(s || "").trim()).filter(Boolean)
     : [];
   if (!ids.length) return { updated: 0, updated_ids: [] };
   const b = await mt5Backend();
-  if (!b.lockSignalsByIds) return { updated: 0, updated_ids: [] };
-  return b.lockSignalsByIds(ids);
+  if (!b.cancelSignalsByIds) return { updated: 0, updated_ids: [] };
+  return b.cancelSignalsByIds(ids);
 }
 
 function mt5CsvTimestamp(value) {
@@ -1939,7 +1944,7 @@ async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
 function mt5ComputeMetrics(rows) {
   const closed = rows.filter((r) => {
     const s = mt5CanonicalStoredStatus(r.status);
-    return s === "TP" || s === "SL" || s === "FAIL" || s === "OK";
+    return s === "TP" || s === "SL" || s === "FAIL" || s === "OK" || s === "CANCEL" || s === "EXPIRED";
   });
   const wins = rows.filter((r) => {
     const pnl = Number(r.pnl_money_realized);
@@ -2002,6 +2007,8 @@ function mt5DashboardHtml() {
     .START { background:#0f766e; color:#ccfbf1; }
     .FAIL, .SL { background:#7f1d1d; color:#fee2e2; }
     .TP { background:#14532d; color:#dcfce7; }
+    .CANCEL { background:#9a3412; color:#ffedd5; }
+    .EXPIRED { background:#78350f; color:#fef3c7; }
     .muted { color:#8b9db2; }
   </style>
 </head>
@@ -2013,7 +2020,7 @@ function mt5DashboardHtml() {
       <select id="status">
         <option value="">All statuses</option>
         <option>NEW</option><option>LOCKED</option><option>OK</option><option>START</option>
-        <option>FAIL</option><option>TP</option><option>SL</option>
+        <option>FAIL</option><option>TP</option><option>SL</option><option>CANCEL</option><option>EXPIRED</option>
       </select>
       <input id="limit" type="number" min="10" max="1000" value="200" />
       <input id="apiKey" type="password" placeholder="apiKey (if required)" />
@@ -2296,9 +2303,9 @@ const server = http.createServer(async (req, res) => {
       if (!requireAdminKey(req, res, url, payload)) return;
       const { rows, filters, limit } = await mt5GetFilteredTrades(url, payload, 50000);
       const ids = rows.map((r) => String(r.signal_id || "")).filter(Boolean);
-      const updated = await mt5LockSignalsByIds(ids);
+      const updated = await mt5CancelSignalsByIds(ids);
       for (const signalId of (updated.updated_ids || [])) {
-        await mt5AppendSignalEvent(signalId, "MANUAL_CANCEL_LOCKED", {
+        await mt5AppendSignalEvent(signalId, "MANUAL_CANCEL", {
           via: "ui_bulk_cancel",
         });
       }
@@ -2308,7 +2315,7 @@ const server = http.createServer(async (req, res) => {
         matched: ids.length,
         filters,
         scanned_limit: limit,
-        target_status: "LOCKED",
+        target_status: "CANCEL",
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
