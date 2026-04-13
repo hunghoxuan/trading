@@ -47,6 +47,10 @@ function runtimeApiKey() {
   return (localStorage.getItem("tvbridge_api_key") || "").trim();
 }
 
+export function getRuntimeApiKey() {
+  return runtimeApiKey();
+}
+
 export function setRuntimeApiKey(value) {
   const v = String(value || "").trim();
   if (!v) {
@@ -125,6 +129,111 @@ async function get(path) {
   return data;
 }
 
+async function post(path, body = {}) {
+  const API_KEY = runtimeApiKey();
+  const base = runtimeApiBase();
+  const primaryUrl = buildUrl(base, path);
+  const fallbackUrl = buildUrl(window.location.origin, path);
+
+  async function doFetch(url) {
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(() => ctrl.abort(), 12000);
+    try {
+      return await fetch(url, {
+        method: "POST",
+        signal: ctrl.signal,
+        headers: {
+          "Content-Type": "application/json",
+          ...(API_KEY ? { "x-api-key": API_KEY } : {}),
+        },
+        body: JSON.stringify(body || {}),
+      });
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        throw new Error("Request timeout (12s). Check API URL and server status.");
+      }
+      throw err;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  let res;
+  try {
+    res = await doFetch(primaryUrl);
+  } catch (primaryError) {
+    if (primaryUrl !== fallbackUrl) {
+      try {
+        res = await doFetch(fallbackUrl);
+      } catch {
+        throw primaryError;
+      }
+    } else {
+      throw primaryError;
+    }
+  }
+
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(`Server returned non-JSON response (${res.status})`);
+  }
+  if (!res.ok || !data.ok) {
+    throw new Error(data.error || `Request failed: ${res.status}`);
+  }
+  return data;
+}
+
+async function downloadCsv(path, params = {}) {
+  const API_KEY = runtimeApiKey();
+  const base = runtimeApiBase();
+  const q = new URLSearchParams();
+  Object.entries(params || {}).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && String(v) !== "") q.set(k, String(v));
+  });
+  const primaryUrl = buildUrl(base, `${path}?${q.toString()}`);
+  const fallbackUrl = buildUrl(window.location.origin, `${path}?${q.toString()}`);
+
+  async function doFetch(url) {
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(() => ctrl.abort(), 20000);
+    try {
+      return await fetch(url, {
+        signal: ctrl.signal,
+        headers: API_KEY ? { "x-api-key": API_KEY } : {},
+      });
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        throw new Error("Download timeout (20s). Check API URL and server status.");
+      }
+      throw err;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  let res;
+  try {
+    res = await doFetch(primaryUrl);
+  } catch (primaryError) {
+    if (primaryUrl !== fallbackUrl) {
+      res = await doFetch(fallbackUrl);
+    } else {
+      throw primaryError;
+    }
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Download failed: ${res.status}`);
+  }
+  const blob = await res.blob();
+  const contentDisposition = res.headers.get("content-disposition") || "";
+  const m = contentDisposition.match(/filename="([^"]+)"/i);
+  const filename = (m && m[1]) ? m[1] : "mt5-backtest.csv";
+  return { blob, filename };
+}
+
 export const api = {
   dashboardSummary: (userId = "") => get(`/mt5/dashboard/summary${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`),
   dashboardSeries: (period = "month", userId = "") => get(`/mt5/dashboard/pnl-series?period=${encodeURIComponent(period)}${userId ? `&user_id=${encodeURIComponent(userId)}` : ""}`),
@@ -137,4 +246,6 @@ export const api = {
     return get(`/mt5/trades/search?${q.toString()}`);
   },
   trade: (signalId) => get(`/mt5/trades/${encodeURIComponent(signalId)}`),
+  deleteTrades: (params) => post("/mt5/trades/delete", params),
+  downloadBacktestCsv: (params) => downloadCsv("/csv", params),
 };

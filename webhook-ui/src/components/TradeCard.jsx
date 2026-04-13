@@ -15,6 +15,8 @@ function sideClass(action) {
 }
 
 export default function TradeCard({ trade }) {
+  const chartTf = trade?.chart_tf || trade?.raw_json?.chartTf || "-";
+  const htf = trade?.source_tf || trade?.raw_json?.sourceTf || trade?.raw_json?.timeframe || "-";
   const strategy =
     trade?.raw_json?.strategy
     || (String(trade.note || "").includes("|") ? String(trade.note || "").split("|")[0].trim() : "")
@@ -49,6 +51,7 @@ export default function TradeCard({ trade }) {
       </div>
 
       <div className="trade-bottom-line">
+        <span><span className="muted small">ChartTF:</span> {chartTf}, <span className="muted small">HTF:</span> {htf}</span>
         <span><span className="muted small">Strategy:</span> {strategy}</span>
         <span><span className="muted small">Note:</span> <span className="muted blur">{trade.note || "-"}</span></span>
         <span className="ack-right"><span className="muted small">Ack Result:</span> {ackResultText || "-"}</span>
