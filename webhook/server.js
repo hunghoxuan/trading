@@ -238,6 +238,7 @@ function normalizeSignal(payload) {
   const strategy = String(payload.strategy || payload.system || "UnknownStrategy");
   const symbol = String(payload.symbol || payload.ticker || "").toUpperCase();
   const side = normalizeSide(payload.side || payload.action);
+  const tradeId = envStr(payload.signal_id ?? payload.id ?? payload.trade_id ?? payload.tradeId);
   const timeframe = String(payload.timeframe || payload.tf || "n/a");
   const price = asNum(payload.price ?? payload.entry, NaN);
   const sl = asNum(payload.stop_loss ?? payload.sl, NaN);
@@ -256,6 +257,7 @@ function normalizeSignal(payload) {
     strategy,
     symbol,
     side,
+    trade_id: tradeId || "-",
     timeframe,
     price,
     sl: Number.isFinite(sl) ? sl : null,
@@ -284,15 +286,10 @@ function enforceRiskAndPolicy(signal) {
   }
 }
 
-function formatTime(time) {
-  return new Date(time).toLocaleString();
-}
-
-function formatSignal(signal, execReport) {
+function formatSignal(signal) {
   return [
-    `${signal.side} ${signal.symbol} | ${formatTime(signal.signalTime)}`,
-    `Entry: ${signal.price} | SL: ${signal.sl ?? "n/a"} | TP: ${signal.tp ?? "n/a"}`,
-    `${signal.strategy}: ${signal.note}. ${execReport}`,
+    `${signal.symbol} | ${signal.side} | ${signal.trade_id || "-"} | ${signal.timeframe || "n/a"}`,
+    `Entry:${signal.price} SL:${signal.sl ?? "n/a"} TP:${signal.tp ?? "n/a"} | ${signal.strategy || "-"} | ${signal.note || "-"}`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -537,8 +534,7 @@ async function handleSignal(payload) {
   const ctraderRes = await executeCTrader(signal);
   execResults.push(ctraderRes);
 
-  const execSummary = buildExecSummary(execResults);
-  const text = formatSignal(signal, execSummary);
+  const text = formatSignal(signal);
   const telegram = await sendTelegram(text);
 
   return {
