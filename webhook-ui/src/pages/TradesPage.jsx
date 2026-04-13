@@ -3,6 +3,8 @@ import { api } from "../api";
 import TradeCard from "../components/TradeCard";
 
 const STATUS_OPTIONS = ["", "NEW", "LOCKED", "OK", "START", "FAIL", "TP", "SL"];
+const BULK_ACTIONS = ["", "Download CSV", "Cancel All", "Delete All"];
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 200];
 
 export default function TradesPage() {
   const [symbols, setSymbols] = useState([]);
@@ -11,6 +13,7 @@ export default function TradesPage() {
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkAction, setBulkAction] = useState("");
   const [error, setError] = useState("");
   const inFlightRef = useRef(false);
 
@@ -118,6 +121,40 @@ export default function TradesPage() {
     }
   }
 
+  async function onCancelAll() {
+    const scopeSymbol = filter.symbol || "ALL";
+    const scopeStatus = filter.status || "ALL";
+    const scopeQ = filter.q || "-";
+    const estimate = total || 0;
+    const ok = window.confirm(
+      `Cancel trades in current filter?\n\nSymbol: ${scopeSymbol}\nStatus: ${scopeStatus}\nSearch: ${scopeQ}\nMatched: ${estimate}\n\nOnly NEW trades will be changed to LOCKED.`,
+    );
+    if (!ok) return;
+    try {
+      setBulkBusy(true);
+      const res = await api.cancelTrades(filteredParams());
+      await loadTrades();
+      await loadSymbols();
+      setError("");
+      window.alert(`Cancelled ${res.updated || 0} trade(s) to LOCKED.`);
+    } catch (e) {
+      setError(e?.message || "Failed to cancel trades");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function onBulkOk() {
+    if (!bulkAction || bulkBusy) return;
+    if (bulkAction === "Download CSV") {
+      await onDownloadCsv();
+    } else if (bulkAction === "Cancel All") {
+      await onCancelAll();
+    } else if (bulkAction === "Delete All") {
+      await onDeleteAll();
+    }
+  }
+
   useEffect(() => {
     loadSymbols();
   }, []);
@@ -146,14 +183,14 @@ export default function TradesPage() {
           <select value={filter.status} onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value, page: 1 }))}>
             {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s || "All statuses"}</option>)}
           </select>
-          <input type="number" min={5} max={200} value={filter.pageSize} onChange={(e) => setFilter((f) => ({ ...f, pageSize: Number(e.target.value) || 20, page: 1 }))} />
+          <div />
         </div>
-        <div className="filters-top" style={{ gridTemplateColumns: "1fr 1fr" }}>
-          <button type="button" onClick={onDownloadCsv} disabled={bulkBusy}>
-            {bulkBusy ? "Working..." : "Download CSV"}
-          </button>
-          <button type="button" onClick={onDeleteAll} disabled={bulkBusy}>
-            {bulkBusy ? "Working..." : "Delete All (current filter)"}
+        <div className="filters-top" style={{ gridTemplateColumns: "1fr 100px" }}>
+          <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)} disabled={bulkBusy}>
+            {BULK_ACTIONS.map((s) => <option key={s} value={s}>{s || "Bulk Action..."}</option>)}
+          </select>
+          <button type="button" onClick={onBulkOk} disabled={bulkBusy || !bulkAction}>
+            {bulkBusy ? "..." : "OK"}
           </button>
         </div>
       </section>
@@ -171,9 +208,18 @@ export default function TradesPage() {
         </div>
 
         <div className="pager">
-          <button disabled={filter.page <= 1} onClick={() => setFilter((f) => ({ ...f, page: f.page - 1 }))}>Prev</button>
+          <select
+            className="pager-size"
+            value={filter.pageSize}
+            onChange={(e) => setFilter((f) => ({ ...f, pageSize: Number(e.target.value) || 20, page: 1 }))}
+          >
+            {PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n}/page</option>)}
+          </select>
+          <button className="pager-btn" disabled={filter.page <= 1} onClick={() => setFilter((f) => ({ ...f, page: 1 }))} title="First">«</button>
+          <button className="pager-btn" disabled={filter.page <= 1} onClick={() => setFilter((f) => ({ ...f, page: f.page - 1 }))} title="Previous">‹</button>
           <span>Page {filter.page} / {pages}</span>
-          <button disabled={filter.page >= pages} onClick={() => setFilter((f) => ({ ...f, page: f.page + 1 }))}>Next</button>
+          <button className="pager-btn" disabled={filter.page >= pages} onClick={() => setFilter((f) => ({ ...f, page: f.page + 1 }))} title="Next">›</button>
+          <button className="pager-btn" disabled={filter.page >= pages} onClick={() => setFilter((f) => ({ ...f, page: pages }))} title="Last">»</button>
         </div>
       </section>
     </section>

@@ -740,6 +740,23 @@ async function mt5InitBackend() {
         if (deleted > 0) mt5WriteJsonDb(db);
         return { deleted };
       },
+      async lockSignalsByIds(signalIds) {
+        const ids = new Set((signalIds || []).map((s) => String(s || "")).filter(Boolean));
+        if (!ids.size) return { updated: 0, updated_ids: [] };
+        const db = mt5ReadJsonDb();
+        const now = mt5NowIso();
+        const updatedIds = [];
+        for (const s of db.signals) {
+          const id = String(s.signal_id || "");
+          if (!ids.has(id)) continue;
+          if (String(s.status || "") !== "NEW") continue;
+          s.status = "LOCKED";
+          s.locked_at = now;
+          updatedIds.push(id);
+        }
+        if (updatedIds.length > 0) mt5WriteJsonDb(db);
+        return { updated: updatedIds.length, updated_ids: updatedIds };
+      },
     };
     return MT5_BACKEND;
   }
@@ -1070,6 +1087,29 @@ async function mt5InitBackend() {
         });
         tx(ids);
         return { deleted };
+      },
+      async lockSignalsByIds(signalIds) {
+        const ids = Array.isArray(signalIds)
+          ? signalIds.map((s) => String(s || "")).filter(Boolean)
+          : [];
+        if (!ids.length) return { updated: 0, updated_ids: [] };
+        const now = mt5NowIso();
+        const update = db.prepare(`
+          UPDATE signals
+          SET status = 'LOCKED', locked_at = ?
+          WHERE signal_id = ? AND status = 'NEW'
+        `);
+        const updatedIds = [];
+        const tx = db.transaction((arr) => {
+          for (const id of arr) {
+            const res = update.run(now, id);
+            if ((res.changes || 0) > 0) {
+              updatedIds.push(id);
+            }
+          }
+        });
+        tx(ids);
+        return { updated: updatedIds.length, updated_ids: updatedIds };
       },
     };
     return MT5_BACKEND;
@@ -1488,6 +1528,20 @@ async function mt5InitBackend() {
       const res = await pool.query(`DELETE FROM signals WHERE signal_id = ANY($1::text[])`, [ids]);
       return { deleted: res.rowCount || 0 };
     },
+    async lockSignalsByIds(signalIds) {
+      const ids = Array.isArray(signalIds)
+        ? signalIds.map((s) => String(s || "")).filter(Boolean)
+        : [];
+      if (!ids.length) return { updated: 0, updated_ids: [] };
+      const now = mt5NowIso();
+      const res = await pool.query(`
+        UPDATE signals
+        SET status = 'LOCKED', locked_at = $1
+        WHERE signal_id = ANY($2::text[]) AND status = 'NEW'
+        RETURNING signal_id
+      `, [now, ids]);
+      return { updated: res.rowCount || 0, updated_ids: (res.rows || []).map((r) => String(r.signal_id || "")) };
+    },
   };
   return MT5_BACKEND;
 }
@@ -1744,6 +1798,16 @@ async function mt5DeleteSignalsByIds(signalIds) {
   const b = await mt5Backend();
   if (!b.deleteSignalsByIds) return { deleted: 0 };
   return b.deleteSignalsByIds(ids);
+}
+
+async function mt5LockSignalsByIds(signalIds) {
+  const ids = Array.isArray(signalIds)
+    ? signalIds.map((s) => String(s || "").trim()).filter(Boolean)
+    : [];
+  if (!ids.length) return { updated: 0, updated_ids: [] };
+  const b = await mt5Backend();
+  if (!b.lockSignalsByIds) return { updated: 0, updated_ids: [] };
+  return b.lockSignalsByIds(ids);
 }
 
 function mt5CsvTimestamp(value) {
@@ -2218,6 +2282,33 @@ const server = http.createServer(async (req, res) => {
         matched: ids.length,
         filters,
         scanned_limit: limit,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/mt5/trades/cancel") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    try {
+      const payload = await readJson(req);
+      if (!requireAdminKey(req, res, url, payload)) return;
+      const { rows, filters, limit } = await mt5GetFilteredTrades(url, payload, 50000);
+      const ids = rows.map((r) => String(r.signal_id || "")).filter(Boolean);
+      const updated = await mt5LockSignalsByIds(ids);
+      for (const signalId of (updated.updated_ids || [])) {
+        await mt5AppendSignalEvent(signalId, "MANUAL_CANCEL_LOCKED", {
+          via: "ui_bulk_cancel",
+        });
+      }
+      return json(res, 200, {
+        ok: true,
+        updated: updated.updated || 0,
+        matched: ids.length,
+        filters,
+        scanned_limit: limit,
+        target_status: "LOCKED",
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";

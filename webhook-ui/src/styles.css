@@ -71,6 +71,8 @@ button { cursor: pointer; }
 .row-check { display: flex; gap: 8px; align-items: center; }
 .row-check input { width: auto; }
 .pager { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 12px; }
+.pager-btn { width: auto; min-width: 34px; padding: 4px 8px; line-height: 1; }
+.pager-size { width: auto; min-width: 92px; }
 .chart-box { width: 100%; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 
 .error { color: #fecaca; background: #7f1d1d; border: 1px solid #b91c1c; padding: 10px; border-radius: 8px; }
