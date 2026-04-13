@@ -71,14 +71,7 @@ export default function TradesPage() {
 
   return (
     <section className="stack-layout">
-      <section className="panel">
-        <div className="panel-head">
-          <h2>Filters</h2>
-          <label className="row-check">
-            <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
-            Auto refresh (5s)
-          </label>
-        </div>
+      <section className="trades-toolbar">
         <div className="filters-top">
           <input value={filter.q} onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value, page: 1 }))} placeholder="Search signal id, note..." />
           <select value={filter.symbol} onChange={(e) => setFilter((f) => ({ ...f, symbol: e.target.value, page: 1 }))}>
@@ -94,13 +87,16 @@ export default function TradesPage() {
           <input type="date" value={filter.from} onChange={(e) => setFilter((f) => ({ ...f, from: e.target.value, page: 1 }))} />
           <input type="date" value={filter.to} onChange={(e) => setFilter((f) => ({ ...f, to: e.target.value, page: 1 }))} />
           <input type="number" min={5} max={200} value={filter.pageSize} onChange={(e) => setFilter((f) => ({ ...f, pageSize: Number(e.target.value) || 20, page: 1 }))} />
+          <label className="row-check compact-check">
+            <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
+            Auto
+          </label>
         </div>
       </section>
 
-      <section className="panel">
+      <section>
         <div className="panel-head">
-          <h2>Trades</h2>
-          <div className="muted">{total} results</div>
+          <div className="muted small">{total} results</div>
         </div>
 
         {error ? <div className="error">{error}</div> : null}
