@@ -26,7 +26,13 @@ export default function TradesPage() {
   async function loadSymbols() {
     try {
       const data = await api.symbols();
-      setSymbols(data.symbols || []);
+      setSymbols((prev) => {
+        const merged = new Set([
+          ...(Array.isArray(prev) ? prev : []),
+          ...((data.symbols || []).map((s) => String(s || "").toUpperCase())),
+        ]);
+        return [...merged].filter(Boolean).sort();
+      });
     } catch {
       // keep page usable even if symbol endpoint fails
     }
@@ -39,6 +45,15 @@ export default function TradesPage() {
       setLoading(true);
       const data = await api.trades(query);
       setRows(data.trades || []);
+      // Keep symbol filter options in sync with live data without requiring full page refresh.
+      setSymbols((prev) => {
+        const merged = new Set([...(Array.isArray(prev) ? prev : [])]);
+        for (const t of (data.trades || [])) {
+          const sym = String(t?.symbol || "").toUpperCase();
+          if (sym) merged.add(sym);
+        }
+        return [...merged].sort();
+      });
       setTotal(data.total || 0);
       setPages(data.pages || 1);
       setError("");
@@ -59,7 +74,10 @@ export default function TradesPage() {
   }, [query]);
 
   useEffect(() => {
-    const t = setInterval(loadTrades, 30000);
+    const t = setInterval(() => {
+      loadTrades();
+      loadSymbols();
+    }, 30000);
     return () => clearInterval(t);
   }, [query]);
 
