@@ -4,6 +4,11 @@ import assert from "node:assert/strict";
 const BASE_URL = (process.env.BASE_URL || "http://139.59.211.192").replace(/\/+$/, "");
 const API_KEY = process.env.API_KEY || "";
 const ACCOUNT = process.env.ACCOUNT || "remote-test";
+const TEST_SYMBOL = (process.env.TEST_SYMBOL || "TEST").toUpperCase();
+
+if (TEST_SYMBOL !== "TEST") {
+  throw new Error(`Safety guard: TEST_SYMBOL must be TEST, got ${TEST_SYMBOL}`);
+}
 
 function withApiKey(path) {
   const u = new URL(`${BASE_URL}${path}`);
@@ -50,7 +55,7 @@ test("TradingView webhook push enqueues a signal", async () => {
   const payload = {
     id: signalId,
     action: "BUY",
-    symbol: "BTCUSD",
+    symbol: TEST_SYMBOL,
     volume: 0.01,
     sl: 65000,
     tp: 75000,
@@ -74,7 +79,7 @@ test("CSV download returns data and contains just inserted signal", async () => 
     body: JSON.stringify({
       id: signalId,
       action: "SELL",
-      symbol: "BTCUSD",
+      symbol: TEST_SYMBOL,
       volume: 0.01,
       sl: 78000,
       tp: 70000,
@@ -96,7 +101,7 @@ test("EA pull endpoint can pull signal by signal_id", async () => {
     body: JSON.stringify({
       id: signalId,
       action: "BUY",
-      symbol: "BTCUSD",
+      symbol: TEST_SYMBOL,
       volume: 0.01,
       sl: 65000,
       tp: 76000,

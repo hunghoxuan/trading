@@ -10,6 +10,7 @@ export default function TradesPage() {
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [error, setError] = useState("");
   const inFlightRef = useRef(false);
 
@@ -65,6 +66,58 @@ export default function TradesPage() {
     }
   }
 
+  function filteredParams() {
+    return {
+      q: filter.q || "",
+      symbol: filter.symbol || "",
+      status: filter.status || "",
+    };
+  }
+
+  async function onDownloadCsv() {
+    try {
+      setBulkBusy(true);
+      const { blob, filename } = await api.downloadBacktestCsv(filteredParams());
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = filename || "mt5-backtest.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(href);
+      setError("");
+    } catch (e) {
+      setError(e?.message || "Failed to download CSV");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function onDeleteAll() {
+    const scopeSymbol = filter.symbol || "ALL";
+    const scopeStatus = filter.status || "ALL";
+    const scopeQ = filter.q || "-";
+    const estimate = total || 0;
+    const ok = window.confirm(
+      `Delete trades in current filter?\n\nSymbol: ${scopeSymbol}\nStatus: ${scopeStatus}\nSearch: ${scopeQ}\nMatched: ${estimate}`,
+    );
+    if (!ok) return;
+
+    try {
+      setBulkBusy(true);
+      const res = await api.deleteTrades(filteredParams());
+      await loadTrades();
+      await loadSymbols();
+      setError("");
+      window.alert(`Deleted ${res.deleted || 0} trade(s).`);
+    } catch (e) {
+      setError(e?.message || "Failed to delete trades");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   useEffect(() => {
     loadSymbols();
   }, []);
@@ -94,6 +147,14 @@ export default function TradesPage() {
             {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s || "All statuses"}</option>)}
           </select>
           <input type="number" min={5} max={200} value={filter.pageSize} onChange={(e) => setFilter((f) => ({ ...f, pageSize: Number(e.target.value) || 20, page: 1 }))} />
+        </div>
+        <div className="filters-top" style={{ gridTemplateColumns: "1fr 1fr" }}>
+          <button type="button" onClick={onDownloadCsv} disabled={bulkBusy}>
+            {bulkBusy ? "Working..." : "Download CSV"}
+          </button>
+          <button type="button" onClick={onDeleteAll} disabled={bulkBusy}>
+            {bulkBusy ? "Working..." : "Delete All (current filter)"}
+          </button>
         </div>
       </section>
 

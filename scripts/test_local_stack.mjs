@@ -5,6 +5,7 @@ const UI_URL = process.env.UI_URL || "http://127.0.0.1:5174";
 const API_KEY = process.env.API_KEY || "";
 const ACCOUNT = process.env.ACCOUNT || "local-test";
 const EXPECT_STORAGE = (process.env.EXPECT_STORAGE || "").toLowerCase();
+const TEST_SYMBOL = (process.env.TEST_SYMBOL || "TEST").toUpperCase();
 
 function log(msg) {
   console.log(`[test] ${msg}`);
@@ -56,6 +57,9 @@ async function requestText(path, options = {}) {
 async function main() {
   log(`BASE_URL=${BASE_URL}`);
   log(`UI_URL=${UI_URL}`);
+  if (TEST_SYMBOL !== "TEST") {
+    throw new Error(`Safety guard: TEST_SYMBOL must be TEST, got ${TEST_SYMBOL}`);
+  }
 
   const health = await requestJson("/health");
   assert(health.ok === true, "health.ok must be true");
@@ -72,7 +76,7 @@ async function main() {
   const payload = {
     id: signalId,
     action: "BUY",
-    symbol: "BTCUSD",
+    symbol: TEST_SYMBOL,
     volume: 0.01,
     sl: 65000,
     tp: 75000,
