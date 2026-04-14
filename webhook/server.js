@@ -905,8 +905,8 @@ async function mt5InitBackend() {
       storage,
       info: { path: CFG.mt5DbPath },
       async upsertSignal(signal) {
-        db.prepare(`
-          INSERT OR REPLACE INTO signals (
+        const ins = db.prepare(`
+          INSERT OR IGNORE INTO signals (
             signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
             rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
             note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
@@ -938,6 +938,7 @@ async function mt5InitBackend() {
           signal.ack_ticket,
           signal.ack_error,
         );
+        return { inserted: Number(ins.changes || 0) > 0 };
       },
       async pullAndLockNextSignal() {
         const next = db.prepare(`
@@ -1307,40 +1308,15 @@ async function mt5InitBackend() {
     storage,
     info: { url: CFG.mt5PostgresUrl.replace(/:[^:@/]+@/, ":***@") },
     async upsertSignal(signal) {
-      await pool.query(`
+      const r = await pool.query(`
         INSERT INTO signals (
           signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
           source_tf, chart_tf,
           rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
           note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27)
-        ON CONFLICT (signal_id) DO UPDATE SET
-          created_at=EXCLUDED.created_at,
-          user_id=EXCLUDED.user_id,
-          source=EXCLUDED.source,
-          action=EXCLUDED.action,
-          symbol=EXCLUDED.symbol,
-          volume=EXCLUDED.volume,
-          sl=EXCLUDED.sl,
-          tp=EXCLUDED.tp,
-          source_tf=EXCLUDED.source_tf,
-          chart_tf=EXCLUDED.chart_tf,
-          rr_planned=EXCLUDED.rr_planned,
-          risk_money_planned=EXCLUDED.risk_money_planned,
-          pnl_money_realized=EXCLUDED.pnl_money_realized,
-          entry_price_exec=EXCLUDED.entry_price_exec,
-          sl_exec=EXCLUDED.sl_exec,
-          tp_exec=EXCLUDED.tp_exec,
-          note=EXCLUDED.note,
-          raw_json=EXCLUDED.raw_json,
-          status=EXCLUDED.status,
-          locked_at=EXCLUDED.locked_at,
-          ack_at=EXCLUDED.ack_at,
-          opened_at=EXCLUDED.opened_at,
-          closed_at=EXCLUDED.closed_at,
-          ack_status=EXCLUDED.ack_status,
-          ack_ticket=EXCLUDED.ack_ticket,
-          ack_error=EXCLUDED.ack_error
+        ON CONFLICT (signal_id) DO NOTHING
+        RETURNING signal_id
       `, [
         signal.signal_id,
         signal.created_at,
@@ -1370,6 +1346,7 @@ async function mt5InitBackend() {
         signal.ack_ticket,
         signal.ack_error,
       ]);
+      return { inserted: (r.rowCount || 0) > 0 };
     },
     async pullAndLockNextSignal() {
       const client = await pool.connect();
@@ -1612,7 +1589,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   const chartTf = envStr(payload.chartTf ?? payload.chart_tf ?? payload.chartTimeframe ?? payload.chart_tf_period);
   const note = mt5BuildNote(payload);
 
-  await mt5UpsertSignal({
+  const upsertResult = await mt5UpsertSignal({
     signal_id: signalId,
     created_at: mt5NowIso(),
     user_id: userId,
@@ -1642,19 +1619,21 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
     ack_error: null,
   });
 
-  await mt5AppendSignalEvent(signalId, eventType, {
-    source,
-    action,
-    symbol,
-    source_tf: sourceTf || null,
-    chart_tf: chartTf || null,
-    timeframe: payload.timeframe || null,
-    strategy: payload.strategy || null,
-    provider: payload.provider || null,
-    raw_payload: payload.raw_json || payload,
-  });
+  if (upsertResult?.inserted) {
+    await mt5AppendSignalEvent(signalId, eventType, {
+      source,
+      action,
+      symbol,
+      source_tf: sourceTf || null,
+      chart_tf: chartTf || null,
+      timeframe: payload.timeframe || null,
+      strategy: payload.strategy || null,
+      provider: payload.provider || null,
+      raw_payload: payload.raw_json || payload,
+    });
+  }
 
-  return { signal_id: signalId, action, symbol, status: "NEW" };
+  return { signal_id: signalId, action, symbol, status: upsertResult?.inserted ? "NEW" : "DUPLICATE" };
 }
 
 function mt5NormalizeAckStatus(value) {
