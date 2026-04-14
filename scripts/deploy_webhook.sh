@@ -39,6 +39,8 @@ git fetch --all --prune
 git checkout "${BRANCH}"
 git pull --ff-only origin "${BRANCH}"
 node --check webhook/server.js
+# Ensure runtime deps for webhook are present (needed for MT5 postgres mode: pg).
+npm --prefix webhook install --no-audit --no-fund
 if [[ "${SERVICE_MODE}" == "pm2" ]]; then
   pm2 restart "${SERVICE_NAME}"
   pm2 logs "${SERVICE_NAME}" --lines 80 --nostream || true
