@@ -14,6 +14,19 @@ function sideClass(action) {
   return "side";
 }
 
+function compactAck(trade) {
+  const status = String(trade?.ack_status || "").trim();
+  const error = String(trade?.ack_error || "").trim();
+  if (!error) return [status, trade?.ack_ticket].filter(Boolean).join(" | ") || "-";
+
+  const retcode = (error.match(/retcode=\d+/i) || [])[0] || "";
+  const msgMatch = error.match(/msg=([^|[\]]+)/i);
+  const msg = msgMatch ? `msg=${msgMatch[1].trim()}` : "";
+  const expired = error.includes("Expired signal ignored");
+  const core = expired ? "msg=expired signal" : [retcode, msg].filter(Boolean).join(" ");
+  return [status, core || error.split("|")[0].trim()].filter(Boolean).join(" | ");
+}
+
 export default function TradeCard({ trade, selected = false, onToggleSelect = null }) {
   const chartTf = trade?.chart_tf || trade?.raw_json?.chartTf || "-";
   const htf = trade?.source_tf || trade?.raw_json?.sourceTf || trade?.raw_json?.timeframe || "-";
@@ -23,7 +36,7 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
     trade?.raw_json?.strategy
     || (String(trade.note || "").includes("|") ? String(trade.note || "").split("|")[0].trim() : "")
     || "-";
-  const ackResultText = [trade.ack_status, trade.ack_ticket, trade.ack_error].filter(Boolean).join(" | ");
+  const ackResultText = compactAck(trade);
   const pnlValue = trade.pnl_money_realized;
   const pnlNumber = Number(pnlValue);
   const hasPnl = pnlValue !== null && pnlValue !== undefined && pnlValue !== "" && Number.isFinite(pnlNumber);
