@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.14-05");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.14-06");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -592,6 +592,9 @@ function mt5WriteJsonDb(db) {
 function mt5MapDbRow(row) {
   if (!row) return null;
   const raw = row.raw_json || {};
+  const execEntry = row.entry_price_exec === null || row.entry_price_exec === undefined ? null : Number(row.entry_price_exec);
+  const execSl = row.sl_exec === null || row.sl_exec === undefined ? null : Number(row.sl_exec);
+  const execTp = row.tp_exec === null || row.tp_exec === undefined ? null : Number(row.tp_exec);
   return {
     signal_id: String(row.signal_id),
     created_at: String(row.created_at),
@@ -605,9 +608,9 @@ function mt5MapDbRow(row) {
     rr_planned: row.rr_planned === null || row.rr_planned === undefined ? null : Number(row.rr_planned),
     risk_money_planned: row.risk_money_planned === null || row.risk_money_planned === undefined ? null : Number(row.risk_money_planned),
     pnl_money_realized: row.pnl_money_realized === null || row.pnl_money_realized === undefined ? null : Number(row.pnl_money_realized),
-    entry_price_exec: row.entry_price_exec === null || row.entry_price_exec === undefined ? null : Number(row.entry_price_exec),
-    sl_exec: row.sl_exec === null || row.sl_exec === undefined ? null : Number(row.sl_exec),
-    tp_exec: row.tp_exec === null || row.tp_exec === undefined ? null : Number(row.tp_exec),
+    entry_price_exec: Number.isFinite(execEntry) && execEntry > 0 ? execEntry : null,
+    sl_exec: Number.isFinite(execSl) && execSl > 0 ? execSl : null,
+    tp_exec: Number.isFinite(execTp) && execTp > 0 ? execTp : null,
     note: String(row.note || ""),
     raw_json: raw,
     source_tf: String(row.source_tf || raw.sourceTf || raw.timeframe || ""),
@@ -2702,9 +2705,12 @@ const server = http.createServer(async (req, res) => {
       }
 
       const pnlRealized = asNum(payload.pnl_money_realized ?? payload.pnl ?? payload.profit, NaN);
-      const entryExec = asNum(payload.entry_price_exec ?? payload.entry, NaN);
-      const slExec = asNum(payload.sl_exec ?? payload.sl, NaN);
-      const tpExec = asNum(payload.tp_exec ?? payload.tp, NaN);
+      const entryExecRaw = asNum(payload.entry_price_exec ?? payload.entry, NaN);
+      const slExecRaw = asNum(payload.sl_exec ?? payload.sl, NaN);
+      const tpExecRaw = asNum(payload.tp_exec ?? payload.tp, NaN);
+      const entryExec = (Number.isFinite(entryExecRaw) && entryExecRaw > 0.0) ? entryExecRaw : NaN;
+      const slExec = (Number.isFinite(slExecRaw) && slExecRaw > 0.0) ? slExecRaw : NaN;
+      const tpExec = (Number.isFinite(tpExecRaw) && tpExecRaw > 0.0) ? tpExecRaw : NaN;
       const ackResult = payload.result ?? payload.retcode ?? payload.code ?? null;
       const ackMessage = payload.message ?? payload.msg ?? payload.comment ?? null;
       const ackNote = payload.note ?? payload.reason ?? null;

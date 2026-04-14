@@ -27,11 +27,17 @@ function compactAck(trade) {
   return [status, core || error.split("|")[0].trim()].filter(Boolean).join(" | ");
 }
 
+function positiveOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 export default function TradeCard({ trade, selected = false, onToggleSelect = null }) {
   const chartTf = trade?.chart_tf || trade?.raw_json?.chartTf || "-";
   const htf = trade?.source_tf || trade?.raw_json?.sourceTf || trade?.raw_json?.timeframe || "-";
-  const plannedPrice = trade?.raw_json?.price;
-  const displayPrice = trade?.entry_price_exec ?? plannedPrice ?? "-";
+  const plannedPrice = positiveOrNull(trade?.raw_json?.price);
+  const execPrice = positiveOrNull(trade?.entry_price_exec);
+  const displayPrice = execPrice ?? plannedPrice ?? "-";
   const strategy =
     trade?.raw_json?.strategy
     || (String(trade.note || "").includes("|") ? String(trade.note || "").split("|")[0].trim() : "")
