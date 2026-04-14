@@ -14,7 +14,7 @@ function sideClass(action) {
   return "side";
 }
 
-export default function TradeCard({ trade }) {
+export default function TradeCard({ trade, selected = false, onToggleSelect = null }) {
   const chartTf = trade?.chart_tf || trade?.raw_json?.chartTf || "-";
   const htf = trade?.source_tf || trade?.raw_json?.sourceTf || trade?.raw_json?.timeframe || "-";
   const strategy =
@@ -28,34 +28,46 @@ export default function TradeCard({ trade }) {
   const pnlClass = Number.isFinite(pnlNumber) ? (pnlNumber > 0 ? "pnl-pos" : pnlNumber < 0 ? "pnl-neg" : "pnl-zero") : "";
 
   return (
-    <Link to={`/trades/${encodeURIComponent(trade.signal_id)}`} className="trade-card">
-      <div className="trade-head">
-        <div className="trade-title-row main-row">
-          <span className="symbol">{trade.symbol}</span>
-          <span className={sideClass(trade.action)}>{String(trade.action || "").toUpperCase() || "-"}</span>
-          <span className="muted small blur">{trade.signal_id}</span>
-          <span className="muted small blur">{new Date(trade.created_at).toLocaleString()}</span>
+    <article className="trade-card">
+      <div className="trade-card-select">
+        <label className="trade-check">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={(e) => onToggleSelect && onToggleSelect(Boolean(e.target.checked))}
+          />
+          <span className="muted small">Select</span>
+        </label>
+      </div>
+      <Link to={`/trades/${encodeURIComponent(trade.signal_id)}`} className="trade-link-content">
+        <div className="trade-head">
+          <div className="trade-title-row main-row">
+            <span className="symbol">{trade.symbol}</span>
+            <span className={sideClass(trade.action)}>{String(trade.action || "").toUpperCase() || "-"}</span>
+            <span className="muted small blur">{trade.signal_id}</span>
+            <span className="muted small blur">{new Date(trade.created_at).toLocaleString()}</span>
+          </div>
+          <div className="trade-status-col">
+            <span className={`badge ${trade.status}`}>{trade.status}</span>
+          </div>
         </div>
-        <div className="trade-status-col">
-          <span className={`badge ${trade.status}`}>{trade.status}</span>
+
+        <div className="trade-price-line tight">
+          <span className="kv">Price: {trade.entry_price_exec ?? "-"}</span>
+          <span className="kv">TP: {trade.tp_exec ?? trade.tp ?? "-"}</span>
+          <span className="kv">SL: {trade.sl_exec ?? trade.sl ?? "-"}</span>
+          <span className="kv">RR: {trade.rr_planned ?? "-"}</span>
+          <span className="kv">Volume: {trade.volume ?? "-"}</span>
+          {hasPnl ? <span className={`pnl ${pnlClass}`}>PnL: {money(pnlValue)}</span> : null}
         </div>
-      </div>
 
-      <div className="trade-price-line tight">
-        <span className="kv">Price: {trade.entry_price_exec ?? "-"}</span>
-        <span className="kv">TP: {trade.tp_exec ?? trade.tp ?? "-"}</span>
-        <span className="kv">SL: {trade.sl_exec ?? trade.sl ?? "-"}</span>
-        <span className="kv">RR: {trade.rr_planned ?? "-"}</span>
-        <span className="kv">Volume: {trade.volume ?? "-"}</span>
-        {hasPnl ? <span className={`pnl ${pnlClass}`}>PnL: {money(pnlValue)}</span> : null}
-      </div>
-
-      <div className="trade-bottom-line">
-        <span><span className="muted small">ChartTF:</span> {chartTf}, <span className="muted small">HTF:</span> {htf}</span>
-        <span><span className="muted small">Strategy:</span> {strategy}</span>
-        <span><span className="muted small">Note:</span> <span className="muted blur">{trade.note || "-"}</span></span>
-        <span className="ack-right"><span className="muted small">Ack Result:</span> {ackResultText || "-"}</span>
-      </div>
-    </Link>
+        <div className="trade-bottom-line">
+          <span><span className="muted small">ChartTF:</span> {chartTf}, <span className="muted small">HTF:</span> {htf}</span>
+          <span><span className="muted small">Strategy:</span> {strategy}</span>
+          <span><span className="muted small">Note:</span> <span className="muted blur">{trade.note || "-"}</span></span>
+          <span className="ack-right"><span className="muted small">Ack Result:</span> {ackResultText || "-"}</span>
+        </div>
+      </Link>
+    </article>
   );
 }

@@ -1984,6 +1984,21 @@ function mt5ResolveTradeFilters(url, payload = null) {
   };
 }
 
+function mt5ResolveSignalIds(url, payload = null) {
+  const fromPayload = payload && payload.signal_ids !== undefined && payload.signal_ids !== null
+    ? payload.signal_ids
+    : (payload && payload.ids !== undefined && payload.ids !== null ? payload.ids : null);
+  const fromQuery = url.searchParams.get("signal_ids") || url.searchParams.get("ids") || "";
+  const raw = fromPayload !== null ? fromPayload : fromQuery;
+  if (Array.isArray(raw)) {
+    return [...new Set(raw.map((s) => String(s || "").trim()).filter(Boolean))];
+  }
+  if (typeof raw === "string") {
+    return [...new Set(raw.split(",").map((s) => s.trim()).filter(Boolean))];
+  }
+  return [];
+}
+
 async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
   const limitRaw = Number((payload && payload.limit) ?? url.searchParams.get("limit") ?? limitDefault);
   const limit = Math.max(100, Math.min(200000, Number.isFinite(limitRaw) ? limitRaw : limitDefault));
@@ -2002,6 +2017,12 @@ async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
       || String(r.symbol || "").toLowerCase().includes(filters.q),
     );
   }
+  const signalIds = mt5ResolveSignalIds(url, payload);
+  if (signalIds.length > 0) {
+    const idSet = new Set(signalIds);
+    rows = rows.filter((r) => idSet.has(String(r.signal_id || "")));
+  }
+  filters.signal_ids = signalIds;
   return { rows, filters, limit };
 }
 

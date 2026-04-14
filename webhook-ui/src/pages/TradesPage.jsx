@@ -15,6 +15,7 @@ export default function TradesPage() {
   const [loading, setLoading] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkAction, setBulkAction] = useState("");
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [error, setError] = useState("");
   const inFlightRef = useRef(false);
 
@@ -50,7 +51,16 @@ export default function TradesPage() {
     try {
       setLoading(true);
       const data = await api.trades(query);
-      setRows(data.trades || []);
+      const loadedRows = data.trades || [];
+      setRows(loadedRows);
+      setSelectedIds((prev) => {
+        const visible = new Set(loadedRows.map((t) => String(t.signal_id || "")).filter(Boolean));
+        const next = new Set();
+        for (const id of prev) {
+          if (visible.has(id)) next.add(id);
+        }
+        return next;
+      });
       // Keep symbol filter options in sync with live data without requiring full page refresh.
       setSymbols((prev) => {
         const merged = new Set([...(Array.isArray(prev) ? prev : [])]);
@@ -80,10 +90,26 @@ export default function TradesPage() {
     };
   }
 
+  function selectedParams() {
+    const ids = [...selectedIds].filter(Boolean);
+    if (!ids.length) return filteredParams();
+    return { signal_ids: ids };
+  }
+
+  function selectedScopeText() {
+    const selectedCount = selectedIds.size;
+    if (selectedCount > 0) return `Selected cards: ${selectedCount}`;
+    const scopeSymbol = filter.symbol || "ALL";
+    const scopeStatus = filter.status || "ALL";
+    const scopeQ = filter.q || "-";
+    const estimate = total || 0;
+    return `Current filter\nSymbol: ${scopeSymbol}\nStatus: ${scopeStatus}\nSearch: ${scopeQ}\nMatched: ${estimate}`;
+  }
+
   async function onDownloadCsv() {
     try {
       setBulkBusy(true);
-      const { blob, filename } = await api.downloadBacktestCsv(filteredParams());
+      const { blob, filename } = await api.downloadBacktestCsv(selectedParams());
       const href = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = href;
@@ -101,20 +127,17 @@ export default function TradesPage() {
   }
 
   async function onDeleteAll() {
-    const scopeSymbol = filter.symbol || "ALL";
-    const scopeStatus = filter.status || "ALL";
-    const scopeQ = filter.q || "-";
-    const estimate = total || 0;
     const ok = window.confirm(
-      `Delete trades in current filter?\n\nSymbol: ${scopeSymbol}\nStatus: ${scopeStatus}\nSearch: ${scopeQ}\nMatched: ${estimate}`,
+      `Delete trades?\n\n${selectedScopeText()}`,
     );
     if (!ok) return;
 
     try {
       setBulkBusy(true);
-      const res = await api.deleteTrades(filteredParams());
+      const res = await api.deleteTrades(selectedParams());
       await loadTrades();
       await loadSymbols();
+      setSelectedIds(new Set());
       setError("");
       window.alert(`Deleted ${res.deleted || 0} trade(s).`);
     } catch (e) {
@@ -125,19 +148,16 @@ export default function TradesPage() {
   }
 
   async function onCancelAll() {
-    const scopeSymbol = filter.symbol || "ALL";
-    const scopeStatus = filter.status || "ALL";
-    const scopeQ = filter.q || "-";
-    const estimate = total || 0;
     const ok = window.confirm(
-      `Cancel trades in current filter?\n\nSymbol: ${scopeSymbol}\nStatus: ${scopeStatus}\nSearch: ${scopeQ}\nMatched: ${estimate}\n\nOnly NEW/LOCKED/START/OK trades will be changed to CANCEL.`,
+      `Cancel trades?\n\n${selectedScopeText()}\n\nOnly NEW/LOCKED/START/OK trades will be changed to CANCEL.`,
     );
     if (!ok) return;
     try {
       setBulkBusy(true);
-      const res = await api.cancelTrades(filteredParams());
+      const res = await api.cancelTrades(selectedParams());
       await loadTrades();
       await loadSymbols();
+      setSelectedIds(new Set());
       setError("");
       window.alert(`Cancelled ${res.updated || 0} trade(s) to CANCEL.`);
     } catch (e) {
@@ -148,19 +168,16 @@ export default function TradesPage() {
   }
 
   async function onRenewAll() {
-    const scopeSymbol = filter.symbol || "ALL";
-    const scopeStatus = filter.status || "ALL";
-    const scopeQ = filter.q || "-";
-    const estimate = total || 0;
     const ok = window.confirm(
-      `Renew trades in current filter?\n\nSymbol: ${scopeSymbol}\nStatus: ${scopeStatus}\nSearch: ${scopeQ}\nMatched: ${estimate}\n\nStatus will be set back to NEW.`,
+      `Renew trades?\n\n${selectedScopeText()}\n\nStatus will be set back to NEW.`,
     );
     if (!ok) return;
     try {
       setBulkBusy(true);
-      const res = await api.renewTrades(filteredParams());
+      const res = await api.renewTrades(selectedParams());
       await loadTrades();
       await loadSymbols();
+      setSelectedIds(new Set());
       setError("");
       window.alert(`Renewed ${res.updated || 0} trade(s) to NEW.`);
     } catch (e) {
@@ -225,14 +242,49 @@ export default function TradesPage() {
 
       <section>
         <div className="panel-head">
-          <div className="muted small">{total} results</div>
+          <div className="muted small">
+            {total} results{selectedIds.size ? ` • ${selectedIds.size} selected` : ""}
+          </div>
+          <div className="row-check">
+            <label>
+              <input
+                type="checkbox"
+                checked={rows.length > 0 && rows.every((t) => selectedIds.has(String(t.signal_id || "")))}
+                onChange={(e) => {
+                  const checked = Boolean(e.target.checked);
+                  setSelectedIds(() => {
+                    if (!checked) return new Set();
+                    return new Set(rows.map((t) => String(t.signal_id || "")).filter(Boolean));
+                  });
+                }}
+              />
+              <span className="muted small">Select page</span>
+            </label>
+          </div>
         </div>
 
         {error ? <div className="error">{error}</div> : null}
         {loading ? <div className="loading">Loading trades...</div> : null}
 
         <div className="trade-list">
-          {rows.map((t) => <TradeCard key={t.signal_id} trade={t} />)}
+          {rows.map((t) => {
+            const id = String(t.signal_id || "");
+            return (
+              <TradeCard
+                key={t.signal_id}
+                trade={t}
+                selected={selectedIds.has(id)}
+                onToggleSelect={(checked) => {
+                  setSelectedIds((prev) => {
+                    const next = new Set(prev);
+                    if (checked) next.add(id);
+                    else next.delete(id);
+                    return next;
+                  });
+                }}
+              />
+            );
+          })}
         </div>
 
         <div className="pager">
