@@ -10,6 +10,9 @@ input string InpSymbolSuffix  = "";   // Example: ".m" or "-pro"
 input long   InpMagic         = 20260411;
 input int    InpDeviationPts  = 20;
 input int    InpStopBufferPts = 50;   // Extra safety distance (points) on top of broker min stop distance.
+input bool   InpUseMarginPercentSizing = true; // true: size by margin budget (% of account balance).
+input double InpMarginPercentOfBalance = 1.0; // Margin budget as % of ACCOUNT_BALANCE (after leverage via OrderCalcMargin).
+input double InpMarginSafetyPercent    = 98.0; // Also cap by this % of current free margin to avoid edge rejections.
 input bool   InpUseRiskPercentSizing = true; // true: lots = risk% of balance by SL distance.
 input double InpRiskPercentOfBalance = 1.0; // 1.0 = risk 1% of ACCOUNT_BALANCE per trade.
 input double InpFallbackFixedLot = 0.01; // Used when risk sizing cannot be calculated (e.g., missing SL).
@@ -34,7 +37,7 @@ input bool   InpBacktestHasHeader   = true;
 input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comment().
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-14.11";
+string EA_BUILD_VERSION = "2026-04-14.12";
 
 CTrade trade;
 
@@ -78,6 +81,7 @@ double   g_ackUsedSl = 0.0;
 double   g_ackUsedTp = 0.0;
 double   g_ackEntryExec = 0.0;
 double   g_ackMarginReq = 0.0;
+double   g_ackMarginBudget = 0.0;
 double   g_ackFreeMargin = 0.0;
 double   g_ackBalance = 0.0;
 double   g_ackEquity = 0.0;
@@ -1025,7 +1029,18 @@ bool FitVolumeToFreeMargin(const string action,
       noteOut = "[free_margin<=0]";
       return false;
    }
-   double freeMarginBudget = freeMargin * 0.98; // keep a small safety buffer for spread changes.
+   double safetyPct = InpMarginSafetyPercent;
+   if(safetyPct <= 0.0 || safetyPct > 100.0)
+      safetyPct = 98.0;
+   double freeMarginBudget = freeMargin * (safetyPct / 100.0); // keep a safety buffer for spread changes.
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double balanceBudget = DBL_MAX;
+   if(InpMarginPercentOfBalance > 0.0 && balance > 0.0)
+      balanceBudget = balance * (InpMarginPercentOfBalance / 100.0);
+   double marginBudget = MathMin(freeMarginBudget, balanceBudget);
+   if(!MathIsValidNumber(marginBudget) || marginBudget <= 0.0)
+      marginBudget = freeMarginBudget;
+   g_ackMarginBudget = marginBudget;
 
    double vMin = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
    double vStep = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
@@ -1041,7 +1056,7 @@ bool FitVolumeToFreeMargin(const string action,
    }
 
    double marginReq = 0.0;
-   if(OrderCalcMargin(orderType, symbol, v, price, marginReq) && marginReq > 0.0 && marginReq <= freeMarginBudget)
+   if(OrderCalcMargin(orderType, symbol, v, price, marginReq) && marginReq > 0.0 && marginReq <= marginBudget)
    {
       volumeOut = v;
       return true;
@@ -1057,10 +1072,11 @@ bool FitVolumeToFreeMargin(const string action,
       string n2 = "";
       if(!NormalizeVolumeForSymbol(symbol, v, v, n2))
          continue;
-      if(OrderCalcMargin(orderType, symbol, v, price, marginReq) && marginReq > 0.0 && marginReq <= freeMarginBudget)
+      if(OrderCalcMargin(orderType, symbol, v, price, marginReq) && marginReq > 0.0 && marginReq <= marginBudget)
       {
          volumeOut = v;
-         noteOut = "[margin_fit free=" + DoubleToString(freeMargin, 2)
+         noteOut = "[margin_fit budget=" + DoubleToString(marginBudget, 2)
+                   + " free=" + DoubleToString(freeMargin, 2)
                    + " req=" + DoubleToString(marginReq, 2) + "]";
          return true;
       }
@@ -1068,7 +1084,119 @@ bool FitVolumeToFreeMargin(const string action,
 
    double minReq = 0.0;
    OrderCalcMargin(orderType, symbol, vMin, price, minReq);
-   noteOut = "[no_affordable_volume free=" + DoubleToString(freeMargin, 2)
+   noteOut = "[no_affordable_volume budget=" + DoubleToString(marginBudget, 2)
+             + " free=" + DoubleToString(freeMargin, 2)
+             + " req@min=" + DoubleToString(minReq, 2) + "]";
+   return false;
+}
+
+bool ComputeMarginPercentVolume(const string action,
+                                const string symbol,
+                                const double marginPct,
+                                double &volumeOut,
+                                string &noteOut)
+{
+   noteOut = "";
+   volumeOut = 0.0;
+   if(!(action == "BUY" || action == "SELL"))
+   {
+      noteOut = "[unsupported_action_for_margin_sizing]";
+      return false;
+   }
+   if(marginPct <= 0.0)
+   {
+      noteOut = "[margin_pct<=0]";
+      return false;
+   }
+
+   MqlTick tick;
+   if(!SymbolInfoTick(symbol, tick))
+   {
+      noteOut = "[tick_unavailable]";
+      return false;
+   }
+   double price = (action == "BUY" ? tick.ask : tick.bid);
+   if(price <= 0.0)
+   {
+      noteOut = "[price_invalid]";
+      return false;
+   }
+
+   double freeMargin = AccountInfoDouble(ACCOUNT_FREEMARGIN);
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   if(freeMargin <= 0.0 || balance <= 0.0)
+   {
+      noteOut = "[account_margin_or_balance_invalid]";
+      return false;
+   }
+
+   double safetyPct = InpMarginSafetyPercent;
+   if(safetyPct <= 0.0 || safetyPct > 100.0)
+      safetyPct = 98.0;
+   double freeBudget = freeMargin * (safetyPct / 100.0);
+   double balanceBudget = balance * (marginPct / 100.0);
+   double budget = MathMin(freeBudget, balanceBudget);
+   if(!MathIsValidNumber(budget) || budget <= 0.0)
+   {
+      noteOut = "[budget_invalid]";
+      return false;
+   }
+   g_ackMarginBudget = budget;
+
+   double vMin = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+   double vMax = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
+   double vStep = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+   if(vMin <= 0.0) vMin = 0.01;
+   if(vMax <= 0.0) vMax = 100.0;
+   if(vStep <= 0.0) vStep = 0.01;
+
+   ENUM_ORDER_TYPE orderType = (action == "BUY" ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
+   double minReq = 0.0;
+   if(!OrderCalcMargin(orderType, symbol, vMin, price, minReq) || minReq <= 0.0)
+   {
+      noteOut = "[min_margin_calc_failed]";
+      return false;
+   }
+   if(minReq > budget)
+   {
+      noteOut = "[budget_below_minlot budget=" + DoubleToString(budget, 2)
+                + " req@min=" + DoubleToString(minReq, 2) + "]";
+      return false;
+   }
+
+   double est = vMin * (budget / minReq);
+   if(est < vMin) est = vMin;
+   if(est > vMax) est = vMax;
+   string n0 = "";
+   if(!NormalizeVolumeForSymbol(symbol, est, est, n0))
+   {
+      noteOut = "[est_norm_failed]";
+      return false;
+   }
+
+   double v = est;
+   double req = 0.0;
+   int maxIters = (int)MathCeil((v - vMin) / vStep) + 5;
+   if(maxIters < 1) maxIters = 1;
+   for(int i = 0; i < maxIters; ++i)
+   {
+      if(OrderCalcMargin(orderType, symbol, v, price, req) && req > 0.0 && req <= budget)
+      {
+         volumeOut = v;
+         noteOut = "[margin_pct_sized pct=" + DoubleToString(marginPct, 2)
+                   + "% budget=" + DoubleToString(budget, 2)
+                   + " req=" + DoubleToString(req, 2) + "]";
+         return true;
+      }
+      v -= vStep;
+      if(v < vMin - 1e-10)
+         break;
+      string n2 = "";
+      if(!NormalizeVolumeForSymbol(symbol, v, v, n2))
+         continue;
+   }
+
+   noteOut = "[margin_pct_fit_failed budget=" + DoubleToString(budget, 2)
              + " req@min=" + DoubleToString(minReq, 2) + "]";
    return false;
 }
@@ -1085,6 +1213,7 @@ void Ack(const string signalId, const string status, const string ticket, const 
                     + " usedSL=" + DoubleToString(g_ackUsedSl, 8)
                     + " usedTP=" + DoubleToString(g_ackUsedTp, 8)
                     + " marginReq=" + DoubleToString(g_ackMarginReq, 2)
+                    + " marginBudget=" + DoubleToString(g_ackMarginBudget, 2)
                     + " freeMargin=" + DoubleToString(g_ackFreeMargin, 2)
                     + " bal=" + DoubleToString(g_ackBalance, 2)
                     + " eq=" + DoubleToString(g_ackEquity, 2);
@@ -1109,6 +1238,7 @@ void Ack(const string signalId, const string status, const string ticket, const 
    body += "\"used_tp\":" + DoubleToString(g_ackUsedTp, 8) + ",";
    body += "\"entry_price_exec\":" + DoubleToString(g_ackEntryExec, 8) + ",";
    body += "\"margin_req\":" + DoubleToString(g_ackMarginReq, 2) + ",";
+   body += "\"margin_budget\":" + DoubleToString(g_ackMarginBudget, 2) + ",";
    body += "\"free_margin\":" + DoubleToString(g_ackFreeMargin, 2) + ",";
    body += "\"balance\":" + DoubleToString(g_ackBalance, 2) + ",";
    body += "\"equity\":" + DoubleToString(g_ackEquity, 2) + ",";
@@ -1293,6 +1423,9 @@ bool ExecuteSignal(const string signalId,
    g_ackMarginReq = 0.0;
    g_ackFreeMargin = AccountInfoDouble(ACCOUNT_FREEMARGIN);
    g_ackBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+   g_ackMarginBudget = 0.0;
+   if(InpMarginPercentOfBalance > 0.0 && g_ackBalance > 0.0)
+      g_ackMarginBudget = g_ackBalance * (InpMarginPercentOfBalance / 100.0);
    g_ackEquity = AccountInfoDouble(ACCOUNT_EQUITY);
    g_ackSignalTs = signalTs;
    g_ackExecTs = TimeCurrent();
@@ -1382,7 +1515,37 @@ bool ExecuteSignal(const string signalId,
    string volumeNote = "";
    if(action == "BUY" || action == "SELL")
    {
-      if(InpUseRiskPercentSizing)
+      if(InpUseMarginPercentSizing)
+      {
+         double marginPctVol = 0.0;
+         string marginPctNote = "";
+         if(ComputeMarginPercentVolume(action, symbol, InpMarginPercentOfBalance, marginPctVol, marginPctNote))
+         {
+            volumeUse = marginPctVol;
+            volumeNote = marginPctNote;
+         }
+         else if(InpUseRiskPercentSizing)
+         {
+            double riskVol = 0.0;
+            string riskNote = "";
+            if(ComputeRiskBasedVolume(action, symbol, slUse, riskVol, riskNote))
+            {
+               volumeUse = riskVol;
+               volumeNote = "[margin_pct_fallback_risk] " + marginPctNote + " " + riskNote;
+            }
+            else
+            {
+               volumeUse = InpFallbackFixedLot;
+               volumeNote = "[margin_pct_fallback_fixed] " + marginPctNote + " " + riskNote;
+            }
+         }
+         else
+         {
+            volumeUse = InpFallbackFixedLot;
+            volumeNote = "[margin_pct_fallback_fixed] " + marginPctNote;
+         }
+      }
+      else if(InpUseRiskPercentSizing)
       {
          double riskVol = 0.0;
          string riskNote = "";
