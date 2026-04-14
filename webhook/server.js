@@ -992,7 +992,7 @@ async function mt5InitBackend() {
       },
       async pullAndLockNextSignal() {
         const next = db.prepare(`
-          SELECT signal_id, created_at, action, symbol, volume, sl, tp, note
+          SELECT signal_id, created_at, action, symbol, volume, sl, tp, note, entry_price_exec, raw_json
           FROM signals
           WHERE status = 'NEW'
           ORDER BY created_at ASC
@@ -1009,7 +1009,7 @@ async function mt5InitBackend() {
       },
       async pullAndLockSignalById(signalId) {
         const next = db.prepare(`
-          SELECT signal_id, created_at, action, symbol, volume, sl, tp, note
+          SELECT signal_id, created_at, action, symbol, volume, sl, tp, note, entry_price_exec, raw_json
           FROM signals
           WHERE signal_id = ? AND status = 'NEW'
           LIMIT 1
@@ -1447,7 +1447,7 @@ async function mt5InitBackend() {
       try {
         await client.query("BEGIN");
         const sel = await client.query(`
-          SELECT signal_id, created_at, action, symbol, volume, sl, tp, note
+          SELECT signal_id, created_at, action, symbol, volume, sl, tp, note, entry_price_exec, raw_json
           FROM signals
           WHERE status = 'NEW'
           ORDER BY created_at ASC
@@ -1478,7 +1478,7 @@ async function mt5InitBackend() {
       try {
         await client.query("BEGIN");
         const sel = await client.query(`
-          SELECT signal_id, created_at, action, symbol, volume, sl, tp, note
+          SELECT signal_id, created_at, action, symbol, volume, sl, tp, note, entry_price_exec, raw_json
           FROM signals
           WHERE signal_id = $1 AND status = 'NEW'
           LIMIT 1
