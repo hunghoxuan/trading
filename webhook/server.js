@@ -2101,6 +2101,8 @@ async function executeMt5(signal) {
     price: signal.price ?? null,
     strategy: signal.strategy || null,
     timeframe: signal.timeframe || null,
+    sourceTf: signal.raw?.sourceTf ?? signal.raw?.source_tf ?? signal.timeframe ?? null,
+    chartTf: signal.raw?.chartTf ?? signal.raw?.chart_tf ?? signal.raw?.chartTimeframe ?? signal.raw?.chart_tf_period ?? null,
     note: signal.note || "",
     user_id: signal.user_id || CFG.mt5DefaultUserId,
     provider: "signal",
