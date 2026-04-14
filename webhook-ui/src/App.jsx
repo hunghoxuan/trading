@@ -1,14 +1,37 @@
+import { useEffect, useState } from "react";
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import DashboardPage from "./pages/DashboardPage";
 import TradesPage from "./pages/TradesPage";
 import TradeDetailPage from "./pages/TradeDetailPage";
 import SettingsPage from "./pages/SettingsPage";
+import { api } from "./api";
 
 export default function App() {
+  const [serverVersion, setServerVersion] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+    api.health()
+      .then((data) => {
+        if (!mounted) return;
+        setServerVersion(String(data?.version || ""));
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setServerVersion("");
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand">📈 Trading</div>
+        <div className="brand">
+          <span>📈 Trading</span>
+          {serverVersion ? <span className="brand-version">v{serverVersion}</span> : null}
+        </div>
         <nav>
           <Link to="/dashboard">Dashboard</Link>
           <Link to="/trades">Trades</Link>

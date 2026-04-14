@@ -14,7 +14,8 @@ a { color: var(--accent); text-decoration: none; }
 .app-shell { min-height: 100vh; }
 .topbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--border); backdrop-filter: blur(6px); }
 .topbar nav { display: flex; gap: 14px; }
-.brand { font-weight: 700; }
+.brand { font-weight: 700; display: inline-flex; align-items: baseline; gap: 8px; }
+.brand-version { font-size: 11px; color: #64748b; font-weight: 400; letter-spacing: 0.02em; }
 .keybar { display: flex; gap: 8px; align-items: center; width: min(420px, 45vw); }
 .keybar input { width: 100%; }
 .keybar button { width: auto; white-space: nowrap; }
@@ -62,11 +63,29 @@ a { color: var(--accent); text-decoration: none; }
 .side.BUY { color: #6ee7b7; background: #052e2b; border-color: #0f766e; }
 .side.SELL { color: #fda4af; background: #3f0a16; border-color: #be123c; }
 
-.badge { border-radius: 999px; padding: 2px 8px; font-size: 11px; border: 1px solid transparent; }
-.badge.NEW { color: #e2e8f0; background: #334155; }
-.badge.LOCKED { color: #bfdbfe; background: #1e3a8a; }
+.badge {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid transparent;
+  backdrop-filter: blur(3px);
+}
+.badge.NEW, .badge.PENDING {
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.28);
+}
+.badge.LOCKED {
+  color: #bfdbfe;
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(147, 197, 253, 0.30);
+}
 .badge.OK { color: #a7f3d0; background: #064e3b; }
-.badge.START { color: #99f6e4; background: #155e75; }
+.badge.START {
+  color: #ccfbf1;
+  background: rgba(45, 212, 191, 0.12);
+  border-color: rgba(153, 246, 228, 0.30);
+}
 .badge.FAIL, .badge.SL { color: #fecdd3; background: #881337; }
 .badge.TP { color: #bbf7d0; background: #14532d; }
 .badge.CANCEL { color: #ffedd5; background: #9a3412; }

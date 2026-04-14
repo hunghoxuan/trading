@@ -67,6 +67,8 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.14-01");
+
 const CFG = {
   port: asNum(process.env.PORT, 80),
   signalApiKey: envStr(process.env.SIGNAL_API_KEY),
@@ -2132,6 +2134,7 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, {
       ok: true,
       service: "telegram-trading-bot",
+      version: SERVER_VERSION,
       binanceEnabled: CFG.binanceEnabled,
       binanceMode: CFG.binanceMode || null,
       ctraderEnabled: CFG.ctraderEnabled,
@@ -2145,6 +2148,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         ok: true,
         service: "mt5-bridge",
+        version: SERVER_VERSION,
         enabled: false,
         storage: mt5NormalizeStorage(CFG.mt5Storage),
         hasTvApiKeys: CFG.mt5TvAlertApiKeys.size > 0,
@@ -2160,6 +2164,7 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, {
       ok: true,
       service: "mt5-bridge",
+      version: SERVER_VERSION,
       enabled: CFG.mt5Enabled,
       storage: b.storage,
       hasTvApiKeys: CFG.mt5TvAlertApiKeys.size > 0,
@@ -2193,6 +2198,7 @@ const server = http.createServer(async (req, res) => {
 
       return json(res, 200, {
         ok: true,
+        version: SERVER_VERSION,
         user_id: userId || null,
         metrics: mt5ComputeMetrics(rows),
         benefit: {
