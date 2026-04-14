@@ -28,6 +28,8 @@ export default function TradeDetailPage() {
   if (!data) return <div className="loading">Loading trade...</div>;
 
   const t = data.trade;
+  const orderTypeRaw = String(t?.raw_json?.order_type || t?.raw_json?.orderType || "limit").toUpperCase();
+  const orderType = orderTypeRaw === "STOP" || orderTypeRaw === "MARKET" ? orderTypeRaw : "LIMIT";
   const events = Array.isArray(data.events) ? data.events : [];
   const getEventPayloadForDisplay = (ev) => {
     const payload = ev?.payload_json || {};
@@ -46,6 +48,7 @@ export default function TradeDetailPage() {
         <div className="trade-grid two-cols">
           <div>Signal ID: {t.signal_id}</div>
           <div>Status: <span className={`badge ${t.status}`}>{t.status}</span></div>
+          <div>Order Type: <span className="order-type-pill">{orderType}</span></div>
           <div>Symbol: {t.symbol}</div>
           <div>Action: {t.action}</div>
           <div>Volume: {t.volume}</div>

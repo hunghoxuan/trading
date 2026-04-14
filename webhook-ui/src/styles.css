@@ -48,6 +48,15 @@ a { color: var(--accent); text-decoration: none; }
 .trade-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .trade-title-row.main-row { row-gap: 4px; }
 .symbol { color: #22d3ee; font-size: 18px; }
+.order-type-pill {
+  border-radius: 999px;
+  font-size: 10px;
+  padding: 2px 7px;
+  border: 1px solid #334155;
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.1);
+  letter-spacing: 0.04em;
+}
 .trade-status-col { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .trade-status-row { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .trade-select-input {

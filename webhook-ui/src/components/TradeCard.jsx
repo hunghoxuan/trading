@@ -33,6 +33,8 @@ function positiveOrNull(value) {
 }
 
 export default function TradeCard({ trade, selected = false, onToggleSelect = null }) {
+  const orderTypeRaw = String(trade?.raw_json?.order_type || trade?.raw_json?.orderType || "limit").toUpperCase();
+  const orderType = orderTypeRaw === "STOP" || orderTypeRaw === "MARKET" ? orderTypeRaw : "LIMIT";
   const chartTf = trade?.chart_tf || trade?.raw_json?.chartTf || "-";
   const htf = trade?.source_tf || trade?.raw_json?.sourceTf || trade?.raw_json?.timeframe || "-";
   const plannedPrice = positiveOrNull(trade?.raw_json?.price);
@@ -55,6 +57,7 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
           <div className="trade-title-row main-row">
             <span className="symbol">{trade.symbol}</span>
             <span className={sideClass(trade.action)}>{String(trade.action || "").toUpperCase() || "-"}</span>
+            <span className="order-type-pill">{orderType}</span>
             <span className="muted small blur">{trade.signal_id}</span>
             <span className="muted small blur">{new Date(trade.created_at).toLocaleString()}</span>
           </div>
