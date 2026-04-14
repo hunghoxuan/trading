@@ -2485,7 +2485,10 @@ const server = http.createServer(async (req, res) => {
       ok: true,
       signal: {
         signal_id: signal.signal_id,
-        timestamp: signal.created_at || null,
+        // Keep EA compatibility: `timestamp` must be unix seconds (number), not ISO string.
+        // Older EA parsers read `timestamp` as numeric and can misparse ISO text as year-only.
+        timestamp: signal.created_at ? Math.floor(new Date(signal.created_at).getTime() / 1000) : null,
+        timestamp_iso: signal.created_at || null,
         created_at_ts: signal.created_at ? Math.floor(new Date(signal.created_at).getTime() / 1000) : null,
         user_id: signal.user_id || CFG.mt5DefaultUserId,
         action: signal.action,
