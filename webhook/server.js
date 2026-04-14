@@ -1710,6 +1710,13 @@ function mt5NormalizeVolume(payload) {
   return n;
 }
 
+function mt5NormalizeOrderType(payload) {
+  const raw = String(payload.order_type ?? payload.orderType ?? "").trim().toLowerCase();
+  if (!raw) return "limit";
+  if (raw === "limit" || raw === "stop" || raw === "market") return raw;
+  throw new Error("order_type must be one of: limit, stop, market");
+}
+
 function mt5BuildSignalId(payload, fallbackPrefix = "tv") {
   const provided = String(payload.id || "").trim();
   if (provided) {
@@ -1731,6 +1738,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   const action = mt5NormalizeAction(payload);
   const symbol = mt5NormalizeSymbol(payload);
   const volume = mt5NormalizeVolume(payload);
+  const orderType = mt5NormalizeOrderType(payload);
   const signalId = mt5BuildSignalId(payload, fallbackIdPrefix);
   const userId = envStr(payload.user_id ?? payload.userId ?? payload.user ?? CFG.mt5DefaultUserId, CFG.mt5DefaultUserId);
   const rrPlanned = asNum(payload.rr ?? payload.risk_reward, NaN);
@@ -1739,6 +1747,12 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   const chartTf = envStr(payload.chartTf ?? payload.chart_tf ?? payload.chartTimeframe ?? payload.chart_tf_period);
   const note = mt5BuildNote(payload);
 
+  const plannedEntry = asNum(payload.entry ?? payload.price, NaN);
+  const rawJson = payload.raw_json || payload;
+  const rawJsonNormalized = {
+    ...rawJson,
+    order_type: orderType,
+  };
   const upsertResult = await mt5UpsertSignal({
     signal_id: signalId,
     created_at: mt5NowIso(),
@@ -1754,11 +1768,11 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
     source_tf: sourceTf || null,
     chart_tf: chartTf || null,
     pnl_money_realized: null,
-    entry_price_exec: payload.entry ?? payload.price ?? null,
+    entry_price_exec: Number.isFinite(plannedEntry) && plannedEntry > 0 ? plannedEntry : null,
     sl_exec: null,
     tp_exec: null,
     note,
-    raw_json: payload.raw_json || payload,
+    raw_json: rawJsonNormalized,
     status: "NEW",
     locked_at: null,
     ack_at: null,
@@ -1774,6 +1788,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
       source,
       action,
       symbol,
+      order_type: orderType,
       source_tf: sourceTf || null,
       chart_tf: chartTf || null,
       timeframe: payload.timeframe || null,
@@ -2682,6 +2697,8 @@ const server = http.createServer(async (req, res) => {
         action: signal.action,
         symbol: signal.symbol,
         volume: signal.volume,
+        entry: signal.entry_price_exec ?? signal.raw_json?.entry ?? signal.raw_json?.price ?? null,
+        order_type: signal.raw_json?.order_type ?? signal.raw_json?.orderType ?? "limit",
         sl: signal.sl,
         tp: signal.tp,
         rr_planned: signal.rr_planned ?? null,

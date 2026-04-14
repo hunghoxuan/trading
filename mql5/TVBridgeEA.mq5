@@ -35,9 +35,10 @@ input bool   InpBacktestMode        = false;  // Replay signals from file in Str
 input string InpBacktestFileCommon  = "tvbridge_signals.csv"; // Common/Files CSV.
 input bool   InpBacktestHasHeader   = true;
 input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comment().
+input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-14.12";
+string EA_BUILD_VERSION = "2026-04-14.13";
 
 CTrade trade;
 
@@ -85,6 +86,8 @@ double   g_ackMarginBudget = 0.0;
 double   g_ackFreeMargin = 0.0;
 double   g_ackBalance = 0.0;
 double   g_ackEquity = 0.0;
+double   g_ackPnlRealized = 0.0;
+bool     g_ackHasPnlRealized = false;
 datetime g_ackSignalTs = 0;
 datetime g_ackExecTs = 0;
 int      g_ackRetcode = 0;
@@ -109,6 +112,13 @@ double   g_vgSl[];
 double   g_vgTp[];
 double   g_vgRisk[];
 datetime g_vgOpenedAt[];
+
+ulong    g_posMapTicket[];
+string   g_posMapSignalId[];
+bool     g_posMapOpenedAckSent[];
+
+ulong    g_ordMapTicket[];
+string   g_ordMapSignalId[];
 
 string JsonGetString(const string json, const string key)
 {
@@ -674,6 +684,15 @@ void ProcessVirtualGuards()
                " symbol=", symbol,
                " reason=", reason,
                " px=", DoubleToString(px, (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS)));
+         string vgStatus = hitSl ? "SL" : (hitTp ? "TP" : "CANCEL");
+         g_ackSymbol = symbol;
+         g_ackAction = side > 0 ? "BUY" : "SELL";
+         g_ackHasPnlRealized = false;
+         g_ackPnlRealized = 0.0;
+         Ack(g_vgSignalId[i], vgStatus, IntegerToString((int)ticket), reason);
+         int pIdx = FindPositionMapIndex(ticket);
+         if(pIdx >= 0)
+            RemovePositionMapAt(pIdx);
          RemoveVirtualGuardAt(i);
       }
       else
@@ -686,6 +705,143 @@ void ProcessVirtualGuards()
                " msg=", trade.ResultRetcodeDescription());
       }
    }
+}
+
+int FindPositionMapIndex(const ulong ticket)
+{
+   for(int i = 0; i < ArraySize(g_posMapTicket); ++i)
+      if(g_posMapTicket[i] == ticket)
+         return i;
+   return -1;
+}
+
+void MapPositionSignal(const ulong ticket, const string signalId)
+{
+   if(ticket == 0 || StringLen(signalId) == 0)
+      return;
+   int idx = FindPositionMapIndex(ticket);
+   if(idx < 0)
+   {
+      int n = ArraySize(g_posMapTicket);
+      ArrayResize(g_posMapTicket, n + 1);
+      ArrayResize(g_posMapSignalId, n + 1);
+      ArrayResize(g_posMapOpenedAckSent, n + 1);
+      idx = n;
+   }
+   g_posMapTicket[idx] = ticket;
+   g_posMapSignalId[idx] = signalId;
+}
+
+bool GetSignalIdByPositionTicket(const ulong ticket, string &signalIdOut, int &idxOut)
+{
+   signalIdOut = "";
+   idxOut = -1;
+   if(ticket == 0)
+      return false;
+   int idx = FindPositionMapIndex(ticket);
+   if(idx < 0)
+      return false;
+   signalIdOut = g_posMapSignalId[idx];
+   idxOut = idx;
+   return StringLen(signalIdOut) > 0;
+}
+
+void RemovePositionMapAt(const int idx)
+{
+   int n = ArraySize(g_posMapTicket);
+   if(idx < 0 || idx >= n)
+      return;
+   for(int i = idx; i < n - 1; ++i)
+   {
+      g_posMapTicket[i] = g_posMapTicket[i + 1];
+      g_posMapSignalId[i] = g_posMapSignalId[i + 1];
+      g_posMapOpenedAckSent[i] = g_posMapOpenedAckSent[i + 1];
+   }
+   ArrayResize(g_posMapTicket, n - 1);
+   ArrayResize(g_posMapSignalId, n - 1);
+   ArrayResize(g_posMapOpenedAckSent, n - 1);
+}
+
+int FindOrderMapIndex(const ulong ticket)
+{
+   for(int i = 0; i < ArraySize(g_ordMapTicket); ++i)
+      if(g_ordMapTicket[i] == ticket)
+         return i;
+   return -1;
+}
+
+void MapOrderSignal(const ulong ticket, const string signalId)
+{
+   if(ticket == 0 || StringLen(signalId) == 0)
+      return;
+   int idx = FindOrderMapIndex(ticket);
+   if(idx < 0)
+   {
+      int n = ArraySize(g_ordMapTicket);
+      ArrayResize(g_ordMapTicket, n + 1);
+      ArrayResize(g_ordMapSignalId, n + 1);
+      idx = n;
+   }
+   g_ordMapTicket[idx] = ticket;
+   g_ordMapSignalId[idx] = signalId;
+}
+
+bool GetSignalIdByOrderTicket(const ulong ticket, string &signalIdOut, int &idxOut)
+{
+   signalIdOut = "";
+   idxOut = -1;
+   if(ticket == 0)
+      return false;
+   int idx = FindOrderMapIndex(ticket);
+   if(idx < 0)
+      return false;
+   signalIdOut = g_ordMapSignalId[idx];
+   idxOut = idx;
+   return StringLen(signalIdOut) > 0;
+}
+
+void RemoveOrderMapAt(const int idx)
+{
+   int n = ArraySize(g_ordMapTicket);
+   if(idx < 0 || idx >= n)
+      return;
+   for(int i = idx; i < n - 1; ++i)
+   {
+      g_ordMapTicket[i] = g_ordMapTicket[i + 1];
+      g_ordMapSignalId[i] = g_ordMapSignalId[i + 1];
+   }
+   ArrayResize(g_ordMapTicket, n - 1);
+   ArrayResize(g_ordMapSignalId, n - 1);
+}
+
+string NormalizeOrderType(const string orderTypeRaw)
+{
+   string t = orderTypeRaw;
+   StringToLower(t);
+   if(t == "market" || t == "limit" || t == "stop")
+      return t;
+   return "limit";
+}
+
+string ResolvePendingKind(const string action, const string orderType, const double entry, const double ask, const double bid)
+{
+   if(orderType == "stop")
+      return "stop";
+   if(orderType == "limit")
+      return "limit";
+   // Auto (market/unknown): infer by side + entry position.
+   if(action == "BUY")
+      return (entry < ask ? "limit" : "stop");
+   if(action == "SELL")
+      return (entry > bid ? "limit" : "stop");
+   return "limit";
+}
+
+void CleanupVirtualGuardByTicket(const ulong ticket)
+{
+   int idx = FindVirtualGuardIndexByTicket(ticket);
+   if(idx >= 0)
+      RemoveVirtualGuardAt(idx);
 }
 
 string BuildPositionsTable(const int maxRows = 8)
@@ -1242,6 +1398,10 @@ void Ack(const string signalId, const string status, const string ticket, const 
    body += "\"free_margin\":" + DoubleToString(g_ackFreeMargin, 2) + ",";
    body += "\"balance\":" + DoubleToString(g_ackBalance, 2) + ",";
    body += "\"equity\":" + DoubleToString(g_ackEquity, 2) + ",";
+   if(g_ackHasPnlRealized)
+      body += "\"pnl_money_realized\":" + DoubleToString(g_ackPnlRealized, 2) + ",";
+   else
+      body += "\"pnl_money_realized\":null,";
    body += "\"signal_ts\":" + IntegerToString((int)g_ackSignalTs) + ",";
    body += "\"exec_ts\":" + IntegerToString((int)g_ackExecTs);
    body += "}";
@@ -1397,6 +1557,8 @@ bool ExecuteSignal(const string signalId,
                    const string symbolRaw,
                    const string comment,
                    const double volume,
+                   const double entry,
+                   const string orderTypeRaw,
                    const double sl,
                    const double tp,
                    const datetime signalTs,
@@ -1427,6 +1589,8 @@ bool ExecuteSignal(const string signalId,
    if(InpMarginPercentOfBalance > 0.0 && g_ackBalance > 0.0)
       g_ackMarginBudget = g_ackBalance * (InpMarginPercentOfBalance / 100.0);
    g_ackEquity = AccountInfoDouble(ACCOUNT_EQUITY);
+   g_ackPnlRealized = 0.0;
+   g_ackHasPnlRealized = false;
    g_ackSignalTs = signalTs;
    g_ackExecTs = TimeCurrent();
    g_ackRetcode = 0;
@@ -1434,6 +1598,7 @@ bool ExecuteSignal(const string signalId,
 
    string action = actionRaw;
    StringToUpper(action);
+   string orderType = NormalizeOrderType(orderTypeRaw);
    g_dbgLastAction = action;
    g_ackAction = action;
 
@@ -1645,10 +1810,70 @@ bool ExecuteSignal(const string signalId,
             g_ackMarginReq = mr;
       }
    }
-   if(action == "BUY")
-      ok = trade.Buy(volumeUse, symbol, 0.0, 0.0, 0.0, comment);
-   else if(action == "SELL")
-      ok = trade.Sell(volumeUse, symbol, 0.0, 0.0, 0.0, comment);
+   bool usedMarketExecution = false;
+   string tradeComment = signalId;
+   if(StringLen(tradeComment) > 31)
+      tradeComment = StringSubstr(tradeComment, StringLen(tradeComment) - 31);
+
+   if(action == "BUY" || action == "SELL")
+   {
+      bool useMarket = (orderType == "market");
+      MqlTick t;
+      if(!SymbolInfoTick(symbol, t))
+      {
+         errOut = "tick_unavailable_for_execution";
+         g_dbgLastStatus = "EXEC_TICK_MISSING";
+         g_dbgLastError = errOut;
+         RefreshDebugPanel();
+         return false;
+      }
+
+      double ask = t.ask;
+      double bid = t.bid;
+      int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+      if(digits < 0) digits = 5;
+      double entryUse = entry;
+      if(entryUse > 0.0)
+         entryUse = NormalizeDouble(entryUse, digits);
+      if(entryUse <= 0.0 && orderType != "market")
+      {
+         useMarket = true;
+         if(StringLen(volumeNote) > 0) volumeNote += " ";
+         volumeNote += "[pending_missing_entry->market]";
+      }
+
+      if(useMarket)
+      {
+         usedMarketExecution = true;
+         if(action == "BUY")
+            ok = trade.Buy(volumeUse, symbol, 0.0, 0.0, 0.0, tradeComment);
+         else
+            ok = trade.Sell(volumeUse, symbol, 0.0, 0.0, 0.0, tradeComment);
+      }
+      else
+      {
+         string pendingKind = ResolvePendingKind(action, orderType, entryUse, ask, bid);
+         if(orderType != pendingKind)
+            Print("Order type adjusted id=", signalId, " action=", action, " requested=", orderType, " resolved=", pendingKind);
+         if(pendingKind == "limit")
+         {
+            if(action == "BUY")
+               ok = trade.BuyLimit(volumeUse, entryUse, symbol, slUse > 0.0 ? slUse : 0.0, tpUse > 0.0 ? tpUse : 0.0, ORDER_TIME_GTC, 0, tradeComment);
+            else
+               ok = trade.SellLimit(volumeUse, entryUse, symbol, slUse > 0.0 ? slUse : 0.0, tpUse > 0.0 ? tpUse : 0.0, ORDER_TIME_GTC, 0, tradeComment);
+         }
+         else
+         {
+            if(action == "BUY")
+               ok = trade.BuyStop(volumeUse, entryUse, symbol, slUse > 0.0 ? slUse : 0.0, tpUse > 0.0 ? tpUse : 0.0, ORDER_TIME_GTC, 0, tradeComment);
+            else
+               ok = trade.SellStop(volumeUse, entryUse, symbol, slUse > 0.0 ? slUse : 0.0, tpUse > 0.0 ? tpUse : 0.0, ORDER_TIME_GTC, 0, tradeComment);
+         }
+         if(StringLen(volumeNote) > 0) volumeNote += " ";
+         volumeNote += "[exec=" + pendingKind + "]";
+      }
+      g_ackVolumeNote = volumeNote;
+   }
    else if(action == "CLOSE")
    {
       CloseBySymbol(symbol);
@@ -1670,16 +1895,16 @@ bool ExecuteSignal(const string signalId,
       g_ackRetcode = (int)rc;
       g_ackRetmsg = trade.ResultRetcodeDescription();
       // Broker rejected stops (10016). Retry market order without SL/TP.
-      if((action == "BUY" || action == "SELL") && rc == TRADE_RETCODE_INVALID_STOPS)
+      if((action == "BUY" || action == "SELL") && usedMarketExecution && rc == TRADE_RETCODE_INVALID_STOPS)
       {
          Print("Invalid stops for ", signalId, " -> retry without SL/TP");
          if(action == "BUY")
-            ok = trade.Buy(volumeUse, symbol, 0.0, 0.0, 0.0, comment);
+            ok = trade.Buy(volumeUse, symbol, 0.0, 0.0, 0.0, tradeComment);
          else
-            ok = trade.Sell(volumeUse, symbol, 0.0, 0.0, 0.0, comment);
+            ok = trade.Sell(volumeUse, symbol, 0.0, 0.0, 0.0, tradeComment);
       }
       // Broker rejected for insufficient margin (10019). Retry with lower affordable volume.
-      if((action == "BUY" || action == "SELL") && !ok && rc == TRADE_RETCODE_NO_MONEY)
+      if((action == "BUY" || action == "SELL") && usedMarketExecution && !ok && rc == TRADE_RETCODE_NO_MONEY)
       {
          double reducedVol = volumeUse;
          string marginRetryNote = "";
@@ -1690,9 +1915,9 @@ bool ExecuteSignal(const string signalId,
                   " ", DoubleToString(volumeUse, 4), " -> ", DoubleToString(reducedVol, 4),
                   " ", marginRetryNote);
             if(action == "BUY")
-               ok = trade.Buy(reducedVol, symbol, 0.0, 0.0, 0.0, comment);
+               ok = trade.Buy(reducedVol, symbol, 0.0, 0.0, 0.0, tradeComment);
             else
-               ok = trade.Sell(reducedVol, symbol, 0.0, 0.0, 0.0, comment);
+               ok = trade.Sell(reducedVol, symbol, 0.0, 0.0, 0.0, tradeComment);
             if(ok)
                volumeUse = reducedVol;
          }
@@ -1712,31 +1937,49 @@ bool ExecuteSignal(const string signalId,
 
    if(action == "BUY" || action == "SELL")
    {
-      ulong posTicket = 0;
-      FindLatestPositionTicket(symbol, InpMagic, posTicket);
-      string stopInfo = "";
-      bool stopOk = ApplyStopsAfterOpen(posTicket, action, symbol, slUse, tpUse, stopInfo);
-      if(!stopOk)
+      if(usedMarketExecution)
       {
-         Print("Post-open stops skipped/failed for ", signalId, " ", symbol, " ", action, ": ", stopInfo);
-         if(StringLen(g_dbgLastError) == 0)
-            g_dbgLastError = stopInfo;
-         EnqueueStopRetry(signalId, posTicket, action, symbol, slUse, tpUse);
-      }
-      else if(StringLen(stopInfo) > 0)
-      {
-         Print("Post-open stops for ", signalId, ": ", stopInfo);
-      }
+         ulong posTicket = 0;
+         FindLatestPositionTicket(symbol, InpMagic, posTicket);
+         string stopInfo = "";
+         bool stopOk = ApplyStopsAfterOpen(posTicket, action, symbol, slUse, tpUse, stopInfo);
+         if(!stopOk)
+         {
+            Print("Post-open stops skipped/failed for ", signalId, " ", symbol, " ", action, ": ", stopInfo);
+            if(StringLen(g_dbgLastError) == 0)
+               g_dbgLastError = stopInfo;
+            EnqueueStopRetry(signalId, posTicket, action, symbol, slUse, tpUse);
+         }
+         else if(StringLen(stopInfo) > 0)
+         {
+            Print("Post-open stops for ", signalId, ": ", stopInfo);
+         }
 
-      if(posTicket == 0)
-      {
-         ulong fromOrder = (ulong)trade.ResultOrder();
-         if(fromOrder > 0)
-            posTicket = fromOrder;
          if(posTicket == 0)
-            FindLatestPositionTicket(symbol, InpMagic, posTicket);
+         {
+            ulong fromOrder = (ulong)trade.ResultOrder();
+            if(fromOrder > 0)
+               posTicket = fromOrder;
+            if(posTicket == 0)
+               FindLatestPositionTicket(symbol, InpMagic, posTicket);
+         }
+         if(posTicket > 0)
+            MapPositionSignal(posTicket, signalId);
+         RegisterVirtualGuard(signalId, posTicket, action, symbol, slUse, tpUse);
       }
-      RegisterVirtualGuard(signalId, posTicket, action, symbol, slUse, tpUse);
+      else
+      {
+         ulong orderTicket = (ulong)trade.ResultOrder();
+         if(orderTicket > 0)
+         {
+            MapOrderSignal(orderTicket, signalId);
+            Print("Pending order placed id=", signalId,
+                  " orderTicket=", IntegerToString((int)orderTicket),
+                  " symbol=", symbol,
+                  " action=", action,
+                  " volume=", DoubleToString(volumeUse, 4));
+         }
+      }
    }
 
    ticketOut = IntegerToString((int)trade.ResultOrder());
@@ -1843,6 +2086,8 @@ void ProcessBacktestQueue()
                               g_btSymbol[g_btCursor],
                               g_btNote[g_btCursor],
                               g_btVolume[g_btCursor],
+                              0.0,
+                              "market",
                               g_btSl[g_btCursor],
                               g_btTp[g_btCursor],
                               g_btTime[g_btCursor],
@@ -1895,6 +2140,10 @@ void OnTimer()
    string symbolIn = JsonGetString(resp, "symbol");
    string comment  = JsonGetString(resp, "note");
    double volume   = JsonGetNumber(resp, "volume", 0.01);
+   double entry    = JsonGetNumber(resp, "entry", 0.0);
+   string orderType = JsonGetString(resp, "order_type");
+   if(StringLen(orderType) == 0)
+      orderType = "limit";
    double sl       = JsonGetNumber(resp, "sl", 0.0);
    double tp       = JsonGetNumber(resp, "tp", 0.0);
    datetime signalTs = (datetime)JsonGetNumber(resp, "created_at_ts", 0.0);
@@ -1912,7 +2161,7 @@ void OnTimer()
 
    string ticket;
    string err;
-   bool ok = ExecuteSignal(signalId, action, symbolIn, comment, volume, sl, tp, signalTs, ticket, err);
+   bool ok = ExecuteSignal(signalId, action, symbolIn, comment, volume, entry, orderType, sl, tp, signalTs, ticket, err);
    if(ok)
    {
       g_dbgPollExecOk++;
@@ -1936,6 +2185,102 @@ void OnTick()
 {
    if(InpBacktestMode)
       ProcessBacktestQueue();
+}
+
+void OnTradeTransaction(const MqlTradeTransaction& trans,
+                        const MqlTradeRequest& request,
+                        const MqlTradeResult& result)
+{
+   if(!InpEnableTradeEventAck || InpBacktestMode)
+      return;
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD)
+      return;
+   if(trans.deal == 0 || !HistoryDealSelect(trans.deal))
+      return;
+
+   long magic = HistoryDealGetInteger(trans.deal, DEAL_MAGIC);
+   if(magic != InpMagic)
+      return;
+
+   ENUM_DEAL_ENTRY entryType = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal, DEAL_ENTRY);
+   ENUM_DEAL_REASON reason = (ENUM_DEAL_REASON)HistoryDealGetInteger(trans.deal, DEAL_REASON);
+   ENUM_DEAL_TYPE dealType = (ENUM_DEAL_TYPE)HistoryDealGetInteger(trans.deal, DEAL_TYPE);
+   ulong positionTicket = (ulong)HistoryDealGetInteger(trans.deal, DEAL_POSITION_ID);
+   ulong orderTicket = (ulong)HistoryDealGetInteger(trans.deal, DEAL_ORDER);
+   string symbol = HistoryDealGetString(trans.deal, DEAL_SYMBOL);
+   string dealComment = HistoryDealGetString(trans.deal, DEAL_COMMENT);
+
+   string signalId = "";
+   int posIdx = -1;
+   int ordIdx = -1;
+   GetSignalIdByPositionTicket(positionTicket, signalId, posIdx);
+   if(StringLen(signalId) == 0)
+      GetSignalIdByOrderTicket(orderTicket, signalId, ordIdx);
+   if(StringLen(signalId) == 0)
+      signalId = dealComment;
+   if(StringLen(signalId) == 0)
+      return;
+
+   g_ackSymbol = symbol;
+   g_ackAction = (dealType == DEAL_TYPE_BUY) ? "BUY" : "SELL";
+   g_ackRetcode = 0;
+   g_ackRetmsg = "";
+   g_ackExecTs = TimeCurrent();
+   g_ackFreeMargin = AccountInfoDouble(ACCOUNT_FREEMARGIN);
+   g_ackBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+   g_ackEquity = AccountInfoDouble(ACCOUNT_EQUITY);
+
+   if(entryType == DEAL_ENTRY_IN)
+   {
+      if(positionTicket > 0)
+         MapPositionSignal(positionTicket, signalId);
+      int p2 = -1;
+      string tmp = "";
+      if(GetSignalIdByPositionTicket(positionTicket, tmp, p2))
+      {
+         if(g_posMapOpenedAckSent[p2])
+            return;
+         g_posMapOpenedAckSent[p2] = true;
+      }
+      if(ordIdx >= 0)
+         RemoveOrderMapAt(ordIdx);
+      g_ackHasPnlRealized = false;
+      g_ackPnlRealized = 0.0;
+      Ack(signalId, "START", IntegerToString((int)positionTicket), "entry_filled");
+      return;
+   }
+
+   if(!(entryType == DEAL_ENTRY_OUT || entryType == DEAL_ENTRY_OUT_BY))
+      return;
+
+   // Ignore partial closes: wait until position is fully gone.
+   if(positionTicket > 0 && PositionSelectByTicket(positionTicket))
+      return;
+
+   string status = "FAIL";
+   if(reason == DEAL_REASON_TP)
+      status = "TP";
+   else if(reason == DEAL_REASON_SL || reason == DEAL_REASON_SO)
+      status = "SL";
+   else if(reason == DEAL_REASON_CLIENT || reason == DEAL_REASON_EXPERT || reason == DEAL_REASON_MOBILE)
+      status = "CANCEL";
+
+   double pnl = HistoryDealGetDouble(trans.deal, DEAL_PROFIT)
+                + HistoryDealGetDouble(trans.deal, DEAL_SWAP)
+                + HistoryDealGetDouble(trans.deal, DEAL_COMMISSION);
+   g_ackPnlRealized = pnl;
+   g_ackHasPnlRealized = true;
+
+   string reasonMsg = "close_reason=" + IntegerToString((int)reason)
+                      + " deal=" + IntegerToString((int)trans.deal)
+                      + " order=" + IntegerToString((int)orderTicket);
+   Ack(signalId, status, IntegerToString((int)positionTicket), reasonMsg);
+
+   if(posIdx >= 0)
+      RemovePositionMapAt(posIdx);
+   if(ordIdx >= 0)
+      RemoveOrderMapAt(ordIdx);
+   CleanupVirtualGuardByTicket(positionTicket);
 }
 
 int OnInit()
