@@ -1,5 +1,5 @@
 //@version=5
-// @lib-version: 77
+// @lib-version: 78
 library("KitCore", dynamic_requests = true)
 
 //s
@@ -1114,7 +1114,7 @@ export build_trade_webhook_payload(string strategyName, string symbolName, strin
     string safeStrategy = json_escape_for_webhook(strategyName)
     string safeSymbol = json_escape_for_webhook(symbolName)
     string safeSide = normalize_side_for_webhook(direction)
-    string safeTf = json_escape_for_webhook(format_tf_for_webhook(sourceTf))
+    string safeTf = json_escape_for_webhook(format_tf_for_webhook(na(chartTf) or chartTf == "" ? timeframe.period : chartTf))
     string safeNote = json_escape_for_webhook(note)
     string safeStatus = json_escape_for_webhook(status)
     string safeTradeId = json_escape_for_webhook(tradeId)

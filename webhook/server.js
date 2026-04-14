@@ -1649,6 +1649,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
     timeframe: payload.timeframe || null,
     strategy: payload.strategy || null,
     provider: payload.provider || null,
+    raw_payload: payload.raw_json || payload,
   });
 
   return { signal_id: signalId, action, symbol, status: "NEW" };

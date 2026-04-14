@@ -29,6 +29,15 @@ export default function TradeDetailPage() {
 
   const t = data.trade;
   const events = Array.isArray(data.events) ? data.events : [];
+  const getEventPayloadForDisplay = (ev) => {
+    const payload = ev?.payload_json || {};
+    const eventType = String(ev?.event_type || "");
+    const isQueuedEvent = eventType.startsWith("QUEUED_");
+    if (!isQueuedEvent) return payload;
+
+    // Show original TradingView payload at the first NEW/queued event.
+    return payload.raw_payload || t?.raw_json || payload;
+  };
   return (
     <section>
       <p><Link to="/trades">Back to trades</Link></p>
@@ -64,7 +73,7 @@ export default function TradeDetailPage() {
                   <span className="muted">{new Date(ev.event_time).toLocaleString()}</span>
                 </div>
                 <div className="muted">
-                  {JSON.stringify(ev.payload_json || {})}
+                  {JSON.stringify(getEventPayloadForDisplay(ev) || {})}
                 </div>
               </article>
             ))}
