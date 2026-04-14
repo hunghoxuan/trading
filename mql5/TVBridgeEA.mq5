@@ -33,7 +33,7 @@ input bool   InpBacktestHasHeader   = true;
 input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comment().
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-14.09";
+string EA_BUILD_VERSION = "2026-04-14.10";
 
 CTrade trade;
 
@@ -63,6 +63,27 @@ int      g_dbgPollPullFail = 0;
 int      g_dbgPollNoSignal = 0;
 int      g_dbgPollExecOk = 0;
 int      g_dbgPollExecFail = 0;
+
+// Ack debug context for current signal execution.
+string   g_ackAction = "";
+string   g_ackSymbol = "";
+string   g_ackVolumeNote = "";
+string   g_ackStopNote = "";
+double   g_ackReqVolume = 0.0;
+double   g_ackUsedVolume = 0.0;
+double   g_ackReqSl = 0.0;
+double   g_ackReqTp = 0.0;
+double   g_ackUsedSl = 0.0;
+double   g_ackUsedTp = 0.0;
+double   g_ackEntryExec = 0.0;
+double   g_ackMarginReq = 0.0;
+double   g_ackFreeMargin = 0.0;
+double   g_ackBalance = 0.0;
+double   g_ackEquity = 0.0;
+datetime g_ackSignalTs = 0;
+datetime g_ackExecTs = 0;
+int      g_ackRetcode = 0;
+string   g_ackRetmsg = "";
 
 string   g_stopRetrySignalId[];
 ulong    g_stopRetryTicket[];
@@ -1054,12 +1075,44 @@ bool FitVolumeToFreeMargin(const string action,
 void Ack(const string signalId, const string status, const string ticket, const string err)
 {
    string url = InpServerBaseUrl + "/mt5/ea/ack";
+   string ackNote = "action=" + g_ackAction
+                    + " symbol=" + g_ackSymbol
+                    + " reqVol=" + DoubleToString(g_ackReqVolume, 4)
+                    + " usedVol=" + DoubleToString(g_ackUsedVolume, 4)
+                    + " reqSL=" + DoubleToString(g_ackReqSl, 8)
+                    + " reqTP=" + DoubleToString(g_ackReqTp, 8)
+                    + " usedSL=" + DoubleToString(g_ackUsedSl, 8)
+                    + " usedTP=" + DoubleToString(g_ackUsedTp, 8)
+                    + " marginReq=" + DoubleToString(g_ackMarginReq, 2)
+                    + " freeMargin=" + DoubleToString(g_ackFreeMargin, 2)
+                    + " bal=" + DoubleToString(g_ackBalance, 2)
+                    + " eq=" + DoubleToString(g_ackEquity, 2);
+   if(StringLen(g_ackVolumeNote) > 0) ackNote += " volNote=" + g_ackVolumeNote;
+   if(StringLen(g_ackStopNote) > 0) ackNote += " stopNote=" + g_ackStopNote;
    string body = "{";
    body += "\"api_key\":\"" + JsonEscape(InpEaApiKey) + "\",";
    body += "\"signal_id\":\"" + JsonEscape(signalId) + "\",";
    body += "\"status\":\"" + JsonEscape(status) + "\",";
    body += "\"ticket\":\"" + JsonEscape(ticket) + "\",";
-   body += "\"error\":\"" + JsonEscape(err) + "\"";
+   body += "\"error\":\"" + JsonEscape(err) + "\",";
+   body += "\"result\":\"" + JsonEscape(IntegerToString(g_ackRetcode)) + "\",";
+   body += "\"message\":\"" + JsonEscape(g_ackRetmsg) + "\",";
+   body += "\"note\":\"" + JsonEscape(ackNote) + "\",";
+   body += "\"action\":\"" + JsonEscape(g_ackAction) + "\",";
+   body += "\"symbol\":\"" + JsonEscape(g_ackSymbol) + "\",";
+   body += "\"requested_volume\":" + DoubleToString(g_ackReqVolume, 4) + ",";
+   body += "\"used_volume\":" + DoubleToString(g_ackUsedVolume, 4) + ",";
+   body += "\"requested_sl\":" + DoubleToString(g_ackReqSl, 8) + ",";
+   body += "\"requested_tp\":" + DoubleToString(g_ackReqTp, 8) + ",";
+   body += "\"used_sl\":" + DoubleToString(g_ackUsedSl, 8) + ",";
+   body += "\"used_tp\":" + DoubleToString(g_ackUsedTp, 8) + ",";
+   body += "\"entry_price_exec\":" + DoubleToString(g_ackEntryExec, 8) + ",";
+   body += "\"margin_req\":" + DoubleToString(g_ackMarginReq, 2) + ",";
+   body += "\"free_margin\":" + DoubleToString(g_ackFreeMargin, 2) + ",";
+   body += "\"balance\":" + DoubleToString(g_ackBalance, 2) + ",";
+   body += "\"equity\":" + DoubleToString(g_ackEquity, 2) + ",";
+   body += "\"signal_ts\":" + IntegerToString((int)g_ackSignalTs) + ",";
+   body += "\"exec_ts\":" + IntegerToString((int)g_ackExecTs);
    body += "}";
    HttpPostJson(url, body);
 }
@@ -1225,10 +1278,30 @@ bool ExecuteSignal(const string signalId,
    g_dbgLastSymbol = symbolRaw;
    g_dbgLastError = "";
    g_dbgLastTime = TimeCurrent();
+   g_ackAction = actionRaw;
+   g_ackSymbol = symbolRaw;
+   g_ackVolumeNote = "";
+   g_ackStopNote = "";
+   g_ackReqVolume = volume;
+   g_ackUsedVolume = volume;
+   g_ackReqSl = sl;
+   g_ackReqTp = tp;
+   g_ackUsedSl = sl;
+   g_ackUsedTp = tp;
+   g_ackEntryExec = 0.0;
+   g_ackMarginReq = 0.0;
+   g_ackFreeMargin = AccountInfoDouble(ACCOUNT_FREEMARGIN);
+   g_ackBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+   g_ackEquity = AccountInfoDouble(ACCOUNT_EQUITY);
+   g_ackSignalTs = signalTs;
+   g_ackExecTs = TimeCurrent();
+   g_ackRetcode = 0;
+   g_ackRetmsg = "";
 
    string action = actionRaw;
    StringToUpper(action);
    g_dbgLastAction = action;
+   g_ackAction = action;
 
    if(StringLen(signalId) == 0 || StringLen(action) == 0)
    {
@@ -1284,6 +1357,7 @@ bool ExecuteSignal(const string signalId,
       Print("Symbol not found, fallback to chart symbol: ", symbolRaw, " -> ", symbol);
    }
    g_dbgLastSymbol = symbol;
+   g_ackSymbol = symbol;
 
    trade.SetExpertMagicNumber(InpMagic);
    trade.SetDeviationInPoints(InpDeviationPts);
@@ -1298,6 +1372,9 @@ bool ExecuteSignal(const string signalId,
             " (input sl=", DoubleToString(sl, 8), ", tp=", DoubleToString(tp, 8),
             " => used sl=", DoubleToString(slUse, 8), ", tp=", DoubleToString(tpUse, 8), ")");
    }
+   g_ackStopNote = stopAdjustNote;
+   g_ackUsedSl = slUse;
+   g_ackUsedTp = tpUse;
 
    bool ok = false;
    double volumeUse = volume;
@@ -1334,6 +1411,7 @@ bool ExecuteSignal(const string signalId,
       if(StringLen(volumeNote) > 0) volumeNote += " ";
       volumeNote += normNote;
    }
+   g_ackVolumeNote = volumeNote;
    if(volumeUse != volume || StringLen(volumeNote) > 0)
    {
       Print("Volume adjusted for ", signalId, " ", symbol,
@@ -1361,6 +1439,18 @@ bool ExecuteSignal(const string signalId,
       }
       volumeUse = marginVolume;
    }
+   g_ackUsedVolume = volumeUse;
+   if(action == "BUY" || action == "SELL")
+   {
+      MqlTick t;
+      if(SymbolInfoTick(symbol, t))
+      {
+         double px = (action == "BUY" ? t.ask : t.bid);
+         double mr = 0.0;
+         if(OrderCalcMargin((action == "BUY" ? ORDER_TYPE_BUY : ORDER_TYPE_SELL), symbol, volumeUse, px, mr))
+            g_ackMarginReq = mr;
+      }
+   }
    if(action == "BUY")
       ok = trade.Buy(volumeUse, symbol, 0.0, 0.0, 0.0, comment);
    else if(action == "SELL")
@@ -1383,6 +1473,8 @@ bool ExecuteSignal(const string signalId,
    if(!ok)
    {
       uint rc = trade.ResultRetcode();
+      g_ackRetcode = (int)rc;
+      g_ackRetmsg = trade.ResultRetcodeDescription();
       // Broker rejected stops (10016). Retry market order without SL/TP.
       if((action == "BUY" || action == "SELL") && rc == TRADE_RETCODE_INVALID_STOPS)
       {
@@ -1414,6 +1506,8 @@ bool ExecuteSignal(const string signalId,
 
       if(!ok)
       {
+         g_ackRetcode = (int)trade.ResultRetcode();
+         g_ackRetmsg = trade.ResultRetcodeDescription();
          errOut = "retcode=" + IntegerToString((int)trade.ResultRetcode()) + " msg=" + trade.ResultRetcodeDescription();
          g_dbgLastStatus = "ORDER_FAILED";
          g_dbgLastError = errOut;
@@ -1452,6 +1546,16 @@ bool ExecuteSignal(const string signalId,
    }
 
    ticketOut = IntegerToString((int)trade.ResultOrder());
+   g_ackRetcode = (int)trade.ResultRetcode();
+   g_ackRetmsg = trade.ResultRetcodeDescription();
+   g_ackExecTs = TimeCurrent();
+   if(action == "BUY" || action == "SELL")
+   {
+      ulong ptk = 0;
+      FindLatestPositionTicket(symbol, InpMagic, ptk);
+      if(ptk > 0 && PositionSelectByTicket(ptk))
+         g_ackEntryExec = PositionGetDouble(POSITION_PRICE_OPEN);
+   }
    RememberSignal(signalId);
     g_dbgLastStatus = "EXECUTED_OK";
     g_dbgLastError = "";

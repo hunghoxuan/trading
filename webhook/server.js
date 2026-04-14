@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.14-04");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.14-05");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -2711,7 +2711,9 @@ const server = http.createServer(async (req, res) => {
       const ackSummary = [ackResult, ackMessage, ackNote]
         .filter((v) => v !== null && v !== undefined && String(v).trim() !== "")
         .join(" | ");
-      const ackErrorCombined = payload.error ?? (ackSummary || null);
+      const ackErrorCombined = [payload.error, ackSummary]
+        .filter((v) => v !== null && v !== undefined && String(v).trim() !== "")
+        .join(" | ") || null;
       const retryableConnectivityFail = mt5IsRetryableConnectivityFail(status, ackErrorCombined);
 
       await mt5AckSignal(signalId, status, payload.ticket, ackErrorCombined, {
