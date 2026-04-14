@@ -1619,7 +1619,7 @@ async function mt5InitBackend() {
       try {
         await client.query("BEGIN");
         const selected = await client.query(`
-          SELECT signal_id, status
+          SELECT *
           FROM signals
           WHERE signal_id = ANY($1::text[])
           FOR UPDATE
@@ -1631,28 +1631,35 @@ async function mt5InitBackend() {
           if (cur === "NEW" || cur === "LOCKED") continue;
           const renewedId = mt5RenewSignalId(oldId);
           const now = mt5NowIso();
-          const upd = await client.query(`
-            UPDATE signals
-            SET signal_id = $1,
-                created_at = $2,
-                status = 'NEW',
-                locked_at = NULL,
-                ack_at = NULL,
-                opened_at = NULL,
-                closed_at = NULL,
-                ack_status = NULL,
-                ack_ticket = NULL,
-                ack_error = NULL
-            WHERE signal_id = $3
-          `, [renewedId, now, oldId]);
-          if ((upd.rowCount || 0) > 0) {
-            await client.query(`
-              UPDATE signal_events
-              SET signal_id = $1
-              WHERE signal_id = $2
-            `, [renewedId, oldId]);
-            updatedIds.push(renewedId);
-          }
+          const ins = await client.query(`
+            INSERT INTO signals (
+              signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
+              source_tf, chart_tf, rr_planned, risk_money_planned,
+              pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
+              note, raw_json, status, locked_at, ack_at, opened_at, closed_at,
+              ack_status, ack_ticket, ack_error
+            )
+            VALUES (
+              $1, $2, $3, $4, $5, $6, $7, $8, $9,
+              $10, $11, $12, $13,
+              NULL, NULL, NULL, NULL,
+              $14, $15, 'NEW', NULL, NULL, NULL, NULL,
+              NULL, NULL, NULL
+            )
+            ON CONFLICT (signal_id) DO NOTHING
+          `, [
+            renewedId, now, row.user_id, row.source, row.action, row.symbol, row.volume, row.sl, row.tp,
+            row.source_tf, row.chart_tf, row.rr_planned, row.risk_money_planned,
+            row.note, row.raw_json,
+          ]);
+          if ((ins.rowCount || 0) <= 0) continue;
+          await client.query(`
+            UPDATE signal_events
+            SET signal_id = $1
+            WHERE signal_id = $2
+          `, [renewedId, oldId]);
+          await client.query(`DELETE FROM signals WHERE signal_id = $1`, [oldId]);
+          updatedIds.push(renewedId);
         }
         await client.query("COMMIT");
         return { updated: updatedIds.length, updated_ids: updatedIds };
