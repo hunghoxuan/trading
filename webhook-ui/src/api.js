@@ -249,5 +249,6 @@ export const api = {
   trade: (signalId) => get(`/mt5/trades/${encodeURIComponent(signalId)}`),
   deleteTrades: (params) => post("/mt5/trades/delete", params),
   cancelTrades: (params) => post("/mt5/trades/cancel", params),
+  renewTrades: (params) => post("/mt5/trades/renew", params),
   downloadBacktestCsv: (params) => downloadCsv("/csv", params),
 };

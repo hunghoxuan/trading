@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.14-02");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.14-03");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -760,6 +760,29 @@ async function mt5InitBackend() {
         if (updatedIds.length > 0) mt5WriteJsonDb(db);
         return { updated: updatedIds.length, updated_ids: updatedIds };
       },
+      async renewSignalsByIds(signalIds) {
+        const ids = new Set((signalIds || []).map((s) => String(s || "")).filter(Boolean));
+        if (!ids.size) return { updated: 0, updated_ids: [] };
+        const db = mt5ReadJsonDb();
+        const updatedIds = [];
+        for (const s of db.signals) {
+          const id = String(s.signal_id || "");
+          if (!ids.has(id)) continue;
+          const cur = mt5CanonicalStoredStatus(s.status);
+          if (cur === "NEW" || cur === "LOCKED") continue;
+          s.status = "NEW";
+          s.locked_at = null;
+          s.ack_at = null;
+          s.opened_at = null;
+          s.closed_at = null;
+          s.ack_status = null;
+          s.ack_ticket = null;
+          s.ack_error = null;
+          updatedIds.push(id);
+        }
+        if (updatedIds.length > 0) mt5WriteJsonDb(db);
+        return { updated: updatedIds.length, updated_ids: updatedIds };
+      },
     };
     return MT5_BACKEND;
   }
@@ -1109,6 +1132,35 @@ async function mt5InitBackend() {
         const tx = db.transaction((arr) => {
           for (const id of arr) {
             const res = update.run(now, id);
+            if ((res.changes || 0) > 0) {
+              updatedIds.push(id);
+            }
+          }
+        });
+        tx(ids);
+        return { updated: updatedIds.length, updated_ids: updatedIds };
+      },
+      async renewSignalsByIds(signalIds) {
+        const ids = Array.isArray(signalIds)
+          ? signalIds.map((s) => String(s || "")).filter(Boolean)
+          : [];
+        if (!ids.length) return { updated: 0, updated_ids: [] };
+        const update = db.prepare(`
+          UPDATE signals
+          SET status = 'NEW',
+              locked_at = NULL,
+              ack_at = NULL,
+              opened_at = NULL,
+              closed_at = NULL,
+              ack_status = NULL,
+              ack_ticket = NULL,
+              ack_error = NULL
+          WHERE signal_id = ? AND status NOT IN ('NEW','LOCKED')
+        `);
+        const updatedIds = [];
+        const tx = db.transaction((arr) => {
+          for (const id of arr) {
+            const res = update.run(id);
             if ((res.changes || 0) > 0) {
               updatedIds.push(id);
             }
@@ -1524,6 +1576,26 @@ async function mt5InitBackend() {
       `, [now, ids]);
       return { updated: res.rowCount || 0, updated_ids: (res.rows || []).map((r) => String(r.signal_id || "")) };
     },
+    async renewSignalsByIds(signalIds) {
+      const ids = Array.isArray(signalIds)
+        ? signalIds.map((s) => String(s || "")).filter(Boolean)
+        : [];
+      if (!ids.length) return { updated: 0, updated_ids: [] };
+      const res = await pool.query(`
+        UPDATE signals
+        SET status = 'NEW',
+            locked_at = NULL,
+            ack_at = NULL,
+            opened_at = NULL,
+            closed_at = NULL,
+            ack_status = NULL,
+            ack_ticket = NULL,
+            ack_error = NULL
+        WHERE signal_id = ANY($1::text[]) AND status NOT IN ('NEW','LOCKED')
+        RETURNING signal_id
+      `, [ids]);
+      return { updated: res.rowCount || 0, updated_ids: (res.rows || []).map((r) => String(r.signal_id || "")) };
+    },
   };
   return MT5_BACKEND;
 }
@@ -1795,6 +1867,16 @@ async function mt5CancelSignalsByIds(signalIds) {
   const b = await mt5Backend();
   if (!b.cancelSignalsByIds) return { updated: 0, updated_ids: [] };
   return b.cancelSignalsByIds(ids);
+}
+
+async function mt5RenewSignalsByIds(signalIds) {
+  const ids = Array.isArray(signalIds)
+    ? signalIds.map((s) => String(s || "").trim()).filter(Boolean)
+    : [];
+  if (!ids.length) return { updated: 0, updated_ids: [] };
+  const b = await mt5Backend();
+  if (!b.renewSignalsByIds) return { updated: 0, updated_ids: [] };
+  return b.renewSignalsByIds(ids);
 }
 
 function mt5CsvTimestamp(value) {
@@ -2304,6 +2386,33 @@ const server = http.createServer(async (req, res) => {
         filters,
         scanned_limit: limit,
         target_status: "CANCEL",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/mt5/trades/renew") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    try {
+      const payload = await readJson(req);
+      if (!requireAdminKey(req, res, url, payload)) return;
+      const { rows, filters, limit } = await mt5GetFilteredTrades(url, payload, 50000);
+      const ids = rows.map((r) => String(r.signal_id || "")).filter(Boolean);
+      const updated = await mt5RenewSignalsByIds(ids);
+      for (const signalId of (updated.updated_ids || [])) {
+        await mt5AppendSignalEvent(signalId, "MANUAL_RENEW", {
+          via: "ui_bulk_renew",
+        });
+      }
+      return json(res, 200, {
+        ok: true,
+        updated: updated.updated || 0,
+        matched: ids.length,
+        filters,
+        scanned_limit: limit,
+        target_status: "NEW",
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";

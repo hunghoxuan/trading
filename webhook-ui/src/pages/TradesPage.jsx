@@ -3,7 +3,7 @@ import { api } from "../api";
 import TradeCard from "../components/TradeCard";
 
 const STATUS_OPTIONS = ["", "NEW", "LOCKED", "OK", "START", "FAIL", "TP", "SL", "CANCEL", "EXPIRED"];
-const BULK_ACTIONS = ["", "Download CSV", "Cancel All", "Delete All"];
+const BULK_ACTIONS = ["", "Download CSV", "Renew All", "Cancel All", "Delete All"];
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 200];
 const RANGE_OPTIONS = ["", "today", "week", "month"];
 
@@ -147,10 +147,35 @@ export default function TradesPage() {
     }
   }
 
+  async function onRenewAll() {
+    const scopeSymbol = filter.symbol || "ALL";
+    const scopeStatus = filter.status || "ALL";
+    const scopeQ = filter.q || "-";
+    const estimate = total || 0;
+    const ok = window.confirm(
+      `Renew trades in current filter?\n\nSymbol: ${scopeSymbol}\nStatus: ${scopeStatus}\nSearch: ${scopeQ}\nMatched: ${estimate}\n\nStatus will be set back to NEW.`,
+    );
+    if (!ok) return;
+    try {
+      setBulkBusy(true);
+      const res = await api.renewTrades(filteredParams());
+      await loadTrades();
+      await loadSymbols();
+      setError("");
+      window.alert(`Renewed ${res.updated || 0} trade(s) to NEW.`);
+    } catch (e) {
+      setError(e?.message || "Failed to renew trades");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   async function onBulkOk() {
     if (!bulkAction || bulkBusy) return;
     if (bulkAction === "Download CSV") {
       await onDownloadCsv();
+    } else if (bulkAction === "Renew All") {
+      await onRenewAll();
     } else if (bulkAction === "Cancel All") {
       await onCancelAll();
     } else if (bulkAction === "Delete All") {
