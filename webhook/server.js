@@ -552,10 +552,28 @@ function mt5NowIso() {
   return new Date().toISOString();
 }
 
-function mt5RenewSignalId(oldId = "") {
-  const base = String(oldId || "").trim() || "renewed";
-  const rand = Math.floor(Math.random() * 1000000).toString().padStart(6, "0");
-  return `${base}_r_${Date.now()}_${rand}`;
+function mt5RenewSignalIdBase(oldId = "") {
+  const raw = String(oldId || "").trim();
+  if (!raw) return "renewed";
+  return raw.replace(/\.\d+$/, "");
+}
+
+function mt5RenewSignalIdFromExisting(baseId, existingIds) {
+  const base = mt5RenewSignalIdBase(baseId);
+  let max = 0;
+  const ids = Array.isArray(existingIds) ? existingIds : [];
+  for (const idRaw of ids) {
+    const id = String(idRaw || "");
+    if (id === base) {
+      max = Math.max(max, 0);
+      continue;
+    }
+    const match = id.match(new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.(\\d+)$`));
+    if (!match) continue;
+    const n = Number(match[1]);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return `${base}.${max + 1}`;
 }
 
 let MT5_BACKEND = null;
@@ -785,12 +803,13 @@ async function mt5InitBackend() {
         const updatedIds = [];
         const now = mt5NowIso();
         const renewedFromIds = new Set();
+        const existingIds = new Set((db.signals || []).map((s) => String(s.signal_id || "")));
         for (const s of db.signals) {
           const id = String(s.signal_id || "");
           if (!ids.has(id)) continue;
           const cur = mt5CanonicalStoredStatus(s.status);
           if (cur === "NEW" || cur === "LOCKED") continue;
-          const renewedId = mt5RenewSignalId(id);
+          const renewedId = mt5RenewSignalIdFromExisting(id, [...existingIds]);
           s.signal_id = renewedId;
           s.created_at = now;
           s.status = "NEW";
@@ -803,6 +822,8 @@ async function mt5InitBackend() {
           s.ack_error = null;
           updatedIds.push(renewedId);
           renewedFromIds.add(id);
+          existingIds.delete(id);
+          existingIds.add(renewedId);
         }
         if (renewedFromIds.size > 0) {
           db.signal_events = (db.signal_events || []).filter((e) => !renewedFromIds.has(String(e.signal_id || "")));
@@ -1192,6 +1213,11 @@ async function mt5InitBackend() {
           WHERE signal_id = ?
         `);
         const deleteEvents = db.prepare(`DELETE FROM signal_events WHERE signal_id = ?`);
+        const listExistingForBase = db.prepare(`
+          SELECT signal_id
+          FROM signals
+          WHERE signal_id = ? OR signal_id LIKE ?
+        `);
         const updatedIds = [];
         const tx = db.transaction((arr) => {
           for (const id of arr) {
@@ -1199,7 +1225,9 @@ async function mt5InitBackend() {
             if (!row) continue;
             const cur = mt5CanonicalStoredStatus(row.status);
             if (cur === "NEW" || cur === "LOCKED") continue;
-            const renewedId = mt5RenewSignalId(id);
+            const base = mt5RenewSignalIdBase(id);
+            const existingRows = listExistingForBase.all(base, `${base}.%`);
+            const renewedId = mt5RenewSignalIdFromExisting(base, existingRows.map((r) => String(r.signal_id || "")));
             const now = mt5NowIso();
             const res = update.run(renewedId, now, id);
             if ((res.changes || 0) > 0) {
@@ -1637,7 +1665,16 @@ async function mt5InitBackend() {
           const oldId = String(row.signal_id || "");
           const cur = mt5CanonicalStoredStatus(row.status);
           if (cur === "NEW" || cur === "LOCKED") continue;
-          const renewedId = mt5RenewSignalId(oldId);
+          const base = mt5RenewSignalIdBase(oldId);
+          const existingRows = await client.query(`
+            SELECT signal_id
+            FROM signals
+            WHERE signal_id = $1 OR signal_id LIKE $2
+          `, [base, `${base}.%`]);
+          const renewedId = mt5RenewSignalIdFromExisting(
+            base,
+            (existingRows.rows || []).map((r) => String(r.signal_id || "")),
+          );
           const now = mt5NowIso();
           const ins = await client.query(`
             INSERT INTO signals (
@@ -2146,6 +2183,22 @@ function mt5ComputeMetrics(rows) {
   };
 }
 
+function mt5CountBy(rows, pick, { sortDesc = true, limit = 0 } = {}) {
+  const map = new Map();
+  for (const row of rows || []) {
+    const key = String(pick(row) || "").trim();
+    if (!key) continue;
+    map.set(key, (map.get(key) || 0) + 1);
+  }
+  let entries = [...map.entries()].map(([key, count]) => ({ key, count }));
+  entries.sort((a, b) => {
+    if (sortDesc) return b.count - a.count || (a.key < b.key ? -1 : 1);
+    return a.key < b.key ? -1 : 1;
+  });
+  if (limit > 0) entries = entries.slice(0, limit);
+  return entries;
+}
+
 function getApiKeyFromReq(req, payload = null, urlObj = null) {
   const headerKey = String(req.headers["x-api-key"] || "");
   if (headerKey) return headerKey;
@@ -2362,6 +2415,13 @@ const server = http.createServer(async (req, res) => {
       const allRows = await mt5ListSignals(limit, "");
       const rows = mt5FilterRows(allRows, { userId });
       const notProcessed = rows.filter((r) => ["NEW", "LOCKED"].includes(String(r.status || "")));
+      const statusCounts = mt5CountBy(rows, (r) => mt5CanonicalStoredStatus(r.status));
+      const actionCounts = mt5CountBy(rows, (r) => String(r.action || "").toUpperCase());
+      const orderTypeCounts = mt5CountBy(
+        rows,
+        (r) => String(r.raw_json?.order_type || r.raw_json?.orderType || "limit").toUpperCase(),
+      );
+      const topSymbols = mt5CountBy(rows, (r) => String(r.symbol || "").toUpperCase(), { limit: 10 });
 
       const dayRange = mt5PeriodRange("today");
       const weekRange = mt5PeriodRange("week");
@@ -2381,6 +2441,10 @@ const server = http.createServer(async (req, res) => {
           week: mt5ComputeMetrics(weekRows).pnl_money_realized,
           month: mt5ComputeMetrics(monthRows).pnl_money_realized,
         },
+        status_counts: statusCounts,
+        action_counts: actionCounts,
+        order_type_counts: orderTypeCounts,
+        top_symbols: topSymbols,
         latest_unprocessed: notProcessed.slice(0, 20).map(mt5PublicState),
       });
     } catch (error) {

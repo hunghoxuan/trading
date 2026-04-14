@@ -14,19 +14,6 @@ function sideClass(action) {
   return "side";
 }
 
-function compactAck(trade) {
-  const status = String(trade?.ack_status || "").trim();
-  const error = String(trade?.ack_error || "").trim();
-  if (!error) return [status, trade?.ack_ticket].filter(Boolean).join(" | ") || "-";
-
-  const retcode = (error.match(/retcode=\d+/i) || [])[0] || "";
-  const msgMatch = error.match(/msg=([^|[\]]+)/i);
-  const msg = msgMatch ? `msg=${msgMatch[1].trim()}` : "";
-  const expired = error.includes("Expired signal ignored");
-  const core = expired ? "msg=expired signal" : [retcode, msg].filter(Boolean).join(" ");
-  return [status, core || error.split("|")[0].trim()].filter(Boolean).join(" | ");
-}
-
 function positiveOrNull(value) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : null;
@@ -44,7 +31,6 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
     trade?.raw_json?.strategy
     || (String(trade.note || "").includes("|") ? String(trade.note || "").split("|")[0].trim() : "")
     || "-";
-  const ackResultText = compactAck(trade);
   const pnlValue = trade.pnl_money_realized;
   const pnlNumber = Number(pnlValue);
   const hasPnl = pnlValue !== null && pnlValue !== undefined && pnlValue !== "" && Number.isFinite(pnlNumber);
@@ -89,7 +75,6 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
           <span><span className="muted small">ChartTF:</span> {chartTf}, <span className="muted small">HTF:</span> {htf}</span>
           <span><span className="muted small">Strategy:</span> {strategy}</span>
           <span><span className="muted small">Note:</span> <span className="muted blur">{trade.note || "-"}</span></span>
-          <span className="ack-right"><span className="muted small">Ack Result:</span> {ackResultText || "-"}</span>
         </div>
       </Link>
     </article>

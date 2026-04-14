@@ -39,6 +39,36 @@ a { color: var(--accent); text-decoration: none; }
 .kpi-label { color: var(--muted); font-size: 12px; }
 .kpi-value { font-size: 24px; font-weight: 700; margin-top: 2px; }
 .kpi-hint { color: var(--muted); font-size: 12px; }
+.dashboard-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.spark-wrap {
+  height: 92px;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid #23304a;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.4), rgba(2, 6, 23, 0.7));
+}
+.spark-bar { flex: 1 1 auto; min-width: 4px; border-radius: 3px 3px 0 0; opacity: 0.9; }
+.spark-bar.pos { background: #22c55e; }
+.spark-bar.neg { background: #ef4444; }
+.mini-bars { display: grid; gap: 6px; }
+.mini-row { display: grid; grid-template-columns: 62px 1fr 34px; align-items: center; gap: 8px; }
+.mini-label { font-size: 12px; color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-track { height: 9px; border-radius: 999px; background: rgba(51, 65, 85, 0.45); overflow: hidden; }
+.mini-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #0ea5e9, #38bdf8); }
+.mini-fill.alt { background: linear-gradient(90deg, #22c55e, #14b8a6); }
+.mini-val { font-size: 12px; color: #94a3b8; text-align: right; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.dash-chip {
+  font-size: 11px;
+  color: #bae6fd;
+  border: 1px solid #1e3a5f;
+  background: rgba(2, 132, 199, 0.14);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
 
 .split-layout { display: grid; grid-template-columns: 300px 1fr; gap: 12px; }
 .trade-list { display: grid; gap: 10px; margin-top: 10px; }
@@ -149,6 +179,7 @@ button { cursor: pointer; }
   .topbar { flex-wrap: wrap; gap: 8px; }
   .keybar { width: 100%; }
   .split-layout { grid-template-columns: 1fr; }
+  .dashboard-grid { grid-template-columns: 1fr; }
   .filters-top, .filters-top.single-line { grid-template-columns: 1fr; }
   .trade-bottom-line { flex-direction: column; align-items: flex-start; }
   .trade-bottom-line .ack-right { margin-left: 0; text-align: left; }
