@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.14-03");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.14-04");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -772,6 +772,7 @@ async function mt5InitBackend() {
         const db = mt5ReadJsonDb();
         const updatedIds = [];
         const now = mt5NowIso();
+        const renewedFromIds = new Set();
         for (const s of db.signals) {
           const id = String(s.signal_id || "");
           if (!ids.has(id)) continue;
@@ -789,11 +790,10 @@ async function mt5InitBackend() {
           s.ack_ticket = null;
           s.ack_error = null;
           updatedIds.push(renewedId);
-          for (const e of (db.signal_events || [])) {
-            if (String(e.signal_id || "") === id) {
-              e.signal_id = renewedId;
-            }
-          }
+          renewedFromIds.add(id);
+        }
+        if (renewedFromIds.size > 0) {
+          db.signal_events = (db.signal_events || []).filter((e) => !renewedFromIds.has(String(e.signal_id || "")));
         }
         if (updatedIds.length > 0) mt5WriteJsonDb(db);
         return { updated: updatedIds.length, updated_ids: updatedIds };
@@ -1179,11 +1179,7 @@ async function mt5InitBackend() {
               ack_error = NULL
           WHERE signal_id = ?
         `);
-        const updateEvents = db.prepare(`
-          UPDATE signal_events
-          SET signal_id = ?
-          WHERE signal_id = ?
-        `);
+        const deleteEvents = db.prepare(`DELETE FROM signal_events WHERE signal_id = ?`);
         const updatedIds = [];
         const tx = db.transaction((arr) => {
           for (const id of arr) {
@@ -1195,7 +1191,7 @@ async function mt5InitBackend() {
             const now = mt5NowIso();
             const res = update.run(renewedId, now, id);
             if ((res.changes || 0) > 0) {
-              updateEvents.run(renewedId, id);
+              deleteEvents.run(id);
               updatedIds.push(renewedId);
             }
           }
@@ -1653,11 +1649,7 @@ async function mt5InitBackend() {
             row.note, row.raw_json,
           ]);
           if ((ins.rowCount || 0) <= 0) continue;
-          await client.query(`
-            UPDATE signal_events
-            SET signal_id = $1
-            WHERE signal_id = $2
-          `, [renewedId, oldId]);
+          await client.query(`DELETE FROM signal_events WHERE signal_id = $1`, [oldId]);
           await client.query(`DELETE FROM signals WHERE signal_id = $1`, [oldId]);
           updatedIds.push(renewedId);
         }
@@ -2496,11 +2488,6 @@ const server = http.createServer(async (req, res) => {
       const { rows, filters, limit } = await mt5GetFilteredTrades(url, payload, 50000);
       const ids = rows.map((r) => String(r.signal_id || "")).filter(Boolean);
       const updated = await mt5RenewSignalsByIds(ids);
-      for (const signalId of (updated.updated_ids || [])) {
-        await mt5AppendSignalEvent(signalId, "MANUAL_RENEW", {
-          via: "ui_bulk_renew",
-        });
-      }
       return json(res, 200, {
         ok: true,
         updated: updated.updated || 0,
