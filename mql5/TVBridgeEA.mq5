@@ -13,6 +13,7 @@ input int    InpStopBufferPts = 50;   // Extra safety distance (points) on top o
 input bool   InpUseRiskPercentSizing = true; // true: lots = risk% of balance by SL distance.
 input double InpRiskPercentOfBalance = 1.0; // 1.0 = risk 1% of ACCOUNT_BALANCE per trade.
 input double InpFallbackFixedLot = 0.01; // Used when risk sizing cannot be calculated (e.g., missing SL).
+input bool   InpHardFailOnMarginPrecheck = false; // true: stop immediately on margin precheck fail; false: still try broker with min lot once.
 input int    InpStopRetrySeconds = 5; // Retry interval for attaching SL/TP after order open.
 input int    InpStopRetryMaxAttempts = 24; // Max retry attempts (24 * 5s = 2 minutes by default).
 input bool   InpEnableVirtualGuard = true; // Track and close positions by virtual SL/TP rules.
@@ -33,7 +34,7 @@ input bool   InpBacktestHasHeader   = true;
 input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comment().
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-14.10";
+string EA_BUILD_VERSION = "2026-04-14.11";
 
 CTrade trade;
 
@@ -1425,20 +1426,50 @@ bool ExecuteSignal(const string signalId,
       string marginNote = "";
       if(!FitVolumeToFreeMargin(action, symbol, volumeUse, marginVolume, marginNote))
       {
-         errOut = "retcode=10019 msg=not enough money " + marginNote;
-         g_dbgLastStatus = "NO_MONEY_PRECHECK";
-         g_dbgLastError = errOut;
-         RefreshDebugPanel();
-         return false;
+         string precheckNote = "[margin_precheck_fail] " + marginNote;
+         if(InpHardFailOnMarginPrecheck)
+         {
+            errOut = "retcode=10019 msg=not enough money " + marginNote;
+            g_dbgLastStatus = "NO_MONEY_PRECHECK";
+            g_dbgLastError = errOut;
+            RefreshDebugPanel();
+            return false;
+         }
+
+         double tryMinVol = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+         if(tryMinVol <= 0.0) tryMinVol = 0.01;
+         string minNormNote = "";
+         if(!NormalizeVolumeForSymbol(symbol, tryMinVol, tryMinVol, minNormNote))
+         {
+            errOut = "retcode=10019 msg=not enough money " + marginNote + " [min_lot_norm_failed]";
+            g_dbgLastStatus = "NO_MONEY_PRECHECK";
+            g_dbgLastError = errOut;
+            RefreshDebugPanel();
+            return false;
+         }
+
+         Print("Margin precheck failed for ", signalId, " ", symbol,
+               " -> still trying broker once with min lot ",
+               DoubleToString(tryMinVol, 4), " ", precheckNote);
+         volumeUse = tryMinVol;
+         if(StringLen(volumeNote) > 0) volumeNote += " ";
+         volumeNote += precheckNote;
+         if(StringLen(minNormNote) > 0) volumeNote += " " + minNormNote;
       }
-      if(marginVolume != volumeUse || StringLen(marginNote) > 0)
+      else if(marginVolume != volumeUse || StringLen(marginNote) > 0)
       {
          Print("Margin-fit volume for ", signalId, " ", symbol,
                " used=", DoubleToString(volumeUse, 4),
                " -> fit=", DoubleToString(marginVolume, 4), " ", marginNote);
+         if(StringLen(marginNote) > 0)
+         {
+            if(StringLen(volumeNote) > 0) volumeNote += " ";
+            volumeNote += marginNote;
+         }
+         volumeUse = marginVolume;
       }
-      volumeUse = marginVolume;
    }
+   g_ackVolumeNote = volumeNote;
    g_ackUsedVolume = volumeUse;
    if(action == "BUY" || action == "SELL")
    {
