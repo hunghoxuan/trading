@@ -26,7 +26,7 @@ input int    InpVirtualMaxHoldMinutes = 0; // 0=disable time stop, else close af
 input bool   InpStrictSymbolResolve = true;   // Ignore signal if symbol cannot be resolved.
 input bool   InpEnableDuplicateGate = true;   // Ignore duplicated signal_id.
 input int    InpDedupKeepSeconds    = 86400;  // Keep processed signal_id cache for this many seconds.
-input int    InpMaxSignalAgeSeconds = 600;    // 0 = disable. Ignore signal if too old.
+input int    InpMaxSignalAgeSeconds = 1800;   // 0 = disable. Ignore signal if too old.
 input bool   InpBacktestMode        = false;  // Replay signals from file in Strategy Tester.
 input string InpBacktestFileCommon  = "tvbridge_signals.csv"; // Common/Files CSV.
 input bool   InpBacktestHasHeader   = true;
@@ -973,6 +973,84 @@ bool ComputeRiskBasedVolume(const string action,
    return true;
 }
 
+bool FitVolumeToFreeMargin(const string action,
+                           const string symbol,
+                           const double volumeIn,
+                           double &volumeOut,
+                           string &noteOut)
+{
+   noteOut = "";
+   volumeOut = volumeIn;
+   if(!(action == "BUY" || action == "SELL"))
+      return true;
+
+   MqlTick tick;
+   if(!SymbolInfoTick(symbol, tick))
+   {
+      noteOut = "[tick_unavailable_for_margin]";
+      return false;
+   }
+   double price = (action == "BUY" ? tick.ask : tick.bid);
+   if(price <= 0.0)
+   {
+      noteOut = "[price_invalid_for_margin]";
+      return false;
+   }
+   ENUM_ORDER_TYPE orderType = (action == "BUY" ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
+   double freeMargin = AccountInfoDouble(ACCOUNT_FREEMARGIN);
+   if(freeMargin <= 0.0)
+   {
+      noteOut = "[free_margin<=0]";
+      return false;
+   }
+   double freeMarginBudget = freeMargin * 0.98; // keep a small safety buffer for spread changes.
+
+   double vMin = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+   double vStep = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+   if(vMin <= 0.0) vMin = 0.01;
+   if(vStep <= 0.0) vStep = 0.01;
+
+   double v = volumeIn;
+   string normNote = "";
+   if(!NormalizeVolumeForSymbol(symbol, v, v, normNote))
+   {
+      noteOut = "[margin_norm_failed]";
+      return false;
+   }
+
+   double marginReq = 0.0;
+   if(OrderCalcMargin(orderType, symbol, v, price, marginReq) && marginReq > 0.0 && marginReq <= freeMarginBudget)
+   {
+      volumeOut = v;
+      return true;
+   }
+
+   int maxIters = (int)MathCeil((v - vMin) / vStep) + 5;
+   if(maxIters < 1) maxIters = 1;
+   for(int i = 0; i < maxIters; ++i)
+   {
+      v -= vStep;
+      if(v < vMin - 1e-10)
+         break;
+      string n2 = "";
+      if(!NormalizeVolumeForSymbol(symbol, v, v, n2))
+         continue;
+      if(OrderCalcMargin(orderType, symbol, v, price, marginReq) && marginReq > 0.0 && marginReq <= freeMarginBudget)
+      {
+         volumeOut = v;
+         noteOut = "[margin_fit free=" + DoubleToString(freeMargin, 2)
+                   + " req=" + DoubleToString(marginReq, 2) + "]";
+         return true;
+      }
+   }
+
+   double minReq = 0.0;
+   OrderCalcMargin(orderType, symbol, vMin, price, minReq);
+   noteOut = "[no_affordable_volume free=" + DoubleToString(freeMargin, 2)
+             + " req@min=" + DoubleToString(minReq, 2) + "]";
+   return false;
+}
+
 void Ack(const string signalId, const string status, const string ticket, const string err)
 {
    string url = InpServerBaseUrl + "/mt5/ea/ack";
@@ -1263,6 +1341,26 @@ bool ExecuteSignal(const string signalId,
             " -> used=", DoubleToString(volumeUse, 4),
             " ", volumeNote);
    }
+   if(action == "BUY" || action == "SELL")
+   {
+      double marginVolume = volumeUse;
+      string marginNote = "";
+      if(!FitVolumeToFreeMargin(action, symbol, volumeUse, marginVolume, marginNote))
+      {
+         errOut = "retcode=10019 msg=not enough money " + marginNote;
+         g_dbgLastStatus = "NO_MONEY_PRECHECK";
+         g_dbgLastError = errOut;
+         RefreshDebugPanel();
+         return false;
+      }
+      if(marginVolume != volumeUse || StringLen(marginNote) > 0)
+      {
+         Print("Margin-fit volume for ", signalId, " ", symbol,
+               " used=", DoubleToString(volumeUse, 4),
+               " -> fit=", DoubleToString(marginVolume, 4), " ", marginNote);
+      }
+      volumeUse = marginVolume;
+   }
    if(action == "BUY")
       ok = trade.Buy(volumeUse, symbol, 0.0, 0.0, 0.0, comment);
    else if(action == "SELL")
@@ -1293,6 +1391,25 @@ bool ExecuteSignal(const string signalId,
             ok = trade.Buy(volumeUse, symbol, 0.0, 0.0, 0.0, comment);
          else
             ok = trade.Sell(volumeUse, symbol, 0.0, 0.0, 0.0, comment);
+      }
+      // Broker rejected for insufficient margin (10019). Retry with lower affordable volume.
+      if((action == "BUY" || action == "SELL") && !ok && rc == TRADE_RETCODE_NO_MONEY)
+      {
+         double reducedVol = volumeUse;
+         string marginRetryNote = "";
+         if(FitVolumeToFreeMargin(action, symbol, volumeUse - SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP), reducedVol, marginRetryNote)
+            && reducedVol > 0.0 && reducedVol < volumeUse)
+         {
+            Print("NO_MONEY retry with reduced volume for ", signalId, " ", symbol,
+                  " ", DoubleToString(volumeUse, 4), " -> ", DoubleToString(reducedVol, 4),
+                  " ", marginRetryNote);
+            if(action == "BUY")
+               ok = trade.Buy(reducedVol, symbol, 0.0, 0.0, 0.0, comment);
+            else
+               ok = trade.Sell(reducedVol, symbol, 0.0, 0.0, 0.0, comment);
+            if(ok)
+               volumeUse = reducedVol;
+         }
       }
 
       if(!ok)
