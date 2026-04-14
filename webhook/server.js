@@ -552,6 +552,12 @@ function mt5NowIso() {
   return new Date().toISOString();
 }
 
+function mt5RenewSignalId(oldId = "") {
+  const base = String(oldId || "").trim() || "renewed";
+  const rand = Math.floor(Math.random() * 1000000).toString().padStart(6, "0");
+  return `${base}_r_${Date.now()}_${rand}`;
+}
+
 let MT5_BACKEND = null;
 
 function mt5LegacyJsonPath() {
@@ -765,11 +771,15 @@ async function mt5InitBackend() {
         if (!ids.size) return { updated: 0, updated_ids: [] };
         const db = mt5ReadJsonDb();
         const updatedIds = [];
+        const now = mt5NowIso();
         for (const s of db.signals) {
           const id = String(s.signal_id || "");
           if (!ids.has(id)) continue;
           const cur = mt5CanonicalStoredStatus(s.status);
           if (cur === "NEW" || cur === "LOCKED") continue;
+          const renewedId = mt5RenewSignalId(id);
+          s.signal_id = renewedId;
+          s.created_at = now;
           s.status = "NEW";
           s.locked_at = null;
           s.ack_at = null;
@@ -778,7 +788,12 @@ async function mt5InitBackend() {
           s.ack_status = null;
           s.ack_ticket = null;
           s.ack_error = null;
-          updatedIds.push(id);
+          updatedIds.push(renewedId);
+          for (const e of (db.signal_events || [])) {
+            if (String(e.signal_id || "") === id) {
+              e.signal_id = renewedId;
+            }
+          }
         }
         if (updatedIds.length > 0) mt5WriteJsonDb(db);
         return { updated: updatedIds.length, updated_ids: updatedIds };
@@ -1145,9 +1160,16 @@ async function mt5InitBackend() {
           ? signalIds.map((s) => String(s || "")).filter(Boolean)
           : [];
         if (!ids.length) return { updated: 0, updated_ids: [] };
+        const pick = db.prepare(`
+          SELECT signal_id, status
+          FROM signals
+          WHERE signal_id = ?
+        `);
         const update = db.prepare(`
           UPDATE signals
-          SET status = 'NEW',
+          SET signal_id = ?,
+              created_at = ?,
+              status = 'NEW',
               locked_at = NULL,
               ack_at = NULL,
               opened_at = NULL,
@@ -1155,14 +1177,26 @@ async function mt5InitBackend() {
               ack_status = NULL,
               ack_ticket = NULL,
               ack_error = NULL
-          WHERE signal_id = ? AND status NOT IN ('NEW','LOCKED')
+          WHERE signal_id = ?
+        `);
+        const updateEvents = db.prepare(`
+          UPDATE signal_events
+          SET signal_id = ?
+          WHERE signal_id = ?
         `);
         const updatedIds = [];
         const tx = db.transaction((arr) => {
           for (const id of arr) {
-            const res = update.run(id);
+            const row = pick.get(id);
+            if (!row) continue;
+            const cur = mt5CanonicalStoredStatus(row.status);
+            if (cur === "NEW" || cur === "LOCKED") continue;
+            const renewedId = mt5RenewSignalId(id);
+            const now = mt5NowIso();
+            const res = update.run(renewedId, now, id);
             if ((res.changes || 0) > 0) {
-              updatedIds.push(id);
+              updateEvents.run(renewedId, id);
+              updatedIds.push(renewedId);
             }
           }
         });
@@ -1581,20 +1615,53 @@ async function mt5InitBackend() {
         ? signalIds.map((s) => String(s || "")).filter(Boolean)
         : [];
       if (!ids.length) return { updated: 0, updated_ids: [] };
-      const res = await pool.query(`
-        UPDATE signals
-        SET status = 'NEW',
-            locked_at = NULL,
-            ack_at = NULL,
-            opened_at = NULL,
-            closed_at = NULL,
-            ack_status = NULL,
-            ack_ticket = NULL,
-            ack_error = NULL
-        WHERE signal_id = ANY($1::text[]) AND status NOT IN ('NEW','LOCKED')
-        RETURNING signal_id
-      `, [ids]);
-      return { updated: res.rowCount || 0, updated_ids: (res.rows || []).map((r) => String(r.signal_id || "")) };
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const selected = await client.query(`
+          SELECT signal_id, status
+          FROM signals
+          WHERE signal_id = ANY($1::text[])
+          FOR UPDATE
+        `, [ids]);
+        const updatedIds = [];
+        for (const row of (selected.rows || [])) {
+          const oldId = String(row.signal_id || "");
+          const cur = mt5CanonicalStoredStatus(row.status);
+          if (cur === "NEW" || cur === "LOCKED") continue;
+          const renewedId = mt5RenewSignalId(oldId);
+          const now = mt5NowIso();
+          const upd = await client.query(`
+            UPDATE signals
+            SET signal_id = $1,
+                created_at = $2,
+                status = 'NEW',
+                locked_at = NULL,
+                ack_at = NULL,
+                opened_at = NULL,
+                closed_at = NULL,
+                ack_status = NULL,
+                ack_ticket = NULL,
+                ack_error = NULL
+            WHERE signal_id = $3
+          `, [renewedId, now, oldId]);
+          if ((upd.rowCount || 0) > 0) {
+            await client.query(`
+              UPDATE signal_events
+              SET signal_id = $1
+              WHERE signal_id = $2
+            `, [renewedId, oldId]);
+            updatedIds.push(renewedId);
+          }
+        }
+        await client.query("COMMIT");
+        return { updated: updatedIds.length, updated_ids: updatedIds };
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
     },
   };
   return MT5_BACKEND;

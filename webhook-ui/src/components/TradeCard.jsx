@@ -29,16 +29,6 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
 
   return (
     <article className="trade-card">
-      <div className="trade-card-select">
-        <label className="trade-check">
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={(e) => onToggleSelect && onToggleSelect(Boolean(e.target.checked))}
-          />
-          <span className="muted small">Select</span>
-        </label>
-      </div>
       <Link to={`/trades/${encodeURIComponent(trade.signal_id)}`} className="trade-link-content">
         <div className="trade-head">
           <div className="trade-title-row main-row">
@@ -48,7 +38,17 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
             <span className="muted small blur">{new Date(trade.created_at).toLocaleString()}</span>
           </div>
           <div className="trade-status-col">
-            <span className={`badge ${trade.status}`}>{trade.status}</span>
+            <div className="trade-status-row">
+              <span className={`badge ${trade.status}`}>{trade.status}</span>
+              <input
+                className="trade-select-input"
+                type="checkbox"
+                checked={selected}
+                onChange={(e) => onToggleSelect && onToggleSelect(Boolean(e.target.checked))}
+                onClick={(e) => e.stopPropagation()}
+                aria-label={`Select ${trade.signal_id}`}
+              />
+            </div>
           </div>
         </div>
 
