@@ -17,6 +17,8 @@ function sideClass(action) {
 export default function TradeCard({ trade, selected = false, onToggleSelect = null }) {
   const chartTf = trade?.chart_tf || trade?.raw_json?.chartTf || "-";
   const htf = trade?.source_tf || trade?.raw_json?.sourceTf || trade?.raw_json?.timeframe || "-";
+  const plannedPrice = trade?.raw_json?.price;
+  const displayPrice = trade?.entry_price_exec ?? plannedPrice ?? "-";
   const strategy =
     trade?.raw_json?.strategy
     || (String(trade.note || "").includes("|") ? String(trade.note || "").split("|")[0].trim() : "")
@@ -53,7 +55,7 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
         </div>
 
         <div className="trade-price-line tight">
-          <span className="kv">Price: {trade.entry_price_exec ?? "-"}</span>
+          <span className="kv">Price: {displayPrice}</span>
           <span className="kv">TP: {trade.tp_exec ?? trade.tp ?? "-"}</span>
           <span className="kv">SL: {trade.sl_exec ?? trade.sl ?? "-"}</span>
           <span className="kv">RR: {trade.rr_planned ?? "-"}</span>
