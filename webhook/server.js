@@ -591,7 +591,16 @@ function mt5WriteJsonDb(db) {
 
 function mt5MapDbRow(row) {
   if (!row) return null;
-  const raw = row.raw_json || {};
+  const rawInput = row.raw_json || {};
+  const raw = typeof rawInput === "object" && rawInput !== null ? { ...rawInput } : {};
+  const rawPrice = Number(raw.price);
+  if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
+    raw.price = null;
+  }
+  const rawEntry = Number(raw.entry);
+  if (!Number.isFinite(rawEntry) || rawEntry <= 0) {
+    raw.entry = null;
+  }
   const execEntry = row.entry_price_exec === null || row.entry_price_exec === undefined ? null : Number(row.entry_price_exec);
   const execSl = row.sl_exec === null || row.sl_exec === undefined ? null : Number(row.sl_exec);
   const execTp = row.tp_exec === null || row.tp_exec === undefined ? null : Number(row.tp_exec);
