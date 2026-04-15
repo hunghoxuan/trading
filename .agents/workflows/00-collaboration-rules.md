@@ -31,6 +31,8 @@
 6. Avoid introducing hardcoded behavior constants in logic blocks; place configurable defaults in `LocalCfg` (without exposing new Settings unless requested).
 7. Before adding any new Setting/input, `LocalCfg` field, or constant, always confirm with the user first on name, label, and meaning/semantics.
 8. When updating server/backend code, always provide detailed deployment instructions in the final response (restart process/service, env/config changes, verification commands, and rollback note if relevant).
+9. For requested backend/UI fixes, execute end-to-end by default: code change -> local validation -> git commit/push -> VPS deploy -> live verification. Do not stop at local-only changes.
+10. Do not ask the user for confirmation during normal fix/deploy flow unless there is destructive risk, missing credentials/access, or an irreversible operation.
 
 ## BIG-PASS / Overnight Mode
 1. Trigger phrase examples:

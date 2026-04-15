@@ -38,7 +38,7 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-14.13";
+string EA_BUILD_VERSION = "2026-04-15.01";
 
 CTrade trade;
 
@@ -1377,6 +1377,7 @@ void Ack(const string signalId, const string status, const string ticket, const 
    if(StringLen(g_ackStopNote) > 0) ackNote += " stopNote=" + g_ackStopNote;
    string body = "{";
    body += "\"api_key\":\"" + JsonEscape(InpEaApiKey) + "\",";
+   body += "\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",";
    body += "\"signal_id\":\"" + JsonEscape(signalId) + "\",";
    body += "\"status\":\"" + JsonEscape(status) + "\",";
    body += "\"ticket\":\"" + JsonEscape(ticket) + "\",";

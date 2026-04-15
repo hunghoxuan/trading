@@ -854,6 +854,17 @@ async function mt5InitBackend() {
         balance_start REAL NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
+      CREATE TABLE IF NOT EXISTS accounts (
+        account_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT,
+        balance REAL,
+        status TEXT,
+        metadata TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(user_id)
+      );
       CREATE TABLE IF NOT EXISTS signals (
         signal_id TEXT PRIMARY KEY,
         created_at TEXT NOT NULL,
@@ -897,6 +908,10 @@ async function mt5InitBackend() {
       CREATE INDEX IF NOT EXISTS idx_signal_events_signal_time
         ON signal_events(signal_id, event_time);
     `);
+
+    ["users", "accounts", "signals", "signal_events"].forEach(tbl => {
+      try { db.exec(`ALTER TABLE ${tbl} ADD COLUMN metadata TEXT`); } catch(e) {}
+    });
 
     // Backward-compatible migration from legacy table name.
     const oldTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='mt5_signals'").get();
@@ -1265,6 +1280,18 @@ async function mt5InitBackend() {
     )
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      account_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      name TEXT,
+      balance DOUBLE PRECISION,
+      status TEXT,
+      metadata JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS signals (
       signal_id TEXT PRIMARY KEY,
       created_at TIMESTAMPTZ NOT NULL,
@@ -1325,6 +1352,11 @@ async function mt5InitBackend() {
     CREATE INDEX IF NOT EXISTS idx_signal_events_signal_time
     ON signal_events(signal_id, event_time)
   `);
+
+  for (const tbl of ["users", "accounts", "signals", "signal_events"]) {
+    await pool.query(`ALTER TABLE ${tbl} ADD COLUMN IF NOT EXISTS metadata JSONB`);
+  }
+
   await pool.query(`
     INSERT INTO users (user_id, user_name, email, balance_start, created_at)
     VALUES ($1, $2, $3, $4, $5)
