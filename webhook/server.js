@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-13");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-14");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1358,6 +1358,13 @@ async function mt5InitBackend() {
     ALTER TABLE signals
     ADD COLUMN IF NOT EXISTS entry_model TEXT
   `);
+  // Broker execution telemetry columns (added 2026-04-15).
+  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS sl_pips FLOAT8`);
+  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS tp_pips FLOAT8`);
+  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS pip_value_per_lot FLOAT8`);
+  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS risk_money_actual FLOAT8`);
+  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS reward_money_planned FLOAT8`);
+
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_signals_status_created
     ON signals(status, created_at)
