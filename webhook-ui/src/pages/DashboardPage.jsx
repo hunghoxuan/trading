@@ -49,8 +49,8 @@ function TableBlock({ title, rows }) {
   });
 
   return (
-    <div className="panel">
-      <div className="panel-head" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+      <div className="panel">
+      <div className="panel-head" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', whiteSpace: 'nowrap'}}>
         <div className="kpi-label period-title" style={{margin: 0, textTransform: 'capitalize'}}>{title}</div>
         <select className="kpi-label period-title" style={{margin: 0, padding: 0, background: 'transparent', border: 'none', outline: 'none', cursor: 'pointer', textAlign: 'right'}} value={orderBy} onChange={(e) => setOrderBy(e.target.value)}>
           <option value="Name">Sort Name</option>
@@ -74,7 +74,7 @@ function TableBlock({ title, rows }) {
           </div>
           {sortedRows.map((r) => (
             <div className="mini-table-row wide" key={r.key}>
-              <span className="mini-name" style={{ flex: '2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.key}>{r.key}</span>
+              <span className="mini-name" style={{ flex: '2', whiteSpace: 'nowrap' }} title={r.key}>{r.key}</span>
               <span>{r.wins}/{r.losses}</span>
               <span>{asPct(r.win_rate)}</span>
               <span className={moneyClass(r.pnl_total)}>{asMoneySigned(r.pnl_total)}</span>
@@ -166,8 +166,8 @@ export default function DashboardPage() {
           <div className="kpi-label">Total PnL</div>
           <div className={`kpi-value ${moneyClass(m.total_pnl)}`}>{asMoneySigned(m.total_pnl || 0)}</div>
           <div className="kpi-hint">
-            Buy: <span className={moneyClass(m.buy_pnl)}>{asMoneySigned(m.buy_pnl || 0)}</span> | 
-            Sell: <span className={moneyClass(m.sell_pnl)}>{asMoneySigned(m.sell_pnl || 0)}</span>
+            Win: <span className={moneyClass(m.buy_pnl)}>{asMoneySigned(m.buy_pnl || 0)}</span> | 
+            Lose: <span className={moneyClass(m.sell_pnl)}>{asMoneySigned(m.sell_pnl || 0)}</span>
           </div>
         </article>
       </div>

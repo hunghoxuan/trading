@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-07");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-08");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1853,6 +1853,11 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   if (!hasRisk) {
     rawJsonNormalized.riskPct = 1.0;
   }
+  // Strip sensitive credentials before persisting to DB.
+  delete rawJsonNormalized.apiKey;
+  delete rawJsonNormalized.api_key;
+  delete rawJsonNormalized.password;
+  delete rawJsonNormalized.token;
   const upsertResult = await mt5UpsertSignal({
     signal_id: signalId,
     created_at: mt5NowIso(),
@@ -1884,6 +1889,12 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   });
 
   if (upsertResult?.inserted) {
+    // Sanitize event payload — never persist API keys to signal_events.
+    const sanitizedPayload = { ...(payload.raw_json || payload) };
+    delete sanitizedPayload.apiKey;
+    delete sanitizedPayload.api_key;
+    delete sanitizedPayload.password;
+    delete sanitizedPayload.token;
     await mt5AppendSignalEvent(signalId, eventType, {
       source,
       action,
@@ -1894,7 +1905,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
       timeframe: payload.timeframe || null,
       strategy: payload.strategy || null,
       provider: payload.provider || null,
-      raw_payload: payload.raw_json || payload,
+      raw_payload: sanitizedPayload,
     });
   }
 
