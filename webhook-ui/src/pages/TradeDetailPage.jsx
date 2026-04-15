@@ -80,17 +80,29 @@ export default function TradeDetailPage() {
           <div className="muted">No events yet.</div>
         ) : (
           <div className="trade-list">
-            {events.map((ev) => (
-              <article key={`${ev.id}-${ev.event_time}`} className="trade-card">
-                <div className="trade-head">
-                  <strong>{ev.event_type}</strong>
-                  <span className="muted">{new Date(ev.event_time).toLocaleString()}</span>
-                </div>
-                <div className="muted">
-                  {JSON.stringify(getEventPayloadForDisplay(ev) || {})}
-                </div>
-              </article>
-            ))}
+            {[...events].sort((a,b) => new Date(b.event_time) - new Date(a.event_time)).map((ev) => {
+              const payload = getEventPayloadForDisplay(ev) || {};
+              return (
+                <article key={`${ev.id}-${ev.event_time}`} className="trade-card">
+                  <div className="trade-head">
+                    <strong>{ev.event_type}</strong>
+                    <span className="muted">{new Date(ev.event_time).toLocaleString()}</span>
+                  </div>
+                  <div className="json-table-wrapper" style={{ marginTop: '0.5rem', overflowX: 'auto' }}>
+                    <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse', border: '1px solid #1e293b' }}>
+                      <tbody>
+                        {Object.entries(payload).map(([k, v]) => (
+                          <tr key={k} style={{ borderBottom: '1px solid #1e293b' }}>
+                            <td style={{ padding: '4px 8px', color: '#94a3b8', width: '30%', borderRight: '1px solid #1e293b' }}>{k}</td>
+                            <td style={{ padding: '4px 8px', wordBreak: 'break-all' }}>{typeof v === 'object' ? JSON.stringify(v) : String(v)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </div>

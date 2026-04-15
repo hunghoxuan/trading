@@ -66,18 +66,16 @@ function TableBlock({ title, rows }) {
       ) : (
         <div className="mini-table">
           <div className="mini-table-head wide" style={{ color: '#94a3b8', fontWeight: 400 }}>
-            <span style={{ flex: '1.5' }}>Name</span>
-            <span>W</span>
-            <span>L</span>
+            <span style={{ flex: '2' }}>Name</span>
+            <span>W/L</span>
             <span>WR</span>
             <span>PnL</span>
             <span>RR</span>
           </div>
           {sortedRows.map((r) => (
             <div className="mini-table-row wide" key={r.key}>
-              <span className="mini-name" style={{ flex: '1.5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.key}>{r.key}</span>
-              <span>{r.wins}</span>
-              <span>{r.losses}</span>
+              <span className="mini-name" style={{ flex: '2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.key}>{r.key}</span>
+              <span>{r.wins}/{r.losses}</span>
               <span>{asPct(r.win_rate)}</span>
               <span className={moneyClass(r.pnl_total)}>{asMoneySigned(r.pnl_total)}</span>
               <span>{asRR(r.rr_total)}</span>
