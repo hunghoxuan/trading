@@ -23,8 +23,9 @@ After **every** completed task or phase, end your response with exactly this for
 
 ## 2. Execution Discipline (Task Lifecycle)
 
-- **Mandatory Flow for All Tasks:**
-  1. **Document First:** When the user asks for a task, FIRST update the tracking documents (`backlog`/`sprint`/`bugs`).
+- **Mandatory Flow for Major Tasks:**
+  *(Exception rule: For quick fixes, deployment commands, bug squashing during active flow, or general Q&A, you DO NOT need to update `backlog.md`/`sprint.md`/`changelog.md`. Reserved the heavy tracking lifecycle ONLY for adding tasks, new requirements, or new feature blocks.)*
+  1. **Document First:** When the user asks for a major task, FIRST update the tracking documents (`backlog`/`sprint`/`bugs`).
   2. **Plan Solution:** Write down the proposed solution/plan.
   3. **Design Approval Gate (No Code by Default):** For every new feature/requirement, provide a comprehensive design/spec first and wait for explicit user approval before writing code.
   4. **Update Status (DOING):** Move the task to `.agents/sprint.md`, prepending `[DOING]` to the description with timestamp and author.
