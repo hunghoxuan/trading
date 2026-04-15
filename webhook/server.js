@@ -919,6 +919,11 @@ async function mt5InitBackend() {
       try { db.exec(`ALTER TABLE signals ADD COLUMN ${col} TEXT`); } catch(e) {}
     });
 
+    // Broker execution telemetry columns (added 2026-04-15).
+    ["sl_pips", "tp_pips", "pip_value_per_lot", "risk_money_actual", "reward_money_planned"].forEach(col => {
+      try { db.exec(`ALTER TABLE signals ADD COLUMN ${col} REAL`); } catch(e) {}
+    });
+
     // Backward-compatible migration from legacy table name.
     const oldTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='mt5_signals'").get();
     if (oldTable) {
@@ -1085,6 +1090,11 @@ async function mt5InitBackend() {
               entry_price_exec = COALESCE(?, entry_price_exec),
               sl_exec = COALESCE(?, sl_exec),
               tp_exec = COALESCE(?, tp_exec),
+              sl_pips = COALESCE(?, sl_pips),
+              tp_pips = COALESCE(?, tp_pips),
+              pip_value_per_lot = COALESCE(?, pip_value_per_lot),
+              risk_money_actual = COALESCE(?, risk_money_actual),
+              reward_money_planned = COALESCE(?, reward_money_planned),
               locked_at = CASE WHEN ? = 1 THEN NULL ELSE locked_at END,
               opened_at = CASE WHEN (? = 'OK' OR ? = 'START') AND opened_at IS NULL THEN ? ELSE opened_at END,
               closed_at = CASE WHEN (? = 'TP' OR ? = 'SL' OR ? = 'FAIL' OR ? = 'CANCEL' OR ? = 'EXPIRED') THEN ? ELSE closed_at END
@@ -1099,6 +1109,11 @@ async function mt5InitBackend() {
           extra.entry_price_exec ?? null,
           extra.sl_exec ?? null,
           extra.tp_exec ?? null,
+          extra.sl_pips ?? null,
+          extra.tp_pips ?? null,
+          extra.pip_value_per_lot ?? null,
+          extra.risk_money_actual ?? null,
+          extra.reward_money_planned ?? null,
           retryable ? 1 : 0,
           internalStatus,
           internalStatus,
@@ -3088,6 +3103,12 @@ const server = http.createServer(async (req, res) => {
       const entryExec = (Number.isFinite(entryExecRaw) && entryExecRaw > 0.0) ? entryExecRaw : NaN;
       const slExec = (Number.isFinite(slExecRaw) && slExecRaw > 0.0) ? slExecRaw : NaN;
       const tpExec = (Number.isFinite(tpExecRaw) && tpExecRaw > 0.0) ? tpExecRaw : NaN;
+      // Pip/lot telemetry from EA
+      const slPips = asNum(payload.sl_pips, NaN);
+      const tpPips = asNum(payload.tp_pips, NaN);
+      const pipValuePerLot = asNum(payload.pip_value_per_lot, NaN);
+      const riskMoneyActual = asNum(payload.risk_money_actual, NaN);
+      const rewardMoneyPlanned = asNum(payload.reward_money_planned, NaN);
       const ackResult = payload.result ?? payload.retcode ?? payload.code ?? null;
       const ackMessage = payload.message ?? payload.msg ?? payload.comment ?? null;
       const ackNote = payload.note ?? payload.reason ?? null;
@@ -3104,6 +3125,11 @@ const server = http.createServer(async (req, res) => {
         entry_price_exec: Number.isFinite(entryExec) ? entryExec : null,
         sl_exec: Number.isFinite(slExec) ? slExec : null,
         tp_exec: Number.isFinite(tpExec) ? tpExec : null,
+        sl_pips: Number.isFinite(slPips) && slPips > 0 ? slPips : null,
+        tp_pips: Number.isFinite(tpPips) && tpPips > 0 ? tpPips : null,
+        pip_value_per_lot: Number.isFinite(pipValuePerLot) && pipValuePerLot > 0 ? pipValuePerLot : null,
+        risk_money_actual: Number.isFinite(riskMoneyActual) && riskMoneyActual > 0 ? riskMoneyActual : null,
+        reward_money_planned: Number.isFinite(rewardMoneyPlanned) && rewardMoneyPlanned > 0 ? rewardMoneyPlanned : null,
       });
       const eventType = retryableConnectivityFail ? "EA_REQUEUE_CONNECTION" : `EA_ACK_${status}`;
       await mt5AppendSignalEvent(signalId, eventType, {
@@ -3117,6 +3143,11 @@ const server = http.createServer(async (req, res) => {
         entry_price_exec: Number.isFinite(entryExec) ? entryExec : null,
         sl_exec: Number.isFinite(slExec) ? slExec : null,
         tp_exec: Number.isFinite(tpExec) ? tpExec : null,
+        sl_pips: Number.isFinite(slPips) && slPips > 0 ? slPips : null,
+        tp_pips: Number.isFinite(tpPips) && tpPips > 0 ? tpPips : null,
+        pip_value_per_lot: Number.isFinite(pipValuePerLot) && pipValuePerLot > 0 ? pipValuePerLot : null,
+        risk_money_actual: Number.isFinite(riskMoneyActual) && riskMoneyActual > 0 ? riskMoneyActual : null,
+        reward_money_planned: Number.isFinite(rewardMoneyPlanned) && rewardMoneyPlanned > 0 ? rewardMoneyPlanned : null,
       });
 
       return json(res, 200, {

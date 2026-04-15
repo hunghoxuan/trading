@@ -92,6 +92,13 @@ datetime g_ackSignalTs = 0;
 datetime g_ackExecTs = 0;
 int      g_ackRetcode = 0;
 string   g_ackRetmsg = "";
+// Broker execution telemetry (pips/lots/usd)
+double   g_ackPipsPerPoint = 0.0;   // pip multiplier vs point (10 for 5-digit, 1 for 3-digit JPY)
+double   g_ackPipValuePerLot = 0.0; // USD value of 1 pip on 1 standard lot for this symbol
+double   g_ackSlPips = 0.0;         // SL distance in pips
+double   g_ackTpPips = 0.0;         // TP distance in pips
+double   g_ackRiskMoneyActual = 0.0;    // lots * pip_value * sl_pips (actual risk $)
+double   g_ackRewardMoneyPlanned = 0.0; // lots * pip_value * tp_pips (planned reward $)
 
 string   g_stopRetrySignalId[];
 ulong    g_stopRetryTicket[];
@@ -1399,6 +1406,11 @@ void Ack(const string signalId, const string status, const string ticket, const 
    body += "\"free_margin\":" + DoubleToString(g_ackFreeMargin, 2) + ",";
    body += "\"balance\":" + DoubleToString(g_ackBalance, 2) + ",";
    body += "\"equity\":" + DoubleToString(g_ackEquity, 2) + ",";
+   body += "\"pip_value_per_lot\":" + DoubleToString(g_ackPipValuePerLot, 4) + ",";
+   body += "\"sl_pips\":" + DoubleToString(g_ackSlPips, 2) + ",";
+   body += "\"tp_pips\":" + DoubleToString(g_ackTpPips, 2) + ",";
+   body += "\"risk_money_actual\":" + DoubleToString(g_ackRiskMoneyActual, 2) + ",";
+   body += "\"reward_money_planned\":" + DoubleToString(g_ackRewardMoneyPlanned, 2) + ",";
    if(g_ackHasPnlRealized)
       body += "\"pnl_money_realized\":" + DoubleToString(g_ackPnlRealized, 2) + ",";
    else
@@ -1811,7 +1823,39 @@ bool ExecuteSignal(const string signalId,
             g_ackMarginReq = mr;
       }
    }
-   bool usedMarketExecution = false;
+
+   // Compute pip telemetry now that both stops and volume are finalized.
+   {
+      int    digits    = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+      double point     = SymbolInfoDouble(symbol, SYMBOL_POINT);
+      if(point <= 0.0) point = 0.00001;
+      double pipMult   = (digits == 3 || digits == 5) ? 10.0 : 1.0;
+      double pipSize   = point * pipMult;
+      g_ackPipsPerPoint = pipMult;
+
+      ENUM_ORDER_TYPE ot = (action == "BUY") ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+      MqlTick tk;
+      double pipVal = 0.0;
+      if(SymbolInfoTick(symbol, tk) && pipSize > 0.0)
+      {
+         double refEntry = (action == "BUY") ? tk.ask : tk.bid;
+         double refExit  = (action == "BUY") ? refEntry + pipSize : refEntry - pipSize;
+         double profitOnePip = 0.0;
+         if(OrderCalcProfit(ot, symbol, 1.0, refEntry, refExit, profitOnePip))
+            pipVal = MathAbs(profitOnePip);
+      }
+      g_ackPipValuePerLot = pipVal;
+
+      if(pipSize > 0.0)
+      {
+         // Use the signal entry as reference if a limit order; fall back to current ask/bid.
+         double ref = (entry > 0.0) ? entry : ((action=="BUY") ? tk.ask : tk.bid);
+         g_ackSlPips = (slUse > 0.0) ? MathAbs(ref - slUse) / pipSize : 0.0;
+         g_ackTpPips = (tpUse > 0.0) ? MathAbs(tpUse - ref) / pipSize : 0.0;
+      }
+      g_ackRiskMoneyActual    = (pipVal > 0.0) ? volumeUse * pipVal * g_ackSlPips : 0.0;
+      g_ackRewardMoneyPlanned = (pipVal > 0.0) ? volumeUse * pipVal * g_ackTpPips : 0.0;
+   }
    string tradeComment = signalId;
    if(StringLen(tradeComment) > 31)
       tradeComment = StringSubstr(tradeComment, StringLen(tradeComment) - 31);

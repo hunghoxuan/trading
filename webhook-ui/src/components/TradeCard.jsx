@@ -72,6 +72,34 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
   const rrText = fmt(trade.rr_planned ?? "-");
   const pnlText = hasPnl ? `$${money(pnlValue)}` : "-";
 
+  // Broker execution telemetry (populated after EA ACK)
+  const lotsActual = positiveOrNull(trade?.volume);
+  const slPips = positiveOrNull(trade?.sl_pips);
+  const tpPips = positiveOrNull(trade?.tp_pips);
+  const pipValPerLot = positiveOrNull(trade?.pip_value_per_lot);
+  const riskActual = positiveOrNull(trade?.risk_money_actual);
+  const rewardPlanned = positiveOrNull(trade?.reward_money_planned);
+
+  const isBeforePlaced = status.cls === "OTHER" || status.cls === "LOCKED";
+
+  // Volume line: before placed → show planned risk %; after placed → show real broker facts
+  const volPct = fmtPct(trade?.raw_json?.volume_pct ?? trade?.raw_json?.volumePct ?? trade?.raw_json?.riskPct);
+  let volText;
+  if (isBeforePlaced) {
+    volText = volPct || "-";
+  } else if (lotsActual && slPips) {
+    const riskStr = riskActual ? `$${money(riskActual)}` : null;
+    const rewardStr = rewardPlanned ? `$${money(rewardPlanned)}` : null;
+    volText = [
+      lotsActual ? `${lotsActual} Lots` : null,
+      slPips ? `${slPips.toFixed(1)}p SL` : null,
+      riskStr ? `Risk ${riskStr}` : null,
+      rewardStr ? `→ ${rewardStr}` : null,
+    ].filter(Boolean).join(" | ");
+  } else {
+    volText = volPct || (lotsActual ? `${lotsActual} Lots` : "-");
+  }
+
   return (
     <article className="trade-card">
       <Link to={`/trades/${encodeURIComponent(trade.signal_id)}`} className="trade-link-content">
@@ -100,8 +128,8 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
 
         <div className="trade-metrics-row">
           <span className="kv">Price: {fmt(displayPrice)}</span>
-          <span className="kv">TP: {tpText}</span>
-          <span className="kv">SL: {slText}</span>
+          <span className="kv">TP: {tpText}{tpPips ? <span className="muted small"> ({tpPips.toFixed(1)}p)</span> : null}</span>
+          <span className="kv">SL: {slText}{slPips ? <span className="muted small"> ({slPips.toFixed(1)}p)</span> : null}</span>
           <span className="kv">RR: {rrText}</span>
           <span className="kv">Volume: {volText}</span>
           <span className={`pnl ${pnlClass}`}>{pnlText}</span>
