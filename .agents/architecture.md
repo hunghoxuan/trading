@@ -115,3 +115,94 @@
 - Data payloads
 - Webhook APIs
 - Dashboard API summary/series schema
+
+## HTTPS / SSL Rollout Spec (Design-First, No-Code Yet)
+
+### Goal
+
+Harden production server by enabling trusted TLS certificates and serving all traffic over HTTPS while preserving MT5 EA and TradingView webhook reliability.
+
+### Current State (inferred)
+
+- Domain: `signal.mozasolution.com` points to VPS.
+- App services:
+  - `webhook` API on local HTTP (PM2, port 80 or internal app port behind proxy).
+  - `webhook-ui` served by PM2 (public route `/ui`).
+- Mixed HTTP/HTTPS usage currently exists across EA, UI, and browser clients.
+
+### Target State
+
+1. Public endpoints:
+   - `https://signal.mozasolution.com/` (API + routes)
+   - `https://signal.mozasolution.com/ui` (UI)
+2. HTTP (port 80):
+   - only used for ACME challenge + 301 redirect to HTTPS.
+3. Internal app transport:
+   - keep local HTTP between reverse proxy and node apps (simple and stable).
+4. Certificate:
+   - Let’s Encrypt certificate with auto-renew.
+
+### Recommended Architecture
+
+- Add Nginx as reverse proxy + TLS terminator.
+- Keep Node/PM2 apps unchanged on localhost ports.
+- Route map:
+  - `/ui` and `/assets/*` -> webhook-ui upstream
+  - `/mt5/*`, `/health`, `/csv`, `/signal` -> webhook upstream
+
+### Compatibility Considerations
+
+1. MT5 EA
+- Set `InpServerBaseUrl` to `https://signal.mozasolution.com`.
+- Ensure MT5 Options -> Expert Advisors allowlist includes HTTPS origin.
+
+2. TradingView webhook
+- Update alert webhook URLs to HTTPS endpoint.
+- Keep legacy `/signal` route active for backward compatibility.
+
+3. Browser/UI
+- Use same-origin API in production to avoid mixed-content/CORS issues.
+
+### Execution Plan (phased)
+
+#### Phase 1: Precheck
+- DNS A record correctness.
+- Ports 80/443 open in firewall.
+- Backup Nginx and PM2 configs.
+
+#### Phase 2: Proxy + Cert
+- Install Nginx + Certbot.
+- Create Nginx server block for domain.
+- Issue cert (`certbot --nginx -d signal.mozasolution.com`).
+- Configure HTTP->HTTPS redirect.
+
+#### Phase 3: App Routing Validation
+- Verify:
+  - `/health`
+  - `/mt5/health`
+  - `/ui/dashboard`
+  - key API endpoints with API key.
+- Verify TradingView and EA calls on HTTPS.
+
+#### Phase 4: Hardening
+- Add secure headers (HSTS optional after 24h soak).
+- Confirm cert auto-renew timer.
+
+### Rollback Plan
+
+1. Disable HTTPS vhost and re-enable previous HTTP reverse proxy config.
+2. Restart Nginx.
+3. Keep app processes unchanged (PM2 rollback-free).
+
+### Risks
+
+1. DNS propagation mismatch causes ACME issuance failure.
+2. MT5/Webhook allowlist not updated, causing EA pull/ack failures.
+3. Forced HSTS too early can lock clients into bad TLS config if misconfigured.
+
+### Acceptance Criteria
+
+1. `curl -I https://signal.mozasolution.com/health` returns `200`.
+2. `curl -I http://signal.mozasolution.com/health` returns `301/308` to HTTPS.
+3. UI loads at `/ui/dashboard` over HTTPS without mixed-content errors.
+4. EA pull/ack works via HTTPS origin.

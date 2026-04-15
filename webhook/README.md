@@ -264,7 +264,19 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT,
   password_hash TEXT,
   balance_start DOUBLE PRECISION NOT NULL DEFAULT 0,
+  metadata JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS accounts (
+  account_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  name TEXT,
+  balance DOUBLE PRECISION,
+  status TEXT,
+  metadata JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS signals (
@@ -277,6 +289,8 @@ CREATE TABLE IF NOT EXISTS signals (
   volume DOUBLE PRECISION NOT NULL,
   sl DOUBLE PRECISION NULL,
   tp DOUBLE PRECISION NULL,
+  source_tf TEXT NULL,
+  chart_tf TEXT NULL,
   rr_planned DOUBLE PRECISION NULL,
   risk_money_planned DOUBLE PRECISION NULL,
   pnl_money_realized DOUBLE PRECISION NULL,
@@ -292,11 +306,24 @@ CREATE TABLE IF NOT EXISTS signals (
   closed_at TIMESTAMPTZ NULL,
   ack_status TEXT NULL,
   ack_ticket TEXT NULL,
-  ack_error TEXT NULL
+  ack_error TEXT NULL,
+  metadata JSONB
 );
 
 CREATE INDEX IF NOT EXISTS idx_signals_status_created
 ON signals(status, created_at);
+
+CREATE TABLE IF NOT EXISTS signal_events (
+  id BIGSERIAL PRIMARY KEY,
+  signal_id TEXT NOT NULL REFERENCES signals(signal_id) ON DELETE CASCADE,
+  event_type TEXT NOT NULL,
+  event_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  payload_json JSONB,
+  metadata JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_signal_events_signal_time
+ON signal_events(signal_id, event_time);
 ```
 
 React UI app (Dashboard + Trades + Trade detail):
@@ -323,15 +350,22 @@ MT5 prune options:
 MT5 status lifecycle:
 - `NEW`: queued, not pulled yet
 - `LOCKED`: already pulled by MT5 EA (dedupe-safe; not pulled again)
-- `DONE`: EA acknowledged success
-- `FAILED`: EA acknowledged failure
-- `CANCELED`: manually canceled
-- `CLOSED_TP`: trade closed by take profit
-- `CLOSED_SL`: trade closed by stop loss
-- `CLOSED_MANUAL` / `CLOSED`: trade closed manually/other
+- `OK`: acknowledged success / accepted
+- `START`: position/order became active
+- `FAIL`: execution failure
+- `TP`: closed by take profit
+- `SL`: closed by stop loss
+- `CANCEL`: canceled manually/system
+- `EXPIRED`: ignored due to age gate
 
 `/mt5/ea/ack` now accepts status:
-- `OK`, `FAIL`, `CANCELED`, `CLOSED_TP`, `CLOSED_SL`, `CLOSED_MANUAL`, `CLOSED`
+- canonical: `OK`, `FAIL`, `START`, `TP`, `SL`, `CANCEL`, `EXPIRED`
+- backward compatible aliases: `DONE`, `FAILED`, `CANCELED/CANCELLED`, `CLOSED_TP`, `CLOSED_SL`, `CLOSED_MANUAL`, `CLOSED`
+
+Accounts note:
+- `accounts` table exists in DB schema.
+- `POST /mt5/ea/heartbeat` requires `account_id` and is intended to upsert account state.
+- Current code still contains `TODO` for heartbeat DB upsert, so account records may not auto-update yet.
 
 ## Notes
 
