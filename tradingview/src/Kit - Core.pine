@@ -1,5 +1,5 @@
 //@version=5
-// @lib-version: 78
+// @lib-version: 80
 library("KitCore", dynamic_requests = true)
 
 //s
@@ -1579,8 +1579,8 @@ export draw_trade_visual(Trade e, Const c, Theme theme, EntryVisualCfg vcfg, boo
         int RESOLVED_BG_FADE = 12
         int tpAlphaRaw = isLive ? (e.touched ? vcfg.startTouchedBgAlpha : vcfg.startUntouchedBgAlpha) : isTp ? vcfg.resolvedWinnerBgAlpha : vcfg.resolvedLoserBgAlpha
         int slAlphaRaw = isLive ? (e.touched ? vcfg.startTouchedBgAlpha : vcfg.startUntouchedBgAlpha) : isSl ? vcfg.resolvedWinnerBgAlpha : vcfg.resolvedLoserBgAlpha
-        int tpAlpha = isLive ? tpAlphaRaw : math.min(tpAlphaRaw + RESOLVED_BG_FADE, 100)
-        int slAlpha = isLive ? slAlphaRaw : math.min(slAlphaRaw + RESOLVED_BG_FADE, 100)
+        int tpAlpha = isLive ? math.max(tpAlphaRaw, 90) : math.min(tpAlphaRaw + RESOLVED_BG_FADE, 100)
+        int slAlpha = isLive ? math.max(slAlphaRaw, 90) : math.min(slAlphaRaw + RESOLVED_BG_FADE, 100)
         color tpBg = color.new(theme.COLOR_BULLISH, tpAlpha)
         color slBg = color.new(theme.COLOR_BEARISH, slAlpha)
         color entryColor = isLive ? color.new(theme.COLOR_UI_FG, 0) : (isTp ? color.new(theme.COLOR_BULLISH, vcfg.entryResolvedWinnerAlpha) : isSl ? color.new(theme.COLOR_BEARISH, vcfg.entryResolvedWinnerAlpha) : color.new(theme.COLOR_UI_FG, vcfg.entryResolvedLoserAlpha))

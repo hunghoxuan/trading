@@ -39,9 +39,7 @@ function fmt(v) {
 function fmtPct(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return null;
-  const normalized = n <= 1 ? n * 100 : n;
-  if (!Number.isFinite(normalized)) return null;
-  return `${normalized.toFixed(2)}%`;
+  return `${n.toFixed(2)}%`;
 }
 
 export default function TradeCard({ trade, selected = false, onToggleSelect = null }) {

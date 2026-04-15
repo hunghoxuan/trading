@@ -2,9 +2,9 @@
 // @file-version: 0411-02
 strategy("Hung - Core", overlay = true, scale = scale.right, max_bars_back = 5000, pyramiding = 20, process_orders_on_close = false, calc_on_order_fills = true, calc_on_every_tick = true, use_bar_magnifier = false, currency = currency.USD, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500, initial_capital = 100000, margin_long = 1, margin_short = 1)
 
-import hunghoxuan/KitUI/31
-import hunghoxuan/KitCore/77
-import hunghoxuan/KitSMC/65
+import hunghoxuan/KitUI/32
+import hunghoxuan/KitCore/80
+import hunghoxuan/KitSMC/66
 // ==================== TYPES, CONSTANTS ====================
 
 // ==================== LIB SINGLETONS (PERSISTENT) ====================
@@ -1443,7 +1443,7 @@ process_data_add_trade(int stratId, KitSMC.Event sig, float zoneTop, float zoneB
                 array.push(tradeModelIds, stratId)
             CORE_track_trade_entry(trades, tradeOrderIds, e, orderId, shouldTrackTrades)
             string webhookNote = tradeType + " | " + sig.reason
-            KitCore.emit_trade_webhook_new_trade(webhookEnabled, true, "Hung-Core", syminfo.ticker, sig.direction, sourceTf, entry, stoploss, takeprofit, webhookNote, webhookApiKey, orderId, "ctrader", "PENDING", rrUsed, tradeType, tradeRiskAmountUsd, na, time, sig.reason, timeframe.period)
+            KitCore.emit_trade_webhook_new_trade(webhookEnabled, true, "Hung-Core", syminfo.ticker, sig.direction, sourceTf, entry, stoploss, takeprofit, webhookNote, webhookApiKey, orderId, "ctrader", "PENDING", rrUsed, tradeType, tradeRiskAmountUsd, tradeRiskMode == "%" ? tradeRiskValue : na, time, sig.reason, timeframe.period)
             if tradeRiskMode == "%"
                 KitCore.prop_register_trade(propDayState, tradeRiskValue)
             if strategyOrdersEnabled
