@@ -33,6 +33,7 @@ After **every** completed task or phase, end your response with exactly this for
 - **One-Pass:** If task is small/mechanical (rename, formatting, pure refactor), execute in one-pass. Avoid unnecessary intermediate checkpoints.
 - **Conversation Health:** Continuously self-check. If 2+ degradation signals appear (repeated conclusions, forgetting constraints), provide a compact handoff and propose creating a new conversation.
 - **Overnight Autonomous Mode:** Run automatically during 23:00-07:00 (Europe/Berlin) without per-step confirmations for approved plans.
+- **Skill Extraction (Workflows):** If you perform any repeatable, multi-step chore (e.g. updating DB schemas, deployments, deep refactors), or if the user asks, you MUST extract the execution sequence into a reusable workflow file natively saved in `.agents/workflows/XX-action-name.md`.
 
 ## 3. Pine Script Coding Standards
 
