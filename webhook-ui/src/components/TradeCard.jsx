@@ -59,14 +59,6 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
   const hasPnl = pnlValue !== null && pnlValue !== undefined && pnlValue !== "" && Number.isFinite(pnlNumber);
   const pnlClass = Number.isFinite(pnlNumber) ? (pnlNumber > 0 ? "pnl-pos" : pnlNumber < 0 ? "pnl-neg" : "pnl-zero") : "";
   const status = statusUi(trade?.status);
-  const volPct = fmtPct(trade?.raw_json?.volume_pct ?? trade?.raw_json?.volumePct ?? trade?.raw_json?.riskPct);
-  const vUsd = positiveOrNull(trade?.raw_json?.volume_usd ?? trade?.raw_json?.volumeUsd ?? trade?.raw_json?.riskUsd ?? trade?.risk_money_planned);
-  const volUsdNode = vUsd ? `$${money(vUsd)}` : null;
-
-  const isBeforePlaced = status.cls === "OTHER" || status.cls === "LOCKED";
-  const volText = isBeforePlaced 
-    ? (volPct || "-") 
-    : (volUsdNode && volPct) ? `${volUsdNode} (${volPct})` : (volUsdNode || volPct || fmt(trade.volume ?? "-"));
   const tpText = fmt(trade.tp_exec ?? trade.tp ?? "-");
   const slText = fmt(trade.sl_exec ?? trade.sl ?? "-");
   const rrText = fmt(trade.rr_planned ?? "-");
@@ -76,7 +68,6 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
   const lotsActual = positiveOrNull(trade?.volume);
   const slPips = positiveOrNull(trade?.sl_pips);
   const tpPips = positiveOrNull(trade?.tp_pips);
-  const pipValPerLot = positiveOrNull(trade?.pip_value_per_lot);
   const riskActual = positiveOrNull(trade?.risk_money_actual);
   const rewardPlanned = positiveOrNull(trade?.reward_money_planned);
 
