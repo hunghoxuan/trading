@@ -10,12 +10,12 @@ input string InpSymbolSuffix  = "";   // Example: ".m" or "-pro"
 input long   InpMagic         = 20260411;
 input int    InpDeviationPts  = 20;
 input int    InpStopBufferPts = 50;   // Extra safety distance (points) on top of broker min stop distance.
-input bool   InpUseMarginPercentSizing = true; // true: size by margin budget (% of account balance).
-input double InpMarginPercentOfBalance = 1.0; // Margin budget as % of ACCOUNT_BALANCE (after leverage via OrderCalcMargin).
-input double InpMarginSafetyPercent    = 98.0; // Also cap by this % of current free margin to avoid edge rejections.
-input bool   InpUseRiskPercentSizing = true; // true: lots = risk% of balance by SL distance.
+input bool   InpUseMarginPercentSizing = false; // Set false to prioritize Risk USD / Stop Loss gap distance over strict arbitrary broker Margin caps.
+input double InpMarginPercentOfBalance = 100.0; // Margin budget as % of ACCOUNT_BALANCE.
+input double InpMarginSafetyPercent    = 98.0; // Also cap by this % of current free margin to avoid broker margin-outs.
+input bool   InpUseRiskPercentSizing = true; // true: lots = risk% of balance / SL distance.
 input double InpRiskPercentOfBalance = 1.0; // 1.0 = risk 1% of ACCOUNT_BALANCE per trade.
-input double InpFallbackFixedLot = 0.01; // Used when risk sizing cannot be calculated (e.g., missing SL).
+input double InpFallbackFixedLot = 0.01; // Used when risk sizing cannot be calculated.
 input bool   InpHardFailOnMarginPrecheck = false; // true: stop immediately on margin precheck fail; false: still try broker with min lot once.
 input int    InpStopRetrySeconds = 5; // Retry interval for attaching SL/TP after order open.
 input int    InpStopRetryMaxAttempts = 24; // Max retry attempts (24 * 5s = 2 minutes by default).
