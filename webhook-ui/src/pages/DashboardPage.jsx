@@ -19,8 +19,8 @@ function asMoneySigned(v) {
 
 function asPct(v) {
   const n = Number(v);
-  if (!Number.isFinite(n)) return "0.00%";
-  return `${n.toFixed(2)}%`;
+  if (!Number.isFinite(n)) return "0%";
+  return `${Math.ceil(n)}%`;
 }
 
 function asRR(v) {
@@ -36,24 +36,46 @@ function moneyClass(v) {
 }
 
 function TableBlock({ title, rows }) {
+  const [orderBy, setOrderBy] = useState("WR");
+
+  const sortedRows = [...rows].sort((a, b) => {
+    if (orderBy === "Name") return a.key < b.key ? -1 : 1;
+    if (orderBy === "WR") return b.win_rate - a.win_rate || b.trades - a.trades;
+    if (orderBy === "PnL") return b.pnl_total - a.pnl_total;
+    if (orderBy === "RR") return b.rr_total - a.rr_total;
+    if (orderBy === "W") return b.wins - a.wins;
+    if (orderBy === "L") return b.losses - a.losses;
+    return 0;
+  });
+
   return (
     <div className="panel">
-      <div className="panel-head"><h2>{title}</h2></div>
+      <div className="panel-head" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+        <h2>{title}</h2>
+        <select style={{fontSize: '0.8rem', padding: '2px 4px', background: 'transparent', color: '#94a3b8', border: '1px solid #334155', borderRadius: '4px'}} value={orderBy} onChange={(e) => setOrderBy(e.target.value)}>
+          <option value="WR">Sort WR</option>
+          <option value="Name">Sort Name</option>
+          <option value="PnL">Sort PnL</option>
+          <option value="RR">Sort RR</option>
+          <option value="W">Sort Wins</option>
+          <option value="L">Sort Losses</option>
+        </select>
+      </div>
       {rows.length === 0 ? (
         <div className="muted">No data.</div>
       ) : (
         <div className="mini-table">
-          <div className="mini-table-head wide">
-            <span>Name</span>
+          <div className="mini-table-head wide" style={{ color: '#94a3b8', fontWeight: 400 }}>
+            <span style={{ flex: '1.5' }}>Name</span>
             <span>W</span>
             <span>L</span>
             <span>WR</span>
             <span>PnL</span>
             <span>RR</span>
           </div>
-          {rows.map((r) => (
+          {sortedRows.map((r) => (
             <div className="mini-table-row wide" key={r.key}>
-              <span className="mini-name" title={r.key}>{r.key}</span>
+              <span className="mini-name" style={{ flex: '1.5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.key}>{r.key}</span>
               <span>{r.wins}</span>
               <span>{r.losses}</span>
               <span>{asPct(r.win_rate)}</span>
@@ -140,11 +162,15 @@ export default function DashboardPage() {
         <article className="kpi-card">
           <div className="kpi-label">Wins / Losses</div>
           <div className="kpi-value">{m.wins || 0} / {m.losses || 0}</div>
+          <div className="kpi-hint">Winrate: {asPct(m.win_rate)}</div>
         </article>
         <article className="kpi-card">
           <div className="kpi-label">Total PnL</div>
           <div className={`kpi-value ${moneyClass(m.total_pnl)}`}>{asMoneySigned(m.total_pnl || 0)}</div>
-          <div className="kpi-hint">Winrate: {asPct(m.win_rate || 0)}</div>
+          <div className="kpi-hint">
+            Buy: <span className={moneyClass(m.buy_pnl)}>{asMoneySigned(m.buy_pnl || 0)}</span> | 
+            Sell: <span className={moneyClass(m.sell_pnl)}>{asMoneySigned(m.sell_pnl || 0)}</span>
+          </div>
         </article>
       </div>
 
@@ -156,10 +182,9 @@ export default function DashboardPage() {
               <div className="kpi-label period-title">{p[0].toUpperCase() + p.slice(1)}</div>
               <div className="period-big-line">
                 <span className={moneyClass(v.total_pnl)}>{asMoneySigned(v.total_pnl || 0)}</span>
-                <span>RR {asRR(v.total_rr || 0)}</span>
               </div>
               <div className="kpi-hint">
-                Trades {v.total_trades || 0} | Wins {v.total_wins || 0} | Losses {v.total_losses || 0}
+                Trades {v.total_trades || 0} | Wins {v.total_wins || 0} | Losses {v.total_losses || 0} | RR {asRR(v.total_rr || 0)}
               </div>
             </article>
           );

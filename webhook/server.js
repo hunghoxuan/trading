@@ -2262,8 +2262,14 @@ function mt5IsTradeStatus(statusRaw) {
 function mt5ComputeRMultiple(row) {
   const pnl = Number(row?.pnl_money_realized);
   const risk = Number(row?.risk_money_planned);
-  if (!Number.isFinite(pnl) || !Number.isFinite(risk) || risk <= 0) return null;
-  return pnl / risk;
+  if (Number.isFinite(pnl)) {
+    if (Number.isFinite(risk) && risk > 0) return pnl / risk;
+    const s = mt5CanonicalStoredStatus(row.status);
+    const planned = Number(row?.rr_planned);
+    if (s === "TP" && Number.isFinite(planned) && planned > 0) return planned;
+    if (s === "SL") return -1;
+  }
+  return null;
 }
 
 function mt5ComputeTopWinrateRows(rows, keyPicker, { limit = 10, includeDirection = false } = {}) {
@@ -2291,40 +2297,25 @@ function mt5ComputeTopWinrateRows(rows, keyPicker, { limit = 10, includeDirectio
         rr_count: 0,
       });
     }
-    const agg = map.get(key);
-    if (status === "TP") agg.wins += 1;
-    if (status === "SL") agg.losses += 1;
-    if (mt5IsTradeStatus(status)) agg.trades += 1;
-    if (Number.isFinite(pnl)) agg.pnl_total += pnl;
+    const st = map.get(key);
+    st.trades++;
+    if (status === "TP") st.wins++;
+    if (status === "SL") st.losses++;
+    if (Number.isFinite(pnl)) st.pnl_total += pnl;
     if (Number.isFinite(rr)) {
-      agg.rr_total += rr;
-      agg.rr_sum += rr;
-      agg.rr_count += 1;
+      st.rr_sum += rr;
+      st.rr_count++;
+      st.rr_total = st.rr_sum; // the total RR is the sum
     }
   }
-  let out = [...map.values()].map((r) => {
-    const considered = r.wins + r.losses; // strict TP/(TP+SL)
-    return {
-      key: r.key,
-      name: r.name,
-      direction: r.direction,
-      wins: r.wins,
-      losses: r.losses,
-      trades: r.trades,
-      pnl_total: r.pnl_total,
-      rr_total: r.rr_total,
-      win_rate: considered > 0 ? (r.wins / considered) * 100 : 0,
-      r_multiple_avg: r.rr_count > 0 ? r.rr_sum / r.rr_count : null,
-    };
-  });
-  out.sort((a, b) => {
-    if (b.win_rate !== a.win_rate) return b.win_rate - a.win_rate;
-    if (b.pnl_total !== a.pnl_total) return b.pnl_total - a.pnl_total;
-    if (b.trades !== a.trades) return b.trades - a.trades;
-    return a.key < b.key ? -1 : 1;
-  });
-  if (limit > 0) out = out.slice(0, limit);
-  return out;
+  let entries = [...map.values()];
+  for (const st of entries) {
+    const closed = st.wins + st.losses;
+    st.win_rate = closed > 0 ? (st.wins / closed) * 100 : 0;
+  }
+  entries.sort((a, b) => b.win_rate - a.win_rate || b.trades - a.trades || (a.key < b.key ? -1 : 1));
+  if (limit > 0) entries = entries.slice(0, limit);
+  return entries;
 }
 
 function mt5EntryModelFromRow(row) {
@@ -2345,14 +2336,26 @@ function mt5ComputeTradeMetrics(rows) {
   const wins = trades.filter((r) => mt5CanonicalStoredStatus(r.status) === "TP").length;
   const losses = trades.filter((r) => mt5CanonicalStoredStatus(r.status) === "SL").length;
   const winBase = wins + losses; // strict TP/(TP+SL)
-  const totalPnl = trades.reduce((acc, r) => {
+  
+  let totalPnl = 0;
+  let buyPnl = 0;
+  let sellPnl = 0;
+  
+  for (const r of trades) {
     const pnl = Number(r?.pnl_money_realized);
-    return Number.isFinite(pnl) ? acc + pnl : acc;
-  }, 0);
+    if (Number.isFinite(pnl)) {
+      totalPnl += pnl;
+      const act = String(r?.action || "").toUpperCase();
+      if (act === "BUY") buyPnl += pnl;
+      else if (act === "SELL") sellPnl += pnl;
+    }
+  }
+
   const totalRr = trades.reduce((acc, r) => {
     const rr = mt5ComputeRMultiple(r);
     return Number.isFinite(rr) ? acc + rr : acc;
   }, 0);
+  
   return {
     total_signals: all.length,
     total_trades: trades.length,
@@ -2360,6 +2363,8 @@ function mt5ComputeTradeMetrics(rows) {
     losses,
     win_rate: winBase > 0 ? (wins / winBase) * 100 : 0,
     total_pnl: totalPnl,
+    buy_pnl: buyPnl,
+    sell_pnl: sellPnl,
     total_rr: totalRr,
   };
 }
