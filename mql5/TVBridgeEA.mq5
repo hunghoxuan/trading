@@ -1186,7 +1186,7 @@ bool FitVolumeToFreeMargin(const string action,
       return false;
    }
    ENUM_ORDER_TYPE orderType = (action == "BUY" ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
-   double freeMargin = AccountInfoDouble(ACCOUNT_FREEMARGIN);
+   double freeMargin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
    if(freeMargin <= 0.0)
    {
       noteOut = "[free_margin<=0]";
@@ -1285,7 +1285,7 @@ bool ComputeMarginPercentVolume(const string action,
       return false;
    }
 
-   double freeMargin = AccountInfoDouble(ACCOUNT_FREEMARGIN);
+   double freeMargin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
    if(freeMargin <= 0.0 || balance <= 0.0)
    {
@@ -1596,7 +1596,7 @@ bool ExecuteSignal(const string signalId,
    g_ackUsedTp = tp;
    g_ackEntryExec = 0.0;
    g_ackMarginReq = 0.0;
-   g_ackFreeMargin = AccountInfoDouble(ACCOUNT_FREEMARGIN);
+   g_ackFreeMargin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
    g_ackBalance = AccountInfoDouble(ACCOUNT_BALANCE);
    g_ackMarginBudget = 0.0;
    if(InpMarginPercentOfBalance > 0.0 && g_ackBalance > 0.0)
@@ -1856,6 +1856,7 @@ bool ExecuteSignal(const string signalId,
       g_ackRiskMoneyActual    = (pipVal > 0.0) ? volumeUse * pipVal * g_ackSlPips : 0.0;
       g_ackRewardMoneyPlanned = (pipVal > 0.0) ? volumeUse * pipVal * g_ackTpPips : 0.0;
    }
+   bool usedMarketExecution = false;
    string tradeComment = signalId;
    if(StringLen(tradeComment) > 31)
       tradeComment = StringSubstr(tradeComment, StringLen(tradeComment) - 31);
@@ -2153,7 +2154,7 @@ void SendHeartbeat()
    body += "\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",";
    body += "\"balance\":" + DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2) + ",";
    body += "\"equity\":" + DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY), 2) + ",";
-   body += "\"free_margin\":" + DoubleToString(AccountInfoDouble(ACCOUNT_FREEMARGIN), 2) + ",";
+   body += "\"free_margin\":" + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN_FREE), 2) + ",";
    body += "\"margin_level\":" + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN_LEVEL), 2);
    body += "}";
    HttpPostJson(url, body);
@@ -2281,7 +2282,7 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
                ENUM_ORDER_TYPE ot = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
                g_ackAction = (ot == ORDER_TYPE_BUY_LIMIT || ot == ORDER_TYPE_BUY_STOP) ? "BUY" : "SELL";
                g_ackExecTs = TimeCurrent();
-               g_ackFreeMargin = AccountInfoDouble(ACCOUNT_FREEMARGIN);
+               g_ackFreeMargin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
                g_ackBalance = AccountInfoDouble(ACCOUNT_BALANCE);
                g_ackEquity = AccountInfoDouble(ACCOUNT_EQUITY);
                g_ackHasPnlRealized = false;
@@ -2311,7 +2312,7 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
                ENUM_ORDER_TYPE ot = (ENUM_ORDER_TYPE)HistoryOrderGetInteger(orderTicket, ORDER_TYPE);
                g_ackAction = (ot == ORDER_TYPE_BUY_LIMIT || ot == ORDER_TYPE_BUY_STOP || ot == ORDER_TYPE_BUY) ? "BUY" : "SELL";
                g_ackExecTs = TimeCurrent();
-               g_ackFreeMargin = AccountInfoDouble(ACCOUNT_FREEMARGIN);
+               g_ackFreeMargin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
                g_ackBalance = AccountInfoDouble(ACCOUNT_BALANCE);
                g_ackEquity = AccountInfoDouble(ACCOUNT_EQUITY);
                g_ackHasPnlRealized = false;
@@ -2361,7 +2362,7 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
    g_ackRetcode = 0;
    g_ackRetmsg = "";
    g_ackExecTs = TimeCurrent();
-   g_ackFreeMargin = AccountInfoDouble(ACCOUNT_FREEMARGIN);
+   g_ackFreeMargin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
    g_ackBalance = AccountInfoDouble(ACCOUNT_BALANCE);
    g_ackEquity = AccountInfoDouble(ACCOUNT_EQUITY);
 
