@@ -3,6 +3,16 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import TradeLevelChart from "../components/TradeLevelChart";
 
+function statusUi(statusRaw) {
+  const s = String(statusRaw || "").toUpperCase();
+  if (s === "OK") return { cls: "OK", label: "PLACED" };
+  if (s === "LOCKED") return { cls: "LOCKED", label: "LOCKED" };
+  if (s === "START") return { cls: "START", label: "START" };
+  if (s === "TP") return { cls: "TP", label: "TP" };
+  if (s === "SL") return { cls: "SL", label: "SL" };
+  return { cls: "OTHER", label: s || "UNKNOWN" };
+}
+
 export default function TradeDetailPage() {
   const { signalId } = useParams();
   const [data, setData] = useState(null);
@@ -28,6 +38,7 @@ export default function TradeDetailPage() {
   if (!data) return <div className="loading">Loading trade...</div>;
 
   const t = data.trade;
+  const status = statusUi(t?.status);
   const orderTypeRaw = String(t?.raw_json?.order_type || t?.raw_json?.orderType || "limit").toUpperCase();
   const orderType = orderTypeRaw === "STOP" || orderTypeRaw === "MARKET" ? orderTypeRaw : "LIMIT";
   const events = Array.isArray(data.events) ? data.events : [];
@@ -47,7 +58,7 @@ export default function TradeDetailPage() {
       <div className="panel">
         <div className="trade-grid two-cols">
           <div>Signal ID: {t.signal_id}</div>
-          <div>Status: <span className={`badge ${t.status}`}>{t.status}</span></div>
+          <div>Status: <span className={`badge ${status.cls}`}>{status.label}</span></div>
           <div>Order Type: <span className="order-type-pill">{orderType}</span></div>
           <div>Symbol: {t.symbol}</div>
           <div>Action: {t.action}</div>

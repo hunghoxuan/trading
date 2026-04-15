@@ -3,6 +3,9 @@
 *(A strict append-only log of what was completed, with dates, module, and author)*
 
 ## 2026-04-15
+- [x] [15:54] [webhook-ui] [Author: Codex] Task: Completed FE-01 Phase 1 (Trade Card + Status badge standardization). Implemented badge mapping (`OK->PLACED`, `LOCKED`, `START`, `TP`, `SL`, `OTHER`), rigid metric row (`Price|TP|SL|RR|Volume|PnL`), removed `PnL:` label, and added safe fallback formatting for legacy/zeroed fields.
+- [x] [15:46] [Backend] [Author: Gemini] Task: `BE-01` Database schema `entry_model` ingestion complete. Added Postgres/SQLite schema hooks and `/signal` webhook parser.
+- [x] [15:41] [.agents/workflows] [Author: Codex] Task: Standardized SOP workflows 10-17 and added 18 (update docs), 19 (list roadmap/tasks), 20 (smoke test), plus workflow intent index.
 - [x] [12:20] [Schema Docs] [Author: Codex] Task: Synced DB schema docs with current `server.js` and clarified `accounts` concept + heartbeat upsert TODO.
 - [x] [12:05] [TVBridgeEA.mq5] [Author: Gemini] Feature: Implemented EA Client-to-VPS Sync feature (PENDING ack tracking in OnTradeTransaction, and OnTimer heartbeat payload).
 - [x] [12:05] [webhook/server.js] [Author: Gemini] Feature: Multi-Account support and DB Schema update (`accounts` table, JSON `metadata` columns, Account ID routing).

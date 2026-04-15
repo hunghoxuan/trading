@@ -19,6 +19,31 @@ function positiveOrNull(value) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+function statusUi(statusRaw) {
+  const s = String(statusRaw || "").toUpperCase();
+  if (s === "OK") return { cls: "OK", label: "PLACED" };
+  if (s === "LOCKED") return { cls: "LOCKED", label: "LOCKED" };
+  if (s === "START") return { cls: "START", label: "START" };
+  if (s === "TP") return { cls: "TP", label: "TP" };
+  if (s === "SL") return { cls: "SL", label: "SL" };
+  return { cls: "OTHER", label: s || "UNKNOWN" };
+}
+
+function fmt(v) {
+  if (v === null || v === undefined || v === "") return "-";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return String(v);
+  return n.toLocaleString(undefined, { maximumFractionDigits: 6 });
+}
+
+function fmtPct(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  const normalized = n <= 1 ? n * 100 : n;
+  if (!Number.isFinite(normalized)) return null;
+  return `${normalized.toFixed(2)}%`;
+}
+
 export default function TradeCard({ trade, selected = false, onToggleSelect = null }) {
   const orderTypeRaw = String(trade?.raw_json?.order_type || trade?.raw_json?.orderType || "limit").toUpperCase();
   const orderType = orderTypeRaw === "STOP" || orderTypeRaw === "MARKET" ? orderTypeRaw : "LIMIT";
@@ -35,6 +60,18 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
   const pnlNumber = Number(pnlValue);
   const hasPnl = pnlValue !== null && pnlValue !== undefined && pnlValue !== "" && Number.isFinite(pnlNumber);
   const pnlClass = Number.isFinite(pnlNumber) ? (pnlNumber > 0 ? "pnl-pos" : pnlNumber < 0 ? "pnl-neg" : "pnl-zero") : "";
+  const status = statusUi(trade?.status);
+  const volPct = fmtPct(trade?.raw_json?.volume_pct ?? trade?.raw_json?.volumePct ?? trade?.raw_json?.riskPct);
+  const volUsdRaw = positiveOrNull(trade?.raw_json?.volume_usd ?? trade?.raw_json?.volumeUsd ?? trade?.raw_json?.riskUsd);
+  const volText = status.cls === "OK"
+    ? (volPct || fmt(trade.volume ?? "-"))
+    : status.cls === "START"
+      ? (volUsdRaw ? `$${money(volUsdRaw)}` : fmt(trade.volume ?? "-"))
+      : fmt(trade.volume ?? "-");
+  const tpText = fmt(trade.tp_exec ?? trade.tp ?? "-");
+  const slText = fmt(trade.sl_exec ?? trade.sl ?? "-");
+  const rrText = fmt(trade.rr_planned ?? "-");
+  const pnlText = hasPnl ? `$${money(pnlValue)}` : "-";
 
   return (
     <article className="trade-card">
@@ -49,7 +86,7 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
           </div>
           <div className="trade-status-col">
             <div className="trade-status-row">
-              <span className={`badge ${trade.status}`}>{trade.status}</span>
+              <span className={`badge ${status.cls}`}>{status.label}</span>
               <input
                 className="trade-select-input"
                 type="checkbox"
@@ -62,13 +99,13 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
           </div>
         </div>
 
-        <div className="trade-price-line tight">
-          <span className="kv">Price: {displayPrice}</span>
-          <span className="kv">TP: {trade.tp_exec ?? trade.tp ?? "-"}</span>
-          <span className="kv">SL: {trade.sl_exec ?? trade.sl ?? "-"}</span>
-          <span className="kv">RR: {trade.rr_planned ?? "-"}</span>
-          <span className="kv">Volume: {trade.volume ?? "-"}</span>
-          {hasPnl ? <span className={`pnl ${pnlClass}`}>PnL: {money(pnlValue)}</span> : null}
+        <div className="trade-metrics-row">
+          <span className="kv">Price: {fmt(displayPrice)}</span>
+          <span className="kv">TP: {tpText}</span>
+          <span className="kv">SL: {slText}</span>
+          <span className="kv">RR: {rrText}</span>
+          <span className="kv">Volume: {volText}</span>
+          <span className={`pnl ${pnlClass}`}>{pnlText}</span>
         </div>
 
         <div className="trade-bottom-line">
