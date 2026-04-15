@@ -61,14 +61,38 @@ export default function TradeDetailPage() {
           <div>Order Type: <span className="order-type-pill">{orderType}</span></div>
           <div>Symbol: {t.symbol}</div>
           <div>Action: {t.action}</div>
-          <div>Volume: {t.volume}</div>
+          <div>Volume: {t.volume} Lots</div>
           <div>RR Planned: {t.rr_planned ?? "-"}</div>
-          <div>Risk Money Planned: {t.risk_money_planned ?? "-"}</div>
-          <div>PnL Realized: {t.pnl_money_realized ?? "-"}</div>
+          <div>Risk Planned: ${t.risk_money_planned ?? "-"}</div>
+          <div>PnL Realized: <span style={{color: Number(t.pnl_money_realized) > 0 ? "#22c55e" : Number(t.pnl_money_realized) < 0 ? "#ef4444" : undefined}}>{t.pnl_money_realized != null ? `$${Number(t.pnl_money_realized).toFixed(2)}` : "-"}</span></div>
           <div>Created: {new Date(t.created_at).toLocaleString()}</div>
           <div>Note: {t.note || "-"}</div>
         </div>
       </div>
+
+      {/* Broker Execution Telemetry — populated after EA ACK */}
+      {(t.sl_pips || t.risk_money_actual) && (
+        <div className="panel" style={{ marginTop: "1rem" }}>
+          <div style={{ color: "#94a3b8", fontSize: "12px", marginBottom: "8px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Execution Details</div>
+          <div className="trade-grid two-cols" style={{ fontSize: "14px" }}>
+            {t.volume != null && <div>Lots: <strong>{t.volume}</strong></div>}
+            {t.pip_value_per_lot != null && <div>Pip Value / Lot: <strong>${Number(t.pip_value_per_lot).toFixed(4)}</strong></div>}
+            {t.sl_pips != null && <div>SL Distance: <strong>{Number(t.sl_pips).toFixed(1)} pips</strong></div>}
+            {t.tp_pips != null && <div>TP Distance: <strong>{Number(t.tp_pips).toFixed(1)} pips</strong></div>}
+            {t.risk_money_actual != null && <div>Actual Risk: <strong style={{color:"#fb7185"}}>${Number(t.risk_money_actual).toFixed(2)}</strong></div>}
+            {t.reward_money_planned != null && <div>Planned Reward: <strong style={{color:"#34d399"}}>${Number(t.reward_money_planned).toFixed(2)}</strong></div>}
+            {t.risk_money_actual && t.reward_money_planned && (
+              <div style={{gridColumn:"1/-1"}}>
+                RR Actual: <strong>{(Number(t.reward_money_planned)/Number(t.risk_money_actual)).toFixed(2)}</strong>
+                {" "}
+                <span className="muted" style={{fontSize:"12px"}}>
+                  (Risk ${Number(t.risk_money_actual).toFixed(2)} → Reward ${Number(t.reward_money_planned).toFixed(2)})
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <TradeLevelChart trade={data.chart} />
 

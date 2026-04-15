@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-12");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-13");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1132,6 +1132,7 @@ async function mt5InitBackend() {
           return db.prepare(`
             SELECT signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
                    rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
+                   sl_pips, tp_pips, pip_value_per_lot, risk_money_actual, reward_money_planned,
                    note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
             FROM signals
             WHERE status = ?
@@ -1145,6 +1146,7 @@ async function mt5InitBackend() {
         return db.prepare(`
           SELECT signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
                  rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
+                 sl_pips, tp_pips, pip_value_per_lot, risk_money_actual, reward_money_planned,
                  note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
           FROM signals
           ORDER BY created_at DESC
@@ -1644,6 +1646,7 @@ async function mt5InitBackend() {
       const res = await pool.query(`
         SELECT signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
                rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
+               sl_pips, tp_pips, pip_value_per_lot, risk_money_actual, reward_money_planned,
                note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
         FROM signals
         ORDER BY created_at DESC
