@@ -82,21 +82,24 @@ export default function TradeDetailPage() {
               const payload = getEventPayloadForDisplay(ev) || {};
               
               let eventStatusTxt = "";
+              let eventStatusCls = "OTHER";
               const tType = String(ev.event_type || "");
-              if (tType.startsWith("QUEUED_")) eventStatusTxt = "new";
-              else if (tType === "EA_PULLED") eventStatusTxt = "ok";
-              else if (tType.startsWith("EA_ACK_")) eventStatusTxt = tType.replace("EA_ACK_", "").toLowerCase();
-              else if (tType === "MANUAL_CANCEL") eventStatusTxt = "canceled";
-              else if (tType === "EA_REQUEUE_CONNECTION") eventStatusTxt = "new";
-              
-              const statusDisplay = eventStatusTxt ? ` [${eventStatusTxt}]` : "";
+              if (tType.startsWith("QUEUED_")) { eventStatusTxt = "NEW"; eventStatusCls = "OTHER"; }
+              else if (tType === "EA_PULLED") { eventStatusTxt = "LOCKED"; eventStatusCls = "LOCKED"; }
+              else if (tType.startsWith("EA_ACK_")) {
+                 const rawStatus = tType.replace("EA_ACK_", "");
+                 eventStatusTxt = rawStatus;
+                 eventStatusCls = statusUi(rawStatus).cls;
+              }
+              else if (tType === "MANUAL_CANCEL") { eventStatusTxt = "CANCELED"; eventStatusCls = "OTHER"; }
+              else if (tType === "EA_REQUEUE_CONNECTION") { eventStatusTxt = "NEW"; eventStatusCls = "OTHER"; }
               
               return (
                 <article key={`${ev.id}-${ev.event_time}`} className="trade-card">
                   <div className="trade-head">
-                    <strong>
+                    <strong style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                       {ev.event_type}
-                      <span style={{ color: "#4ade80", fontWeight: "normal", marginLeft: "4px" }}>{statusDisplay}</span>
+                      {eventStatusTxt && <span className={`badge ${eventStatusCls}`}>{eventStatusTxt}</span>}
                     </strong>
                     <span className="muted">{new Date(ev.event_time).toLocaleString()}</span>
                   </div>
