@@ -104,7 +104,7 @@ a { color: var(--accent); text-decoration: none; }
 }
 .mini-table-head.wide,
 .mini-table-row.wide {
-  grid-template-columns: minmax(0, 1fr) 34px 34px 56px 80px 52px;
+  grid-template-columns: minmax(0, 2fr) 50px 44px 64px 52px;
 }
 .mini-table-head {
   color: #64748b;
@@ -118,8 +118,8 @@ a { color: var(--accent); text-decoration: none; }
 }
 .mini-name {
   white-space: nowrap;
-  overflow: visible;
-  text-overflow: clip;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .spark-wrap {
   height: 92px;
