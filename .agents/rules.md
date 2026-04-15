@@ -57,7 +57,16 @@ After **every** completed task or phase, end your response with exactly this for
 - **RuntimeContext:** Use `RuntimeContext` for chart lifecycle gates (`chartIsNew`, `symbolChanged`, `tfChanged`), not ad-hoc per-file flags.
 - **Preservation:** Never delete, remove, or silently downgrade an existing user-facing feature without explicit user confirmation.
 
-## 5. Pine Error Prevention (Critical)
+## 5. Multi-Agent Protocol & Communication
+
+To ensure seamless coordination between multiple AI agents (Gemini, Codex, etc.) sharing this workspace, execute the following strict file-system mechanisms:
+
+- **Agent Tags:** All tasks inside `.agents/sprint.md` MUST explicitly declare target assignees, e.g., `[TODO: Gemini]`, `[TODO: Codex]`, or `[TODO: Any]`. When you initialize your routine, **ONLY** execute tasks explicitly assigned to your name or "Any".
+- **The Mailbox:** NEVER give the user a chunk of text to "copy and paste to the next AI". Instead, write your handoff context robustly into `.agents/sync/MAILBOX.md`. The user will merely instruct the next agent to "Check the mailbox".
+- **Knowledge Base:** If you encounter a highly specific domain quirk (e.g., MT5 transaction bugs, React React-Router nuances), DO NOT let the next AI reinvent the wheel. Write a short snippet into `.agents/knowledge/`. You MUST read the relevant files in `.agents/knowledge/` before beginning any heavy implementations.
+- **Concurrency:** Do not touch files explicitly being modified by another assigned agent task as dictated by `sprint.md`.
+
+## 6. Pine Error Prevention (Critical)
 
 - **Typed `na`:** Use explicit casts (`int(na)`, `float(na)`), never raw `na` for typed arguments.
 - **Empty Branches:** Never leave `if/else` branches empty. Use explicit no-op: `bool(na)`.

@@ -1,19 +1,18 @@
-# SOP: Handoff & Session Pause
+# SOP: Agent Handoff & Session Pause (MAILBOX PROTOCOL)
 
-**Goal:** A critical procedure used when the AI hits a token limit, gets stuck in a loop, or needs to cleanly end the session so a subsequent AI or the human can resume flawlessly.
+**Goal:** A strictly asynchronous procedure used when an AI agent needs to hand off execution to another specialized AI agent (e.g. Gemini passing to Codex), or hits a context limit.
 
-## 1. Assessment
-- Identify exactly what was completed in the current phase.
-- Identify exactly what line of code or logic remains blocked.
+## 1. Prepare Tracking Documents
+- Ensure `.agents/sprint.md` correctly reflects what you've done.
+- Unfinished tasks remain marked `[DOING]`.
 
-## 2. Update Worklog
-- Open `.agents/worklog.md`.
-- Add a new timestamp block describing the exact technical threshold reached.
-  - Example: *Stopped halfway through `TVBridgeEA` order update. Successfully caught `ORDER_ADD` but need to finish `ORDER_DELETE` state mappings.*
+## 2. Generate Mailbox Payload
+- Open `.agents/sync/MAILBOX.md`.
+- Completely replace its contents with a highly detailed prompt targeting the next assigned agent. It MUST contain:
+  1. **Greeting/Context:** "Hello [TargetAgent]. Resume from [Date]. [SourceAgent] has completed X."
+  2. **Active State:** List modified files, and what explicit APIs/logic were added that the target agent must utilize.
+  3. **Directive:** Explicit instructions on what to code next (e.g., "Review your TODO in `.agents/sprint.md` Task ID FE-01 and implement it now").
 
-## 3. Prepare the Prompt
-- Output a compact paragraph inside the chat that the User can simply copy/paste to the next AI agent or into the new chat window.
-- The prompt MUST say: *"Resume work from session YYYY-MM-DD. Read `.agents/worklog.md` to see where we left off. The current priority is to finish X."*
-
-## 4. Graceful Exit
-- Output the `## ✅ Done` and `## 🔜 Remaining` blocks, clearly stating that context limits have been reached and a handoff is required.
+## 3. Graceful Exit
+- Output the `## ✅ Done` block to the human user.
+- Explicitly tell the human user: *"I have placed your handoff instructions into the mailbox. Simply open the next AI window and send the prompt: 'Check the mailbox'."*
