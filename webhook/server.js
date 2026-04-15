@@ -1828,11 +1828,16 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
 
   const plannedEntry = asNum(payload.entry ?? payload.price, NaN);
   const rawJson = payload.raw_json || payload;
-  const rawJsonNormalized = {
+  let rawJsonNormalized = {
     ...rawJson,
     order_type: orderType,
     entry_model: String(payload.entry_model ?? payload.entryModel ?? ""),
   };
+
+  const hasRisk = rawJsonNormalized.riskPct != null || rawJsonNormalized.risk_pct != null || rawJsonNormalized.volumePct != null || rawJsonNormalized.volume_pct != null;
+  if (!hasRisk) {
+    rawJsonNormalized.riskPct = 1.0;
+  }
   const upsertResult = await mt5UpsertSignal({
     signal_id: signalId,
     created_at: mt5NowIso(),
