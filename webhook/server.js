@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-14");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-15");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -3006,26 +3006,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "POST" && url.pathname === "/mt5/tv/webhook") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    try {
-      const payload = await readJson(req);
-      const apiKey = String(payload.apiKey || "");
-      if (CFG.mt5TvAlertApiKeys.size > 0 && !CFG.mt5TvAlertApiKeys.has(apiKey)) {
-        return json(res, 401, { ok: false, error: "invalid api key" });
-      }
-      const enqueue = await mt5EnqueueSignalFromPayload(payload, {
-        source: "tradingview",
-        eventType: "QUEUED_FROM_TV",
-        fallbackIdPrefix: "tv",
-      });
-
-      return json(res, 200, { ok: true, signal_id: enqueue.signal_id, action: enqueue.action, symbol: enqueue.symbol });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      return json(res, 400, { ok: false, error: message });
-    }
-  }
 
   if (req.method === "GET" && url.pathname === "/mt5/ea/pull") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
@@ -3171,6 +3151,18 @@ const server = http.createServer(async (req, res) => {
         reward_money_planned: Number.isFinite(rewardMoneyPlanned) && rewardMoneyPlanned > 0 ? rewardMoneyPlanned : null,
       });
 
+      if (status === "TP" || status === "SL") {
+        try {
+          const model = mt5EntryModelFromRow(sig);
+          const tf = sig.source_tf || sig.chart_tf || "n/a";
+          const pnlStr = Number.isFinite(pnlRealized) ? (pnlRealized >= 0 ? `+$${pnlRealized.toFixed(2)}` : `-$${Math.abs(pnlRealized).toFixed(2)}`) : "n/a";
+          const telMsg = `[${sig.symbol}, ${sig.action}, ${signalId}, ${pnlStr}, ${model}, ${tf}, ${status}]`;
+          await sendTelegram(telMsg);
+        } catch (telErr) {
+          console.error("[Webhook] Telegram notification failed for TP/SL:", telErr);
+        }
+      }
+
       return json(res, 200, {
         ok: true,
         signal_id: signalId,
@@ -3190,13 +3182,17 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  if (req.method === "POST" && url.pathname === "/signal") {
+  if (req.method === "POST" && (url.pathname === "/signal" || url.pathname === "/mt5/tv/webhook")) {
     try {
       const payload = await readJson(req);
       const incomingHeaderApiKey = req.headers["x-api-key"] || "";
       const incomingBodyApiKey = payload.apiKey || payload.api_key || "";
-      const incomingApiKey = incomingHeaderApiKey || incomingBodyApiKey;
-      if (CFG.signalApiKey && incomingApiKey !== CFG.signalApiKey) {
+      const incomingApiKey = String(incomingHeaderApiKey || incomingBodyApiKey);
+
+      const isAuthorized = (CFG.signalApiKey && incomingApiKey === CFG.signalApiKey) ||
+                          (CFG.mt5TvAlertApiKeys.size > 0 && CFG.mt5TvAlertApiKeys.has(incomingApiKey));
+
+      if ((CFG.signalApiKey || CFG.mt5TvAlertApiKeys.size > 0) && !isAuthorized) {
         return json(res, 401, { ok: false, error: "Unauthorized" });
       }
 
