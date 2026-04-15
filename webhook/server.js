@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.14-08");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-01");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -2803,6 +2803,29 @@ const server = http.createServer(async (req, res) => {
         account,
       },
     });
+  }
+
+  if (req.method === "POST" && url.pathname === "/mt5/ea/heartbeat") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    try {
+      const payload = await readJson(req);
+      const apiKey = String(payload.api_key || "");
+      if (CFG.mt5EaApiKeys.size > 0 && !CFG.mt5EaApiKeys.has(apiKey)) {
+        return json(res, 401, { ok: false, error: "invalid ea api key" });
+      }
+      
+      const accountId = String(payload.account_id || "");
+      if (!accountId) {
+        return json(res, 400, { ok: false, error: "account_id is required" });
+      }
+      
+      // TODO: upsert into accounts table
+      console.log(`[MT5 Heartbeat] Account=${accountId} Bal=${payload.balance} Eq=${payload.equity}`);
+      return json(res, 200, { ok: true, message: "heartbeat_received" });
+    } catch (err) {
+      console.error("[Webhook] EA heartbeat error:", err);
+      return json(res, 500, { ok: false, error: "internal server error" });
+    }
   }
 
   if (req.method === "POST" && url.pathname === "/mt5/ea/ack") {

@@ -2101,6 +2101,20 @@ void ProcessBacktestQueue()
    RefreshDebugPanel();
 }
 
+void SendHeartbeat()
+{
+   string url = InpServerBaseUrl + "/mt5/ea/heartbeat";
+   string body = "{";
+   body += "\"api_key\":\"" + JsonEscape(InpEaApiKey) + "\",";
+   body += "\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",";
+   body += "\"balance\":" + DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2) + ",";
+   body += "\"equity\":" + DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY), 2) + ",";
+   body += "\"free_margin\":" + DoubleToString(AccountInfoDouble(ACCOUNT_FREEMARGIN), 2) + ",";
+   body += "\"margin_level\":" + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN_LEVEL), 2);
+   body += "}";
+   HttpPostJson(url, body);
+}
+
 void OnTimer()
 {
    if(InpBacktestMode)
@@ -2108,6 +2122,14 @@ void OnTimer()
 
    ProcessStopRetryQueue();
    ProcessVirtualGuards();
+
+   datetime now = TimeCurrent();
+   static datetime lastHeartbeat = 0;
+   if(now - lastHeartbeat >= 5)
+   {
+      lastHeartbeat = now;
+      SendHeartbeat();
+   }
 
    g_dbgPollCount++;
    string url = InpServerBaseUrl + "/mt5/ea/pull?api_key=" + InpEaApiKey + "&account=" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN));
@@ -2194,6 +2216,74 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
 {
    if(!InpEnableTradeEventAck || InpBacktestMode)
       return;
+
+   // Track Pending / Cancelled Orders
+   if(trans.type == TRADE_TRANSACTION_ORDER_ADD)
+   {
+      ulong orderTicket = trans.order;
+      if(orderTicket > 0 && OrderSelect(orderTicket))
+      {
+         long magic = OrderGetInteger(ORDER_MAGIC);
+         if(magic == InpMagic)
+         {
+            string signalId = "";
+            int ordIdx = -1;
+            GetSignalIdByOrderTicket(orderTicket, signalId, ordIdx);
+            if(StringLen(signalId) == 0) signalId = OrderGetString(ORDER_COMMENT);
+            
+            if(StringLen(signalId) > 0)
+            {
+               g_ackSymbol = OrderGetString(ORDER_SYMBOL);
+               ENUM_ORDER_TYPE ot = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+               g_ackAction = (ot == ORDER_TYPE_BUY_LIMIT || ot == ORDER_TYPE_BUY_STOP) ? "BUY" : "SELL";
+               g_ackExecTs = TimeCurrent();
+               g_ackFreeMargin = AccountInfoDouble(ACCOUNT_FREEMARGIN);
+               g_ackBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+               g_ackEquity = AccountInfoDouble(ACCOUNT_EQUITY);
+               g_ackHasPnlRealized = false;
+               
+               Ack(signalId, "PENDING", IntegerToString((int)orderTicket), "order_placed");
+            }
+         }
+      }
+      return;
+   }
+   else if(trans.type == TRADE_TRANSACTION_ORDER_DELETE)
+   {
+      ulong orderTicket = trans.order;
+      if(orderTicket > 0 && HistoryOrderSelect(orderTicket))
+      {
+         long magic = HistoryOrderGetInteger(orderTicket, ORDER_MAGIC);
+         if(magic == InpMagic)
+         {
+            string signalId = "";
+            int ordIdx = -1;
+            GetSignalIdByOrderTicket(orderTicket, signalId, ordIdx);
+            if(StringLen(signalId) == 0) signalId = HistoryOrderGetString(orderTicket, ORDER_COMMENT);
+            
+            if(StringLen(signalId) > 0)
+            {
+               g_ackSymbol = HistoryOrderGetString(orderTicket, ORDER_SYMBOL);
+               ENUM_ORDER_TYPE ot = (ENUM_ORDER_TYPE)HistoryOrderGetInteger(orderTicket, ORDER_TYPE);
+               g_ackAction = (ot == ORDER_TYPE_BUY_LIMIT || ot == ORDER_TYPE_BUY_STOP || ot == ORDER_TYPE_BUY) ? "BUY" : "SELL";
+               g_ackExecTs = TimeCurrent();
+               g_ackFreeMargin = AccountInfoDouble(ACCOUNT_FREEMARGIN);
+               g_ackBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+               g_ackEquity = AccountInfoDouble(ACCOUNT_EQUITY);
+               g_ackHasPnlRealized = false;
+               
+               ENUM_ORDER_STATE state = (ENUM_ORDER_STATE)HistoryOrderGetInteger(orderTicket, ORDER_STATE);
+               if(state == ORDER_STATE_CANCELED || state == ORDER_STATE_EXPIRED || state == ORDER_STATE_REJECTED)
+               {
+                  Ack(signalId, state == ORDER_STATE_EXPIRED ? "EXPIRED" : "CANCEL", IntegerToString((int)orderTicket), "order_removed");
+                  if(ordIdx >= 0) RemoveOrderMapAt(ordIdx);
+               }
+            }
+         }
+      }
+      return;
+   }
+
    if(trans.type != TRADE_TRANSACTION_DEAL_ADD)
       return;
    if(trans.deal == 0 || !HistoryDealSelect(trans.deal))

@@ -3,6 +3,9 @@
 *(A strict append-only log of what was completed, with dates, module, and author)*
 
 ## 2026-04-15
+- [x] [12:20] [Schema Docs] [Author: Codex] Task: Synced DB schema docs with current `server.js` and clarified `accounts` concept + heartbeat upsert TODO.
+- [x] [12:05] [TVBridgeEA.mq5] [Author: Gemini] Feature: Implemented EA Client-to-VPS Sync feature (PENDING ack tracking in OnTradeTransaction, and OnTimer heartbeat payload).
+- [x] [12:05] [webhook/server.js] [Author: Gemini] Feature: Multi-Account support and DB Schema update (`accounts` table, JSON `metadata` columns, Account ID routing).
 - [x] [11:25] [.agents] [Author: Gemini] Refactored legacy `roadmap.md` into segmented Sprint/Backlog/Bugs/Changelog system using Markdown Kanban SOPs.
 - [x] [09:00] [.agents] [Author: Gemini] Restructured `.agents/` to a flat, 4-entry-file system with minimal supporting subdirectories. Archived unused folders.
 - [x] [08:50] [rules.md] [Author: Gemini] Migrated global coding constraints strictly into a single `.agents/rules.md` file.

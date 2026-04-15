@@ -4,8 +4,18 @@
 
 - TradingView/Pine sends signals to `webhook/server.js`.
 - MT5 EA pulls queue via `/mt5/ea/pull` and posts execution updates via `/mt5/ea/ack`.
-- `signals` and `signal_events` are persisted in Postgres (or fallback storage).
+- Data tables in DB layer: `users`, `accounts`, `signals`, `signal_events`.
 - Webhook-UI (`webhook-ui`) reads dashboard/trade APIs and renders operational state.
+
+## Accounts Concept (Current)
+
+- `accounts` is the broker-account state table (account-level identity + balance/status + metadata).
+- It is designed to support multi-account operation under one `user_id`.
+- Current implementation status:
+  - Table exists in SQLite/Postgres schema.
+  - `/mt5/ea/heartbeat` endpoint requires `account_id`.
+  - Server still has TODO for heartbeat upsert into `accounts` (not fully wired yet).
+- Signals currently key primarily by `signal_id` + `user_id`; `account_id` linkage is partial/roadmap.
 
 ## Dashboard Spec v1 (Design-First, No-Code Yet)
 
