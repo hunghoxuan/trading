@@ -53,8 +53,7 @@ export default function TradeDetailPage() {
   };
   return (
     <section>
-      <p><Link to="/trades">Back to trades</Link></p>
-      <h1>Trade Detail</h1>
+      <p style={{ marginBottom: "1rem" }}><Link to="/trades">Back to trades</Link></p>
       <div className="panel">
         <div className="trade-grid two-cols">
           <div>Signal ID: {t.signal_id}</div>
@@ -71,21 +70,34 @@ export default function TradeDetailPage() {
         </div>
       </div>
 
-      <h2>Trade Visual (Levels)</h2>
       <TradeLevelChart trade={data.chart} />
 
-      <h2>Event Timeline</h2>
-      <div className="panel">
+      <h2 style={{ marginTop: "2rem" }}>History</h2>
+      <div style={{ marginTop: "1rem" }}>
         {events.length === 0 ? (
           <div className="muted">No events yet.</div>
         ) : (
           <div className="trade-list">
             {[...events].sort((a,b) => new Date(b.event_time) - new Date(a.event_time)).map((ev) => {
               const payload = getEventPayloadForDisplay(ev) || {};
+              
+              let eventStatusTxt = "";
+              const tType = String(ev.event_type || "");
+              if (tType.startsWith("QUEUED_")) eventStatusTxt = "new";
+              else if (tType === "EA_PULLED") eventStatusTxt = "ok";
+              else if (tType.startsWith("EA_ACK_")) eventStatusTxt = tType.replace("EA_ACK_", "").toLowerCase();
+              else if (tType === "MANUAL_CANCEL") eventStatusTxt = "canceled";
+              else if (tType === "EA_REQUEUE_CONNECTION") eventStatusTxt = "new";
+              
+              const statusDisplay = eventStatusTxt ? ` [${eventStatusTxt}]` : "";
+              
               return (
                 <article key={`${ev.id}-${ev.event_time}`} className="trade-card">
                   <div className="trade-head">
-                    <strong>{ev.event_type}</strong>
+                    <strong>
+                      {ev.event_type}
+                      <span style={{ color: "#4ade80", fontWeight: "normal", marginLeft: "4px" }}>{statusDisplay}</span>
+                    </strong>
                     <span className="muted">{new Date(ev.event_time).toLocaleString()}</span>
                   </div>
                   <div className="json-table-wrapper" style={{ marginTop: '0.5rem', overflowX: 'auto' }}>
