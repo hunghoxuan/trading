@@ -35,6 +35,7 @@ a { color: var(--accent); text-decoration: none; }
 .blur { opacity: 0.75; }
 
 .kpi-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 16px; }
+.kpi-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .kpi-card { background: rgba(9, 14, 28, 0.88); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
 .kpi-label { color: var(--muted); font-size: 12px; }
 .kpi-value { font-size: 24px; font-weight: 700; margin-top: 2px; }
@@ -48,6 +49,7 @@ a { color: var(--accent); text-decoration: none; }
   gap: 8px;
   align-items: center;
 }
+.dashboard-filters.no-metric-toggle { grid-template-columns: 1fr 1fr 1fr 130px; }
 .metric-toggle {
   display: inline-grid;
   grid-template-columns: 1fr 1fr;
@@ -59,6 +61,25 @@ a { color: var(--accent); text-decoration: none; }
   color: #e0f2fe;
 }
 .period-grid .kpi-card { min-height: 92px; }
+.period-box-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+.period-box { min-height: 96px; }
+.period-title { font-size: 13px; color: #cbd5e1; }
+.period-big-line {
+  margin-top: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 22px;
+}
+.money-pos { color: #22c55e; }
+.money-neg { color: #ef4444; }
+.money-neutral { color: #cbd5e1; }
 .tier-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -80,6 +101,10 @@ a { color: var(--accent); text-decoration: none; }
   grid-template-columns: minmax(0, 1fr) 38px 38px 56px 48px;
   gap: 6px;
   align-items: center;
+}
+.mini-table-head.wide,
+.mini-table-row.wide {
+  grid-template-columns: minmax(0, 1fr) 34px 34px 56px 80px 52px;
 }
 .mini-table-head {
   color: #64748b;
@@ -257,6 +282,9 @@ button { cursor: pointer; }
   .dashboard-grid.advanced,
   .dashboard-grid.tables { grid-template-columns: 1fr; }
   .dashboard-filters { grid-template-columns: 1fr; }
+  .dashboard-filters.no-metric-toggle { grid-template-columns: 1fr; }
+  .kpi-grid.three { grid-template-columns: 1fr; }
+  .period-box-grid { grid-template-columns: 1fr; }
   .tier-grid { grid-template-columns: 1fr; }
   .filters-top, .filters-top.single-line { grid-template-columns: 1fr; }
   .trade-metrics-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -3,6 +3,8 @@
 *(A strict append-only log of what was completed, with dates, module, and author)*
 
 ## 2026-04-15
+- [x] [17:38] [webhook + webhook-ui] [Author: Codex] Task: Implemented dashboard v2 metric simplification (removed PnL toggle, enforced trade scope TP/SL/START/OK, strict winrate TP/(TP+SL), redesigned KPI/period cards, removed summary tiers/status breakdown, and added direction-aware top tables with Name|W|L|WR|PnL|RR).
+- [x] [16:31] [.agents tracking] [Author: Codex] Task: Synced cross-agent docs after FE completion (cleaned stale backlog items, replaced mailbox handoff, and updated architecture with implemented dashboard status + remaining gap).
 - [x] [16:20] [webhook + webhook-ui] [Author: Codex] Task: Completed FE-02 Advanced Dashboard. Added backend `/mt5/dashboard/advanced` (account/symbol/strategy filters, metric mode total/avg, summary tiers, status breakdown, period totals today/week/month/year, top winrate tables by symbol/entry-model/account, filtered pnl series), upgraded dashboard UI controls/tables/charts, and deployed-ready version bumps.
 - [x] [15:54] [webhook-ui] [Author: Codex] Task: Completed FE-01 Phase 1 (Trade Card + Status badge standardization). Implemented badge mapping (`OK->PLACED`, `LOCKED`, `START`, `TP`, `SL`, `OTHER`), rigid metric row (`Price|TP|SL|RR|Volume|PnL`), removed `PnL:` label, and added safe fallback formatting for legacy/zeroed fields.
 - [x] [15:46] [Backend] [Author: Gemini] Task: `BE-01` Database schema `entry_model` ingestion complete. Added Postgres/SQLite schema hooks and `/signal` webhook parser.

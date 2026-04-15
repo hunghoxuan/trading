@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-03");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-04");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -2106,6 +2106,10 @@ function mt5PeriodRange(period) {
     const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
     return { start, end };
   }
+  if (period === "year") {
+    const start = new Date(Date.UTC(now.getUTCFullYear(), 0, 1)).toISOString();
+    return { start, end };
+  }
   return { start: null, end };
 }
 
@@ -2249,6 +2253,12 @@ function mt5StatusTier(statusRaw) {
   return "CLOSED";
 }
 
+const MT5_TRADE_STATUSES = new Set(["TP", "SL", "START", "OK"]);
+
+function mt5IsTradeStatus(statusRaw) {
+  return MT5_TRADE_STATUSES.has(mt5CanonicalStoredStatus(statusRaw));
+}
+
 function mt5ComputeRMultiple(row) {
   const pnl = Number(row?.pnl_money_realized);
   const risk = Number(row?.risk_money_planned);
@@ -2256,46 +2266,60 @@ function mt5ComputeRMultiple(row) {
   return pnl / risk;
 }
 
-function mt5ComputeTopWinrateRows(rows, keyPicker, { limit = 10 } = {}) {
+function mt5ComputeTopWinrateRows(rows, keyPicker, { limit = 10, includeDirection = false } = {}) {
   const map = new Map();
   for (const row of rows || []) {
-    const key = String(keyPicker(row) || "").trim();
-    if (!key) continue;
+    const baseKey = String(keyPicker(row) || "").trim();
+    if (!baseKey) continue;
+    const direction = String(row?.action || "").toUpperCase();
+    const directionSafe = direction === "BUY" || direction === "SELL" ? direction : "-";
+    const key = includeDirection ? `${baseKey} | ${directionSafe}` : baseKey;
     const status = mt5CanonicalStoredStatus(row.status);
-    const pnl = Number(row.pnl_money_realized);
     const rr = mt5ComputeRMultiple(row);
+    const pnl = Number(row.pnl_money_realized);
     if (!map.has(key)) {
       map.set(key, {
         key,
+        name: baseKey,
+        direction: directionSafe,
         wins: 0,
         losses: 0,
         trades: 0,
+        pnl_total: 0,
+        rr_total: 0,
         rr_sum: 0,
         rr_count: 0,
       });
     }
     const agg = map.get(key);
-    if (status === "TP" || (Number.isFinite(pnl) && pnl > 0)) agg.wins += 1;
-    if (status === "SL" || (Number.isFinite(pnl) && pnl < 0)) agg.losses += 1;
-    agg.trades += 1;
+    if (status === "TP") agg.wins += 1;
+    if (status === "SL") agg.losses += 1;
+    if (mt5IsTradeStatus(status)) agg.trades += 1;
+    if (Number.isFinite(pnl)) agg.pnl_total += pnl;
     if (Number.isFinite(rr)) {
+      agg.rr_total += rr;
       agg.rr_sum += rr;
       agg.rr_count += 1;
     }
   }
   let out = [...map.values()].map((r) => {
-    const considered = r.wins + r.losses;
+    const considered = r.wins + r.losses; // strict TP/(TP+SL)
     return {
       key: r.key,
+      name: r.name,
+      direction: r.direction,
       wins: r.wins,
       losses: r.losses,
       trades: r.trades,
+      pnl_total: r.pnl_total,
+      rr_total: r.rr_total,
       win_rate: considered > 0 ? (r.wins / considered) * 100 : 0,
       r_multiple_avg: r.rr_count > 0 ? r.rr_sum / r.rr_count : null,
     };
   });
   out.sort((a, b) => {
     if (b.win_rate !== a.win_rate) return b.win_rate - a.win_rate;
+    if (b.pnl_total !== a.pnl_total) return b.pnl_total - a.pnl_total;
     if (b.trades !== a.trades) return b.trades - a.trades;
     return a.key < b.key ? -1 : 1;
   });
@@ -2313,6 +2337,31 @@ function mt5EntryModelFromRow(row) {
 function mt5StrategyFromRow(row) {
   const raw = row?.raw_json || {};
   return envStr(raw.strategy || raw.model || raw.entry_model || raw.entryModel);
+}
+
+function mt5ComputeTradeMetrics(rows) {
+  const all = Array.isArray(rows) ? rows : [];
+  const trades = all.filter((r) => mt5IsTradeStatus(r.status));
+  const wins = trades.filter((r) => mt5CanonicalStoredStatus(r.status) === "TP").length;
+  const losses = trades.filter((r) => mt5CanonicalStoredStatus(r.status) === "SL").length;
+  const winBase = wins + losses; // strict TP/(TP+SL)
+  const totalPnl = trades.reduce((acc, r) => {
+    const pnl = Number(r?.pnl_money_realized);
+    return Number.isFinite(pnl) ? acc + pnl : acc;
+  }, 0);
+  const totalRr = trades.reduce((acc, r) => {
+    const rr = mt5ComputeRMultiple(r);
+    return Number.isFinite(rr) ? acc + rr : acc;
+  }, 0);
+  return {
+    total_signals: all.length,
+    total_trades: trades.length,
+    wins,
+    losses,
+    win_rate: winBase > 0 ? (wins / winBase) * 100 : 0,
+    total_pnl: totalPnl,
+    total_rr: totalRr,
+  };
 }
 
 function getApiKeyFromReq(req, payload = null, urlObj = null) {
@@ -2579,7 +2628,6 @@ const server = http.createServer(async (req, res) => {
       const symbol = envStr(url.searchParams.get("symbol")).toUpperCase();
       const strategy = envStr(url.searchParams.get("strategy"));
       const range = envStr(url.searchParams.get("range"), "month").toLowerCase();
-      const metric = envStr(url.searchParams.get("metric"), "total").toLowerCase() === "avg" ? "avg" : "total";
 
       const allRows = mt5FilterRows(await mt5ListSignals(limit, ""), { userId });
       const rowsByDimension = allRows.filter((r) => {
@@ -2597,34 +2645,17 @@ const server = http.createServer(async (req, res) => {
       const periods = ["today", "week", "month", "year"];
       const periodTotals = {};
       for (const p of periods) {
-        const pr = p === "year"
-          ? {
-              start: new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1)).toISOString(),
-              end: new Date().toISOString(),
-            }
-          : mt5PeriodRange(p);
+        const pr = mt5PeriodRange(p);
         const scopedRows = mt5FilterRows(rowsByDimension, { from: pr.start, to: pr.end });
-        const metrics = mt5ComputeMetrics(scopedRows);
+        const metrics = mt5ComputeTradeMetrics(scopedRows);
         periodTotals[p] = {
-          total_pnl: metrics.pnl_money_realized,
-          avg_pnl_per_trade: metrics.total_trades > 0 ? (metrics.pnl_money_realized / metrics.total_trades) : 0,
-          trades: metrics.total_trades,
+          total_pnl: metrics.total_pnl,
+          total_rr: metrics.total_rr,
+          total_trades: metrics.total_trades,
+          total_wins: metrics.wins,
+          total_losses: metrics.losses,
         };
       }
-
-      const statusCounts = mt5CountBy(selectedRows, (r) => mt5CanonicalStoredStatus(r.status));
-      const tierInit = {
-        OPEN: { key: "OPEN", count: 0, pnl: 0 },
-        WINS_LOSSES: { key: "WINS_LOSSES", count: 0, pnl: 0 },
-        CLOSED: { key: "CLOSED", count: 0, pnl: 0 },
-      };
-      for (const r of selectedRows) {
-        const tier = mt5StatusTier(r.status);
-        const pnl = Number(r.pnl_money_realized);
-        tierInit[tier].count += 1;
-        if (Number.isFinite(pnl)) tierInit[tier].pnl += pnl;
-      }
-      const tiers = [tierInit.OPEN, tierInit.WINS_LOSSES, tierInit.CLOSED];
 
       const seriesBucket = range === "today" ? "hour" : "day";
       const seriesMap = new Map();
@@ -2654,19 +2685,16 @@ const server = http.createServer(async (req, res) => {
           symbol,
           strategy,
           range,
-          metric,
           accounts,
           symbols,
           strategies,
         },
-        metrics: mt5ComputeMetrics(selectedRows),
+        metrics: mt5ComputeTradeMetrics(selectedRows),
         period_totals: periodTotals,
-        status_counts: statusCounts,
-        tiers,
         top_winrate: {
-          symbols: mt5ComputeTopWinrateRows(selectedRows, (r) => String(r.symbol || "").toUpperCase(), { limit: 10 }),
-          entry_models: mt5ComputeTopWinrateRows(selectedRows, (r) => mt5EntryModelFromRow(r), { limit: 10 }),
-          accounts: mt5ComputeTopWinrateRows(selectedRows, (r) => envStr(r.user_id), { limit: 10 }),
+          symbols: mt5ComputeTopWinrateRows(selectedRows, (r) => String(r.symbol || "").toUpperCase(), { limit: 10, includeDirection: true }),
+          entry_models: mt5ComputeTopWinrateRows(selectedRows, (r) => mt5EntryModelFromRow(r), { limit: 10, includeDirection: true }),
+          accounts: mt5ComputeTopWinrateRows(selectedRows, (r) => envStr(r.user_id), { limit: 10, includeDirection: true }),
         },
         pnl_series: pnlSeries,
       });

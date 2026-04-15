@@ -1,7 +1,8 @@
 # Backlog
 
 ## High Priority (`P0` / `P1`)
-- [ ] [2026-04-15 12:10] [webhook-ui/dashboard + webhook/server.js] [Author: User] Feature: Build comprehensive dashboard with Account Balance, Current PnL, ordered status totals (TP, SL, START, OK, OTHER=REJECT/CANCEL/FAIL), and global filters by time range (Today/Week/Month/Year) and symbols.
+- [ ] [2026-04-15 12:25] [Infra/Deployment] [Author: User] Feature: Add SSL/TLS and enforce HTTPS for production server (domain + webhook + UI + API compatibility).
+- [ ] [2026-04-15 16:30] [webhook-ui/dashboard + webhook/server.js] [Author: Codex] Task: Complete dashboard phase-2 gap by wiring account-level balance/equity/free-margin card from `accounts` heartbeat snapshots and add smoke tests for `/mt5/dashboard/advanced`.
 - [ ] [2026-04-14 15:00] [Architecture] [Author: User] Feature: Clarify `events vs signals` canonical model and prune policy (`P1`).
 - [ ] [2026-04-14 15:00] [Architecture] [Author: User] Feature: Define HTF1-priority trend/bias direction policy (`P1`).
 - [ ] [2026-04-14 15:00] [SMC / MSS / Core] [Author: User] Feature: Apply Wave-1 gate cuts in SMC, then MSS, then Core (`P0`).
