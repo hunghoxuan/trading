@@ -291,6 +291,7 @@ CREATE TABLE IF NOT EXISTS signals (
   tp DOUBLE PRECISION NULL,
   source_tf TEXT NULL,
   chart_tf TEXT NULL,
+  entry_model TEXT NULL,
   rr_planned DOUBLE PRECISION NULL,
   risk_money_planned DOUBLE PRECISION NULL,
   pnl_money_realized DOUBLE PRECISION NULL,

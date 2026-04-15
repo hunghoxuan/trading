@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-01");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-02");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -251,6 +251,7 @@ function normalizeSignal(payload) {
   const userId = envStr(payload.user_id ?? payload.userId ?? payload.user ?? CFG.mt5DefaultUserId, CFG.mt5DefaultUserId);
   const rrPlanned = asNum(payload.rr ?? payload.risk_reward, NaN);
   const riskMoneyPlanned = asNum(payload.risk_money ?? payload.money_risk ?? payload.riskMoney, NaN);
+  const entryModel = String(payload.entry_model ?? payload.entryModel ?? "");
 
   if (!symbol) throw new Error("Missing symbol");
   if (!Number.isFinite(price) || price <= 0) throw new Error("Invalid price");
@@ -268,6 +269,7 @@ function normalizeSignal(payload) {
     signalTime,
     quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : null,
     user_id: userId,
+    entry_model: entryModel || null,
     rr_planned: Number.isFinite(rrPlanned) ? rrPlanned : null,
     risk_money_planned: Number.isFinite(riskMoneyPlanned) ? riskMoneyPlanned : null,
     raw: payload,
@@ -913,6 +915,10 @@ async function mt5InitBackend() {
       try { db.exec(`ALTER TABLE ${tbl} ADD COLUMN metadata TEXT`); } catch(e) {}
     });
 
+    ["source_tf", "chart_tf", "entry_model"].forEach(col => {
+      try { db.exec(`ALTER TABLE signals ADD COLUMN ${col} TEXT`); } catch(e) {}
+    });
+
     // Backward-compatible migration from legacy table name.
     const oldTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='mt5_signals'").get();
     if (oldTable) {
@@ -1330,6 +1336,10 @@ async function mt5InitBackend() {
   await pool.query(`
     ALTER TABLE signals
     ADD COLUMN IF NOT EXISTS chart_tf TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE signals
+    ADD COLUMN IF NOT EXISTS entry_model TEXT
   `);
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_signals_status_created
@@ -1821,6 +1831,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   const rawJsonNormalized = {
     ...rawJson,
     order_type: orderType,
+    entry_model: String(payload.entry_model ?? payload.entryModel ?? ""),
   };
   const upsertResult = await mt5UpsertSignal({
     signal_id: signalId,
