@@ -65,6 +65,7 @@ To ensure seamless coordination between multiple AI agents (Gemini, Codex, etc.)
 - **The Mailbox:** NEVER give the user a chunk of text to "copy and paste to the next AI". Instead, write your handoff context robustly into `.agents/sync/MAILBOX.md`. The user will merely instruct the next agent to "Check the mailbox".
 - **Knowledge Base:** If you encounter a highly specific domain quirk (e.g., MT5 transaction bugs, React React-Router nuances), DO NOT let the next AI reinvent the wheel. Write a short snippet into `.agents/knowledge/`. You MUST read the relevant files in `.agents/knowledge/` before beginning any heavy implementations.
 - **Concurrency:** Do not touch files explicitly being modified by another assigned agent task as dictated by `sprint.md`.
+- **System File Protection:** NEVER delete any `.agents/*` files, `AI.md`, or `.cursorrules`. To "clear" the mailbox, you must empty its contents or write `[EMPTY]`, but NEVER execute file deletion on `MAILBOX.md`. These files are structural dependencies.
 
 ## 6. Pine Error Prevention (Critical)
 

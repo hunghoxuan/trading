@@ -12,6 +12,7 @@
   1. **Greeting/Context:** "Hello [TargetAgent]. Resume from [Date]. [SourceAgent] has completed X."
   2. **Active State:** List modified files, and what explicit APIs/logic were added that the target agent must utilize.
   3. **Directive:** Explicit instructions on what to code next (e.g., "Review your TODO in `.agents/sprint.md` Task ID FE-01 and implement it now").
+  4. **Post-Read Instructions:** Tell the agent to overwrite the file with `[EMPTY]` once they assume context, but NEVER to delete the `MAILBOX.md` file itself.
 
 ## 3. Graceful Exit
 - Output the `## ✅ Done` block to the human user.
