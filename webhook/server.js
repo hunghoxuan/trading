@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-10");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-11");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -3123,12 +3123,18 @@ const server = http.createServer(async (req, res) => {
       const ackResult = payload.result ?? payload.retcode ?? payload.code ?? null;
       const ackMessage = payload.message ?? payload.msg ?? payload.comment ?? null;
       const ackNote = payload.note ?? payload.reason ?? null;
+      // ackSummary = diagnostic note (stored in event, NOT in error for successful trades)
       const ackSummary = [ackResult, ackMessage, ackNote]
         .filter((v) => v !== null && v !== undefined && String(v).trim() !== "")
         .join(" | ");
-      const ackErrorCombined = [payload.error, ackSummary]
-        .filter((v) => v !== null && v !== undefined && String(v).trim() !== "")
-        .join(" | ") || null;
+      const isSuccessStatus = ["OK", "START", "TP", "SL", "PENDING"].includes(status);
+      // For successful trades: only store actual error from payload, not the full diagnostic note.
+      // For failures: combine payload.error + full summary so the log is complete.
+      const ackErrorCombined = isSuccessStatus
+        ? (payload.error && String(payload.error).trim() ? String(payload.error) : null)
+        : [payload.error, ackSummary]
+            .filter((v) => v !== null && v !== undefined && String(v).trim() !== "")
+            .join(" | ") || null;
       const retryableConnectivityFail = mt5IsRetryableConnectivityFail(status, ackErrorCombined);
 
       await mt5AckSignal(signalId, status, payload.ticket, ackErrorCombined, {
