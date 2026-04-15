@@ -51,10 +51,10 @@ function TableBlock({ title, rows }) {
   return (
     <div className="panel">
       <div className="panel-head" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-        <h2>{title}</h2>
-        <select style={{fontSize: '0.8rem', padding: '2px 4px', background: 'transparent', color: '#94a3b8', border: '1px solid #334155', borderRadius: '4px'}} value={orderBy} onChange={(e) => setOrderBy(e.target.value)}>
-          <option value="WR">Sort WR</option>
+        <div className="kpi-label period-title" style={{margin: 0, textTransform: 'capitalize'}}>{title}</div>
+        <select className="kpi-label period-title" style={{margin: 0, padding: 0, background: 'transparent', border: 'none', outline: 'none', cursor: 'pointer', textAlign: 'right'}} value={orderBy} onChange={(e) => setOrderBy(e.target.value)}>
           <option value="Name">Sort Name</option>
+          <option value="WR">Sort WR</option>
           <option value="PnL">Sort PnL</option>
           <option value="RR">Sort RR</option>
           <option value="W">Sort Wins</option>

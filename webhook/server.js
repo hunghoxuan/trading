@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-05");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-06");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -2266,7 +2266,10 @@ function mt5ComputeRMultiple(row) {
     if (Number.isFinite(risk) && risk > 0) return pnl / risk;
     const s = mt5CanonicalStoredStatus(row.status);
     const planned = Number(row?.rr_planned);
-    if (s === "TP" && Number.isFinite(planned) && planned > 0) return planned;
+    
+    if (s === "TP") {
+      return (Number.isFinite(planned) && planned > 0) ? planned : 1; 
+    }
     if (s === "SL") return -1;
   }
   return null;
