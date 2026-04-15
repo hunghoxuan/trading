@@ -40,6 +40,62 @@ a { color: var(--accent); text-decoration: none; }
 .kpi-value { font-size: 24px; font-weight: 700; margin-top: 2px; }
 .kpi-hint { color: var(--muted); font-size: 12px; }
 .dashboard-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.dashboard-grid.advanced { grid-template-columns: 1.2fr 1fr 1fr; }
+.dashboard-grid.tables { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dashboard-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 130px 250px;
+  gap: 8px;
+  align-items: center;
+}
+.metric-toggle {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.metric-toggle button.active {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.16);
+  color: #e0f2fe;
+}
+.period-grid .kpi-card { min-height: 92px; }
+.tier-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.tier-card {
+  border: 1px solid #1f3149;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 10px;
+  padding: 10px;
+}
+.tier-key { font-size: 11px; color: #94a3b8; letter-spacing: 0.04em; }
+.tier-count { font-size: 22px; color: #e2e8f0; margin-top: 2px; }
+.tier-pnl { font-size: 13px; color: #67e8f9; }
+.mini-table { display: grid; gap: 6px; }
+.mini-table-head,
+.mini-table-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px 38px 56px 48px;
+  gap: 6px;
+  align-items: center;
+}
+.mini-table-head {
+  color: #64748b;
+  font-size: 11px;
+  border-bottom: 1px solid #1e293b;
+  padding-bottom: 4px;
+}
+.mini-table-row {
+  font-size: 12px;
+  color: #cbd5e1;
+}
+.mini-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .spark-wrap {
   height: 92px;
   display: flex;
@@ -198,6 +254,10 @@ button { cursor: pointer; }
   .keybar { width: 100%; }
   .split-layout { grid-template-columns: 1fr; }
   .dashboard-grid { grid-template-columns: 1fr; }
+  .dashboard-grid.advanced,
+  .dashboard-grid.tables { grid-template-columns: 1fr; }
+  .dashboard-filters { grid-template-columns: 1fr; }
+  .tier-grid { grid-template-columns: 1fr; }
   .filters-top, .filters-top.single-line { grid-template-columns: 1fr; }
   .trade-metrics-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .trade-bottom-line { flex-direction: column; align-items: flex-start; }

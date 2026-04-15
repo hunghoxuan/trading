@@ -236,6 +236,13 @@ async function downloadCsv(path, params = {}) {
 
 export const api = {
   health: () => get("/health"),
+  dashboardAdvanced: (params = {}) => {
+    const q = new URLSearchParams();
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && String(v) !== "") q.set(k, String(v));
+    });
+    return get(`/mt5/dashboard/advanced?${q.toString()}`);
+  },
   dashboardSummary: (userId = "") => get(`/mt5/dashboard/summary${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`),
   dashboardSeries: (period = "month", userId = "") => get(`/mt5/dashboard/pnl-series?period=${encodeURIComponent(period)}${userId ? `&user_id=${encodeURIComponent(userId)}` : ""}`),
   symbols: (userId = "") => get(`/mt5/filters/symbols${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`),

@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-02");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-03");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -2242,6 +2242,79 @@ function mt5CountBy(rows, pick, { sortDesc = true, limit = 0 } = {}) {
   return entries;
 }
 
+function mt5StatusTier(statusRaw) {
+  const s = mt5CanonicalStoredStatus(statusRaw);
+  if (["NEW", "LOCKED", "OK", "START"].includes(s)) return "OPEN";
+  if (["TP", "SL"].includes(s)) return "WINS_LOSSES";
+  return "CLOSED";
+}
+
+function mt5ComputeRMultiple(row) {
+  const pnl = Number(row?.pnl_money_realized);
+  const risk = Number(row?.risk_money_planned);
+  if (!Number.isFinite(pnl) || !Number.isFinite(risk) || risk <= 0) return null;
+  return pnl / risk;
+}
+
+function mt5ComputeTopWinrateRows(rows, keyPicker, { limit = 10 } = {}) {
+  const map = new Map();
+  for (const row of rows || []) {
+    const key = String(keyPicker(row) || "").trim();
+    if (!key) continue;
+    const status = mt5CanonicalStoredStatus(row.status);
+    const pnl = Number(row.pnl_money_realized);
+    const rr = mt5ComputeRMultiple(row);
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        wins: 0,
+        losses: 0,
+        trades: 0,
+        rr_sum: 0,
+        rr_count: 0,
+      });
+    }
+    const agg = map.get(key);
+    if (status === "TP" || (Number.isFinite(pnl) && pnl > 0)) agg.wins += 1;
+    if (status === "SL" || (Number.isFinite(pnl) && pnl < 0)) agg.losses += 1;
+    agg.trades += 1;
+    if (Number.isFinite(rr)) {
+      agg.rr_sum += rr;
+      agg.rr_count += 1;
+    }
+  }
+  let out = [...map.values()].map((r) => {
+    const considered = r.wins + r.losses;
+    return {
+      key: r.key,
+      wins: r.wins,
+      losses: r.losses,
+      trades: r.trades,
+      win_rate: considered > 0 ? (r.wins / considered) * 100 : 0,
+      r_multiple_avg: r.rr_count > 0 ? r.rr_sum / r.rr_count : null,
+    };
+  });
+  out.sort((a, b) => {
+    if (b.win_rate !== a.win_rate) return b.win_rate - a.win_rate;
+    if (b.trades !== a.trades) return b.trades - a.trades;
+    return a.key < b.key ? -1 : 1;
+  });
+  if (limit > 0) out = out.slice(0, limit);
+  return out;
+}
+
+function mt5EntryModelFromRow(row) {
+  const direct = envStr(row?.entry_model);
+  if (direct) return direct;
+  const raw = row?.raw_json || {};
+  return envStr(raw.entry_model || raw.entryModel || raw.model || raw.strategy);
+}
+
+function mt5StrategyFromRow(row) {
+  const raw = row?.raw_json || {};
+  return envStr(raw.strategy || raw.model || raw.entry_model || raw.entryModel);
+}
+
 function getApiKeyFromReq(req, payload = null, urlObj = null) {
   const headerKey = String(req.headers["x-api-key"] || "");
   if (headerKey) return headerKey;
@@ -2489,6 +2562,113 @@ const server = http.createServer(async (req, res) => {
         order_type_counts: orderTypeCounts,
         top_symbols: topSymbols,
         latest_unprocessed: notProcessed.slice(0, 20).map(mt5PublicState),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/mt5/dashboard/advanced") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const limitRaw = Number(url.searchParams.get("limit") || 50000);
+      const limit = Math.max(500, Math.min(200000, Number.isFinite(limitRaw) ? limitRaw : 50000));
+      const userId = envStr(url.searchParams.get("user_id"));
+      const symbol = envStr(url.searchParams.get("symbol")).toUpperCase();
+      const strategy = envStr(url.searchParams.get("strategy"));
+      const range = envStr(url.searchParams.get("range"), "month").toLowerCase();
+      const metric = envStr(url.searchParams.get("metric"), "total").toLowerCase() === "avg" ? "avg" : "total";
+
+      const allRows = mt5FilterRows(await mt5ListSignals(limit, ""), { userId });
+      const rowsByDimension = allRows.filter((r) => {
+        if (symbol && String(r.symbol || "").toUpperCase() !== symbol) return false;
+        if (strategy) {
+          const s = mt5StrategyFromRow(r);
+          if (s !== strategy) return false;
+        }
+        return true;
+      });
+
+      const period = mt5PeriodRange(range);
+      const selectedRows = mt5FilterRows(rowsByDimension, { from: period.start, to: period.end });
+
+      const periods = ["today", "week", "month", "year"];
+      const periodTotals = {};
+      for (const p of periods) {
+        const pr = p === "year"
+          ? {
+              start: new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1)).toISOString(),
+              end: new Date().toISOString(),
+            }
+          : mt5PeriodRange(p);
+        const scopedRows = mt5FilterRows(rowsByDimension, { from: pr.start, to: pr.end });
+        const metrics = mt5ComputeMetrics(scopedRows);
+        periodTotals[p] = {
+          total_pnl: metrics.pnl_money_realized,
+          avg_pnl_per_trade: metrics.total_trades > 0 ? (metrics.pnl_money_realized / metrics.total_trades) : 0,
+          trades: metrics.total_trades,
+        };
+      }
+
+      const statusCounts = mt5CountBy(selectedRows, (r) => mt5CanonicalStoredStatus(r.status));
+      const tierInit = {
+        OPEN: { key: "OPEN", count: 0, pnl: 0 },
+        WINS_LOSSES: { key: "WINS_LOSSES", count: 0, pnl: 0 },
+        CLOSED: { key: "CLOSED", count: 0, pnl: 0 },
+      };
+      for (const r of selectedRows) {
+        const tier = mt5StatusTier(r.status);
+        const pnl = Number(r.pnl_money_realized);
+        tierInit[tier].count += 1;
+        if (Number.isFinite(pnl)) tierInit[tier].pnl += pnl;
+      }
+      const tiers = [tierInit.OPEN, tierInit.WINS_LOSSES, tierInit.CLOSED];
+
+      const seriesBucket = range === "today" ? "hour" : "day";
+      const seriesMap = new Map();
+      for (const r of selectedRows) {
+        const pnl = Number(r.pnl_money_realized);
+        if (!Number.isFinite(pnl)) continue;
+        const d = new Date(r.closed_at || r.ack_at || r.created_at);
+        if (!Number.isFinite(d.getTime())) continue;
+        const key = seriesBucket === "hour"
+          ? `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")} ${String(d.getUTCHours()).padStart(2, "0")}:00`
+          : `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+        seriesMap.set(key, (seriesMap.get(key) || 0) + pnl);
+      }
+      const pnlSeries = [...seriesMap.entries()]
+        .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+        .map(([x, y]) => ({ x, y }));
+
+      const symbols = [...new Set(rowsByDimension.map((r) => String(r.symbol || "").toUpperCase()).filter(Boolean))].sort();
+      const strategies = [...new Set(rowsByDimension.map((r) => mt5StrategyFromRow(r)).filter(Boolean))].sort();
+      const accounts = [...new Set(allRows.map((r) => envStr(r.user_id)).filter(Boolean))].sort();
+
+      return json(res, 200, {
+        ok: true,
+        version: SERVER_VERSION,
+        filters: {
+          user_id: userId || "",
+          symbol,
+          strategy,
+          range,
+          metric,
+          accounts,
+          symbols,
+          strategies,
+        },
+        metrics: mt5ComputeMetrics(selectedRows),
+        period_totals: periodTotals,
+        status_counts: statusCounts,
+        tiers,
+        top_winrate: {
+          symbols: mt5ComputeTopWinrateRows(selectedRows, (r) => String(r.symbol || "").toUpperCase(), { limit: 10 }),
+          entry_models: mt5ComputeTopWinrateRows(selectedRows, (r) => mt5EntryModelFromRow(r), { limit: 10 }),
+          accounts: mt5ComputeTopWinrateRows(selectedRows, (r) => envStr(r.user_id), { limit: 10 }),
+        },
+        pnl_series: pnlSeries,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
