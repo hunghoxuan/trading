@@ -3116,14 +3116,32 @@ const server = http.createServer(async (req, res) => {
       const slExec = (Number.isFinite(slExecRaw) && slExecRaw > 0.0) ? slExecRaw : NaN;
       const tpExec = (Number.isFinite(tpExecRaw) && tpExecRaw > 0.0) ? tpExecRaw : NaN;
       // Pip/lot telemetry from EA
-      const slPips = asNum(payload.sl_pips, NaN);
-      const tpPips = asNum(payload.tp_pips, NaN);
-      const pipValuePerLot = asNum(payload.pip_value_per_lot, NaN);
-      const riskMoneyActual = asNum(payload.risk_money_actual, NaN);
-      const rewardMoneyPlanned = asNum(payload.reward_money_planned, NaN);
+      const slPipsFromPayload = asNum(payload.sl_pips, NaN);
+      const tpPipsFromPayload = asNum(payload.tp_pips, NaN);
+      const pipValuePerLotFromPayload = asNum(payload.pip_value_per_lot, NaN);
+      const riskMoneyActualFromPayload = asNum(payload.risk_money_actual, NaN);
+      const rewardMoneyPlannedFromPayload = asNum(payload.reward_money_planned, NaN);
       const ackResult = payload.result ?? payload.retcode ?? payload.code ?? null;
       const ackMessage = payload.message ?? payload.msg ?? payload.comment ?? null;
       const ackNote = payload.note ?? payload.reason ?? null;
+
+      // Smart Parsing: If direct fields are missing, try to extract from note string (e.g., risk$=100.29)
+      const noteStr = String(ackNote || "").toLowerCase();
+      let riskMoneyActual = riskMoneyActualFromPayload;
+      if (!Number.isFinite(riskMoneyActual)) {
+        const m = noteStr.match(/risk\$=([\d.]+)/);
+        if (m) riskMoneyActual = parseFloat(m[1]);
+      }
+      let slPips = slPipsFromPayload;
+      if (!Number.isFinite(slPips)) {
+        const m = noteStr.match(/sl_pips=([\d.]+)/); // Hypothetical, but we can add more patterns
+        if (m) slPips = parseFloat(m[1]);
+      }
+      
+      const tpPips = tpPipsFromPayload;
+      const pipValuePerLot = pipValuePerLotFromPayload;
+      const rewardMoneyPlanned = rewardMoneyPlannedFromPayload;
+
       const ackSummary = [ackResult, ackMessage, ackNote]
         .filter((v) => v !== null && v !== undefined && String(v).trim() !== "")
         .join(" | ");
