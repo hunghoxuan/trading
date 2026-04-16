@@ -3,14 +3,28 @@ import { api } from "../api";
 
 export default function LogsPage() {
   const [events, setEvents] = useState([]);
+  const [symbols, setSymbols] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [page, setPage] = useState(0);
-  const [filter, setFilter] = useState({ q: "", type: "" });
+  const [filter, setFilter] = useState({ q: "", type: "", symbol: "" });
   const limit = 50;
 
-  const query = useMemo(() => ({ q: filter.q, type: filter.type, limit, offset: page * limit }), [filter, page]);
+  const query = useMemo(() => ({ 
+    q: filter.q, 
+    type: filter.type, 
+    symbol: filter.symbol,
+    limit, 
+    offset: page * limit 
+  }), [filter, page]);
+
+  async function loadSymbols() {
+    try {
+      const data = await api.symbols();
+      setSymbols(data.symbols || []);
+    } catch { /* ignore */ }
+  }
 
   async function loadEvents() {
     try {
@@ -41,35 +55,50 @@ export default function LogsPage() {
   }
 
   useEffect(() => {
+    loadSymbols();
+  }, []);
+
+  useEffect(() => {
     loadEvents();
   }, [query]);
 
   return (
     <section className="logs-page-container">
+      <div className="logs-top-bar">
+        <div className="logs-filters">
+          <input 
+            placeholder="Search Ticket, ID, Note..." 
+            value={filter.q}
+            onChange={e => { setFilter(f => ({ ...f, q: e.target.value })); setPage(0); }}
+          />
+          <select 
+            value={filter.type}
+            onChange={e => { setFilter(f => ({ ...f, type: e.target.value })); setPage(0); }}
+          >
+            <option value="">All Types</option>
+            <option value="EA_SYNC_PUSH">EA_SYNC_PUSH</option>
+            <option value="SIGNAL_NEW">SIGNAL_NEW</option>
+            <option value="SIGNAL_ACK">SIGNAL_ACK</option>
+            <option value="SIGNAL_UPDATE">SIGNAL_UPDATE</option>
+            <option value="EA_PULLED">EA_PULLED</option>
+            <option value="RECONCILE_START">RECONCILE_START</option>
+            <option value="RECONCILE_PLACED">RECONCILE_PLACED</option>
+          </select>
+          <select 
+            value={filter.symbol}
+            onChange={e => { setFilter(f => ({ ...f, symbol: e.target.value })); setPage(0); }}
+          >
+            <option value="">All Symbols</option>
+            {symbols.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <button className="btn-danger btn-xs" onClick={onDeleteAll}>Delete All Logs</button>
+      </div>
+
       <div className="logs-layout-split">
         <div className="logs-list-pane">
           <div className="panel-head">
-            <div className="panel-title-row">
-              <h3>System logs</h3>
-              <button className="btn-danger btn-xs" onClick={onDeleteAll}>Delete All</button>
-            </div>
-            <div className="logs-filters">
-              <input 
-                placeholder="Search Symbol, Ticket, ID..." 
-                value={filter.q}
-                onChange={e => { setFilter(f => ({ ...f, q: e.target.value })); setPage(0); }}
-              />
-              <select 
-                value={filter.type}
-                onChange={e => { setFilter(f => ({ ...f, type: e.target.value })); setPage(0); }}
-              >
-                <option value="">All Types</option>
-                <option value="EA_SYNC_PUSH">EA_SYNC_PUSH</option>
-                <option value="SIGNAL_NEW">SIGNAL_NEW</option>
-                <option value="SIGNAL_ACK">SIGNAL_ACK</option>
-                <option value="SIGNAL_UPDATE">SIGNAL_UPDATE</option>
-              </select>
-            </div>
+            <h3>Event List</h3>
             <div className="pager-mini">
               <button disabled={page === 0} onClick={() => setPage(p => p - 1)}>Prev</button>
               <span>Page {page + 1}</span>
@@ -78,7 +107,7 @@ export default function LogsPage() {
           </div>
           
           {error && <div className="error">{error}</div>}
-          {loading && <div className="loading">Syncing logs...</div>}
+          {loading && <div className="loading">Syncing data...</div>}
           
           <div className="events-table-wrap">
             <table className="events-table">
@@ -136,7 +165,7 @@ export default function LogsPage() {
                   <span>{selectedEvent.symbol || "N/A"}</span>
                 </div>
                 <div className="field-block">
-                  <label>Payload (Debug Info):</label>
+                  <label>Payload (Full telemetry):</label>
                   <pre className="payload-box">
                     {JSON.stringify(selectedEvent.payload_json, null, 2)}
                   </pre>
@@ -144,7 +173,7 @@ export default function LogsPage() {
               </div>
             </div>
           ) : (
-            <div className="empty-state muted">Select a log entry to inspect payload</div>
+            <div className="empty-state muted">Select an entry to inspect full payload</div>
           )}
         </div>
       </div>

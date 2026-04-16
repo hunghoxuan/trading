@@ -1872,8 +1872,13 @@ async function mt5InitBackend() {
         pIdx++;
       }
       if (filters.type) {
-        sql += ` AND e.event_type = $${pIdx}`;
+        sql += ` AND e.event_type ILIKE $${pIdx}`;
         params.push(filters.type);
+        pIdx++;
+      }
+      if (filters.symbol) {
+        sql += ` AND s.symbol ILIKE $${pIdx}`;
+        params.push(filters.symbol);
         pIdx++;
       }
       sql += ` ORDER BY e.event_time DESC LIMIT $${pIdx} OFFSET $${pIdx + 1}`;
