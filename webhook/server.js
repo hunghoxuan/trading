@@ -175,47 +175,72 @@ function timingSafeEqHex(aHex, bHex) {
   }
 }
 
-function uiDefaultAuthState() {
+function uiDefaultAuthState(emailOverride = "") {
   const salt = makeSaltHex();
   return {
-    email: CFG.uiBootstrapEmail,
+    email: normalizeEmail(emailOverride || CFG.uiBootstrapEmail),
     password_salt: salt,
     password_hash: hashPassword(CFG.uiBootstrapPassword, salt),
     updated_at: new Date().toISOString(),
   };
 }
 
-function uiReadAuthState() {
-  if (!fs.existsSync(CFG.uiAuthStatePath)) {
-    const initState = uiDefaultAuthState();
-    fs.writeFileSync(CFG.uiAuthStatePath, JSON.stringify(initState, null, 2));
-    return initState;
+function parseLegacyUiAuthStateFromFile() {
+  if (!fs.existsSync(CFG.uiAuthStatePath)) return null;
+  try {
+    const raw = fs.readFileSync(CFG.uiAuthStatePath, "utf8");
+    const parsed = JSON.parse(raw || "{}");
+    if (!parsed || typeof parsed !== "object") return null;
+    const email = normalizeEmail(parsed.email || CFG.uiBootstrapEmail);
+    const passwordSalt = String(parsed.password_salt || "");
+    const passwordHash = String(parsed.password_hash || "");
+    if (!email || !passwordSalt || !passwordHash) return null;
+    return {
+      email,
+      password_salt: passwordSalt,
+      password_hash: passwordHash,
+      updated_at: parsed.updated_at || new Date().toISOString(),
+    };
+  } catch {
+    return null;
   }
-  const raw = fs.readFileSync(CFG.uiAuthStatePath, "utf8");
-  const parsed = JSON.parse(raw || "{}");
-  if (!parsed || typeof parsed !== "object") {
-    const initState = uiDefaultAuthState();
-    fs.writeFileSync(CFG.uiAuthStatePath, JSON.stringify(initState, null, 2));
-    return initState;
-  }
-  const email = normalizeEmail(parsed.email || CFG.uiBootstrapEmail);
-  const passwordSalt = String(parsed.password_salt || "");
-  const passwordHash = String(parsed.password_hash || "");
-  if (!email || !passwordSalt || !passwordHash) {
-    const initState = uiDefaultAuthState();
-    fs.writeFileSync(CFG.uiAuthStatePath, JSON.stringify(initState, null, 2));
-    return initState;
-  }
+}
+
+async function uiReadAuthStateByEmail(emailRaw) {
+  const email = normalizeEmail(emailRaw);
+  if (!email) return null;
+  const b = await mt5Backend();
+  if (!b.getUiAuthUser) return null;
+  const row = await b.getUiAuthUser(email);
+  if (!row) return null;
   return {
-    email,
-    password_salt: passwordSalt,
-    password_hash: passwordHash,
-    updated_at: parsed.updated_at || new Date().toISOString(),
+    email: normalizeEmail(row.email),
+    password_salt: String(row.password_salt || ""),
+    password_hash: String(row.password_hash || ""),
+    updated_at: String(row.updated_at || ""),
   };
 }
 
-function uiWriteAuthState(nextState) {
-  fs.writeFileSync(CFG.uiAuthStatePath, JSON.stringify(nextState, null, 2));
+async function uiWriteAuthState(nextState) {
+  const b = await mt5Backend();
+  if (!b.upsertUiAuthUser) throw new Error("UI auth storage is not supported by the current backend");
+  await b.upsertUiAuthUser({
+    email: normalizeEmail(nextState.email),
+    password_salt: String(nextState.password_salt || ""),
+    password_hash: String(nextState.password_hash || ""),
+    updated_at: String(nextState.updated_at || new Date().toISOString()),
+  });
+}
+
+async function uiEnsureAuthBootstrap() {
+  const targetEmail = normalizeEmail(CFG.uiBootstrapEmail);
+  const existing = await uiReadAuthStateByEmail(targetEmail);
+  if (existing && existing.password_salt && existing.password_hash) return existing;
+
+  const legacy = parseLegacyUiAuthStateFromFile();
+  const seed = legacy || uiDefaultAuthState(targetEmail);
+  await uiWriteAuthState(seed);
+  return seed;
 }
 
 function parseCookies(req) {
@@ -271,16 +296,18 @@ function getUiSessionFromReq(req) {
   return { ok: true, email: normalizeEmail(sess.email), token };
 }
 
-function uiAuthVerify(emailRaw, passwordRaw) {
-  const state = uiReadAuthState();
+async function uiAuthVerify(emailRaw, passwordRaw) {
   const email = normalizeEmail(emailRaw);
+  const state = await uiReadAuthStateByEmail(email);
+  if (!state) return false;
   if (!email || email !== normalizeEmail(state.email)) return false;
   const actualHash = hashPassword(String(passwordRaw || ""), state.password_salt);
   return timingSafeEqHex(actualHash, state.password_hash);
 }
 
-function uiAuthChangePassword(currentPassword, newPassword) {
-  const state = uiReadAuthState();
+async function uiAuthChangePassword(emailRaw, currentPassword, newPassword) {
+  const state = await uiReadAuthStateByEmail(emailRaw);
+  if (!state) return { ok: false, error: "User not found" };
   const currentHash = hashPassword(String(currentPassword || ""), state.password_salt);
   if (!timingSafeEqHex(currentHash, state.password_hash)) return { ok: false, error: "Current password is incorrect" };
   if (String(newPassword || "").length < 8) return { ok: false, error: "New password must be at least 8 characters" };
@@ -291,7 +318,7 @@ function uiAuthChangePassword(currentPassword, newPassword) {
     password_hash: hashPassword(String(newPassword || ""), nextSalt),
     updated_at: new Date().toISOString(),
   };
-  uiWriteAuthState(next);
+  await uiWriteAuthState(next);
   return { ok: true };
 }
 
@@ -762,6 +789,7 @@ function mt5ReadJsonDb() {
   const db = JSON.parse(fs.readFileSync(CFG.mt5DbPath, "utf8"));
   if (!Array.isArray(db.signals)) db.signals = [];
   if (!Array.isArray(db.signal_events)) db.signal_events = [];
+  if (!Array.isArray(db.ui_auth_users)) db.ui_auth_users = [];
   return db;
 }
 
@@ -993,6 +1021,28 @@ async function mt5InitBackend() {
         if (updatedIds.length > 0) mt5WriteJsonDb(db);
         return { updated: updatedIds.length, updated_ids: updatedIds };
       },
+      async getUiAuthUser(email) {
+        const db = mt5ReadJsonDb();
+        const target = normalizeEmail(email);
+        if (!target) return null;
+        return db.ui_auth_users.find((u) => normalizeEmail(u.email) === target) || null;
+      },
+      async upsertUiAuthUser(user) {
+        const db = mt5ReadJsonDb();
+        const target = normalizeEmail(user?.email);
+        if (!target) throw new Error("email is required");
+        const idx = db.ui_auth_users.findIndex((u) => normalizeEmail(u.email) === target);
+        const row = {
+          email: target,
+          password_salt: String(user?.password_salt || ""),
+          password_hash: String(user?.password_hash || ""),
+          updated_at: String(user?.updated_at || new Date().toISOString()),
+        };
+        if (idx >= 0) db.ui_auth_users[idx] = row;
+        else db.ui_auth_users.push(row);
+        mt5WriteJsonDb(db);
+        return { ok: true };
+      },
     };
     return MT5_BACKEND;
   }
@@ -1068,6 +1118,12 @@ async function mt5InitBackend() {
         event_time TEXT NOT NULL DEFAULT (datetime('now')),
         payload_json TEXT,
         FOREIGN KEY (signal_id) REFERENCES signals(signal_id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS ui_auth_users (
+        email TEXT PRIMARY KEY,
+        password_salt TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE INDEX IF NOT EXISTS idx_signal_events_signal_time
         ON signal_events(signal_id, event_time);
@@ -1563,6 +1619,34 @@ async function mt5InitBackend() {
           total = db.prepare(`SELECT COUNT(*) as n FROM ${table}`).get().n;
         }
         return { rows, total };
+      },
+      async getUiAuthUser(email) {
+        const target = normalizeEmail(email);
+        if (!target) return null;
+        return db.prepare(`
+          SELECT email, password_salt, password_hash, updated_at
+          FROM ui_auth_users
+          WHERE email = ?
+          LIMIT 1
+        `).get(target) || null;
+      },
+      async upsertUiAuthUser(user) {
+        const target = normalizeEmail(user?.email);
+        if (!target) throw new Error("email is required");
+        db.prepare(`
+          INSERT INTO ui_auth_users (email, password_salt, password_hash, updated_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(email) DO UPDATE SET
+            password_salt = excluded.password_salt,
+            password_hash = excluded.password_hash,
+            updated_at = excluded.updated_at
+        `).run(
+          target,
+          String(user?.password_salt || ""),
+          String(user?.password_hash || ""),
+          String(user?.updated_at || new Date().toISOString()),
+        );
+        return { ok: true };
       }
     };
     return MT5_BACKEND;
@@ -1676,6 +1760,14 @@ async function mt5InitBackend() {
       event_type TEXT NOT NULL,
       event_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       payload_json JSONB
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ui_auth_users (
+      email TEXT PRIMARY KEY,
+      password_salt TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
   await pool.query(`
@@ -2168,6 +2260,35 @@ async function mt5InitBackend() {
       }
 
       return { rows, total };
+    },
+    async getUiAuthUser(email) {
+      const target = normalizeEmail(email);
+      if (!target) return null;
+      const res = await pool.query(`
+        SELECT email, password_salt, password_hash, updated_at
+        FROM ui_auth_users
+        WHERE email = $1
+        LIMIT 1
+      `, [target]);
+      return res.rows[0] || null;
+    },
+    async upsertUiAuthUser(user) {
+      const target = normalizeEmail(user?.email);
+      if (!target) throw new Error("email is required");
+      await pool.query(`
+        INSERT INTO ui_auth_users (email, password_salt, password_hash, updated_at)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (email) DO UPDATE SET
+          password_salt = EXCLUDED.password_salt,
+          password_hash = EXCLUDED.password_hash,
+          updated_at = EXCLUDED.updated_at
+      `, [
+        target,
+        String(user?.password_salt || ""),
+        String(user?.password_hash || ""),
+        String(user?.updated_at || new Date().toISOString()),
+      ]);
+      return { ok: true };
     },
     async renewSignalsByIds(signalIds) {
       const ids = Array.isArray(signalIds)
@@ -3160,7 +3281,7 @@ const server = http.createServer(async (req, res) => {
       const email = normalizeEmail(payload.email);
       const password = String(payload.password || "");
       if (!email || !password) return json(res, 400, { ok: false, error: "Email and password are required" });
-      if (!uiAuthVerify(email, password)) return json(res, 401, { ok: false, error: "Invalid email or password" });
+      if (!(await uiAuthVerify(email, password))) return json(res, 401, { ok: false, error: "Invalid email or password" });
       const token = createUiSession(email);
       setUiSessionCookie(res, token);
       return json(res, 200, { ok: true, user: { email } });
@@ -3184,7 +3305,7 @@ const server = http.createServer(async (req, res) => {
       const payload = await readJson(req);
       const currentPassword = String(payload.currentPassword || "");
       const newPassword = String(payload.newPassword || "");
-      const changed = uiAuthChangePassword(currentPassword, newPassword);
+      const changed = await uiAuthChangePassword(sess.email, currentPassword, newPassword);
       if (!changed.ok) return json(res, 400, { ok: false, error: changed.error || "Failed to update password" });
       return json(res, 200, { ok: true, message: "Password updated" });
     } catch (error) {
@@ -4016,8 +4137,8 @@ const server = http.createServer(async (req, res) => {
 
 async function start() {
   if (CFG.uiAuthEnabled) {
-    const auth = uiReadAuthState();
-    console.log(`UI auth enabled=true, user=${auth.email}, state=${CFG.uiAuthStatePath}`);
+    const auth = await uiEnsureAuthBootstrap();
+    console.log(`UI auth enabled=true, user=${auth.email}, storage=${(await mt5Backend()).storage}`);
   } else {
     console.log("UI auth enabled=false");
   }
