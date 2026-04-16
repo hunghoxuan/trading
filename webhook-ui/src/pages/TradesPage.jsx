@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 
-const STATUS_OPTIONS = ["", "NEW", "LOCKED", "PLACED", "OK", "START", "FAIL", "TP", "SL", "CANCEL", "EXPIRED"];
+const STATUS_OPTIONS = ["", "NEW", "LOCKED", "PLACED", "START", "FAIL", "TP", "SL", "CANCEL", "EXPIRED"];
 const BULK_ACTIONS = ["", "Download CSV", "Renew All", "Cancel All", "Delete All"];
 const RANGE_OPTIONS = ["", "today", "week", "month"];
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
@@ -33,7 +33,7 @@ function fDateTime(v) {
 
 function statusUi(statusRaw) {
   const s = String(statusRaw || "").toUpperCase();
-  if (s === "OK") return { cls: "OK", label: "PLACED" };
+  if (s === "PLACED") return { cls: "PLACED", label: "PLACED" };
   if (s === "LOCKED") return { cls: "LOCKED", label: "LOCKED" };
   if (s === "START") return { cls: "START", label: "START" };
   if (s === "TP") return { cls: "TP", label: "TP" };

@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-42");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-43");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -718,7 +718,7 @@ async function mt5InitBackend() {
         if (retryable) {
           sig.locked_at = null;
         }
-        if ((internalStatus === "OK" || internalStatus === "START") && !sig.opened_at) {
+        if ((internalStatus === "PLACED" || internalStatus === "START") && !sig.opened_at) {
           sig.opened_at = now;
         }
         if (internalStatus === "TP" || internalStatus === "SL" || internalStatus === "FAIL" || internalStatus === "CANCEL" || internalStatus === "EXPIRED") {
@@ -790,7 +790,7 @@ async function mt5InitBackend() {
           const id = String(s.signal_id || "");
           if (!ids.has(id)) continue;
           const cur = mt5CanonicalStoredStatus(s.status);
-          if (!(cur === "NEW" || cur === "LOCKED" || cur === "START" || cur === "OK")) continue;
+          if (!(cur === "NEW" || cur === "LOCKED" || cur === "START" || cur === "PLACED")) continue;
           s.status = "CANCEL";
           s.closed_at = now;
           updatedIds.push(id);
@@ -845,6 +845,8 @@ async function mt5InitBackend() {
       throw new Error("MT5_STORAGE=sqlite requires Node.js 22+ (module node:sqlite not found). Use MT5_STORAGE=json|postgres or upgrade Node.");
     }
     const db = new DatabaseSync(CFG.mt5DbPath);
+    // Migration: OK -> PLACED
+    db.exec("UPDATE signals SET status = 'PLACED' WHERE status = 'OK';");
     db.exec(`
       PRAGMA journal_mode = WAL;
       PRAGMA busy_timeout = 5000;
@@ -1096,7 +1098,7 @@ async function mt5InitBackend() {
               risk_money_actual = COALESCE(?, risk_money_actual),
               reward_money_planned = COALESCE(?, reward_money_planned),
               locked_at = CASE WHEN ? = 1 THEN NULL ELSE locked_at END,
-              opened_at = CASE WHEN (? = 'OK' OR ? = 'START') AND opened_at IS NULL THEN ? ELSE opened_at END,
+              opened_at = CASE WHEN (? = 'PLACED' OR ? = 'START') AND opened_at IS NULL THEN ? ELSE opened_at END,
               closed_at = CASE WHEN (? = 'TP' OR ? = 'SL' OR ? = 'FAIL' OR ? = 'CANCEL' OR ? = 'EXPIRED') THEN ? ELSE closed_at END
           WHERE signal_id = ?
         `).run(
@@ -1181,7 +1183,7 @@ async function mt5InitBackend() {
           SELECT signal_id, created_at, user_id, action, symbol, volume, sl, tp, status,
                  ack_ticket, ack_status, pnl_money_realized, entry_price_exec, sl_exec, tp_exec
           FROM signals
-          WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'OK', 'START') AND signal_id NOT LIKE 'SYSTEM_%'
+          WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'START') AND signal_id NOT LIKE 'SYSTEM_%'
           ORDER BY created_at ASC
         `).all().map((r) => ({
           ...r,
@@ -1308,7 +1310,7 @@ async function mt5InitBackend() {
         const update = db.prepare(`
           UPDATE signals
           SET status = 'CANCEL', closed_at = ?
-          WHERE signal_id = ? AND status IN ('NEW','LOCKED','START','OK')
+          WHERE signal_id = ? AND status IN ('NEW','LOCKED','START','PLACED')
         `);
         const updatedIds = [];
         const tx = db.transaction((arr) => {
@@ -1494,9 +1496,12 @@ async function mt5InitBackend() {
   // Ensure "SYSTEM_SYNC_PUSH" dummy signal exists for global logging.
   await pool.query(`
     INSERT INTO signals (signal_id, symbol, action, volume, status, created_at, user_id, note)
-    VALUES ('SYSTEM_SYNC_PUSH', 'SYNC_PUSH', 'SYSTEM', 0, 'OK', $1, $2, 'Global Sync Log Partition')
+    VALUES ('SYSTEM_SYNC_PUSH', 'SYNC_PUSH', 'SYSTEM', 0, 'PLACED', $1, $2, 'Global Sync Log Partition')
     ON CONFLICT (signal_id) DO NOTHING
   `, [mt5NowIso(), CFG.mt5DefaultUserId]);
+
+  // Migration: OK -> PLACED
+  await pool.query(`UPDATE signals SET status = 'PLACED' WHERE status = 'OK'`);
 
   for (const tbl of ["users", "accounts", "signals", "signal_events"]) {
     await pool.query(`ALTER TABLE ${tbl} ADD COLUMN IF NOT EXISTS metadata JSONB`);
@@ -1710,7 +1715,7 @@ async function mt5InitBackend() {
         SELECT signal_id, created_at, user_id, action, symbol, volume, sl, tp, status,
                ack_ticket, ack_status, pnl_money_realized, entry_price_exec, sl_exec, tp_exec
         FROM signals
-        WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'OK', 'START') AND signal_id NOT LIKE 'SYSTEM_%'
+        WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'START') AND signal_id NOT LIKE 'SYSTEM_%'
         ORDER BY created_at ASC
       `);
       return res.rows.map((r) => ({
@@ -1780,7 +1785,7 @@ async function mt5InitBackend() {
             sl_exec = COALESCE($8, sl_exec),
             tp_exec = COALESCE($9, tp_exec),
             locked_at = CASE WHEN $11 THEN NULL ELSE locked_at END,
-            opened_at = CASE WHEN ($1 = 'OK' OR $1 = 'START') AND opened_at IS NULL THEN $2 ELSE opened_at END,
+            opened_at = CASE WHEN ($1 = 'PLACED' OR $1 = 'START') AND opened_at IS NULL THEN $2 ELSE opened_at END,
             closed_at = CASE WHEN ($1 = 'TP' OR $1 = 'SL' OR $1 = 'FAIL' OR $1 = 'CANCEL' OR $1 = 'EXPIRED') THEN $2 ELSE closed_at END
         WHERE signal_id = $10
       `, [
@@ -1917,7 +1922,7 @@ async function mt5InitBackend() {
       const res = await pool.query(`
         UPDATE signals
         SET status = 'CANCEL', closed_at = $1
-        WHERE signal_id = ANY($2::text[]) AND status IN ('NEW','LOCKED','START','OK')
+        WHERE signal_id = ANY($2::text[]) AND status IN ('NEW','LOCKED','START','PLACED')
         RETURNING signal_id
       `, [now, ids]);
       return { updated: res.rowCount || 0, updated_ids: (res.rows || []).map((r) => String(r.signal_id || "")) };
@@ -2135,21 +2140,21 @@ function mt5NormalizeAckStatus(value) {
   const s = String(value || "").trim().toUpperCase();
   if (!s) throw new Error("status is required");
   const legacyToCurrent = {
-    DONE: "OK",
+    DONE: "PLACED",
     FAILED: "FAIL",
-    PENDING: "OK",
+    PENDING: "PLACED",
     STARTED: "START",
     CANCELED: "CANCEL",
     CANCELLED: "CANCEL",
     CLOSED_TP: "TP",
     CLOSED_SL: "SL",
     CLOSED_MANUAL: "CANCEL",
-    CLOSED: "OK",
+    CLOSED: "PLACED",
   };
   const normalized = legacyToCurrent[s] || s;
-  const allowed = ["OK", "FAIL", "START", "TP", "SL", "CANCEL", "EXPIRED", "PLACED"];
+  const allowed = ["FAIL", "START", "TP", "SL", "CANCEL", "EXPIRED", "PLACED"];
   if (!allowed.includes(normalized)) {
-    throw new Error("status must be one of: OK, FAIL, START, TP, SL, CANCEL, EXPIRED, PLACED");
+    throw new Error("status must be one of: FAIL, START, TP, SL, CANCEL, EXPIRED, PLACED");
   }
   return normalized;
 }
@@ -2162,15 +2167,15 @@ function mt5CanonicalStoredStatus(value) {
   const s = String(value || "").trim().toUpperCase();
   if (!s) return "";
   const legacyToCurrent = {
-    DONE: "OK",
+    DONE: "PLACED",
     FAILED: "FAIL",
     CANCELED: "CANCEL",
     CANCELLED: "CANCEL",
     CLOSED_TP: "TP",
     CLOSED_SL: "SL",
     CLOSED_MANUAL: "CANCEL",
-    CLOSED: "OK",
-    PLACED: "OK"
+    CLOSED: "PLACED",
+    OK: "PLACED"
   };
   return legacyToCurrent[s] || s;
 }
@@ -2205,7 +2210,7 @@ function mt5PublicState(row) {
   if (status === "NEW") stage = "queued";
   else if (status === "LOCKED") stage = "pulled_by_mt5";
   else if (status === "START") stage = "position_active";
-  else if (status === "OK") stage = "ack_ok";
+  else if (status === "PLACED") stage = "ack_placed";
   else if (status === "FAIL") stage = "execute_failed";
   else if (status === "TP") stage = "take_profit_hit";
   else if (status === "SL") stage = "stop_loss_hit";
@@ -2218,7 +2223,7 @@ function mt5PublicState(row) {
     ack_status: ackStatus,
     updated_at: Number.isFinite(updatedAt) ? new Date(updatedAt).toISOString() : null,
     stage,
-    is_open_candidate: status === "NEW" || status === "LOCKED" || status === "START" || status === "OK",
+    is_open_candidate: status === "NEW" || status === "LOCKED" || status === "START" || status === "PLACED",
     dedupe_safe: status !== "NEW",
   };
 }
@@ -2490,7 +2495,7 @@ async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
 function mt5ComputeMetrics(rows) {
   const closed = rows.filter((r) => {
     const s = mt5CanonicalStoredStatus(r.status);
-    return s === "TP" || s === "SL" || s === "FAIL" || s === "OK" || s === "CANCEL" || s === "EXPIRED";
+    return s === "TP" || s === "SL" || s === "FAIL" || s === "PLACED" || s === "CANCEL" || s === "EXPIRED";
   });
   const wins = rows.filter((r) => {
     const pnl = Number(r.pnl_money_realized);
@@ -2532,12 +2537,12 @@ function mt5CountBy(rows, pick, { sortDesc = true, limit = 0 } = {}) {
 
 function mt5StatusTier(statusRaw) {
   const s = mt5CanonicalStoredStatus(statusRaw);
-  if (["NEW", "LOCKED", "OK", "START"].includes(s)) return "OPEN";
+  if (["NEW", "LOCKED", "PLACED", "START"].includes(s)) return "OPEN";
   if (["TP", "SL"].includes(s)) return "WINS_LOSSES";
   return "CLOSED";
 }
 
-const MT5_TRADE_STATUSES = new Set(["TP", "SL", "START", "OK"]);
+const MT5_TRADE_STATUSES = new Set(["TP", "SL", "START", "PLACED"]);
 
 function mt5IsTradeStatus(statusRaw) {
   return MT5_TRADE_STATUSES.has(mt5CanonicalStoredStatus(statusRaw));
@@ -2691,7 +2696,7 @@ function mt5DashboardHtml() {
     .badge { border-radius:999px; padding:2px 8px; font-size:11px; font-weight:bold; display:inline-block; }
     .NEW { background:#1f2937; color:#d1d5db; }
     .LOCKED { background:#1d4ed8; color:#dbeafe; }
-    .OK { background:#065f46; color:#d1fae5; }
+    .PLACED { background:#065f46; color:#d1fae5; }
     .START { background:#0f766e; color:#ccfbf1; }
     .FAIL, .SL { background:#7f1d1d; color:#fee2e2; }
     .TP { background:#14532d; color:#dcfce7; }
@@ -2707,7 +2712,7 @@ function mt5DashboardHtml() {
       <span class="muted" id="meta"></span>
       <select id="status">
         <option value="">All statuses</option>
-        <option>NEW</option><option>LOCKED</option><option>OK</option><option>START</option>
+        <option>NEW</option><option>LOCKED</option><option>PLACED</option><option>START</option>
         <option>FAIL</option><option>TP</option><option>SL</option><option>CANCEL</option><option>EXPIRED</option>
       </select>
       <input id="limit" type="number" min="10" max="1000" value="200" />
@@ -3323,7 +3328,7 @@ const server = http.createServer(async (req, res) => {
       const activeSignals = payload.active_signals || []; 
       const confirmedDbIds = new Set();
       
-      const dbSignals = await mt5ListActiveSignals(); // NEW, LOCKED, PLACED, OK, START
+      const dbSignals = await mt5ListActiveSignals(); // NEW, LOCKED, PLACED, START
       const updates = [];
       const nowTs = Date.now();
 

@@ -5,7 +5,7 @@ import TradeLevelChart from "../components/TradeLevelChart";
 
 function statusUi(statusRaw) {
   const s = String(statusRaw || "").toUpperCase();
-  if (s === "OK") return { cls: "OK", label: "PLACED" };
+  if (s === "PLACED") return { cls: "PLACED", label: "PLACED" };
   if (s === "LOCKED") return { cls: "LOCKED", label: "LOCKED" };
   if (s === "START") return { cls: "START", label: "START" };
   if (s === "TP") return { cls: "TP", label: "TP" };

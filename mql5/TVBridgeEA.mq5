@@ -2375,10 +2375,10 @@ void OnTimer()
    string err;
    bool ok = ExecuteSignal(signalId, action, symbolIn, comment, volume, entry, orderType, sl, tp, signalTs, ticket, err);
    if(ok)
-   {
-      string initialStatus = (orderType == "market") ? "START" : "SUBMITTED";
-      Ack(signalId, initialStatus, ticket, "exec_ok_" + orderType);
-   }
+    {
+       string initialStatus = (orderType == "market") ? "START" : "PLACED";
+       Ack(signalId, initialStatus, ticket, "exec_ok_" + orderType);
+    }
    else
    {
       string ackStatus = (StringFind(err, "Expired") == 0) ? "EXPIRED" : "FAIL";
@@ -2425,7 +2425,7 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
                g_ackEquity = AccountInfoDouble(ACCOUNT_EQUITY);
                g_ackHasPnlRealized = false;
                
-               Ack(signalId, "PENDING", IntegerToString((int)orderTicket), "order_placed");
+               Ack(signalId, "PLACED", IntegerToString((int)orderTicket), "order_placed");
             }
          }
       }
