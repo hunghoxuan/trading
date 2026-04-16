@@ -38,7 +38,7 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-16.12";
+string EA_BUILD_VERSION = "2026-04-16.13";
 
 input string InpMappingFile = "TVBridge_Mappings.csv";
 
@@ -130,6 +130,9 @@ ulong    g_ordMapTicket[];
 string   g_ordMapSignalId[];
 datetime g_syncLastTime = 0;
 
+string   g_lastPullPayload = "None";
+string   g_lastSyncPayload = "None";
+
 // Reliable Ack Queue
 string   g_ackQSignalId[];
 string   g_ackQStatus[];
@@ -207,10 +210,12 @@ bool HttpGet(const string url, string &response)
    return true;
 }
 
-bool HttpPostJson(const string url, const string body)
+   return true;
+}
+
+bool HttpPostJsonWithResponse(const string url, const string body, string &response)
 {
    char data[];
-   // Send exact JSON bytes only (exclude terminating '\0' to avoid server JSON parse errors).
    StringToCharArray(body, data, 0, StringLen(body), CP_UTF8);
    char result[];
    string headers = "Content-Type: application/json\r\n";
@@ -218,16 +223,11 @@ bool HttpPostJson(const string url, const string body)
    int code = WebRequest("POST", url, headers, 5000, data, result, headers);
    if(code == -1)
    {
-      Print("WebRequest POST failed: ", GetLastError(), " url=", url);
+      response = "Error=" + IntegerToString(GetLastError());
       return false;
    }
-   string resp = CharArrayToString(result);
-   if(code < 200 || code >= 300)
-   {
-      Print("POST non-2xx code=", code, " body=", resp);
-      return false;
-   }
-   return true;
+   response = CharArrayToString(result);
+   return (code >= 200 && code < 300);
 }
 
 string JsonEscape(const string s)
@@ -999,29 +999,12 @@ void RefreshDebugPanel()
    if(!InpShowDebugPanel)
       return;
 
-   int btTotal = ArraySize(g_btTime);
    string mode = InpBacktestMode ? "BACKTEST" : "LIVE";
-   string lastTime = g_dbgLastTime > 0 ? TimeToString(g_dbgLastTime, TIME_DATE | TIME_SECONDS) : "-";
    string text =
-      "TVBridgeEA | Build " + EA_BUILD_VERSION + "\n" +
-      "Mode: " + mode + " | Chart: " + _Symbol + " " + EnumToString((ENUM_TIMEFRAMES)_Period) +
-      " | PosTotal: " + IntegerToString(PositionsTotal()) + "\n" +
-      "Poll: " + g_dbgLastPollSummary + "\n" +
-      "Stats: total=" + IntegerToString(g_dbgPollCount) +
-      " pull_fail=" + IntegerToString(g_dbgPollPullFail) +
-      " no_signal=" + IntegerToString(g_dbgPollNoSignal) +
-      " ok=" + IntegerToString(g_dbgPollExecOk) +
-      " fail=" + IntegerToString(g_dbgPollExecFail) + "\n" +
-      "Last: id=" + g_dbgLastSignalId +
-      " action=" + g_dbgLastAction +
-      " symbol=" + g_dbgLastSymbol +
-      " status=" + g_dbgLastStatus + "\n" +
-      "Err: " + g_dbgLastError + "\n" +
-      "Time: " + lastTime + " | Dedup: " + IntegerToString(ArraySize(g_seenIds)) +
-      " | StopRetry: " + IntegerToString(ArraySize(g_stopRetrySignalId)) +
-      " | VGuard: " + IntegerToString(ArraySize(g_vgTicket)) +
-      " | BT: " + IntegerToString(g_btCursor) + "/" + IntegerToString(btTotal) + "\n\n" +
-      BuildPositionsTable();
+      "TVBridgeEA | Build " + EA_BUILD_VERSION + " (" + mode + ")\n" +
+      "--------------------------------------------------\n" +
+      "LAST PULL (GET):\n" + g_lastPullPayload + "\n\n" +
+      "LAST SYNC (PUSH):\n" + g_lastSyncPayload;
    Comment(text);
 }
 
@@ -2323,8 +2306,8 @@ void OnTimer()
 
    datetime now = TimeCurrent();
    
-   // Periodic state reconciliation
-   if(now - g_syncLastTime >= 300)
+   // Periodic state reconciliation (PUSH ACTIVE) - every 60s
+   if(now - g_syncLastTime >= 60)
    {
       SyncWithVps();
       g_syncLastTime = now;
@@ -2337,29 +2320,19 @@ void OnTimer()
       SendHeartbeat();
    }
 
-   g_dbgPollCount++;
    string url = InpServerBaseUrl + "/mt5/ea/pull?api_key=" + InpEaApiKey + "&account=" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN));
    string resp;
    if(!HttpGet(url, resp))
    {
-      g_dbgPollPullFail++;
-      g_dbgLastStatus = "HTTP_PULL_FAILED";
-      g_dbgLastError = "WebRequest pull failed";
-      g_dbgLastTime = TimeCurrent();
-      g_dbgLastPollSummary = "poll#" + IntegerToString(g_dbgPollCount) + " PULL_FAIL";
-      Print("TVBridgeEA poll summary: ", g_dbgLastPollSummary);
+      g_lastPullPayload = "GET FAILED: " + url;
       RefreshDebugPanel();
       return;
    }
 
+   g_lastPullPayload = resp;
+
    if(StringFind(resp, "\"signal\":null") >= 0)
    {
-      g_dbgPollNoSignal++;
-      g_dbgLastStatus = "NO_SIGNAL";
-      g_dbgLastError = "";
-      g_dbgLastTime = TimeCurrent();
-      g_dbgLastPollSummary = "poll#" + IntegerToString(g_dbgPollCount) + " NO_SIGNAL";
-      Print("TVBridgeEA poll summary: ", g_dbgLastPollSummary);
       RefreshDebugPanel();
       return;
    }
@@ -2393,27 +2366,14 @@ void OnTimer()
    bool ok = ExecuteSignal(signalId, action, symbolIn, comment, volume, entry, orderType, sl, tp, signalTs, ticket, err);
    if(ok)
    {
-      g_dbgPollExecOk++;
-      g_dbgLastPollSummary = "poll#" + IntegerToString(g_dbgPollCount) + " EXEC_OK id=" + signalId + " action=" + action + " ticket=" + ticket;
-      // If market, go straight to START. If pending, use SUBMITTED (maps to PLACED).
       string initialStatus = (orderType == "market") ? "START" : "SUBMITTED";
       Ack(signalId, initialStatus, ticket, "exec_ok_" + orderType);
    }
    else
    {
-      g_dbgPollExecFail++;
-      g_dbgLastPollSummary = "poll#" + IntegerToString(g_dbgPollCount) + " EXEC_FAIL id=" + signalId + " action=" + action + " err=" + err;
-      
-      // Tell VPS about the failure immediately so it doesn't stay LOCKED and block the queue.
       string ackStatus = (StringFind(err, "Expired") == 0) ? "EXPIRED" : "FAIL";
       Ack(signalId, ackStatus, "", err);
-      
-      if(StringFind(err, "Expired") < 0 && StringFind(err, "Symbol not found") < 0)
-      {
-         Print("Broker error occurred (", err, "), reported FAIL to VPS to unblock queue.");
-      }
    }
-   Print("TVBridgeEA poll summary: ", g_dbgLastPollSummary);
    RefreshDebugPanel();
 }
 
@@ -2591,107 +2551,67 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
 
 void SyncWithVps()
 {
-   string url = InpServerBaseUrl + "/mt5/ea/sync?api_key=" + InpEaApiKey;
-   string response = "";
-   if(!HttpGet(url, response)) return;
-
-   int countIdx = StringFind(response, "\"count\":");
-   if(countIdx < 0) return;
-   
-   int sigsIdx = StringFind(response, "\"signals\":[");
-   if(sigsIdx < 0) return;
-   
    string updates = "";
-   int foundMismatches = 0;
+   int count = 0;
 
-   // Simple incremental parser for the sync array
-   int cursor = sigsIdx + 11;
-   while(cursor < StringLen(response))
+   // 1. Positions
+   for(int i = 0; i < PositionsTotal(); i++)
    {
-      int start = StringFind(response, "{", cursor);
-      if(start < 0) break;
-      int end = StringFind(response, "}", start);
-      if(end < 0) break;
-      cursor = end + 1;
-      
-      string obj = StringSubstr(response, start, end - start + 1);
-      string sid = JsonGetString(obj, "signal_id");
-      string status = JsonGetString(obj, "status");
-      ulong ticket = (ulong)StringToInteger(JsonGetString(obj, "ticket"));
-      string sym = JsonGetString(obj, "symbol");
-      
-      bool isClosed = false;
-      string newStatus = "";
-      double finalPnl = 0;
-
-      // Logic: If VPS thinks it's active, check if MT5 agrees.
-      if(status == "OK" || status == "START")
+      ulong ticket = PositionGetTicket(i);
+      if(ticket > 0 && PositionSelectByTicket(ticket))
       {
-         if(ticket > 0)
+         long magic = PositionGetInteger(POSITION_MAGIC);
+         if(magic == InpMagic)
          {
-            if(!PositionSelectByTicket(ticket))
+            string sid = "";
+            int idx = -1;
+            GetSignalIdByPositionTicket(ticket, sid, idx);
+            if(sid == "") sid = PositionGetString(POSITION_COMMENT);
+            if(sid != "")
             {
-               isClosed = true;
-               // Determine why it closed
-               if(HistoryDealSelect(ticket)) // Note: ticket here might be posId or dealId depending on server storage
-               {
-                  // We'll rely on the server resolving detailed reasons if possible, 
-                  // but here we just push a 'RECONCILED' state.
-                  newStatus = "FAIL"; // Placeholder for closed
-                  if(HistorySelect(0, TimeCurrent()))
-                  {
-                     int total = HistoryDealsTotal();
-                     for(int i=total-1; i>=0; i--)
-                     {
-                        ulong d = HistoryDealGetTicket(i);
-                        if(HistoryDealGetInteger(d, DEAL_POSITION_ID) == (long)ticket)
-                        {
-                           finalPnl += HistoryDealGetDouble(d, DEAL_PROFIT) + HistoryDealGetDouble(d, DEAL_SWAP) + HistoryDealGetDouble(d, DEAL_COMMISSION);
-                           long reason = HistoryDealGetInteger(d, DEAL_REASON);
-                           if(reason == DEAL_REASON_TP) newStatus = "TP";
-                           else if(reason == DEAL_REASON_SL) newStatus = "SL";
-                           else newStatus = "CANCEL";
-                        }
-                     }
-                  }
-               }
-               else {
-                  newStatus = "CANCEL";
-               }
+               if(count > 0) updates += ",";
+               updates += "{\"signal_id\":\"" + sid + "\",\"status\":\"START\",\"ticket\":\"" + IntegerToString((int)ticket) + "\",\"pnl\":" + DoubleToString(PositionGetDouble(POSITION_PROFIT), 2) + "}";
+               count++;
             }
          }
       }
-      else if(status == "PLACED")
+   }
+
+   // 2. Orders
+   for(int i = 0; i < OrdersTotal(); i++)
+   {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket > 0 && OrderSelect(ticket))
       {
-         if(ticket > 0 && !OrderSelect(ticket))
+         long magic = OrderGetInteger(ORDER_MAGIC);
+         if(magic == InpMagic)
          {
-            // Pending order gone: either filled (should have handled in START) OR cancelled/expired.
-            // If it's not a position now, it's definitely gone.
-            if(!PositionSelectByTicket(ticket)) // Position ID often matches initial order ticket
+            string sid = "";
+            int idx = -1;
+            GetSignalIdByOrderTicket(ticket, sid, idx);
+            if(sid == "") sid = OrderGetString(ORDER_COMMENT);
+            if(sid != "")
             {
-               isClosed = true;
-               newStatus = "CANCEL";
+               if(count > 0) updates += ",";
+               updates += "{\"signal_id\":\"" + sid + "\",\"status\":\"PLACED\",\"ticket\":\"" + IntegerToString((int)ticket) + "\"}";
+               count++;
             }
          }
       }
-
-      if(isClosed)
-      {
-         if(foundMismatches > 0) updates += ",";
-         updates += "{\"signal_id\":\"" + sid + "\",\"status\":\"" + newStatus + "\",\"ticket\":\"" + IntegerToString((int)ticket) + "\",\"pnl\":" + DoubleToString(finalPnl, 2) + "}";
-         foundMismatches++;
-      }
    }
 
-   if(foundMismatches > 0)
+   string body = "{\"api_key\":\"" + InpEaApiKey + "\",\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",\"active_signals\":[" + updates + "]}";
+   string url = InpServerBaseUrl + "/mt5/ea/sync";
+   string resp = "";
+   if(HttpPostJsonWithResponse(url, body, resp))
    {
-      string body = "{\"api_key\":\"" + InpEaApiKey + "\",\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",\"updates\":[" + updates + "]}";
-      string bulkUrl = InpServerBaseUrl + "/mt5/ea/bulk-sync";
-      if(HttpPostJson(bulkUrl, body))
-      {
-         Print("SyncWithVps: Batch updated ", foundMismatches, " mismatches.");
-      }
+      g_lastSyncPayload = "OK: " + StringSubstr(resp, 0, 150);
    }
+   else
+   {
+      g_lastSyncPayload = "FAIL: " + StringSubstr(resp, 0, 150);
+   }
+   RefreshDebugPanel();
 }
 
 int OnInit()

@@ -2,6 +2,9 @@
 
 *(A strict append-only log of what was completed, with dates, module, and author)*
 
+## 2026-04-16
+- [x] [14:02] [webhook + EA] [Author: Gemini] Task: **Full State Reconciliation System**. Implemented `/mt5/ea/sync` and `/mt5/ea/bulk-sync` in server.js, added `SyncWithVps()` 5-min reconciliation loop in `TVBridgeEA.mq5`, and resolved VPS deployment conflicts (untracked node_modules). Server v04 / EA v12.
+
 ## 2026-04-15
 - [x] [17:38] [webhook + webhook-ui] [Author: Codex] Task: Implemented dashboard v2 metric simplification (removed PnL toggle, enforced trade scope TP/SL/START/OK, strict winrate TP/(TP+SL), redesigned KPI/period cards, removed summary tiers/status breakdown, and added direction-aware top tables with Name|W|L|WR|PnL|RR).
 - [x] [16:31] [.agents tracking] [Author: Codex] Task: Synced cross-agent docs after FE completion (cleaned stale backlog items, replaced mailbox handoff, and updated architecture with implemented dashboard status + remaining gap).

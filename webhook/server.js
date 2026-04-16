@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-04");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-05");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -3122,6 +3122,60 @@ const server = http.createServer(async (req, res) => {
         volume: s.volume, sl: s.sl, tp: s.tp
       }));
       return json(res, 200, { ok: true, count: data.length, signals: data });
+    } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
+  }
+
+  if (req.method === "POST" && url.pathname === "/mt5/ea/sync") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    try {
+      const payload = await readJson(req);
+      const apiKey = String(payload.api_key || "");
+      if (CFG.mt5EaApiKeys.size > 0 && !CFG.mt5EaApiKeys.has(apiKey)) return json(res, 401, { ok: false, error: "invalid ea api key" });
+      
+      const activeSignals = payload.active_signals || []; 
+      const activeIds = new Set(activeSignals.map(s => String(s.signal_id)));
+      
+      const dbSignals = await mt5ListActiveSignals(); // NEW, LOCKED, PLACED, OK
+      const updates = [];
+      const nowTs = Date.now();
+
+      // 1. Un-stick LOCKED/NEW signals that are actually active in EA
+      for (const s of activeSignals) {
+        const sig = dbSignals.find(d => String(d.signal_id) === String(s.signal_id));
+        if (sig && (sig.status === 'NEW' || sig.status === 'LOCKED')) {
+          updates.push({
+            signal_id: s.signal_id,
+            status: s.status || 'START',
+            ticket: s.ticket,
+            pnl: s.pnl || 0,
+            note: 'reconciled_unstick'
+          });
+        }
+      }
+
+      // 2. Identify Ghost Signals (VPS says active, but EA says gone)
+      for (const sig of dbSignals) {
+        if (!activeIds.has(String(sig.signal_id))) {
+          // Only close if it's NOT a fresh signal (give it 30s to be pulled)
+          const ageSec = (nowTs - new Date(sig.created_at).getTime()) / 1000;
+          if (ageSec > 30 && (sig.status === 'OK' || sig.status === 'START' || sig.status === 'PLACED')) {
+            updates.push({
+              signal_id: sig.signal_id,
+              status: 'FAIL',
+              note: `reconciled_ghost_close_age_${Math.floor(ageSec)}s`
+            });
+          }
+        }
+      }
+
+      if (updates.length > 0) {
+        await mt5BulkAckSignals(updates);
+        for (const u of updates) {
+          await mt5AppendSignalEvent(u.signal_id, `RECONCILE_${u.status}`, { note: u.note, account: payload.account_id });
+        }
+      }
+
+      return json(res, 200, { ok: true, reconciled: updates.length, updates });
     } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
   }
 
