@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-44");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-45");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -114,6 +114,11 @@ const CFG = {
   ),
   mt5PostgresUrl: envStr(process.env.MT5_POSTGRES_URL) || envStr(process.env.POSTGRES_URL) || envStr(process.env.POSTGRE_URL),
   uiDistPath: path.resolve(__dirname, envStr(process.env.WEBHOOK_UI_DIST_PATH, "../webhook-ui/dist")),
+  uiAuthEnabled: asBool(process.env.UI_AUTH_ENABLED, true),
+  uiBootstrapEmail: envStr(process.env.UI_BOOTSTRAP_EMAIL, "hung.hoxuan@gmail.com").toLowerCase(),
+  uiBootstrapPassword: envStr(process.env.UI_BOOTSTRAP_PASSWORD, "BceTzkUuznrX7WDLTODBh077"),
+  uiSessionTtlSeconds: asNum(process.env.UI_SESSION_TTL_SECONDS, 60 * 60 * 24 * 7),
+  uiAuthStatePath: path.resolve(__dirname, envStr(process.env.UI_AUTH_STATE_PATH, "./ui-auth.json")),
 };
 
 CFG.binanceEnabled = ["paper", "live"].includes(CFG.binanceMode);
@@ -139,6 +144,155 @@ function json(res, statusCode, data) {
     "Content-Length": Buffer.byteLength(body),
   });
   res.end(body);
+}
+
+const UI_SESSIONS = new Map();
+
+function nowUnixSec() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function normalizeEmail(emailRaw) {
+  return String(emailRaw || "").trim().toLowerCase();
+}
+
+function makeSaltHex() {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+function hashPassword(passwordRaw, saltHex) {
+  return crypto.scryptSync(String(passwordRaw || ""), saltHex, 64).toString("hex");
+}
+
+function timingSafeEqHex(aHex, bHex) {
+  try {
+    const a = Buffer.from(String(aHex || ""), "hex");
+    const b = Buffer.from(String(bHex || ""), "hex");
+    if (a.length === 0 || b.length === 0 || a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+function uiDefaultAuthState() {
+  const salt = makeSaltHex();
+  return {
+    email: CFG.uiBootstrapEmail,
+    password_salt: salt,
+    password_hash: hashPassword(CFG.uiBootstrapPassword, salt),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function uiReadAuthState() {
+  if (!fs.existsSync(CFG.uiAuthStatePath)) {
+    const initState = uiDefaultAuthState();
+    fs.writeFileSync(CFG.uiAuthStatePath, JSON.stringify(initState, null, 2));
+    return initState;
+  }
+  const raw = fs.readFileSync(CFG.uiAuthStatePath, "utf8");
+  const parsed = JSON.parse(raw || "{}");
+  if (!parsed || typeof parsed !== "object") {
+    const initState = uiDefaultAuthState();
+    fs.writeFileSync(CFG.uiAuthStatePath, JSON.stringify(initState, null, 2));
+    return initState;
+  }
+  const email = normalizeEmail(parsed.email || CFG.uiBootstrapEmail);
+  const passwordSalt = String(parsed.password_salt || "");
+  const passwordHash = String(parsed.password_hash || "");
+  if (!email || !passwordSalt || !passwordHash) {
+    const initState = uiDefaultAuthState();
+    fs.writeFileSync(CFG.uiAuthStatePath, JSON.stringify(initState, null, 2));
+    return initState;
+  }
+  return {
+    email,
+    password_salt: passwordSalt,
+    password_hash: passwordHash,
+    updated_at: parsed.updated_at || new Date().toISOString(),
+  };
+}
+
+function uiWriteAuthState(nextState) {
+  fs.writeFileSync(CFG.uiAuthStatePath, JSON.stringify(nextState, null, 2));
+}
+
+function parseCookies(req) {
+  const raw = String(req.headers.cookie || "");
+  const out = {};
+  if (!raw) return out;
+  for (const part of raw.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx <= 0) continue;
+    const key = part.slice(0, idx).trim();
+    const value = part.slice(idx + 1).trim();
+    if (!key) continue;
+    try {
+      out[key] = decodeURIComponent(value);
+    } catch {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function setUiSessionCookie(res, token) {
+  const ttl = Math.max(300, Number.isFinite(CFG.uiSessionTtlSeconds) ? CFG.uiSessionTtlSeconds : 60 * 60 * 24 * 7);
+  res.setHeader("Set-Cookie", `tvb_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${ttl}`);
+}
+
+function clearUiSessionCookie(res) {
+  res.setHeader("Set-Cookie", "tvb_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+}
+
+function createUiSession(email) {
+  const ttl = Math.max(300, Number.isFinite(CFG.uiSessionTtlSeconds) ? CFG.uiSessionTtlSeconds : 60 * 60 * 24 * 7);
+  const token = crypto.randomBytes(32).toString("hex");
+  UI_SESSIONS.set(token, {
+    email: normalizeEmail(email),
+    created_at: nowUnixSec(),
+    expires_at: nowUnixSec() + ttl,
+  });
+  return token;
+}
+
+function getUiSessionFromReq(req) {
+  if (!CFG.uiAuthEnabled) return { ok: true, email: CFG.uiBootstrapEmail, token: "" };
+  const cookies = parseCookies(req);
+  const token = String(cookies.tvb_session || "");
+  if (!token) return { ok: false, email: "", token: "" };
+  const sess = UI_SESSIONS.get(token);
+  if (!sess) return { ok: false, email: "", token };
+  if (Number(sess.expires_at || 0) <= nowUnixSec()) {
+    UI_SESSIONS.delete(token);
+    return { ok: false, email: "", token };
+  }
+  return { ok: true, email: normalizeEmail(sess.email), token };
+}
+
+function uiAuthVerify(emailRaw, passwordRaw) {
+  const state = uiReadAuthState();
+  const email = normalizeEmail(emailRaw);
+  if (!email || email !== normalizeEmail(state.email)) return false;
+  const actualHash = hashPassword(String(passwordRaw || ""), state.password_salt);
+  return timingSafeEqHex(actualHash, state.password_hash);
+}
+
+function uiAuthChangePassword(currentPassword, newPassword) {
+  const state = uiReadAuthState();
+  const currentHash = hashPassword(String(currentPassword || ""), state.password_salt);
+  if (!timingSafeEqHex(currentHash, state.password_hash)) return { ok: false, error: "Current password is incorrect" };
+  if (String(newPassword || "").length < 8) return { ok: false, error: "New password must be at least 8 characters" };
+  const nextSalt = makeSaltHex();
+  const next = {
+    email: state.email,
+    password_salt: nextSalt,
+    password_hash: hashPassword(String(newPassword || ""), nextSalt),
+    updated_at: new Date().toISOString(),
+  };
+  uiWriteAuthState(next);
+  return { ok: true };
 }
 
 function contentTypeByExt(filePath) {
@@ -2842,10 +2996,12 @@ function requireTvAuth(req, res, urlObj, payload = null) {
 }
 
 function requireAdminKey(req, res, urlObj, payload = null) {
+  const uiSess = getUiSessionFromReq(req);
+  if (uiSess.ok) return true;
   if (!CFG.signalApiKey) return true;
   const incoming = getApiKeyFromReq(req, payload, urlObj);
   if (incoming === CFG.signalApiKey) return true;
-  json(res, 401, { ok: false, error: "Unauthorized" });
+  json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
   return false;
 }
 
@@ -2990,6 +3146,51 @@ const server = http.createServer(async (req, res) => {
 
   if (tryServeUi(url, req, res)) {
     return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/auth/me") {
+    const sess = getUiSessionFromReq(req);
+    if (!sess.ok) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    return json(res, 200, { ok: true, user: { email: sess.email } });
+  }
+
+  if (req.method === "POST" && url.pathname === "/auth/login") {
+    try {
+      const payload = await readJson(req);
+      const email = normalizeEmail(payload.email);
+      const password = String(payload.password || "");
+      if (!email || !password) return json(res, 400, { ok: false, error: "Email and password are required" });
+      if (!uiAuthVerify(email, password)) return json(res, 401, { ok: false, error: "Invalid email or password" });
+      const token = createUiSession(email);
+      setUiSessionCookie(res, token);
+      return json(res, 200, { ok: true, user: { email } });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/auth/logout") {
+    const sess = getUiSessionFromReq(req);
+    if (sess.ok && sess.token) UI_SESSIONS.delete(sess.token);
+    clearUiSessionCookie(res);
+    return json(res, 200, { ok: true });
+  }
+
+  if (req.method === "POST" && url.pathname === "/auth/password") {
+    const sess = getUiSessionFromReq(req);
+    if (!sess.ok) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      const payload = await readJson(req);
+      const currentPassword = String(payload.currentPassword || "");
+      const newPassword = String(payload.newPassword || "");
+      const changed = uiAuthChangePassword(currentPassword, newPassword);
+      if (!changed.ok) return json(res, 400, { ok: false, error: changed.error || "Failed to update password" });
+      return json(res, 200, { ok: true, message: "Password updated" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
   }
 
   if (req.method === "GET" && url.pathname === "/health") {
@@ -3814,6 +4015,13 @@ const server = http.createServer(async (req, res) => {
 });
 
 async function start() {
+  if (CFG.uiAuthEnabled) {
+    const auth = uiReadAuthState();
+    console.log(`UI auth enabled=true, user=${auth.email}, state=${CFG.uiAuthStatePath}`);
+  } else {
+    console.log("UI auth enabled=false");
+  }
+
   if (CFG.mt5Enabled) {
     const b = await mt5Backend();
     const where = b.info.path || b.info.url || "configured";

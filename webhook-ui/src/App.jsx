@@ -7,10 +7,13 @@ import LogsPage from "./pages/LogsPage";
 import DatabasePage from "./pages/DatabasePage";
 import SettingsPage from "./pages/SettingsPage";
 import { api } from "./api";
+import LoginPage from "./pages/LoginPage";
 
 export default function App() {
   const [serverVersion, setServerVersion] = useState("");
   const [theme, setTheme] = useState(() => localStorage.getItem("ui_theme") || "dark");
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authUser, setAuthUser] = useState(null);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -18,12 +21,49 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    api.health()
-      .then((data) => setServerVersion(String(data?.version || "")))
-      .catch(() => setServerVersion(""));
+    Promise.allSettled([api.health(), api.authMe()])
+      .then(([healthRes, meRes]) => {
+        if (healthRes.status === "fulfilled") {
+          setServerVersion(String(healthRes.value?.version || ""));
+        } else {
+          setServerVersion("");
+        }
+        if (meRes.status === "fulfilled" && meRes.value?.user) {
+          setAuthUser(meRes.value.user);
+        } else {
+          setAuthUser(null);
+        }
+      })
+      .finally(() => setAuthLoading(false));
   }, []);
 
   const toggleTheme = () => setTheme(prev => prev === "dark" ? "light" : "dark");
+  const handleLogin = (user) => setAuthUser(user || null);
+  const handleLogout = async () => {
+    try {
+      await api.logout();
+    } catch {
+      // noop
+    }
+    setAuthUser(null);
+  };
+
+  if (authLoading) {
+    return <div className="loading">Loading...</div>;
+  }
+
+  if (!authUser) {
+    return (
+      <div className="app-shell">
+        <main className="page-wrap">
+          <Routes>
+            <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -38,6 +78,7 @@ export default function App() {
           <NavLink to="/logs" className={({ isActive }) => (isActive ? "active" : "")}>Logs</NavLink>
           <NavLink to="/db" className={({ isActive }) => (isActive ? "active" : "")}>DB</NavLink>
           <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")}>Settings</NavLink>
+          <button onClick={handleLogout} style={{ marginLeft: 8 }}>Logout</button>
           <button 
              onClick={toggleTheme} 
              style={{ 
@@ -63,7 +104,8 @@ export default function App() {
           <Route path="/trades/:signalId" element={<TradeDetailPage />} />
           <Route path="/logs" element={<LogsPage />} />
           <Route path="/db" element={<DatabasePage />} />
-          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings" element={<SettingsPage authUser={authUser} />} />
+          <Route path="/login" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>
     </div>

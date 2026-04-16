@@ -36,6 +36,10 @@ body {
 }
 
 .app-container { width: 100%; max-width: 1800px; margin: 0 auto; }
+.app-shell { width: 100%; max-width: 1800px; margin: 0 auto; }
+.page-wrap { width: 100%; }
+.login-page { max-width: 420px; margin: 60px auto; }
+.error-inline { color: #ef4444; font-size: 12px; font-weight: 700; }
 
 /* Navigation */
 .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }

@@ -89,6 +89,7 @@ async function get(path) {
     try {
       return await fetch(url, {
         signal: ctrl.signal,
+        credentials: "include",
         headers: API_KEY ? { "x-api-key": API_KEY } : {},
       });
     } catch (err) {
@@ -142,6 +143,7 @@ async function post(path, body = {}) {
       return await fetch(url, {
         method: "POST",
         signal: ctrl.signal,
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
           ...(API_KEY ? { "x-api-key": API_KEY } : {}),
@@ -201,6 +203,7 @@ async function downloadCsv(path, params = {}) {
     try {
       return await fetch(url, {
         signal: ctrl.signal,
+        credentials: "include",
         headers: API_KEY ? { "x-api-key": API_KEY } : {},
       });
     } catch (err) {
@@ -235,6 +238,10 @@ async function downloadCsv(path, params = {}) {
 }
 
 export const api = {
+  authMe: () => get("/auth/me"),
+  login: (email, password) => post("/auth/login", { email, password }),
+  logout: () => post("/auth/logout", {}),
+  changePassword: (currentPassword, newPassword) => post("/auth/password", { currentPassword, newPassword }),
   health: () => get("/health"),
   dashboardAdvanced: (params = {}) => {
     const q = new URLSearchParams();
