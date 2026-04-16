@@ -116,7 +116,7 @@ export default function TradesPage() {
             <strong>{total}</strong> RESULTS
             <div className="pager-mini">
               <button disabled={filter.page <= 1} onClick={() => setFilter(f => ({ ...f, page: f.page - 1 }))}>PREV</button>
-              <span>PAGE {filter.page} / {pages}</span>
+              <span className="minor-text">PAGE {filter.page} / {pages}</span>
               <button disabled={filter.page >= pages} onClick={() => setFilter(f => ({ ...f, page: f.page + 1 }))}>NEXT</button>
             </div>
             <select 
@@ -239,7 +239,7 @@ export default function TradesPage() {
 
         <div className="logs-detail-pane">
           {!selectedTrade ? (
-            <div className="empty-state muted">SELECT A TRADE TO INSPECT EXECUTION HISTORY AND LEVELS</div>
+            <div className="empty-state minor-text">SELECT A TRADE TO INSPECT EXECUTION HISTORY AND LEVELS</div>
           ) : (
             <div className="trade-detail-content">
               <div className="detail-header" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between' }}>
@@ -266,7 +266,6 @@ export default function TradesPage() {
                 ) : (
                   <div className="stack-layout" style={{ gap: '10px' }}>
                     {[...tradeDetails.events].sort((a,b) => new Date(b.event_time) - new Date(a.event_time)).map((ev) => {
-                      // History detail: Status with border, color AFTER event type
                       let stTxt = "";
                       let stCls = "OTHER";
                       const tType = String(ev.event_type || "");
