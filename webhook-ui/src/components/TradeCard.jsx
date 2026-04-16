@@ -71,12 +71,8 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
   const riskActual = positiveOrNull(trade?.risk_money_actual);
   const rewardPlanned = positiveOrNull(trade?.reward_money_planned);
 
-  const isBeforePlaced = status.cls === "OTHER" || status.cls === "LOCKED";
-
-  // Volume line: before placed → show planned risk %; after placed → show real broker facts
-  // Volume line: prioritize real broker facts if we have them
-  const volPct = fmtPct(trade?.raw_json?.volume_pct ?? trade?.raw_json?.volumePct ?? trade?.raw_json?.riskPct);
-  let volText;
+  // Volume line: ONLY show real broker facts after placement (ignore TV planned volume)
+  let volText = null;
   
   if (lotsActual && slPips) {
     const riskStr = riskActual ? `$${money(riskActual)}` : null;
@@ -88,9 +84,7 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
       rewardStr ? `→ ${rewardStr}` : null,
     ].filter(Boolean).join(" | ");
   } else if (lotsActual) {
-    volText = `${lotsActual} Lots` + (volPct ? ` (${volPct} planned)` : "");
-  } else {
-    volText = volPct || "-";
+    volText = `${lotsActual} Lots`;
   }
 
   return (
@@ -124,7 +118,7 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
           <span className="kv">TP: {tpText}{tpPips ? <span className="muted small"> ({tpPips.toFixed(1)}p)</span> : null}</span>
           <span className="kv">SL: {slText}{slPips ? <span className="muted small"> ({slPips.toFixed(1)}p)</span> : null}</span>
           <span className="kv">RR: {rrText}</span>
-          <span className="kv">Volume: {volText}</span>
+          {volText && <span className="kv">Volume: {volText}</span>}
           <span className={`pnl ${pnlClass}`}>{pnlText}</span>
         </div>
 
