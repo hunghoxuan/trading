@@ -136,7 +136,7 @@ export default function DashboardPage() {
 
   return (
     <section className="stack-layout">
-      <div className="dashboard-filters">
+      <div className="toolbar-panel">
         <select value={filters.user_id} onChange={(e) => setFilters((prev) => ({ ...prev, user_id: e.target.value }))}>
           <option value="">All accounts</option>
           {(f.accounts || []).map((v) => <option key={v} value={v}>{v}</option>)}

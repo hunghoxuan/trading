@@ -72,8 +72,8 @@ export default function LogsPage() {
 
   return (
     <section className="logs-page-container stack-layout">
-      <div className="logs-top-bar">
-        <div className="logs-top-left">
+      <div className="toolbar-panel">
+        <div className="toolbar-left">
           <div className="pager-area">
             <strong>{events.length}</strong> RESULTS
             <div className="pager-mini">
@@ -92,7 +92,7 @@ export default function LogsPage() {
           </div>
         </div>
         
-        <div className="logs-filters">
+        <div className="toolbar-right">
           <input 
             placeholder="SEARCH TICKET, ID..." 
             value={filter.q}

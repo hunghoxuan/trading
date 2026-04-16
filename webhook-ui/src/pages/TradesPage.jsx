@@ -112,8 +112,8 @@ export default function TradesPage() {
 
   return (
     <section className="logs-page-container stack-layout">
-      <div className="logs-top-bar">
-        <div className="logs-top-left">
+      <div className="toolbar-panel">
+        <div className="toolbar-left">
           <div className="pager-area">
             <strong>{total}</strong> RESULTS
             <div className="pager-mini">
@@ -132,7 +132,7 @@ export default function TradesPage() {
           </div>
         </div>
 
-        <div className="logs-filters">
+        <div className="toolbar-right">
           <input 
             value={filter.q} 
             onChange={(e) => setFilter(f => ({ ...f, q: e.target.value, page: 1 }))} 
