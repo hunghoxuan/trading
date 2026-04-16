@@ -149,3 +149,6 @@ timestamp;signal_id;action;symbol;volume;sl;tp;note
 2026.04.16 15:40:06;SMC_RJ_1h_1_12596_743;SELL;EURJPY;0.01;187.5433;187.3387;Hung-SMC | 1m | RJ.1h.1 | Ba  ie  Touch ( esistance touch)
 2026.04.16 15:40:06;SMC_RJ_1h_0_5_12596_742;SELL;EURJPY;0.01;187.5433;187.38985;Hung-SMC | 1m | RJ.1h.0.5 | Ba  ie  Touch ( esistance touch)
 2026.04.16 15:40:06;SMC_RJ_1h_0_2_12596_741;SELL;EURJPY;0.01;187.5433;187.42054;Hung-SMC | 1m | RJ.1h.0.2 | Ba  ie  Touch ( esistance touch)
+2026.04.16 16:10:02;SMC_RJ_15m_0_2_12636_723;SELL;EURSGD;0.01;1.499558;1.4990564;Hung-SMC | 1m | RJ.15m.0.2 | Ba  ie  Touch ( esistance touch)
+2026.04.16 16:10:03;SMC_RJ_15m_1_12636_725;SELL;EURSGD;0.01;1.499558;1.498722;Hung-SMC | 1m | RJ.15m.1 | Ba  ie  Touch ( esistance touch)
+2026.04.16 16:10:03;SMC_RJ_15m_0_5_12636_724;SELL;EURSGD;0.01;1.499558;1.498931;Hung-SMC | 1m | RJ.15m.0.5 | Ba  ie  Touch ( esistance touch)
