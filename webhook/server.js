@@ -1928,6 +1928,8 @@ function mt5NormalizeAckStatus(value) {
   const legacyToCurrent = {
     DONE: "OK",
     FAILED: "FAIL",
+    PENDING: "OK",
+    STARTED: "START",
     CANCELED: "CANCEL",
     CANCELLED: "CANCEL",
     CLOSED_TP: "TP",
