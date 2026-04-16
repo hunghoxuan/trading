@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
-import TradeLevelChart from "../components/TradeLevelChart";
 
 const STATUS_OPTIONS = ["", "NEW", "LOCKED", "PLACED", "OK", "START", "FAIL", "TP", "SL", "CANCEL", "EXPIRED"];
 const BULK_ACTIONS = ["", "Download CSV", "Renew All", "Cancel All", "Delete All"];
@@ -8,17 +7,19 @@ const RANGE_OPTIONS = ["", "today", "week", "month"];
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
 
 function fNum(v) {
+  if (v === null || v === undefined || v === 0 || v === "0") return "-";
   const n = Number(v);
-  if (!Number.isFinite(n)) return "0";
+  if (!Number.isFinite(n)) return "-";
   return n.toLocaleString(undefined, { maximumFractionDigits: 5 });
 }
 
-function fMoney(v) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return "$0.00";
+function PnlDisplay({ value }) {
+  const n = Number(value);
+  if (!n || n === 0) return null;
+  const cls = n > 0 ? "money-pos" : "money-neg";
   const abs = Math.abs(n);
   const str = `$${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return n < 0 ? `-${str}` : str;
+  return <div className={`cell-minor ${cls}`}>{n < 0 ? `-${str}` : str}</div>;
 }
 
 function fDateTime(v) {
@@ -147,7 +148,7 @@ export default function TradesPage() {
           <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)} disabled={bulkBusy}>
             {BULK_ACTIONS.map(s => <option key={s} value={s}>{s || "BULK ACTION..."}</option>)}
           </select>
-          <button type="button" onClick={() => console.log("Bulk logic here")} disabled={bulkBusy || !bulkAction}>OK</button>
+          <button type="button" onClick={() => console.log("Bulk Action Logic")} disabled={bulkBusy || !bulkAction}>OK</button>
         </div>
       </div>
 
@@ -180,9 +181,7 @@ export default function TradesPage() {
               <tbody>
                 {rows.map(t => {
                   const status = statusUi(t.status);
-                  const pnlNum = Number(t.pnl_money_realized);
-                  const pnlText = (pnlNum && pnlNum !== 0) ? fMoney(pnlNum) : "";
-                  const pnlCls = pnlNum > 0 ? "money-pos" : pnlNum < 0 ? "money-neg" : "";
+                  const sideCls = t.action?.toUpperCase() === 'BUY' ? 'side-buy' : 'side-sell';
                   
                   return (
                     <tr 
@@ -207,7 +206,7 @@ export default function TradesPage() {
                       </td>
                       <td>
                         <div className="cell-wrap">
-                          <div className="cell-major">{t.symbol} <span className={`badge ${t.action}`}>{t.action}</span></div>
+                          <div className="cell-major"><span className={sideCls}>{t.action?.toUpperCase()}</span> {t.symbol}</div>
                           <div className="cell-minor">{t.signal_id} {t.ack_ticket ? `| #${t.ack_ticket}` : ''}</div>
                         </div>
                       </td>
@@ -226,7 +225,7 @@ export default function TradesPage() {
                       <td>
                         <div className="cell-wrap">
                           <div className="cell-major"><span className={`badge ${status.cls} badge-fixed`}>{status.label}</span></div>
-                          <div className={`cell-minor ${pnlCls}`}>{pnlText}</div>
+                          <PnlDisplay value={t.pnl_money_realized} />
                         </div>
                       </td>
                     </tr>
@@ -239,12 +238,17 @@ export default function TradesPage() {
 
         <div className="logs-detail-pane">
           {!selectedTrade ? (
-            <div className="empty-state minor-text">SELECT A TRADE TO INSPECT EXECUTION HISTORY AND LEVELS</div>
+            <div className="empty-state minor-text">SELECT A TRADE TO INSPECT HISTORY</div>
           ) : (
             <div className="trade-detail-content">
               <div className="detail-header" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between' }}>
                 <div>
-                  <h2 style={{ margin: 0 }}>{selectedTrade.symbol} <span className={`badge ${selectedTrade.action}`}>{selectedTrade.action}</span></h2>
+                  <h2 style={{ margin: 0 }}>
+                    <span className={selectedTrade.action?.toUpperCase() === 'BUY' ? 'side-buy' : 'side-sell'} style={{ fontSize: '24px' }}>
+                      {selectedTrade.action?.toUpperCase()}
+                    </span> 
+                    {" "}{selectedTrade.symbol}
+                  </h2>
                   <div className="cell-minor" style={{ marginTop: '4px' }}>{selectedTrade.signal_id}</div>
                 </div>
                 <div className={`badge ${statusUi(selectedTrade.status).cls}`} style={{ height: 'fit-content', padding: '6px 14px' }}>
@@ -252,15 +256,8 @@ export default function TradesPage() {
                 </div>
               </div>
 
-              {tradeDetails?.chart && (
-                <div style={{ marginBottom: '24px' }}>
-                  <div className="kpi-label">LEVEL VISUALIZATION</div>
-                  <TradeLevelChart trade={tradeDetails.chart} />
-                </div>
-              )}
-
               <div style={{ marginTop: '20px' }}>
-                <h3 style={{ marginBottom: '16px', fontSize: '15px' }}>AUDIT HISTORY</h3>
+                <h3 style={{ marginBottom: '16px', fontSize: '15px', color: '#fff' }}>HISTORY</h3>
                 {!tradeDetails?.events ? (
                   <div className="loading">FETCHING TELEMETRY LOGS...</div>
                 ) : (

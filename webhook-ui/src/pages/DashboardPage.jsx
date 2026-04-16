@@ -131,24 +131,22 @@ export default function DashboardPage() {
 
   return (
     <section className="stack-layout">
-      <div className="panel">
-        <div className="dashboard-filters no-metric-toggle">
-          <select value={filters.user_id} onChange={(e) => setFilters((prev) => ({ ...prev, user_id: e.target.value }))}>
-            <option value="">All accounts</option>
-            {(f.accounts || []).map((v) => <option key={v} value={v}>{v}</option>)}
-          </select>
-          <select value={filters.symbol} onChange={(e) => setFilters((prev) => ({ ...prev, symbol: e.target.value }))}>
-            <option value="">All symbols</option>
-            {(f.symbols || []).map((v) => <option key={v} value={v}>{v}</option>)}
-          </select>
-          <select value={filters.strategy} onChange={(e) => setFilters((prev) => ({ ...prev, strategy: e.target.value }))}>
-            <option value="">All strategies</option>
-            {(f.strategies || []).map((v) => <option key={v} value={v}>{v}</option>)}
-          </select>
-          <select value={filters.range} onChange={(e) => setFilters((prev) => ({ ...prev, range: e.target.value }))}>
-            {RANGE_OPTIONS.map((r) => <option key={r} value={r}>{r[0].toUpperCase() + r.slice(1)}</option>)}
-          </select>
-        </div>
+      <div className="dashboard-filters">
+        <select value={filters.user_id} onChange={(e) => setFilters((prev) => ({ ...prev, user_id: e.target.value }))}>
+          <option value="">All accounts</option>
+          {(f.accounts || []).map((v) => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <select value={filters.symbol} onChange={(e) => setFilters((prev) => ({ ...prev, symbol: e.target.value }))}>
+          <option value="">All symbols</option>
+          {(f.symbols || []).map((v) => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <select value={filters.strategy} onChange={(e) => setFilters((prev) => ({ ...prev, strategy: e.target.value }))}>
+          <option value="">All strategies</option>
+          {(f.strategies || []).map((v) => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <select value={filters.range} onChange={(e) => setFilters((prev) => ({ ...prev, range: e.target.value }))}>
+          {RANGE_OPTIONS.map((r) => <option key={r} value={r}>{r[0].toUpperCase() + r.slice(1)}</option>)}
+        </select>
       </div>
 
       <div className="kpi-grid three">
