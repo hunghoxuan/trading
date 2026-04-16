@@ -157,17 +157,23 @@ export default function DashboardPage() {
       <div className="kpi-grid">
         <article className="kpi-card">
           <div className="panel-label">Total Trades / Signals</div>
-          <div className="kpi-value">{m.total_trades || 0}</div>
+          <div className="period-big-line">
+            <span className="kpi-value">{m.total_trades || 0}</span>
+          </div>
           <div className="minor-text" style={{ marginTop: '8px' }}>Signals: {m.total_signals || 0}</div>
         </article>
         <article className="kpi-card">
           <div className="panel-label">Wins / Losses</div>
-          <div className="kpi-value">{m.wins || 0} / {m.losses || 0}</div>
+          <div className="period-big-line">
+            <span className="kpi-value">{m.wins || 0} / {m.losses || 0}</span>
+          </div>
           <div className="minor-text" style={{ marginTop: '8px' }}>Winrate: {asPct(m.win_rate)}</div>
         </article>
         <article className="kpi-card">
           <div className="panel-label">Total PnL</div>
-          <div className={`kpi-value ${moneyClass(m.total_pnl)}`}>{asMoneySigned(m.total_pnl || 0)}</div>
+          <div className="period-big-line">
+            <span className={`kpi-value ${moneyClass(m.total_pnl)}`}>{asMoneySigned(m.total_pnl || 0)}</span>
+          </div>
           <div className="minor-text" style={{ marginTop: '8px' }}>
             Win: <span className={moneyClass(m.buy_pnl)}>{asMoneySigned(m.buy_pnl || 0)}</span> | 
             Lose: <span className={moneyClass(m.sell_pnl)}>{asMoneySigned(m.sell_pnl || 0)}</span>

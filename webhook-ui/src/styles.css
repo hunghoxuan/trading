@@ -68,7 +68,7 @@ input, select, textarea {
 .topbar nav a.active { color: var(--text); border-bottom: 2px solid var(--accent); }
 
 /* Layouts */
-.stack-layout { display: flex; flex-direction: column; gap: 24px; }
+.stack-layout { display: flex; flex-direction: column; gap: 18px; }
 .dashboard-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
 .dashboard-grid.tables { grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); }
 .period-box-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
@@ -78,7 +78,7 @@ input, select, textarea {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 24px;
+  padding: 18px; 
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
   margin-bottom: 20px;
 }
@@ -94,7 +94,7 @@ input, select, textarea {
 }
 
 .pager-area strong { color: var(--text); }
-.cell-major { font-size: 13px; font-weight: 400; color: var(--text); line-height: 1.4; }
+.cell-major { font-size: 13px; font-weight: 400 !important; color: var(--text); line-height: 1.4; }
 .mini-table { font-size: 11px; }
 .mini-name { font-weight: 700; color: var(--text); font-size: 12px; }
 
