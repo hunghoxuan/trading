@@ -40,6 +40,13 @@ git pull --ff-only origin "${BRANCH}"
 node --check webhook/server.js
 # Ensure runtime deps for webhook are present (needed for MT5 postgres mode: pg).
 npm --prefix webhook install --no-audit --no-fund
+# Build UI if present
+if [[ -d "webhook-ui" ]]; then
+  echo "[vps] building webhook-ui"
+  npm --prefix webhook-ui install --no-audit --no-fund
+  npm --prefix webhook-ui run build
+fi
+
 if [[ "${SERVICE_MODE}" == "pm2" ]]; then
   pm2 restart "${SERVICE_NAME}"
   pm2 logs "${SERVICE_NAME}" --lines 80 --nostream || true

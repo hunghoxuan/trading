@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import DashboardPage from "./pages/DashboardPage";
 import TradesPage from "./pages/TradesPage";
+import LogsPage from "./pages/LogsPage";
 import TradeDetailPage from "./pages/TradeDetailPage";
 import SettingsPage from "./pages/SettingsPage";
 import { api } from "./api";
@@ -35,6 +36,7 @@ export default function App() {
         <nav>
           <Link to="/dashboard">Dashboard</Link>
           <Link to="/trades">Trades</Link>
+          <Link to="/logs">Logs</Link>
           <Link to="/settings">Settings</Link>
         </nav>
       </header>
@@ -44,6 +46,7 @@ export default function App() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/trades" element={<TradesPage />} />
           <Route path="/trades/:signalId" element={<TradeDetailPage />} />
+          <Route path="/logs" element={<LogsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>

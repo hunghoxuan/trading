@@ -293,3 +293,31 @@ button { cursor: pointer; }
   .trade-status-col { align-items: flex-start; }
   .trade-grid.two-cols { grid-template-columns: 1fr; }
 }
+
+/* Logs Page Styles */
+.logs-page-container { height: calc(100vh - 100px); }
+.logs-layout { display: grid; grid-template-columns: 1.2fr 1.8fr; gap: 16px; height: 100%; }
+.logs-list-pane { display: flex; flex-direction: column; background: rgba(11, 17, 32, 0.6); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.events-table-wrap { flex: 1; overflow-y: auto; }
+.events-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.events-table th { text-align: left; padding: 10px; background: rgba(15, 23, 42, 0.8); border-bottom: 2px solid var(--border); color: var(--muted); position: sticky; top: 0; }
+.events-table td { padding: 8px 10px; border-bottom: 1px solid rgba(30, 41, 59, 0.5); vertical-align: middle; cursor: pointer; }
+.events-table tr:hover { background: rgba(30, 41, 59, 0.4); }
+.events-table tr.active { background: rgba(34, 211, 238, 0.1); }
+.badge-event { border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: #334155; }
+.badge-event.EA_SYNC_PUSH { background: #0369a1; color: #bae6fd; }
+.badge-event.RECONCILE_FAIL { background: #7f1d1d; color: #fecaca; }
+.badge-event.EA_PULLED { background: #14532d; color: #bbf7d0; }
+
+.pager-mini { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.pager-mini button { width: auto; padding: 2px 8px; }
+
+.logs-detail-pane { background: rgba(11, 17, 32, 0.8); border: 1px solid var(--border); border-radius: 12px; padding: 16px; overflow-y: auto; }
+.payload-box { background: #020617; border: 1px solid #1e293b; border-radius: 8px; padding: 12px; font-family: "JetBrains Mono", "Fira Code", monospace; font-size: 12px; color: #22d3ee; white-space: pre-wrap; overflow-x: auto; margin-top: 8px; }
+.detail-header { border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 16px; }
+.detail-body .field { display: flex; gap: 8px; margin-bottom: 8px; font-size: 14px; }
+.detail-body .field label { font-weight: 600; color: var(--muted); min-width: 80px; }
+.detail-body .field-block { margin-top: 16px; }
+.detail-body .field-block label { display: block; margin-bottom: 4px; font-weight: 600; color: var(--muted); }
+
+.empty-state { display: flex; height: 100%; align-items: center; justify-content: center; text-align: center; }

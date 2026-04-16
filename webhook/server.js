@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-07");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-08");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1221,6 +1221,20 @@ async function mt5InitBackend() {
           payload_json: r.payload_json ? JSON.parse(r.payload_json) : {},
         }));
       },
+      async listAllEvents(limit, offset) {
+        const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 1000));
+        const safeOffset = Math.max(0, Number(offset) || 0);
+        return db.prepare(`
+          SELECT e.id, e.signal_id, e.event_type, e.event_time, e.payload_json, s.symbol
+          FROM signal_events e
+          LEFT JOIN signals s ON e.signal_id = s.signal_id
+          ORDER BY e.event_time DESC
+          LIMIT ? OFFSET ?
+        `).all(safeLimit, safeOffset).map((r) => ({
+          ...r,
+          payload_json: r.payload_json ? JSON.parse(r.payload_json) : {},
+        }));
+      },
       async pruneOldSignals(days) {
         const placeholders = mt5TerminalStatuses().map(() => "?").join(", ");
         const cutoffIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -1441,6 +1455,12 @@ async function mt5InitBackend() {
     CREATE INDEX IF NOT EXISTS idx_signal_events_signal_time
     ON signal_events(signal_id, event_time)
   `);
+  // Ensure "SYSTEM_SYNC_PUSH" dummy signal exists for global logging.
+  await pool.query(`
+    INSERT INTO signals (signal_id, symbol, action, volume, status, created_at, user_id, note)
+    VALUES ('SYSTEM_SYNC_PUSH', 'SYNC_PUSH', 'SYSTEM', 0, 'OK', $1, $2, 'Global Sync Log Partition')
+    ON CONFLICT (signal_id) DO NOTHING
+  `, [mt5NowIso(), CFG.mt5DefaultUserId]);
 
   for (const tbl of ["users", "accounts", "signals", "signal_events"]) {
     await pool.query(`ALTER TABLE ${tbl} ADD COLUMN IF NOT EXISTS metadata JSONB`);
@@ -1778,6 +1798,21 @@ async function mt5InitBackend() {
         ORDER BY event_time DESC
         LIMIT $2
       `, [String(signalId), safeLimit]);
+      return res.rows.map((r) => ({
+        ...r,
+        payload_json: r.payload_json || {},
+      }));
+    },
+    async listAllEvents(limit, offset) {
+      const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 1000));
+      const safeOffset = Math.max(0, Number(offset) || 0);
+      const res = await pool.query(`
+        SELECT e.id, e.signal_id, e.event_type, e.event_time, e.payload_json, s.symbol
+        FROM signal_events e
+        LEFT JOIN signals s ON e.signal_id = s.signal_id
+        ORDER BY e.event_time DESC
+        LIMIT $1 OFFSET $2
+      `, [safeLimit, safeOffset]);
       return res.rows.map((r) => ({
         ...r,
         payload_json: r.payload_json || {},
@@ -2169,6 +2204,12 @@ async function mt5ListActiveSignals() {
 async function mt5BulkAckSignals(updates) {
   const b = await mt5Backend();
   return b.bulkAckSignals(updates);
+}
+
+async function mt5ListAllEvents(limit = 1000, offset = 0) {
+  const b = await mt5Backend();
+  if (!b.listAllEvents) return [];
+  return b.listAllEvents(limit, offset);
 }
 
 async function mt5PruneSignals(days) {
@@ -3135,6 +3176,22 @@ const server = http.createServer(async (req, res) => {
     } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
   }
 
+  if (req.method === "GET" && url.pathname === "/mt5/api/events") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const limitRaw = Number(url.searchParams.get("limit") || 200);
+      const limit = Math.max(1, Math.min(5000, Number.isFinite(limitRaw) ? limitRaw : 200));
+      const offsetRaw = Number(url.searchParams.get("offset") || 0);
+      const offset = Math.max(0, Number.isFinite(offsetRaw) ? offsetRaw : 0);
+      const rows = await mt5ListAllEvents(limit, offset);
+      return json(res, 200, { ok: true, events: rows });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
   if (req.method === "POST" && url.pathname === "/mt5/ea/sync") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
@@ -3184,6 +3241,15 @@ const server = http.createServer(async (req, res) => {
           await mt5AppendSignalEvent(u.signal_id, `RECONCILE_${u.status}`, { note: u.note, account: payload.account_id });
         }
       }
+      
+      // Global Log of the Sync Call
+      await mt5AppendSignalEvent('SYSTEM_SYNC_PUSH', 'EA_SYNC_PUSH', { 
+        account: payload.account_id, 
+        active_count: activeSignals.length,
+        updates_count: updates.length,
+        reconciled_ids: updates.map(u => u.signal_id),
+        updates_details: updates 
+      });
 
       return json(res, 200, { ok: true, reconciled: updates.length, updates });
     } catch (err) { return json(res, 500, { ok: false, error: err.message }); }

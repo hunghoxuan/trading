@@ -258,4 +258,11 @@ export const api = {
   cancelTrades: (params) => post("/mt5/trades/cancel", params),
   renewTrades: (params) => post("/mt5/trades/renew", params),
   downloadBacktestCsv: (params) => downloadCsv("/csv", params),
+  events: (params = {}) => {
+    const q = new URLSearchParams();
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && String(v) !== "") q.set(k, String(v));
+    });
+    return get(`/mt5/api/events?${q.toString()}`);
+  },
 };
