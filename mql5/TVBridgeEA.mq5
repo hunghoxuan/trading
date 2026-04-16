@@ -38,7 +38,9 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-15.02";
+string EA_BUILD_VERSION = "2026-04-16.03";
+
+input string InpMappingFile = "TVBridge_Mappings.csv";
 
 CTrade trade;
 
@@ -737,6 +739,70 @@ void MapPositionSignal(const ulong ticket, const string signalId)
    }
    g_posMapTicket[idx] = ticket;
    g_posMapSignalId[idx] = signalId;
+   SaveMappings();
+}
+
+void SaveMappings()
+{
+   int h = FileOpen(InpMappingFile, FILE_WRITE|FILE_CSV|FILE_ANSI);
+   if(h == INVALID_HANDLE) return;
+   
+   FileWrite(h, "TYPE", "TICKET", "SIGNAL_ID", "ACK_SENT");
+   
+   for(int i=0; i<ArraySize(g_posMapTicket); i++)
+      FileWrite(h, "POS", IntegerToString(g_posMapTicket[i]), g_posMapSignalId[i], (g_posMapOpenedAckSent[i]?"1":"0"));
+      
+   for(int i=0; i<ArraySize(g_ordMapTicket); i++)
+      FileWrite(h, "ORD", IntegerToString(g_ordMapTicket[i]), g_ordMapSignalId[i], "0");
+      
+   FileClose(h);
+}
+
+void LoadMappings()
+{
+   int h = FileOpen(InpMappingFile, FILE_READ|FILE_CSV|FILE_ANSI);
+   if(h == INVALID_HANDLE) return;
+   
+   if(!FileIsEnding(h)) FileReadString(h); // Header
+   if(!FileIsEnding(h)) FileReadString(h);
+   if(!FileIsEnding(h)) FileReadString(h);
+   if(!FileIsEnding(h)) FileReadString(h);
+   
+   ArrayResize(g_posMapTicket, 0);
+   ArrayResize(g_posMapSignalId, 0);
+   ArrayResize(g_posMapOpenedAckSent, 0);
+   ArrayResize(g_ordMapTicket, 0);
+   ArrayResize(g_ordMapSignalId, 0);
+   
+   while(!FileIsEnding(h))
+   {
+      string type = FileReadString(h);
+      if(StringLen(type) == 0) break;
+      string ticketStr = FileReadString(h);
+      string signalId = FileReadString(h);
+      string ackSentStr = FileReadString(h);
+      
+      if(type == "POS")
+      {
+         int n = ArraySize(g_posMapTicket);
+         ArrayResize(g_posMapTicket, n+1);
+         ArrayResize(g_posMapSignalId, n+1);
+         ArrayResize(g_posMapOpenedAckSent, n+1);
+         g_posMapTicket[n] = (ulong)StringToInteger(ticketStr);
+         g_posMapSignalId[n] = signalId;
+         g_posMapOpenedAckSent[n] = (ackSentStr == "1");
+      }
+      else if(type == "ORD")
+      {
+         int n = ArraySize(g_ordMapTicket);
+         ArrayResize(g_ordMapTicket, n+1);
+         ArrayResize(g_ordMapSignalId, n+1);
+         g_ordMapTicket[n] = (ulong)StringToInteger(ticketStr);
+         g_ordMapSignalId[n] = signalId;
+      }
+   }
+   FileClose(h);
+   Print("Loaded mappings: Positions=", ArraySize(g_posMapTicket), " Orders=", ArraySize(g_ordMapTicket));
 }
 
 bool GetSignalIdByPositionTicket(const ulong ticket, string &signalIdOut, int &idxOut)
@@ -767,6 +833,7 @@ void RemovePositionMapAt(const int idx)
    ArrayResize(g_posMapTicket, n - 1);
    ArrayResize(g_posMapSignalId, n - 1);
    ArrayResize(g_posMapOpenedAckSent, n - 1);
+   SaveMappings();
 }
 
 int FindOrderMapIndex(const ulong ticket)
@@ -791,6 +858,7 @@ void MapOrderSignal(const ulong ticket, const string signalId)
    }
    g_ordMapTicket[idx] = ticket;
    g_ordMapSignalId[idx] = signalId;
+   SaveMappings();
 }
 
 bool GetSignalIdByOrderTicket(const ulong ticket, string &signalIdOut, int &idxOut)
@@ -819,6 +887,7 @@ void RemoveOrderMapAt(const int idx)
    }
    ArrayResize(g_ordMapTicket, n - 1);
    ArrayResize(g_ordMapSignalId, n - 1);
+   SaveMappings();
 }
 
 string NormalizeOrderType(const string orderTypeRaw)
@@ -2421,6 +2490,7 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
 
 int OnInit()
 {
+   LoadMappings();
    if(InpBacktestMode)
    {
       g_btLoaded = LoadBacktestSignals();

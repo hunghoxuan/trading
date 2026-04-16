@@ -74,21 +74,23 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
   const isBeforePlaced = status.cls === "OTHER" || status.cls === "LOCKED";
 
   // Volume line: before placed → show planned risk %; after placed → show real broker facts
+  // Volume line: prioritize real broker facts if we have them
   const volPct = fmtPct(trade?.raw_json?.volume_pct ?? trade?.raw_json?.volumePct ?? trade?.raw_json?.riskPct);
   let volText;
-  if (isBeforePlaced) {
-    volText = volPct || "-";
-  } else if (lotsActual && slPips) {
+  
+  if (lotsActual && slPips) {
     const riskStr = riskActual ? `$${money(riskActual)}` : null;
     const rewardStr = rewardPlanned ? `$${money(rewardPlanned)}` : null;
     volText = [
-      lotsActual ? `${lotsActual} Lots` : null,
-      slPips ? `${slPips.toFixed(1)}p SL` : null,
+      `${lotsActual} Lots`,
+      `${slPips.toFixed(1)}p SL`,
       riskStr ? `Risk ${riskStr}` : null,
       rewardStr ? `→ ${rewardStr}` : null,
     ].filter(Boolean).join(" | ");
+  } else if (lotsActual) {
+    volText = `${lotsActual} Lots` + (volPct ? ` (${volPct} planned)` : "");
   } else {
-    volText = volPct || (lotsActual ? `${lotsActual} Lots` : "-");
+    volText = volPct || "-";
   }
 
   return (
