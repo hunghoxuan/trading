@@ -12,7 +12,7 @@
 * { box-sizing: border-box; }
 body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; line-height: 1.5; }
 
-.app-container { padding: 20px; width: 100%; max-width: 1400px; margin: 0 auto; }
+.app-container { padding: 40px; width: 100%; max-width: 1600px; margin: 0 auto; }
 
 /* Navigation */
 .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
