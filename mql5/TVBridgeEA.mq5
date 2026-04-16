@@ -210,7 +210,10 @@ bool HttpGet(const string url, string &response)
    return true;
 }
 
-   return true;
+bool HttpPostJson(const string url, const string body)
+{
+   string dummy;
+   return HttpPostJsonWithResponse(url, body, dummy);
 }
 
 bool HttpPostJsonWithResponse(const string url, const string body, string &response)
@@ -229,6 +232,7 @@ bool HttpPostJsonWithResponse(const string url, const string body, string &respo
    response = CharArrayToString(result);
    return (code >= 200 && code < 300);
 }
+
 
 string JsonEscape(const string s)
 {
