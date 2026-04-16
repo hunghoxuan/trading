@@ -2,7 +2,7 @@ import { useState } from "react";
 import { getRuntimeApiKey, setRuntimeApiKey } from "../api";
 import { api } from "../api";
 
-export default function SettingsPage({ authUser }) {
+export default function SettingsPage() {
   const [apiKey, setApiKey] = useState(getRuntimeApiKey());
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -47,10 +47,6 @@ export default function SettingsPage({ authUser }) {
   return (
     <section className="panel stack-layout settings-page">
       <h2>Settings</h2>
-      <label>
-        <div className="muted small">Login Email</div>
-        <input type="email" value={String(authUser?.email || "")} disabled />
-      </label>
       <label>
         <div className="muted small">API Key</div>
         <input

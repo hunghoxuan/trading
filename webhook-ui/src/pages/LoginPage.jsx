@@ -2,7 +2,7 @@ import { useState } from "react";
 import { api } from "../api";
 
 export default function LoginPage({ onLogin }) {
-  const [email, setEmail] = useState("hung.hoxuan@gmail.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -51,4 +51,3 @@ export default function LoginPage({ onLogin }) {
     </section>
   );
 }
-

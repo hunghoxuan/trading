@@ -3619,7 +3619,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const b = await mt5Backend();
       if (!b.listTables) return json(res, 400, { ok: false, error: "Not supported by this backend" });
-      const tables = await b.listTables();
+      const tables = (await b.listTables()).filter((t) => String(t || "").toLowerCase() !== "ui_auth_users");
       return json(res, 200, { ok: true, tables });
     } catch (error) {
       return json(res, 400, { ok: false, error: error.message });
@@ -3634,6 +3634,9 @@ const server = http.createServer(async (req, res) => {
       if (!b.listTableRows) return json(res, 400, { ok: false, error: "Not supported by this backend" });
       
       const table = envStr(url.searchParams.get("table") || "signals");
+      if (table.toLowerCase() === "ui_auth_users") {
+        return json(res, 403, { ok: false, error: "table access forbidden" });
+      }
       const q = envStr(url.searchParams.get("q"));
       const page = Math.max(1, Number(url.searchParams.get("page") || 1));
       const pageSize = Math.max(5, Math.min(500, Number(url.searchParams.get("pageSize") || 50)));
