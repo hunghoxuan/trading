@@ -138,3 +138,12 @@ timestamp;signal_id;action;symbol;volume;sl;tp;note
 2026.04.16 15:07:02;SMC_RJ_4h_0_5_10410_1249;BUY;XAUJPY;0.01;760754.1;765174.45;Hung-SMC | 5m | RJ.4h.0.5 | Ba  ie  Touch (suppo t touch)
 2026.04.16 15:07:02;SMC_RJ_4h_0_2_10410_1248;BUY;XAUJPY;0.01;760754.1;764290.38;Hung-SMC | 5m | RJ.4h.0.2 | Ba  ie  Touch (suppo t touch)
 2026.04.16 15:10:48;SYSTEM_SYNC_PUSH;SYSTEM;SYNC_PUSH;0;;;Global Sync Log Partition
+2026.04.16 15:32:02;SMC_RJ_15m_1_12588_737;BUY;EURJPY;0.01;187.3624;187.5296;Hung-SMC | 1m | RJ.15m.1 | Ba  ie  Touch (suppo t touch)
+2026.04.16 15:32:02;SMC_RJ_15m_0_5_12588_736;BUY;EURJPY;0.01;187.3624;187.4878;Hung-SMC | 1m | RJ.15m.0.5 | Ba  ie  Touch (suppo t touch)
+2026.04.16 15:32:02;SMC_RJ_15m_0_2_12588_735;BUY;EURJPY;0.01;187.3624;187.46272;Hung-SMC | 1m | RJ.15m.0.2 | Ba  ie  Touch (suppo t touch)
+2026.04.16 15:36:02;SMC_RJ_15m_0_5_12592_739;BUY;EURJPY;0.01;187.3624;187.4878;Hung-SMC | 1m | RJ.15m.0.5 | Ba  ie  Touch (suppo t touch)
+2026.04.16 15:36:02;SMC_RJ_15m_1_12592_740;BUY;EURJPY;0.01;187.3624;187.5296;Hung-SMC | 1m | RJ.15m.1 | Ba  ie  Touch (suppo t touch)
+2026.04.16 15:36:02;SMC_RJ_15m_0_2_12592_738;BUY;EURJPY;0.01;187.3624;187.46272;Hung-SMC | 1m | RJ.15m.0.2 | Ba  ie  Touch (suppo t touch)
+2026.04.16 15:37:02;SMC_RJ_1h_0_2_10416_1329;BUY;XAUEUR;0.01;4066.75;4080.346;Hung-SMC | 5m | RJ.1h.0.2 | Ba  ie  Touch (suppo t touch)
+2026.04.16 15:37:02;SMC_RJ_1h_1_10416_1331;BUY;XAUEUR;0.01;4066.75;4089.41;Hung-SMC | 5m | RJ.1h.1 | Ba  ie  Touch (suppo t touch)
+2026.04.16 15:37:02;SMC_RJ_1h_0_5_10416_1330;BUY;XAUEUR;0.01;4066.75;4083.745;Hung-SMC | 5m | RJ.1h.0.5 | Ba  ie  Touch (suppo t touch)

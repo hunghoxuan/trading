@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-10");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-11");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1147,7 +1147,7 @@ async function mt5InitBackend() {
                    sl_pips, tp_pips, pip_value_per_lot, risk_money_actual, reward_money_planned,
                    note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
             FROM signals
-            WHERE status = ?
+            WHERE status = ? AND signal_id NOT LIKE 'SYSTEM_%'
             ORDER BY created_at DESC
             LIMIT ?
           `).all(statusFilter, limit).map((r) => ({
@@ -1161,6 +1161,7 @@ async function mt5InitBackend() {
                  sl_pips, tp_pips, pip_value_per_lot, risk_money_actual, reward_money_planned,
                  note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
           FROM signals
+          WHERE signal_id NOT LIKE 'SYSTEM_%'
           ORDER BY created_at DESC
           LIMIT ?
         `).all(limit).map((r) => ({
@@ -1180,7 +1181,7 @@ async function mt5InitBackend() {
           SELECT signal_id, created_at, user_id, action, symbol, volume, sl, tp, status,
                  ack_ticket, ack_status, pnl_money_realized, entry_price_exec, sl_exec, tp_exec
           FROM signals
-          WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'OK', 'START')
+          WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'OK', 'START') AND signal_id NOT LIKE 'SYSTEM_%'
           ORDER BY created_at ASC
         `).all().map((r) => ({
           ...r,
@@ -1693,7 +1694,7 @@ async function mt5InitBackend() {
         SELECT signal_id, created_at, user_id, action, symbol, volume, sl, tp, status,
                ack_ticket, ack_status, pnl_money_realized, entry_price_exec, sl_exec, tp_exec
         FROM signals
-        WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'OK', 'START')
+        WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'OK', 'START') AND signal_id NOT LIKE 'SYSTEM_%'
         ORDER BY created_at ASC
       `);
       return res.rows.map((r) => ({
@@ -1796,7 +1797,7 @@ async function mt5InitBackend() {
                  rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
                  note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
           FROM signals
-          WHERE status = $1
+          WHERE status = $1 AND signal_id NOT LIKE 'SYSTEM_%'
           ORDER BY created_at DESC
           LIMIT $2
         `, [statusFilter, limit]);
@@ -1808,6 +1809,7 @@ async function mt5InitBackend() {
                sl_pips, tp_pips, pip_value_per_lot, risk_money_actual, reward_money_planned,
                note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
         FROM signals
+        WHERE signal_id NOT LIKE 'SYSTEM_%'
         ORDER BY created_at DESC
         LIMIT $1
       `, [limit]);
