@@ -41,7 +41,7 @@ export default function App() {
              style={{ 
                background: 'transparent', 
                border: '1px solid var(--border)', 
-               color: 'white', 
+               color: 'var(--text)', 
                padding: '4px 10px', 
                borderRadius: '6px', 
                fontSize: '11px', 

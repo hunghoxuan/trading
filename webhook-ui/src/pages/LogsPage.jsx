@@ -130,7 +130,7 @@ export default function LogsPage() {
                     className={selectedEvent?.id === ev.id ? "active" : ""}
                     onClick={() => setSelectedEvent(ev)}
                   >
-                    <td><strong className="minor-text" style={{ color: '#fff' }}>{ev.symbol || 'N/A'}</strong></td>
+                    <td><strong className="minor-text" style={{ color: 'var(--text)' }}>{ev.symbol || 'N/A'}</strong></td>
                     <td><span className="badge">{ev.event_type}</span></td>
                     <td>
                        <div className="cell-wrap">
@@ -157,9 +157,9 @@ export default function LogsPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <tbody>
                     {Object.entries(selectedEvent.payload_json || {}).map(([k, v]) => (
-                      <tr key={k} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                        <td className="minor-text" style={{ padding: '8px 0', width: '30%', fontWeight: 700 }}>{k}</td>
-                        <td className="minor-text" style={{ padding: '8px 0', color: '#fff' }}>
+                      <tr key={k} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td className="minor-text" style={{ padding: '8px 0', width: '30%', fontWeight: 700, color: 'var(--muted)' }}>{k}</td>
+                        <td className="minor-text" style={{ padding: '8px 0', color: 'var(--text)' }}>
                           {typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v)}
                         </td>
                       </tr>

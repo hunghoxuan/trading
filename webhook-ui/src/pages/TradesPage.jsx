@@ -260,7 +260,7 @@ export default function TradesPage() {
               </div>
 
               <div style={{ marginTop: '20px' }}>
-                <h3 style={{ marginBottom: '16px', fontSize: '14px', color: '#fff', fontWeight: 800 }}>HISTORY</h3>
+                <h3 style={{ marginBottom: '16px', fontSize: '14px', color: 'var(--text)', fontWeight: 800 }}>HISTORY</h3>
                 {!tradeDetails?.events ? (
                   <div className="loading">FETCHING TELEMETRY LOGS...</div>
                 ) : (
@@ -277,22 +277,22 @@ export default function TradesPage() {
                       
                       return (
                         <div key={ev.id} className="panel" style={{ margin: 0 }}>
-                          <div className="panel-head" style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.02)' }}>
+                          <div className="panel-head" style={{ padding: '8px 16px', background: 'var(--panel)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span className="minor-text" style={{ fontWeight: 700, color: '#fff' }}>{ev.event_type}</span>
+                              <span className="minor-text" style={{ fontWeight: 700, color: 'var(--text)' }}>{ev.event_type}</span>
                               {stTxt && <span className={`badge ${stCls}`}>{stTxt}</span>}
                             </div>
                             <span className="minor-text">{fDateTime(ev.event_time)}</span>
                           </div>
                           <div className="panel-body" style={{ padding: '12px 14px' }}>
-                            <div className="json-table-wrapper">
+                            <div className="json-table-wrapper" style={{ marginTop: '20px' }}>
                               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <tbody>
                                   {Object.entries(ev.payload_json || {}).map(([k, v]) => (
-                                    <tr key={k} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                                      <td className="minor-text" style={{ padding: '4px 0', width: '35%' }}>{k}</td>
-                                      <td className="minor-text" style={{ padding: '4px 0', color: '#fff' }}>
-                                        {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                                    <tr key={k} style={{ borderBottom: '1px solid var(--border)' }}>
+                                      <td className="minor-text" style={{ padding: '8px 0', width: '30%', fontWeight: 700, color: 'var(--muted)' }}>{k}</td>
+                                      <td className="minor-text" style={{ padding: '8px 0', color: 'var(--text)' }}>
+                                        {typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v)}
                                       </td>
                                     </tr>
                                   ))}
