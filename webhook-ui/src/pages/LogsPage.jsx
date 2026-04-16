@@ -135,7 +135,7 @@ export default function LogsPage() {
                     <td>
                        <div className="cell-wrap">
                          <div className="minor-text">{ev.signal_id}</div>
-                         {ev.ack_ticket && <div className="minor-text" style={{ color: var(--accent) }}># {ev.ack_ticket}</div>}
+                          {ev.ack_ticket && <div className="minor-text" style={{ color: 'var(--accent)' }}># {ev.ack_ticket}</div>}
                        </div>
                     </td>
                     <td><span className="minor-text">{fDateTime(ev.event_time)}</span></td>
