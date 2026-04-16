@@ -109,7 +109,7 @@ export default function DatabasePage() {
 
           <input 
             type="text" 
-            placeholder="Search rows..." 
+            placeholder="SEARCH ROWS..." 
             value={filter.q} 
             onChange={handleSearchChange} 
             className="dashboard-filter-input"
@@ -118,95 +118,88 @@ export default function DatabasePage() {
         </div>
 
         <div className="toolbar-right">
-          <button className="kpi-card" style={{ padding: "8px 16px", cursor: "pointer", border: "1px solid var(--border-color)" }} onClick={() => loadRows()}>
-            REFRESH
-          </button>
-          
+          <button type="button" onClick={() => loadRows()} disabled={loading}>REFRESH</button>
           <div className="toolbar-separator" />
-          
-          <button className="kpi-card" style={{ padding: "8px 16px", cursor: "pointer", border: "1px solid var(--border-color)", background: "var(--bg-panel)" }} onClick={() => alert("CSV Export coming soon for this table")}>
-            DOWNLOAD CSV
-          </button>
-
-          <button className="kpi-card" style={{ padding: "8px 16px", cursor: "pointer", border: "1px solid var(--danger)", color: "var(--danger)" }} onClick={() => alert("Delete logic placeholder")}>
-            DELETE ALL
-          </button>
+          <button type="button" onClick={() => alert("CSV Export coming soon")}>DOWNLOAD CSV</button>
+          <button type="button" style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }} onClick={() => alert("Delete placeholder")}>DELETE ALL</button>
         </div>
       </div>
 
-      <div className="stack-layout" style={{ marginTop: "18px" }}>
-        {error && <div className="error-banner">{error}</div>}
-
-        <div className="trades-layout">
-          <div className="trades-main">
-            <div className="panel">
-              <div className="table-container">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      {tableHeaders.map(h => <th key={h}>{h.replace(/_/g, " ").toUpperCase()}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loading && <tr><td colSpan={tableHeaders.length} style={{ textAlign: "center", padding: "40px" }} className="muted">Loading institutional data...</td></tr>}
-                    {!loading && rows.length === 0 && <tr><td colSpan={tableHeaders.length} style={{ textAlign: "center", padding: "40px" }} className="muted">No records found for table {selectedTable}</td></tr>}
-                    {!loading && rows.map((row, idx) => (
-                      <tr key={idx} onClick={() => setSelectedRow(row)} className={selectedRow === row ? "selected" : ""}>
-                        {tableHeaders.map(h => {
-                          const val = row[h];
-                          const isDate = h.includes("_at") || h === "tick_time";
-                          const isStatus = h === "status" || h === "ack_status";
-                          
-                          if (isStatus) {
-                            const ui = statusUi(val);
-                            return <td key={h}><div className={`cell-status ${ui.cls}`}>{ui.label}</div></td>;
-                          }
-                          
-                          return (
-                            <td key={h}>
-                              <div className="cell-major">{isDate ? fDateTime(val) : String(val ?? "-").slice(0, 50)}</div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="pager-area">
-                <div className="pager-info">
-                  Showing <strong>{rows.length}</strong> of <strong>{total}</strong> records
-                </div>
-                <div className="pager-controls">
-                  <button disabled={filter.page <= 1} onClick={() => handlePageChange(filter.page - 1)}>Prev</button>
-                  <span className="pager-current">Page {filter.page} of {pages}</span>
-                  <button disabled={filter.page >= pages} onClick={() => handlePageChange(filter.page + 1)}>Next</button>
-                </div>
-              </div>
-            </div>
+      <div className="logs-layout-split">
+        <div className="logs-list-pane">
+          {error && <div className="error">{error}</div>}
+          <div className="events-table-wrap">
+            <table className="events-table">
+              <thead>
+                <tr>
+                  {tableHeaders.map(h => <th key={h}>{h.replace(/_/g, " ").toUpperCase()}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {loading && <tr><td colSpan={tableHeaders.length} style={{ textAlign: "center", padding: "40px" }} className="muted">Loading institutional records...</td></tr>}
+                {!loading && rows.length === 0 && <tr><td colSpan={tableHeaders.length} style={{ textAlign: "center", padding: "40px" }} className="muted">No records found</td></tr>}
+                {!loading && rows.map((row, idx) => (
+                  <tr 
+                    key={idx} 
+                    onClick={() => setSelectedRow(row)} 
+                    className={selectedRow === row ? "active" : ""}
+                  >
+                    {tableHeaders.map(h => {
+                      const val = row[h];
+                      const isDate = h.includes("_at") || h === "tick_time" || h === "event_time";
+                      const isStatus = h === "status" || h === "ack_status";
+                      
+                      if (isStatus) {
+                        const ui = statusUi(val);
+                        return <td key={h}><span className={`badge ${ui.cls}`}>{ui.label}</span></td>;
+                      }
+                      
+                      return (
+                        <td key={h}>
+                          <div className="cell-wrap">
+                             <div className="minor-text">{isDate ? fDateTime(val) : String(val ?? "-").slice(0, 50)}</div>
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
-          <div className={`trades-detail panel ${selectedRow ? "open" : ""}`}>
-            <div className="detail-header">
-              <div className="kpi-label">ROW DETAILS</div>
-              <button className="icon-button" onClick={() => setSelectedRow(null)}>×</button>
-            </div>
-            {selectedRow ? (
-              <div className="detail-content scrollable">
+          <div className="pager-area" style={{ marginTop: '10px' }}>
+             <div className="pager-info minor-text">
+                Showing {rows.length} of {total}
+             </div>
+             <div className="pager-controls">
+                <button disabled={filter.page <= 1} onClick={() => handlePageChange(filter.page - 1)}>Prev</button>
+                <span className="minor-text">Page {filter.page} of {pages}</span>
+                <button disabled={filter.page >= pages} onClick={() => handlePageChange(filter.page + 1)}>Next</button>
+             </div>
+          </div>
+        </div>
+
+        <div className="logs-detail-pane">
+          {selectedRow ? (
+            <div className="trade-detail-content scrollable fadeIn">
+              <div className="detail-header" style={{ marginBottom: '15px' }}>
+                 <h2 style={{ margin: 0 }}>ROW DETAILS</h2>
+              </div>
+              <div className="detail-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
                 {Object.entries(selectedRow).map(([k, v]) => (
-                  <div key={k} className="detail-item">
-                    <div className="detail-label">{k.replace(/_/g, " ").toUpperCase()}</div>
-                    <div className="detail-value" style={{ wordBreak: "break-all", whiteSpace: "pre-wrap" }}>
+                  <div key={k} style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
+                    <div className="minor-text" style={{ textTransform: 'uppercase', marginBottom: '2px', color: 'var(--text-secondary)' }}>{k.replace(/_/g, " ")}</div>
+                    <div className="minor-text" style={{ color: 'var(--text)', wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
                       {typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v ?? "-")}
                     </div>
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="detail-empty muted">Select a row to view full institutional telemetry</div>
-            )}
-          </div>
+            </div>
+          ) : (
+             <div className="empty-state minor-text">SELECT A RECORD TO INSPECT TELEMETRY</div>
+          )}
         </div>
       </div>
     </div>
