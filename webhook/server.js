@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.15-15");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-01");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1291,7 +1291,16 @@ async function mt5InitBackend() {
     throw new Error("MT5 postgres backend requires `pg` package. Run: npm install pg");
   }
   const { Pool } = pgModule;
-  const pool = new Pool({ connectionString: CFG.mt5PostgresUrl });
+  const pool = new Pool({ 
+    connectionString: CFG.mt5PostgresUrl,
+    max: 20, // Allow up to 20 concurrent connections
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+  });
+  
+  pool.on('error', (err) => {
+    console.error('[Postgres Pool Error]', err);
+  });
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       user_id TEXT PRIMARY KEY,
