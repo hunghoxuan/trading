@@ -16,10 +16,11 @@ body { font-family: -apple-system, sans-serif; background: var(--bg); color: var
 
 /* Navigation */
 .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
-.brand { font-size: 20px; font-weight: 800; color: #ffffff; display: flex; align-items: center; gap: 8px; }
-.nav { display: flex; gap: 40px; }
-.nav a { color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600; opacity: 0.9; transition: all 0.2s; border-bottom: 2px solid transparent; padding: 4px 0; }
-.nav a:hover, .nav a.active { opacity: 1; border-color: #ffffff; }
+.brand { font-size: 20px; font-weight: 800; color: #ffffff; display: flex; align-items: baseline; gap: 8px; }
+.brand-version { font-size: 11px; color: var(--muted); font-weight: 400; opacity: 0.7; }
+header nav { display: flex; gap: 40px; margin-left: auto; }
+header nav a { color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600; opacity: 0.9; transition: all 0.2s; border-bottom: 2px solid transparent; padding: 4px 0; }
+header nav a:hover, header nav a.active { opacity: 1; border-bottom-color: #ffffff; }
 
 /* Layouts */
 .stack-layout { display: flex; flex-direction: column; gap: 24px; }
@@ -54,6 +55,7 @@ body { font-family: -apple-system, sans-serif; background: var(--bg); color: var
 
 /* Buttons & Inputs (STANDARD) */
 input, select, button { background: #020617; border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 12px; font-size: 13px; outline: none; }
+select:has(option[value=""]:checked), select:invalid { color: var(--muted); }
 button { cursor: pointer; background: var(--accent); color: #000; font-weight: 800; width: auto; transition: opacity 0.2s; }
 button:hover { opacity: 0.85; }
 button:disabled { opacity: 0.3; cursor: not-allowed; }
@@ -79,13 +81,31 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .events-table tr.active { background: rgba(34, 211, 238, 0.12); border-left: 2px solid var(--accent); }
 .cell-wrap { display: flex; flex-direction: column; gap: 2px; }
 .cell-major { font-weight: 700; color: #fff; font-size: 13px; }
-.cell-minor { font-size: 11px; color: var(--muted); }
-.badge-fixed { min-width: 60px; text-align: center; }
+.cell-minor, .minor-text { font-size: 11px; color: var(--muted); font-weight: 400; }
+.badge-fixed { min-width: 66px; text-align: center; }
+
+/* Status Badges */
+.badge { border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 800; text-transform: uppercase; border: 1px solid transparent; }
+.badge.TP { color: #10b981; background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.5); }
+.badge.SL { color: #ef4444; background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.5); }
+.badge.START { color: #3b82f6; background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.5); }
+.badge.OK, .badge.PLACED { color: #f59e0b; background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.5); }
+.badge.OTHER, .badge.NEW { color: var(--muted); background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); }
+
+/* Side Pills */
+.badge.BUY { color: #10b981; border: 1px solid #10b981; background: rgba(16, 185, 129, 0.05); }
+.badge.SELL { color: #ef4444; border: 1px solid #ef4444; background: rgba(239, 68, 68, 0.05); }
 
 /* Pager */
-.pager { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 20px 0; font-size: 13px; }
-.pager-btn { width: 34px; height: 34px; display: flex; justify-content: center; align-items: center; padding: 0; }
-.pager-size { width: auto; }
+.pager-area { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 11px; }
+.pager-area strong { color: #fff; }
+.pager-mini { display: flex; align-items: center; gap: 8px; }
+.pager-mini button { padding: 4px 8px; font-size: 10px; background: #1e293b; color: #fff; border: 1px solid var(--border); }
+
+/* Settings */
+.settings-page { padding: 20px; }
+
+.version-tag { font-size: 11px; color: var(--muted); text-align: right; margin-top: 10px; opacity: 0.6; }
 
 /* Trades List (RESTORED CLEAN CARDS) */
 .trade-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; margin-top: 12px; }

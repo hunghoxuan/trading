@@ -5,33 +5,26 @@ import TradeLevelChart from "../components/TradeLevelChart";
 const STATUS_OPTIONS = ["", "NEW", "LOCKED", "PLACED", "OK", "START", "FAIL", "TP", "SL", "CANCEL", "EXPIRED"];
 const BULK_ACTIONS = ["", "Download CSV", "Renew All", "Cancel All", "Delete All"];
 const RANGE_OPTIONS = ["", "today", "week", "month"];
+const PAGE_SIZE_OPTIONS = [50, 100, 200];
 
-function fmtMoney(v) {
-  if (v === null || v === undefined || v === "") return "$0";
+function fNum(v) {
   const n = Number(v);
-  if (!Number.isFinite(n)) return "$0";
-  // Always include $ prefix
-  return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (!Number.isFinite(n)) return "0";
+  return n.toLocaleString(undefined, { maximumFractionDigits: 5 });
 }
 
-function fmtMoneySigned(v) {
+function fMoney(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "$0.00";
-  if (n < 0) return `-$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const abs = Math.abs(n);
+  const str = `$${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return n < 0 ? `-${str}` : str;
 }
 
-function fmtPct(v) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return "-";
-  // Always ceil and no digits
-  return `${Math.ceil(n)}%`;
-}
-
-function fmtDateTime(v) {
+function fDateTime(v) {
   if (!v) return "-";
   return new Date(v).toLocaleString(undefined, {
-    year: 'numeric', month: '2-digit', day: '2-digit', 
+    year: '2-digit', month: '2-digit', day: '2-digit', 
     hour: '2-digit', minute: '2-digit', second: '2-digit'
   });
 }
@@ -54,6 +47,7 @@ export default function TradesPage() {
   const [loading, setLoading] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkAction, setBulkAction] = useState("");
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [tradeDetails, setTradeDetails] = useState(null);
   const [error, setError] = useState("");
@@ -112,15 +106,27 @@ export default function TradesPage() {
   useEffect(() => { loadSymbols(); }, []);
   useEffect(() => { loadTrades(); }, [query]);
 
+  const allSelected = rows.length > 0 && rows.every(r => selectedIds.has(r.signal_id));
+
   return (
     <section className="logs-page-container">
       <div className="logs-top-bar">
         <div className="logs-top-left">
-          <div className="muted small"><strong>{total}</strong> RESULTS</div>
-          <div className="pager-mini">
-            <button disabled={filter.page <= 1} onClick={() => setFilter(f => ({ ...f, page: f.page - 1 }))}>PREV</button>
-            <span>PAGE {filter.page} / {pages}</span>
-            <button disabled={filter.page >= pages} onClick={() => setFilter(f => ({ ...f, page: f.page + 1 }))}>NEXT</button>
+          <div className="pager-area">
+            <strong>{total}</strong> RESULTS
+            <div className="pager-mini">
+              <button disabled={filter.page <= 1} onClick={() => setFilter(f => ({ ...f, page: f.page - 1 }))}>PREV</button>
+              <span>PAGE {filter.page} / {pages}</span>
+              <button disabled={filter.page >= pages} onClick={() => setFilter(f => ({ ...f, page: f.page + 1 }))}>NEXT</button>
+            </div>
+            <select 
+              className="minor-text" 
+              style={{ padding: '0 4px', height: '22px', marginLeft: '10px' }}
+              value={filter.pageSize}
+              onChange={e => setFilter(f => ({ ...f, pageSize: Number(e.target.value), page: 1 }))}
+            >
+              {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n} / page</option>)}
+            </select>
           </div>
         </div>
 
@@ -128,8 +134,8 @@ export default function TradesPage() {
           <input 
             value={filter.q} 
             onChange={(e) => setFilter(f => ({ ...f, q: e.target.value, page: 1 }))} 
-            placeholder="Search ID, Ticket, Note..." 
-            style={{ width: '220px' }}
+            placeholder="Search Trade ID, Ticket..." 
+            style={{ width: '200px' }}
           />
           <select value={filter.symbol} onChange={(e) => setFilter(f => ({ ...f, symbol: e.target.value, page: 1 }))}>
             <option value="">ALL SYMBOLS</option>
@@ -137,9 +143,6 @@ export default function TradesPage() {
           </select>
           <select value={filter.status} onChange={(e) => setFilter(f => ({ ...f, status: e.target.value, page: 1 }))}>
             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s || "ALL STATUSES"}</option>)}
-          </select>
-          <select value={filter.range} onChange={(e) => setFilter(f => ({ ...f, range: e.target.value, page: 1 }))}>
-            {RANGE_OPTIONS.map(r => <option key={r} value={r}>{r ? (r === "month" ? "MONTH" : r === "week" ? "WEEK" : "TODAY") : "ALL TIME"}</option>)}
           </select>
           <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)} disabled={bulkBusy}>
             {BULK_ACTIONS.map(s => <option key={s} value={s}>{s || "BULK ACTION..."}</option>)}
@@ -154,47 +157,76 @@ export default function TradesPage() {
             <table className="events-table">
               <thead>
                 <tr>
-                  <th>SYMBOL / ID</th>
-                  <th>LEVELS / RR</th>
-                  <th>TIME / AUDIT</th>
-                  <th>STATUS / PNL</th>
+                  <th style={{ width: '30px' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={allSelected} 
+                      onChange={e => {
+                        const checked = e.target.checked;
+                        setSelectedIds(prev => {
+                          const next = new Set(prev);
+                          rows.forEach(r => checked ? next.add(r.signal_id) : next.delete(r.signal_id));
+                          return next;
+                        });
+                      }}
+                    />
+                  </th>
+                  <th>SYMBOL</th>
+                  <th>LEVELS</th>
+                  <th>AUDIT</th>
+                  <th>STATUS</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map(t => {
                   const status = statusUi(t.status);
-                  const volStr = `${t.volume || '0.0'} Lot ${fmtMoney(t.risk_money_actual || t.risk_money_planned)}`;
-                  const pipsStr = t.sl_pips ? `/ ${t.sl_pips.toFixed(1)}p` : '';
+                  const pnlNum = Number(t.pnl_money_realized);
+                  const pnlText = (pnlNum && pnlNum !== 0) ? fMoney(pnlNum) : "";
+                  const pnlCls = pnlNum > 0 ? "money-pos" : pnlNum < 0 ? "money-neg" : "";
+                  
                   return (
                     <tr 
                       key={t.signal_id} 
                       className={selectedTrade?.signal_id === t.signal_id ? "active" : ""}
                       onClick={() => setSelectedTrade(t)}
                     >
+                      <td onClick={e => e.stopPropagation()}>
+                        <input 
+                          type="checkbox" 
+                          checked={selectedIds.has(t.signal_id)}
+                          onChange={e => {
+                            const checked = e.target.checked;
+                            setSelectedIds(prev => {
+                              const next = new Set(prev);
+                              if (checked) next.add(t.signal_id);
+                              else next.delete(t.signal_id);
+                              return next;
+                            });
+                          }}
+                        />
+                      </td>
                       <td>
                         <div className="cell-wrap">
-                          <div className="cell-major">{t.symbol} <span className="muted">{t.action}</span></div>
-                          <div className="cell-minor">{t.ack_ticket ? `#${t.ack_ticket}` : t.signal_id}</div>
+                          <div className="cell-major">{t.symbol} <span className={`badge ${t.action}`}>{t.action}</span></div>
+                          <div className="cell-minor">{t.signal_id} {t.ack_ticket ? `| #${t.ack_ticket}` : ''}</div>
                         </div>
                       </td>
                       <td>
                         <div className="cell-wrap">
-                          <div className="cell-major">{asMoney(t.entry_price_exec || t.entry_price)} → {asMoney(t.tp_exec || t.tp_price)} / {asMoney(t.sl_exec || t.sl_price)}</div>
-                          <div className="cell-minor">{t.rr_planned || '0.00'}RR {volStr} {pipsStr}</div>
+                          <div className="cell-major">{fNum(t.entry_price_exec || t.entry_price)} → {fNum(t.tp_exec || t.tp_price)} / {fNum(t.sl_exec || t.sl_price)}</div>
+                          <div className="cell-minor">{t.rr_planned || '0'} rr | {t.volume || '0'} lots</div>
                         </div>
                       </td>
                       <td>
                         <div className="cell-wrap">
-                          <div className="cell-major">{fmtDateTime(t.created_at)}</div>
-                          <div className="cell-minor">{t.note || 'NO NOTE'}</div>
+                          <div className="cell-major">{fDateTime(t.created_at)}</div>
+                          <div className="cell-minor">{t.note || 'No note'}</div>
                         </div>
                       </td>
                       <td>
                         <div className="cell-wrap">
                           <div className="cell-major"><span className={`badge ${status.cls} badge-fixed`}>{status.label}</span></div>
-                          <div className={`cell-minor ${t.pnl_money_realized > 0 ? "money-pos" : t.pnl_money_realized < 0 ? "money-neg" : ""}`}>
-                            {t.pnl_money_realized != null ? fmtMoneySigned(t.pnl_money_realized) : "-"}
-                          </div>
+                          <div className={`cell-minor ${pnlCls}`}>{pnlText}</div>
                         </div>
                       </td>
                     </tr>
@@ -210,72 +242,57 @@ export default function TradesPage() {
             <div className="empty-state muted">SELECT A TRADE TO INSPECT EXECUTION HISTORY AND LEVELS</div>
           ) : (
             <div className="trade-detail-content">
-              <div className="detail-header" style={{ marginBottom: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <h2 style={{ margin: 0, fontSize: '28px' }}>{selectedTrade.symbol} <span className="muted" style={{ fontSize: '18px', fontWeight: 400 }}>{selectedTrade.action}</span></h2>
-                    <div className="muted small">{selectedTrade.signal_id}</div>
-                  </div>
-                  <div className={`badge ${statusUi(selectedTrade.status).cls}`} style={{ padding: '4px 12px', fontSize: '14px' }}>
-                    {statusUi(selectedTrade.status).label}
-                  </div>
+              <div className="detail-header" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between' }}>
+                <div>
+                  <h2 style={{ margin: 0 }}>{selectedTrade.symbol} <span className={`badge ${selectedTrade.action}`}>{selectedTrade.action}</span></h2>
+                  <div className="cell-minor" style={{ marginTop: '4px' }}>{selectedTrade.signal_id}</div>
                 </div>
-              </div>
-
-              <div className="dashboard-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-                <div className="kpi-card">
-                  <div className="kpi-label">EXECUTION SUMMARY</div>
-                  <div className="kpi-value" style={{ fontSize: '20px' }}>
-                    {asMoney(selectedTrade.entry_price_exec || selectedTrade.entry_price)} 
-                    <span className="muted" style={{ margin: '0 8px' }}>→</span>
-                    <span className={selectedTrade.pnl_money_realized > 0 ? "money-pos" : "money-neg"}>
-                      {fmtMoneySigned(selectedTrade.pnl_money_realized || 0)}
-                    </span>
-                  </div>
-                  <div className="muted small" style={{ marginTop: '8px' }}>
-                    RISK: {fmtMoney(selectedTrade.risk_money_actual || selectedTrade.risk_money_planned)} | RR: {selectedTrade.rr_planned}
-                  </div>
-                </div>
-                <div className="kpi-card">
-                  <div className="kpi-label">LEVELS (BROKER)</div>
-                  <div className="muted small">
-                    TP: <strong style={{color:'#fff'}}>{asMoney(selectedTrade.tp_exec || selectedTrade.tp_price)}</strong> 
-                    {selectedTrade.tp_pips ? ` (${selectedTrade.tp_pips.toFixed(1)}p)` : ''}
-                  </div>
-                  <div className="muted small" style={{ marginTop: '4px' }}>
-                    SL: <strong style={{color:'#fff'}}>{asMoney(selectedTrade.sl_exec || selectedTrade.sl_price)}</strong>
-                    {selectedTrade.sl_pips ? ` (${selectedTrade.sl_pips.toFixed(1)}p)` : ''}
-                  </div>
+                <div className={`badge ${statusUi(selectedTrade.status).cls}`} style={{ height: 'fit-content', padding: '6px 14px' }}>
+                  {statusUi(selectedTrade.status).label}
                 </div>
               </div>
 
               {tradeDetails?.chart && (
-                <div style={{ marginTop: '24px' }}>
+                <div style={{ marginBottom: '24px' }}>
                   <div className="kpi-label">LEVEL VISUALIZATION</div>
                   <TradeLevelChart trade={tradeDetails.chart} />
                 </div>
               )}
 
-              <div style={{ marginTop: '32px' }}>
-                <h3 style={{ marginBottom: '16px', borderLeft: '4px solid var(--accent)', paddingLeft: '12px' }}>AUDIT HISTORY</h3>
+              <div style={{ marginTop: '20px' }}>
+                <h3 style={{ marginBottom: '16px', fontSize: '15px' }}>AUDIT HISTORY</h3>
                 {!tradeDetails?.events ? (
                   <div className="loading">FETCHING TELEMETRY LOGS...</div>
                 ) : (
-                  <div className="stack-layout" style={{ gap: '12px' }}>
-                    {[...tradeDetails.events].sort((a,b) => new Date(b.event_time) - new Date(a.event_time)).map((ev) => (
-                      <div key={ev.id} className="panel" style={{ margin: 0 }}>
-                         <div className="panel-head" style={{ padding: '8px 16px' }}>
-                           <span className="badge-event">{ev.event_type}</span>
-                           <span className="muted small">{fmtDateTime(ev.event_time)}</span>
-                         </div>
-                         <div className="panel-body" style={{ padding: '12px 16px', fontSize: '13px' }}>
+                  <div className="stack-layout" style={{ gap: '10px' }}>
+                    {[...tradeDetails.events].sort((a,b) => new Date(b.event_time) - new Date(a.event_time)).map((ev) => {
+                      // History detail: Status with border, color AFTER event type
+                      let stTxt = "";
+                      let stCls = "OTHER";
+                      const tType = String(ev.event_type || "");
+                      if (tType.startsWith("EA_ACK_")) {
+                         const raw = tType.replace("EA_ACK_", "");
+                         stTxt = raw;
+                         stCls = statusUi(raw).cls;
+                      }
+                      
+                      return (
+                        <div key={ev.id} className="panel" style={{ margin: 0 }}>
+                          <div className="panel-head" style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.02)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <span className="minor-text" style={{ fontWeight: 700, color: '#fff' }}>{ev.event_type}</span>
+                              {stTxt && <span className={`badge ${stCls}`}>{stTxt}</span>}
+                            </div>
+                            <span className="minor-text">{fDateTime(ev.event_time)}</span>
+                          </div>
+                          <div className="panel-body" style={{ padding: '12px 16px' }}>
                             <div className="json-table-wrapper">
                               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <tbody>
                                   {Object.entries(ev.payload_json || {}).map(([k, v]) => (
                                     <tr key={k} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                                      <td className="muted" style={{ padding: '4px 0', width: '35%' }}>{k}</td>
-                                      <td style={{ padding: '4px 0' }}>
+                                      <td className="minor-text" style={{ padding: '4px 0', width: '35%' }}>{k}</td>
+                                      <td className="minor-text" style={{ padding: '4px 0', color: '#fff' }}>
                                         {typeof v === 'object' ? JSON.stringify(v) : String(v)}
                                       </td>
                                     </tr>
@@ -283,9 +300,10 @@ export default function TradesPage() {
                                 </tbody>
                               </table>
                             </div>
-                         </div>
-                      </div>
-                    ))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -295,11 +313,4 @@ export default function TradesPage() {
       </div>
     </section>
   );
-}
-
-function asMoney(v) {
-  if (v === null || v === undefined || v === "") return "0";
-  const n = Number(v);
-  if (!Number.isFinite(n)) return "0";
-  return n.toLocaleString(undefined, { maximumFractionDigits: 5 });
 }

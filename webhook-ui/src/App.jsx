@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, Navigate, Route, Routes } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import DashboardPage from "./pages/DashboardPage";
 import TradesPage from "./pages/TradesPage";
 import LogsPage from "./pages/LogsPage";
@@ -34,10 +34,10 @@ export default function App() {
           {serverVersion ? <span className="brand-version">v{serverVersion}</span> : null}
         </div>
         <nav>
-          <Link to="/dashboard">Dashboard</Link>
-          <Link to="/trades">Trades</Link>
-          <Link to="/logs">Logs</Link>
-          <Link to="/settings">Settings</Link>
+          <NavLink to="/dashboard" className={({ isActive }) => (isActive ? "active" : "")}>Dashboard</NavLink>
+          <NavLink to="/trades" className={({ isActive }) => (isActive ? "active" : "")}>Trades</NavLink>
+          <NavLink to="/logs" className={({ isActive }) => (isActive ? "active" : "")}>Logs</NavLink>
+          <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")}>Settings</NavLink>
         </nav>
       </header>
       <main className="page-wrap">

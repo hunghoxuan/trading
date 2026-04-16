@@ -16,7 +16,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <section className="panel stack-layout">
+    <section className="panel stack-layout settings-page">
       <h2>Settings</h2>
       <label>
         <div className="muted small">API Key</div>
