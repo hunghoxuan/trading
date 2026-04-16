@@ -1,7 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 
-const PAGE_SIZE_OPTIONS = [20, 50, 100, 200];
+function fDateTime(v) {
+  if (!v) return "-";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return String(v);
+  return d.toLocaleString(undefined, {
+    year: '2-digit', month: '2-digit', day: '2-digit', 
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+}
+
+function statusUi(statusRaw) {
+  const s = String(statusRaw || "").toUpperCase();
+  if (s === "PLACED") return { cls: "PLACED", label: "PLACED" };
+  if (s === "LOCKED") return { cls: "LOCKED", label: "LOCKED" };
+  if (s === "START") return { cls: "START", label: "START" };
+  if (s === "TP") return { cls: "TP", label: "TP" };
+  if (s === "SL") return { cls: "SL", label: "SL" };
+  return { cls: "OTHER", label: s || "-" };
+}
 
 export default function DatabasePage() {
   const [tables, setTables] = useState([]);
@@ -69,10 +87,13 @@ export default function DatabasePage() {
 
   const tableHeaders = useMemo(() => {
     if (!rows.length) return [];
-    // Prioritize institutional fields, then everything else
-    const priority = ['signal_id', 'created_at', 'symbol', 'action', 'status', 'event_type', 'type', 'user_id', 'account_id'];
-    const keys = Object.keys(rows[0]);
-    return [...new Set([...priority.filter(p => keys.includes(p)), ...keys])].slice(0, 8);
+    // Prioritize institutional fields
+    const priority = ['signal_id', 'created_at', 'symbol', 'action', 'status', 'event_type', 'type', 'tick_time', 'user_id', 'account_id'];
+    const blacklist = ['raw_json', 'metadata', 'extra_meta', 'details', 'log_payload', 'payload'];
+    
+    const keys = Object.keys(rows[0]).filter(k => !blacklist.includes(k.toLowerCase()));
+    
+    return [...new Set([...priority.filter(p => keys.includes(p)), ...keys])].slice(0, 10);
   }, [rows]);
 
   return (
@@ -100,6 +121,16 @@ export default function DatabasePage() {
           <button className="kpi-card" style={{ padding: "8px 16px", cursor: "pointer", border: "1px solid var(--border-color)" }} onClick={() => loadRows()}>
             REFRESH
           </button>
+          
+          <div className="toolbar-separator" />
+          
+          <button className="kpi-card" style={{ padding: "8px 16px", cursor: "pointer", border: "1px solid var(--border-color)", background: "var(--bg-panel)" }} onClick={() => alert("CSV Export coming soon for this table")}>
+            DOWNLOAD CSV
+          </button>
+
+          <button className="kpi-card" style={{ padding: "8px 16px", cursor: "pointer", border: "1px solid var(--danger)", color: "var(--danger)" }} onClick={() => alert("Delete logic placeholder")}>
+            DELETE ALL
+          </button>
         </div>
       </div>
 
@@ -121,11 +152,22 @@ export default function DatabasePage() {
                     {!loading && rows.length === 0 && <tr><td colSpan={tableHeaders.length} style={{ textAlign: "center", padding: "40px" }} className="muted">No records found for table {selectedTable}</td></tr>}
                     {!loading && rows.map((row, idx) => (
                       <tr key={idx} onClick={() => setSelectedRow(row)} className={selectedRow === row ? "selected" : ""}>
-                        {tableHeaders.map(h => (
-                          <td key={h}>
-                            <div className="cell-major">{String(row[h] ?? "-").slice(0, 50)}</div>
-                          </td>
-                        ))}
+                        {tableHeaders.map(h => {
+                          const val = row[h];
+                          const isDate = h.includes("_at") || h === "tick_time";
+                          const isStatus = h === "status" || h === "ack_status";
+                          
+                          if (isStatus) {
+                            const ui = statusUi(val);
+                            return <td key={h}><div className={`cell-status ${ui.cls}`}>{ui.label}</div></td>;
+                          }
+                          
+                          return (
+                            <td key={h}>
+                              <div className="cell-major">{isDate ? fDateTime(val) : String(val ?? "-").slice(0, 50)}</div>
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
                   </tbody>
