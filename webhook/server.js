@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-11");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-12");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -2107,9 +2107,9 @@ function mt5NormalizeAckStatus(value) {
     CLOSED: "OK",
   };
   const normalized = legacyToCurrent[s] || s;
-  const allowed = ["OK", "FAIL", "START", "TP", "SL", "CANCEL", "EXPIRED"];
+  const allowed = ["OK", "FAIL", "START", "TP", "SL", "CANCEL", "EXPIRED", "PLACED"];
   if (!allowed.includes(normalized)) {
-    throw new Error("status must be one of: OK, FAIL, START, TP, SL, CANCEL, EXPIRED");
+    throw new Error("status must be one of: OK, FAIL, START, TP, SL, CANCEL, EXPIRED, PLACED");
   }
   return normalized;
 }
