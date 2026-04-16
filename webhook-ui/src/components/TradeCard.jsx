@@ -75,11 +75,12 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
   let volText = null;
   
   if (lotsActual) {
-    const riskStr = riskActual ? ` ($${money(riskActual)})` : "";
+    const riskDollar = riskActual ?? positiveOrNull(trade?.risk_money_planned);
+    const riskStr = riskDollar ? ` ($${money(riskDollar)})` : "";
     volText = `${lotsActual} Lots${riskStr}`;
     if (slPips) {
       const rewardStr = rewardPlanned ? ` → $${money(rewardPlanned)}` : "";
-      volText += ` | ${slPips.toFixed(1)}p SL | Risk $${money(riskActual)}${rewardStr}`;
+      volText += ` | ${slPips.toFixed(1)}p SL | Risk $${money(riskDollar)}${rewardStr}`;
     }
   }
 
