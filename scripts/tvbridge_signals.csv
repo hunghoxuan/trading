@@ -188,3 +188,6 @@ timestamp;signal_id;action;symbol;volume;sl;tp;note
 2026.04.16 17:07:01;SMC_RJ_4h_1_10434_1343;BUY;XAUEUR;0.01;4055.827;4084.493;Hung-SMC | 5m | RJ.4h.1 | Ba  ie  Touch (suppo t touch)
 2026.04.16 17:07:01;SMC_RJ_4h_0_2_10434_1341;BUY;XAUEUR;0.01;4055.827;4073.0266;Hung-SMC | 5m | RJ.4h.0.2 | Ba  ie  Touch (suppo t touch)
 2026.04.16 17:07:01;SMC_RJ_4h_0_5_10434_1342;BUY;XAUEUR;0.01;4055.827;4077.3265;Hung-SMC | 5m | RJ.4h.0.5 | Ba  ie  Touch (suppo t touch)
+2026.04.16 17:27:02;SMC_RJ_4h_0_2_10438_1344;BUY;XAUEUR;0.01;4055.827;4073.0266;Hung-SMC | 5m | RJ.4h.0.2 | Ba  ie  Touch (suppo t touch)
+2026.04.16 17:27:03;SMC_RJ_4h_1_10438_1346;BUY;XAUEUR;0.01;4055.827;4084.493;Hung-SMC | 5m | RJ.4h.1 | Ba  ie  Touch (suppo t touch)
+2026.04.16 17:27:03;SMC_RJ_4h_0_5_10438_1345;BUY;XAUEUR;0.01;4055.827;4077.3265;Hung-SMC | 5m | RJ.4h.0.5 | Ba  ie  Touch (suppo t touch)

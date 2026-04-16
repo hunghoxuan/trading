@@ -6,20 +6,21 @@ const BULK_ACTIONS = ["", "Download CSV", "Renew All", "Cancel All", "Delete All
 const RANGE_OPTIONS = ["", "today", "week", "month"];
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
 
-function fNum(v) {
-  if (v === null || v === undefined || v === 0 || v === "0") return "-";
-  const n = Number(v);
-  if (!Number.isFinite(n)) return "-";
-  return n.toLocaleString(undefined, { maximumFractionDigits: 5 });
+function fPrice(v1, v2) {
+  const n1 = Number(v1);
+  if (n1 && n1 !== 0) return n1.toLocaleString(undefined, { maximumFractionDigits: 5 });
+  const n2 = Number(v2);
+  if (n2 && n2 !== 0) return n2.toLocaleString(undefined, { maximumFractionDigits: 5 });
+  return "-";
 }
 
 function PnlDisplay({ value }) {
   const n = Number(value);
-  if (!n || n === 0) return null;
+  if (n === null || n === undefined || n === 0) return null;
   const cls = n > 0 ? "money-pos" : "money-neg";
   const abs = Math.abs(n);
   const str = `$${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return <div className={`cell-minor ${cls}`}>{n < 0 ? `-${str}` : str}</div>;
+  return <div className={`cell-minor ${cls}`} style={{ fontWeight: 800 }}>{n < 0 ? `-${str}` : str}</div>;
 }
 
 function fDateTime(v) {
@@ -148,7 +149,7 @@ export default function TradesPage() {
           <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)} disabled={bulkBusy}>
             {BULK_ACTIONS.map(s => <option key={s} value={s}>{s || "BULK ACTION..."}</option>)}
           </select>
-          <button type="button" onClick={() => console.log("Bulk Action Logic")} disabled={bulkBusy || !bulkAction}>OK</button>
+          <button type="button" onClick={() => console.log("Bulk logic here")} disabled={bulkBusy || !bulkAction}>OK</button>
         </div>
       </div>
 
@@ -212,7 +213,9 @@ export default function TradesPage() {
                       </td>
                       <td>
                         <div className="cell-wrap">
-                          <div className="cell-major">{fNum(t.entry_price_exec || t.entry_price)} → {fNum(t.tp_exec || t.tp_price)} / {fNum(t.sl_exec || t.sl_price)}</div>
+                          <div className="cell-major">
+                            {fPrice(t.entry_price_exec, t.entry_price)} → {fPrice(t.tp_exec, t.tp)} / {fPrice(t.sl_exec, t.sl)}
+                          </div>
                           <div className="cell-minor">{t.rr_planned || '0'} rr | {t.volume || '0'} lots</div>
                         </div>
                       </td>
@@ -257,7 +260,7 @@ export default function TradesPage() {
               </div>
 
               <div style={{ marginTop: '20px' }}>
-                <h3 style={{ marginBottom: '16px', fontSize: '15px', color: '#fff' }}>HISTORY</h3>
+                <h3 style={{ marginBottom: '16px', fontSize: '14px', color: '#fff', fontWeight: 800 }}>HISTORY</h3>
                 {!tradeDetails?.events ? (
                   <div className="loading">FETCHING TELEMETRY LOGS...</div>
                 ) : (
@@ -281,7 +284,7 @@ export default function TradesPage() {
                             </div>
                             <span className="minor-text">{fDateTime(ev.event_time)}</span>
                           </div>
-                          <div className="panel-body" style={{ padding: '12px 16px' }}>
+                          <div className="panel-body" style={{ padding: '12px 14px' }}>
                             <div className="json-table-wrapper">
                               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <tbody>

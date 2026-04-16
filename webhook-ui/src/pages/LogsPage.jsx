@@ -10,6 +10,7 @@ function fDateTime(v) {
 }
 
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
+const BULK_ACTIONS = ["", "Delete All Log"];
 
 export default function LogsPage() {
   const [events, setEvents] = useState([]);
@@ -19,6 +20,7 @@ export default function LogsPage() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
+  const [bulkAction, setBulkAction] = useState("");
   const [filter, setFilter] = useState({ q: "", type: "", symbol: "" });
 
   const query = useMemo(() => ({ 
@@ -49,17 +51,19 @@ export default function LogsPage() {
     }
   }
 
-  async function onDeleteAll() {
-    if (!window.confirm("CRITICAL: DELETE ALL EVENTS/LOGS?")) return;
-    try {
-      setLoading(true);
-      await api.deleteEvents();
-      setPage(0);
-      await loadEvents();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+  async function onBulkOk() {
+    if (bulkAction === "Delete All Log") {
+       if (!window.confirm("CRITICAL: DELETE ALL EVENTS/LOGS?")) return;
+       try {
+         setLoading(true);
+         await api.deleteEvents();
+         setPage(0);
+         await loadEvents();
+       } catch (err) {
+         setError(err.message);
+       } finally {
+         setLoading(false);
+       }
     }
   }
 
@@ -95,18 +99,14 @@ export default function LogsPage() {
             onChange={e => { setFilter(f => ({ ...f, q: e.target.value })); setPage(0); }}
             style={{ width: '180px' }}
           />
-          <select value={filter.type} onChange={e => { setFilter(f => ({ ...f, type: e.target.value })); setPage(0); }}>
-            <option value="">ALL TYPES</option>
-            <option value="EA_SYNC_PUSH">EA_SYNC_PUSH</option>
-            <option value="SIGNAL_NEW">SIGNAL_NEW</option>
-            <option value="SIGNAL_ACK">SIGNAL_ACK</option>
-            <option value="EA_PULLED">EA_PULLED</option>
-          </select>
           <select value={filter.symbol} onChange={e => { setFilter(f => ({ ...f, symbol: e.target.value })); setPage(0); }}>
             <option value="">ALL SYMBOLS</option>
             {symbols.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
-          <button className="btn-danger btn-xs" onClick={onDeleteAll}>DELETE ALL</button>
+          <select value={bulkAction} onChange={e => setBulkAction(e.target.value)}>
+            {BULK_ACTIONS.map(a => <option key={a} value={a}>{a || "BULK ACTION..."}</option>)}
+          </select>
+          <button type="button" onClick={onBulkOk} disabled={loading || !bulkAction}>OK</button>
         </div>
       </div>
 
@@ -149,13 +149,24 @@ export default function LogsPage() {
         <div className="logs-detail-pane">
           {selectedEvent ? (
             <div className="event-detail-card">
-              <div className="detail-header">
-                <h3>EVENT DETAILS #{selectedEvent.id}</h3>
+              <div className="detail-header" style={{ marginBottom: '20px' }}>
+                <h3 style={{ margin: 0 }}>EVENT DETAILS #{selectedEvent.id}</h3>
                 <div className="minor-text">{fDateTime(selectedEvent.event_time)}</div>
               </div>
-              <pre className="payload-box" style={{ marginTop: '20px' }}>
-                {JSON.stringify(selectedEvent.payload_json, null, 2)}
-              </pre>
+              <div className="json-table-wrapper" style={{ marginTop: '20px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <tbody>
+                    {Object.entries(selectedEvent.payload_json || {}).map(([k, v]) => (
+                      <tr key={k} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                        <td className="minor-text" style={{ padding: '8px 0', width: '30%', fontWeight: 700 }}>{k}</td>
+                        <td className="minor-text" style={{ padding: '8px 0', color: '#fff' }}>
+                          {typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : (
             <div className="empty-state minor-text">SELECT AN ENTRY TO INSPECT FULL PAYLOAD</div>

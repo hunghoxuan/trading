@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-26");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-28");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -3267,12 +3267,31 @@ const server = http.createServer(async (req, res) => {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
+      const { rows: signals } = await mt5GetFilteredTrades(url, null, 10000);
+      const sids = new Set(signals.map(s => String(s.signal_id)));
+      
       const limitRaw = Number(url.searchParams.get("limit") || 200);
       const limit = Math.max(1, Math.min(5000, Number.isFinite(limitRaw) ? limitRaw : 200));
       const offsetRaw = Number(url.searchParams.get("offset") || 0);
       const offset = Math.max(0, Number.isFinite(offsetRaw) ? offsetRaw : 0);
-      const rows = await mt5ListAllEvents(limit, offset);
-      return json(res, 200, { ok: true, events: rows });
+      
+      const q = (url.searchParams.get("q") || "").toLowerCase();
+      
+      const allEvents = await mt5ListAllEvents(limit * 5, offset); // Pull more for manual filtering if needed, or filter by signal_id
+      
+      let rows = allEvents;
+      if (sids.size < 5000) { // If we have a reasonable filter on signals
+         rows = rows.filter(e => sids.has(String(e.signal_id)) || String(e.signal_id) === 'SYSTEM_SYNC_PUSH');
+      }
+      
+      if (q) {
+        rows = rows.filter(e => 
+          String(e.event_type || "").toLowerCase().includes(q) ||
+          String(e.signal_id || "").toLowerCase().includes(q)
+        );
+      }
+      
+      return json(res, 200, { ok: true, events: rows.slice(0, limit) });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });
