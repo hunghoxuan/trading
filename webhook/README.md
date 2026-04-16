@@ -1,6 +1,6 @@
 # Webhook Bot
 
-Single webhook gateway at `/signal`.
+Single webhook gateway at `/signal` (and tokenized path `/signal/<token>`).
 
 It can:
 - send Telegram notification (optional)
@@ -195,7 +195,8 @@ launchctl load ~/Library/LaunchAgents/com.local.mt5csvsync.plist
 ## TradingView webhook
 
 URL:
-- `https://signal.mozasolution.com/signal`
+- Preferred: `https://signal.mozasolution.com/signal/<TV_WEBHOOK_TOKEN>`
+- Backward-compatible: `https://signal.mozasolution.com/signal`
 
 Body example:
 
@@ -208,14 +209,16 @@ Body example:
   "price": 68123.5,
   "sl": 67650,
   "tp": 68950,
-  "note": "MSS + SMC",
-  "apiKey": "<SIGNAL_API_KEY>"
+  "note": "MSS + SMC"
 }
 ```
 
+Header auth alternative (recommended for non-TV clients):
+- `x-api-key: <SIGNAL_API_KEY>`
+
 ## MT5 EA endpoints (for EA polling)
 
-- `GET /mt5/ea/pull?api_key=...&account=...`
+- `GET /mt5/ea/pull?account=...` (auth via `x-api-key` header)
 - `POST /mt5/ea/ack`
 - `GET /mt5/health`
 - `GET /mt5/trades?limit=200&status=NEW` (admin API, add `apiKey` or `x-api-key`)
@@ -242,6 +245,10 @@ Backtest CSV columns:
 EA key behavior:
 - If `MT5_EA_API_KEYS` is empty, server reuses `SIGNAL_API_KEY`.
 - If `MT5_TV_ALERT_API_KEYS` is empty, server reuses `SIGNAL_API_KEY`.
+- If `MT5_TV_WEBHOOK_TOKENS` is empty, server reuses `SIGNAL_API_KEY`.
+- Legacy fallback controls:
+  - `MT5_AUTH_ALLOW_LEGACY_PAYLOAD_KEY=true|false` (default: `true`)
+  - `MT5_AUTH_ALLOW_LEGACY_QUERY_KEY=true|false` (default: `true`)
 
 MT5 storage options:
 - `MT5_STORAGE=sqlite` (default): uses `MT5_DB_PATH` like `./mt5-signals.db`

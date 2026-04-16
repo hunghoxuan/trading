@@ -6,6 +6,7 @@ const API_KEY = process.env.API_KEY || "";
 const ACCOUNT = process.env.ACCOUNT || "local-test";
 const EXPECT_STORAGE = (process.env.EXPECT_STORAGE || "").toLowerCase();
 const TEST_SYMBOL = (process.env.TEST_SYMBOL || "TEST").toUpperCase();
+const TV_WEBHOOK_TOKEN = process.env.TV_WEBHOOK_TOKEN || "";
 
 function log(msg) {
   console.log(`[test] ${msg}`);
@@ -15,17 +16,12 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
-function addApiKey(url) {
-  if (!API_KEY) return url;
-  const u = new URL(url);
-  if (!u.searchParams.has("apiKey") && !u.searchParams.has("api_key")) {
-    u.searchParams.set("apiKey", API_KEY);
-  }
-  return u.toString();
+function withBaseUrl(path) {
+  return `${BASE_URL}${path}`;
 }
 
 async function requestJson(path, options = {}) {
-  const url = addApiKey(`${BASE_URL}${path}`);
+  const url = withBaseUrl(path);
   const headers = { ...(options.headers || {}) };
   if (API_KEY) headers["x-api-key"] = API_KEY;
   const res = await fetch(url, { ...options, headers });
@@ -43,7 +39,7 @@ async function requestJson(path, options = {}) {
 }
 
 async function requestText(path, options = {}) {
-  const url = addApiKey(`${BASE_URL}${path}`);
+  const url = withBaseUrl(path);
   const headers = { ...(options.headers || {}) };
   if (API_KEY) headers["x-api-key"] = API_KEY;
   const res = await fetch(url, { ...options, headers });
@@ -83,10 +79,12 @@ async function main() {
     rr: 2,
     risk_money: 25,
     note: "local smoke test",
-    apiKey: API_KEY,
   };
 
-  const enqueue = await requestJson("/mt5/tv/webhook", {
+  const tvWebhookPath = TV_WEBHOOK_TOKEN
+    ? `/mt5/tv/webhook/${encodeURIComponent(TV_WEBHOOK_TOKEN)}`
+    : "/mt5/tv/webhook";
+  const enqueue = await requestJson(tvWebhookPath, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -95,7 +93,7 @@ async function main() {
   assert(enqueue.signal_id === signalId, "enqueue signal_id mismatch");
   log("/mt5/tv/webhook enqueue ok");
 
-  const pulled = await requestJson(`/mt5/ea/pull?api_key=${encodeURIComponent(API_KEY)}&account=${encodeURIComponent(ACCOUNT)}&signal_id=${encodeURIComponent(signalId)}`);
+  const pulled = await requestJson(`/mt5/ea/pull?account=${encodeURIComponent(ACCOUNT)}&signal_id=${encodeURIComponent(signalId)}`);
   assert(pulled.ok === true, "pull should return ok=true");
   assert(pulled.signal && pulled.signal.signal_id === signalId, `pull returned unexpected signal: ${JSON.stringify(pulled.signal || null)}`);
   log("/mt5/ea/pull ok");
@@ -104,7 +102,6 @@ async function main() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      api_key: API_KEY,
       signal_id: signalId,
       status: "OK",
       ticket: `T-${Date.now()}`,

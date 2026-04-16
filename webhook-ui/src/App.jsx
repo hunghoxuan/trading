@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import DashboardPage from "./pages/DashboardPage";
 import TradesPage from "./pages/TradesPage";
-import LogsPage from "./pages/LogsPage";
 import TradeDetailPage from "./pages/TradeDetailPage";
+import LogsPage from "./pages/LogsPage";
+import DatabasePage from "./pages/DatabasePage";
 import SettingsPage from "./pages/SettingsPage";
 import { api } from "./api";
 
@@ -35,6 +36,7 @@ export default function App() {
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? "active" : "")}>Dashboard</NavLink>
           <NavLink to="/trades" className={({ isActive }) => (isActive ? "active" : "")}>Trades</NavLink>
           <NavLink to="/logs" className={({ isActive }) => (isActive ? "active" : "")}>Logs</NavLink>
+          <NavLink to="/db" className={({ isActive }) => (isActive ? "active" : "")}>DB</NavLink>
           <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")}>Settings</NavLink>
           <button 
              onClick={toggleTheme} 
@@ -60,6 +62,7 @@ export default function App() {
           <Route path="/trades" element={<TradesPage />} />
           <Route path="/trades/:signalId" element={<TradeDetailPage />} />
           <Route path="/logs" element={<LogsPage />} />
+          <Route path="/db" element={<DatabasePage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>

@@ -13,6 +13,7 @@
 ## Sprint B (in progress)
 - [x] Event timeline write path + trade detail timeline API/UI.
 - [ ] Richer chart data (OHLC feed for detail page).
+- [ ] Simple API auth hardening: move from payload `api_key` to TV token-path + header keys, with revoke and multi-key support.
 - User management (create, disable, reset password hash).
 - UI auth and per-user isolation.
 

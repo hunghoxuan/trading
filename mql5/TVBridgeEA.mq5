@@ -38,7 +38,7 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-16.14";
+string EA_BUILD_VERSION = "2026-04-16.15";
 
 input string InpMappingFile = "TVBridge_Mappings.csv";
 
@@ -195,9 +195,11 @@ bool HttpGet(const string url, string &response)
    char post[];
    ArrayResize(post, 0);
    char result[];
-   string headers;
+   string headers = "";
+   if(StringLen(InpEaApiKey) > 0)
+      headers = "x-api-key: " + InpEaApiKey + "\r\n";
    ResetLastError();
-   int code = WebRequest("GET", url, "", 5000, post, result, headers);
+   int code = WebRequest("GET", url, headers, 5000, post, result, headers);
    if(code == -1)
    {
       Print("WebRequest GET failed: ", GetLastError(), " url=", url);
@@ -224,6 +226,8 @@ bool HttpPostJsonWithResponse(const string url, const string body, string &respo
    StringToCharArray(body, data, 0, StringLen(body), CP_UTF8);
    char result[];
    string headers = "Content-Type: application/json\r\n";
+   if(StringLen(InpEaApiKey) > 0)
+      headers += "x-api-key: " + InpEaApiKey + "\r\n";
    ResetLastError();
    int code = WebRequest("POST", url, headers, 5000, data, result, headers);
    if(code == -1)
@@ -1465,7 +1469,6 @@ void Ack(const string signalId, const string status, const string ticket, const 
    if(StringLen(g_ackVolumeNote) > 0) ackNote += " volNote=" + g_ackVolumeNote;
    if(StringLen(g_ackStopNote) > 0) ackNote += " stopNote=" + g_ackStopNote;
    string body = "{";
-   body += "\"api_key\":\"" + JsonEscape(InpEaApiKey) + "\",";
    body += "\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",";
    body += "\"signal_id\":\"" + JsonEscape(signalId) + "\",";
    body += "\"status\":\"" + JsonEscape(status) + "\",";
@@ -2293,7 +2296,6 @@ void SendHeartbeat()
 {
    string url = InpServerBaseUrl + "/mt5/ea/heartbeat";
    string body = "{";
-   body += "\"api_key\":\"" + JsonEscape(InpEaApiKey) + "\",";
    body += "\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",";
    body += "\"balance\":" + DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2) + ",";
    body += "\"equity\":" + DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY), 2) + ",";
@@ -2328,7 +2330,7 @@ void OnTimer()
       SendHeartbeat();
    }
 
-   string url = InpServerBaseUrl + "/mt5/ea/pull?api_key=" + InpEaApiKey + "&account=" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN));
+   string url = InpServerBaseUrl + "/mt5/ea/pull?account=" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN));
    string resp;
    if(!HttpGet(url, resp))
    {
@@ -2621,7 +2623,7 @@ void SyncWithVps()
    }
    g_lastStateHash = updates;
 
-   string body = "{\"api_key\":\"" + InpEaApiKey + "\",\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",\"active_signals\":[" + updates + "]}";
+   string body = "{\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",\"active_signals\":[" + updates + "]}";
    string url = InpServerBaseUrl + "/mt5/ea/sync";
    string resp = "";
    if(HttpPostJsonWithResponse(url, body, resp))

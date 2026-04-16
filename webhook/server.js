@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-43");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-44");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -96,7 +96,10 @@ const CFG = {
   mt5Enabled: asBool(process.env.MT5_ENABLED, true),
   mt5Storage: envStr(process.env.MT5_STORAGE, "sqlite").toLowerCase(),
   mt5TvAlertApiKeys: parseKeySet(process.env.MT5_TV_ALERT_API_KEYS),
+  mt5TvWebhookTokens: parseKeySet(process.env.MT5_TV_WEBHOOK_TOKENS || process.env.TV_WEBHOOK_TOKENS),
   mt5EaApiKeys: parseKeySet(process.env.MT5_EA_API_KEYS),
+  mt5AuthAllowLegacyPayloadKey: asBool(process.env.MT5_AUTH_ALLOW_LEGACY_PAYLOAD_KEY, true),
+  mt5AuthAllowLegacyQueryKey: asBool(process.env.MT5_AUTH_ALLOW_LEGACY_QUERY_KEY, true),
   mt5DefaultLot: asNum(process.env.MT5_DEFAULT_LOT, 0.01),
   mt5DefaultUserId: envStr(process.env.MT5_DEFAULT_USER_ID, "default"),
   mt5PruneEnabled: asBool(process.env.MT5_PRUNE_ENABLED, true),
@@ -123,6 +126,9 @@ if (CFG.signalApiKey) {
   }
   if (CFG.mt5EaApiKeys.size === 0) {
     CFG.mt5EaApiKeys = new Set([CFG.signalApiKey]);
+  }
+  if (CFG.mt5TvWebhookTokens.size === 0) {
+    CFG.mt5TvWebhookTokens = new Set([CFG.signalApiKey]);
   }
 }
 
@@ -1375,6 +1381,35 @@ async function mt5InitBackend() {
         tx(ids);
         return { updated: updatedIds.length, updated_ids: updatedIds };
       },
+      async listTables() {
+        const res = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
+        return res.map(r => r.name);
+      },
+      async listTableRows(table, limit = 50, offset = 0, q = "") {
+        const allowed = (await this.listTables());
+        if (!allowed.includes(table)) throw new Error(`Table ${table} not found or protected`);
+        
+        let rows = [];
+        let total = 0;
+        
+        if (q) {
+          const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+          const searchCols = cols.filter(c => ['TEXT', 'VARCHAR', 'JSON'].includes(c.type.toUpperCase())).map(c => c.name);
+          
+          if (searchCols.length > 0) {
+            const where = searchCols.map(c => `${c} LIKE ?`).join(" OR ");
+            rows = db.prepare(`SELECT * FROM ${table} WHERE ${where} LIMIT ? OFFSET ?`).all(...searchCols.map(() => `%${q}%`), limit, offset);
+            total = db.prepare(`SELECT COUNT(*) as n FROM ${table} WHERE ${where}`).get(...searchCols.map(() => `%${q}%`)).n;
+          } else {
+             rows = db.prepare(`SELECT * FROM ${table} LIMIT ? OFFSET ?`).all(limit, offset);
+             total = db.prepare(`SELECT COUNT(*) as n FROM ${table}`).get().n;
+          }
+        } else {
+          rows = db.prepare(`SELECT * FROM ${table} LIMIT ? OFFSET ?`).all(limit, offset);
+          total = db.prepare(`SELECT COUNT(*) as n FROM ${table}`).get().n;
+        }
+        return { rows, total };
+      }
     };
     return MT5_BACKEND;
   }
@@ -1926,6 +1961,59 @@ async function mt5InitBackend() {
         RETURNING signal_id
       `, [now, ids]);
       return { updated: res.rowCount || 0, updated_ids: (res.rows || []).map((r) => String(r.signal_id || "")) };
+    },
+    async listTables() {
+      const res = await pool.query(`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+          AND table_type = 'BASE TABLE'
+      `);
+      return res.rows.map(r => r.table_name);
+    },
+    async listTableRows(table, limit = 50, offset = 0, q = "") {
+      const allowed = await this.listTables();
+      if (!allowed.includes(table)) throw new Error(`Table ${table} not found or protected`);
+
+      let rows = [];
+      let total = 0;
+
+      if (q) {
+        const colRes = await pool.query(`
+          SELECT column_name, data_type 
+          FROM information_schema.columns 
+          WHERE table_name = $1 AND table_schema = 'public'
+        `, [table]);
+        
+        const searchCols = colRes.rows
+          .filter(c => ['text', 'character varying', 'jsonb', 'json'].includes(c.data_type.toLowerCase()))
+          .map(c => c.column_name);
+
+        if (searchCols.length > 0) {
+          const where = searchCols.map((c, i) => `${c}::text ILIKE $${i + 1}`).join(" OR ");
+          const query = `SELECT * FROM "${table}" WHERE ${where} LIMIT $${searchCols.length + 1} OFFSET $${searchCols.length + 2}`;
+          const countQuery = `SELECT COUNT(*) FROM "${table}" WHERE ${where}`;
+          
+          const params = [...searchCols.map(() => `%${q}%`), limit, offset];
+          const dataRes = await pool.query(query, params);
+          const countRes = await pool.query(countQuery, searchCols.map(() => `%${q}%`));
+          
+          rows = dataRes.rows;
+          total = parseInt(countRes.rows[0].count);
+        } else {
+          const dataRes = await pool.query(`SELECT * FROM "${table}" LIMIT $1 OFFSET $2`, [limit, offset]);
+          const countRes = await pool.query(`SELECT COUNT(*) FROM "${table}"`);
+          rows = dataRes.rows;
+          total = parseInt(countRes.rows[0].count);
+        }
+      } else {
+        const dataRes = await pool.query(`SELECT * FROM "${table}" LIMIT $1 OFFSET $2`, [limit, offset]);
+        const countRes = await pool.query(`SELECT COUNT(*) FROM "${table}"`);
+        rows = dataRes.rows;
+        total = parseInt(countRes.rows[0].count);
+      }
+
+      return { rows, total };
     },
     async renewSignalsByIds(signalIds) {
       const ids = Array.isArray(signalIds)
@@ -2661,12 +2749,96 @@ function mt5ComputeTradeMetrics(rows) {
   };
 }
 
+function getHeaderApiKey(req) {
+  return String(req.headers["x-api-key"] || req.headers.authorization?.replace(/^Bearer\s+/i, "") || "");
+}
+
+function getPayloadApiKey(payload = null) {
+  if (!payload) return "";
+  return String(payload.apiKey || payload.api_key || "");
+}
+
+function getQueryApiKey(urlObj = null) {
+  if (!urlObj) return "";
+  return String(urlObj.searchParams.get("apiKey") || urlObj.searchParams.get("api_key") || "");
+}
+
 function getApiKeyFromReq(req, payload = null, urlObj = null) {
-  const headerKey = String(req.headers["x-api-key"] || "");
+  const headerKey = getHeaderApiKey(req);
   if (headerKey) return headerKey;
-  if (payload && (payload.apiKey || payload.api_key)) return String(payload.apiKey || payload.api_key || "");
-  if (urlObj) return String(urlObj.searchParams.get("apiKey") || urlObj.searchParams.get("api_key") || "");
-  return "";
+  const payloadKey = getPayloadApiKey(payload);
+  if (payloadKey) return payloadKey;
+  return getQueryApiKey(urlObj);
+}
+
+function resolveEaApiKey(req, payload = null, urlObj = null) {
+  const headerKey = getHeaderApiKey(req);
+  if (headerKey) return { key: headerKey, source: "header" };
+  if (CFG.mt5AuthAllowLegacyPayloadKey) {
+    const payloadKey = getPayloadApiKey(payload);
+    if (payloadKey) return { key: payloadKey, source: "payload" };
+  }
+  if (CFG.mt5AuthAllowLegacyQueryKey) {
+    const queryKey = getQueryApiKey(urlObj);
+    if (queryKey) return { key: queryKey, source: "query" };
+  }
+  return { key: "", source: "none" };
+}
+
+function requireEaKey(req, res, urlObj, payload = null) {
+  if (CFG.mt5EaApiKeys.size === 0) return true;
+  const { key, source } = resolveEaApiKey(req, payload, urlObj);
+  if (key && CFG.mt5EaApiKeys.has(key)) {
+    if (source !== "header") {
+      console.warn(`[Auth] Legacy EA auth key source="${source}" path="${urlObj?.pathname || ""}"`);
+    }
+    return true;
+  }
+  json(res, 401, { ok: false, error: "invalid ea api key" });
+  return false;
+}
+
+function getTvTokenFromPath(pathname = "") {
+  const m = String(pathname).match(/^\/(?:signal|mt5\/tv\/webhook)\/([^/]+)$/);
+  if (!m) return "";
+  try {
+    return decodeURIComponent(m[1] || "").trim();
+  } catch {
+    return String(m[1] || "").trim();
+  }
+}
+
+function isTvWebhookPath(pathname = "") {
+  const p = String(pathname || "");
+  return p === "/signal" || p === "/mt5/tv/webhook" || /^\/signal\/[^/]+$/.test(p) || /^\/mt5\/tv\/webhook\/[^/]+$/.test(p);
+}
+
+function requireTvAuth(req, res, urlObj, payload = null) {
+  const hasAuthConfig = Boolean(CFG.signalApiKey || CFG.mt5TvAlertApiKeys.size > 0 || CFG.mt5TvWebhookTokens.size > 0);
+  if (!hasAuthConfig) return true;
+
+  const tokenFromPath = getTvTokenFromPath(urlObj?.pathname || "");
+  if (tokenFromPath) {
+    if (CFG.mt5TvWebhookTokens.has(tokenFromPath)) return true;
+    json(res, 401, { ok: false, error: "invalid tv webhook token" });
+    return false;
+  }
+
+  const headerKey = getHeaderApiKey(req);
+  if (headerKey && ((CFG.signalApiKey && headerKey === CFG.signalApiKey) || CFG.mt5TvAlertApiKeys.has(headerKey))) {
+    return true;
+  }
+
+  if (CFG.mt5AuthAllowLegacyPayloadKey) {
+    const payloadKey = getPayloadApiKey(payload);
+    if (payloadKey && ((CFG.signalApiKey && payloadKey === CFG.signalApiKey) || CFG.mt5TvAlertApiKeys.has(payloadKey))) {
+      console.warn(`[Auth] Legacy TV auth key source="payload" path="${urlObj?.pathname || ""}"`);
+      return true;
+    }
+  }
+
+  json(res, 401, { ok: false, error: "Unauthorized" });
+  return false;
 }
 
 function requireAdminKey(req, res, urlObj, payload = null) {
@@ -3119,6 +3291,47 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (req.method === "GET" && url.pathname === "/mt5/db/tables") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const b = await mt5Backend();
+      if (!b.listTables) return json(res, 400, { ok: false, error: "Not supported by this backend" });
+      const tables = await b.listTables();
+      return json(res, 200, { ok: true, tables });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error.message });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/mt5/db/rows") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const b = await mt5Backend();
+      if (!b.listTableRows) return json(res, 400, { ok: false, error: "Not supported by this backend" });
+      
+      const table = envStr(url.searchParams.get("table") || "signals");
+      const q = envStr(url.searchParams.get("q"));
+      const page = Math.max(1, Number(url.searchParams.get("page") || 1));
+      const pageSize = Math.max(5, Math.min(500, Number(url.searchParams.get("pageSize") || 50)));
+      const offset = (page - 1) * pageSize;
+      
+      const { rows, total } = await b.listTableRows(table, pageSize, offset, q);
+      return json(res, 200, { 
+        ok: true, 
+        table, 
+        total, 
+        rows, 
+        page, 
+        pageSize, 
+        pages: Math.max(1, Math.ceil(total / pageSize)) 
+      });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error.message });
+    }
+  }
+
   if (req.method === "POST" && url.pathname === "/mt5/trades/renew") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
@@ -3256,8 +3469,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/mt5/ea/sync") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    const apiKey = String(url.searchParams.get("api_key") || "");
-    if (CFG.mt5EaApiKeys.size > 0 && !CFG.mt5EaApiKeys.has(apiKey)) return json(res, 401, { ok: false, error: "invalid ea api key" });
+    if (!requireEaKey(req, res, url)) return;
     try {
       const signals = await mt5ListActiveSignals();
       const data = signals.map(s => ({
@@ -3322,8 +3534,7 @@ const server = http.createServer(async (req, res) => {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
-      const apiKey = String(payload.api_key || "");
-      if (CFG.mt5EaApiKeys.size > 0 && !CFG.mt5EaApiKeys.has(apiKey)) return json(res, 401, { ok: false, error: "invalid ea api key" });
+      if (!requireEaKey(req, res, url, payload)) return;
       
       const activeSignals = payload.active_signals || []; 
       const confirmedDbIds = new Set();
@@ -3387,8 +3598,7 @@ const server = http.createServer(async (req, res) => {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
-      const apiKey = String(payload.api_key || "");
-      if (CFG.mt5EaApiKeys.size > 0 && !CFG.mt5EaApiKeys.has(apiKey)) return json(res, 401, { ok: false, error: "invalid ea api key" });
+      if (!requireEaKey(req, res, url, payload)) return;
       const updates = payload.updates || [];
       if (!Array.isArray(updates)) return json(res, 400, { ok: false, error: "updates array required" });
       const result = await mt5BulkAckSignals(updates);
@@ -3402,11 +3612,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/mt5/ea/pull") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-
-    const apiKey = String(url.searchParams.get("api_key") || "");
-    if (CFG.mt5EaApiKeys.size > 0 && !CFG.mt5EaApiKeys.has(apiKey)) {
-      return json(res, 401, { ok: false, error: "invalid ea api key" });
-    }
+    if (!requireEaKey(req, res, url)) return;
 
     const signalId = String(url.searchParams.get("signal_id") || "").trim();
     const account = String(url.searchParams.get("account") || "");
@@ -3449,10 +3655,7 @@ const server = http.createServer(async (req, res) => {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
-      const apiKey = String(payload.api_key || "");
-      if (CFG.mt5EaApiKeys.size > 0 && !CFG.mt5EaApiKeys.has(apiKey)) {
-        return json(res, 401, { ok: false, error: "invalid ea api key" });
-      }
+      if (!requireEaKey(req, res, url, payload)) return;
       
       const accountId = String(payload.account_id || "");
       if (!accountId) {
@@ -3472,10 +3675,7 @@ const server = http.createServer(async (req, res) => {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
-      const apiKey = String(payload.api_key || "");
-      if (CFG.mt5EaApiKeys.size > 0 && !CFG.mt5EaApiKeys.has(apiKey)) {
-        return json(res, 401, { ok: false, error: "invalid ea api key" });
-      }
+      if (!requireEaKey(req, res, url, payload)) return;
 
       const status = mt5NormalizeAckStatus(payload.status);
 
@@ -3592,19 +3792,10 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  if (req.method === "POST" && (url.pathname === "/signal" || url.pathname === "/mt5/tv/webhook")) {
+  if (req.method === "POST" && isTvWebhookPath(url.pathname)) {
     try {
       const payload = await readJson(req);
-      const incomingHeaderApiKey = req.headers["x-api-key"] || "";
-      const incomingBodyApiKey = payload.apiKey || payload.api_key || "";
-      const incomingApiKey = String(incomingHeaderApiKey || incomingBodyApiKey);
-
-      const isAuthorized = (CFG.signalApiKey && incomingApiKey === CFG.signalApiKey) ||
-                          (CFG.mt5TvAlertApiKeys.size > 0 && CFG.mt5TvAlertApiKeys.has(incomingApiKey));
-
-      if ((CFG.signalApiKey || CFG.mt5TvAlertApiKeys.size > 0) && !isAuthorized) {
-        return json(res, 401, { ok: false, error: "Unauthorized" });
-      }
+      if (!requireTvAuth(req, res, url, payload)) return;
 
       const result = await handleSignal(payload);
       return json(res, 200, result);

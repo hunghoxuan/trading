@@ -266,4 +266,12 @@ export const api = {
     return get(`/mt5/api/events?${q.toString()}`);
   },
   deleteEvents: () => post("/mt5/api/events/delete", {}),
+  dbTables: () => get("/mt5/db/tables"),
+  dbRows: (params = {}) => {
+    const q = new URLSearchParams();
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && String(v) !== "") q.set(k, String(v));
+    });
+    return get(`/mt5/db/rows?${q.toString()}`);
+  },
 };
