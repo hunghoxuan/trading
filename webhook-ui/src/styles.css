@@ -12,14 +12,14 @@
 * { box-sizing: border-box; }
 body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; line-height: 1.5; }
 
-.app-container { padding: 5%; width: 100%; max-width: 1800px; margin: 0 auto; }
+.app-container { padding: 30px; width: 100%; max-width: 1800px; margin: 0 auto; }
 
 /* Navigation */
 .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
 .brand { font-size: 20px; font-weight: 800; color: #ffffff; display: flex; align-items: center; gap: 8px; }
-.nav { display: flex; gap: 24px; }
-.nav a { color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600; opacity: 0.9; transition: all 0.2s; border-bottom: 2px solid transparent; padding-bottom: 4px; }
-.nav a:hover, .nav a.active { opacity: 1; border-color: var(--accent); }
+.nav { display: flex; gap: 40px; }
+.nav a { color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600; opacity: 0.9; transition: all 0.2s; border-bottom: 2px solid transparent; padding: 4px 0; }
+.nav a:hover, .nav a.active { opacity: 1; border-color: #ffffff; }
 
 /* Layouts */
 .stack-layout { display: flex; flex-direction: column; gap: 24px; }
@@ -28,8 +28,10 @@ body { font-family: -apple-system, sans-serif; background: var(--bg); color: var
 .period-box-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 
 /* Panels */
-.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-.panel-head { padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
+.panel-head { padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.03); }
+.panel-head h3, .panel-head h4 { margin: 0; font-size: 15px; font-weight: 700; color: #fff; }
+.panel-body { padding: 20px; }
 
 /* KPI Section */
 .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
