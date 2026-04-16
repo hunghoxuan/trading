@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-37");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-38");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -3279,9 +3279,11 @@ const server = http.createServer(async (req, res) => {
       
       const allEvents = await mt5ListAllEvents(limit * 5, offset); // Pull more for manual filtering if needed, or filter by signal_id
       
+      const filterSymbol = url.searchParams.get("symbol");
       let rows = allEvents;
-      if (sids.size < 5000) { // If we have a reasonable filter on signals
-         rows = rows.filter(e => sids.has(String(e.signal_id)) || String(e.signal_id) === 'SYSTEM_SYNC_PUSH');
+      if (sids.size < 5000) { 
+         // If a symbol filter is active, exclude SYSTEM_SYNC_PUSH unless no symbol was selected
+         rows = rows.filter(e => sids.has(String(e.signal_id)) || (!filterSymbol && String(e.signal_id) === 'SYSTEM_SYNC_PUSH'));
       }
       
       if (q) {
@@ -3386,9 +3388,7 @@ const server = http.createServer(async (req, res) => {
       await mt5AppendSignalEvent('SYSTEM_SYNC_PUSH', 'EA_SYNC_PUSH', { 
         account: payload.account_id, 
         active_count: activeSignals.length,
-        sent_telemetry: telemetry,
         updates_count: updates.length,
-        reconciled_ids: updates.map(u => u.signal_id),
         updates_details: updates 
       });
 
@@ -3429,9 +3429,8 @@ const server = http.createServer(async (req, res) => {
     if (!signal) {
       return json(res, 200, { ok: true, signal: null });
     }
-    await mt5AppendSignalEvent(signal.signal_id, "EA_PULLED", {
-      account: account || null,
-      requested_signal_id: signalId || null,
+    await mt5AppendSignalEvent(signal.signal_id, "SIGNAL_FETCH", {
+      account: account || null
     });
 
     return json(res, 200, {
