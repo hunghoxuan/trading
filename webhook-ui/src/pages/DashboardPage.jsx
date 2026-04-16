@@ -49,10 +49,15 @@ function TableBlock({ title, rows }) {
   });
 
   return (
-      <div className="panel">
-      <div className="panel-head" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', whiteSpace: 'nowrap'}}>
-        <div className="kpi-label period-title" style={{margin: 0, textTransform: 'capitalize'}}>{title}</div>
-        <select className="kpi-label period-title" style={{margin: 0, padding: 0, background: 'transparent', border: 'none', outline: 'none', cursor: 'pointer', textAlign: 'right'}} value={orderBy} onChange={(e) => setOrderBy(e.target.value)}>
+    <div className="panel">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+        <div className="panel-label" style={{ margin: 0 }}>{title}</div>
+        <select 
+          className="minor-text" 
+          style={{ padding: '2px 4px', height: '22px', background: 'transparent', border: 'none', cursor: 'pointer' }} 
+          value={orderBy} 
+          onChange={(e) => setOrderBy(e.target.value)}
+        >
           <option value="Name">Sort Name</option>
           <option value="WR">Sort WR</option>
           <option value="PnL">Sort PnL</option>
@@ -62,18 +67,18 @@ function TableBlock({ title, rows }) {
         </select>
       </div>
       {rows.length === 0 ? (
-        <div className="muted">No data.</div>
+        <div className="minor-text">No data.</div>
       ) : (
         <div className="mini-table">
-          <div className="mini-table-head wide" style={{ color: '#94a3b8', fontWeight: 400 }}>
-            <span style={{ flex: '2' }}>Name</span>
-            <span>W/L</span>
-            <span>WR</span>
-            <span>PnL</span>
-            <span>RR</span>
+          <div className="mini-table-head wide" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '8px', background: 'transparent' }}>
+            <span style={{ flex: '2', fontSize: '11px', fontWeight: 700 }}>NAME</span>
+            <span style={{ fontSize: '11px', fontWeight: 700 }}>W/L</span>
+            <span style={{ fontSize: '11px', fontWeight: 700 }}>WR</span>
+            <span style={{ fontSize: '11px', fontWeight: 700 }}>PNL</span>
+            <span style={{ fontSize: '11px', fontWeight: 700 }}>RR</span>
           </div>
           {sortedRows.map((r) => (
-            <div className="mini-table-row wide" key={r.key}>
+            <div className="mini-table-row wide" key={r.key} style={{ padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
               <span className="mini-name" style={{ flex: '2', whiteSpace: 'nowrap' }} title={r.key}>{r.key}</span>
               <span>{r.wins}/{r.losses}</span>
               <span>{asPct(r.win_rate)}</span>
@@ -151,17 +156,17 @@ export default function DashboardPage() {
 
       <div className="kpi-grid three">
         <article className="kpi-card">
-          <div className="kpi-label">Total Trades / Signals</div>
+          <div className="panel-label">Total Trades / Signals</div>
           <div className="kpi-value">{m.total_trades || 0}</div>
           <div className="kpi-hint">Signals: {m.total_signals || 0}</div>
         </article>
         <article className="kpi-card">
-          <div className="kpi-label">Wins / Losses</div>
+          <div className="panel-label">Wins / Losses</div>
           <div className="kpi-value">{m.wins || 0} / {m.losses || 0}</div>
           <div className="kpi-hint">Winrate: {asPct(m.win_rate)}</div>
         </article>
         <article className="kpi-card">
-          <div className="kpi-label">Total PnL</div>
+          <div className="panel-label">Total PnL</div>
           <div className={`kpi-value ${moneyClass(m.total_pnl)}`}>{asMoneySigned(m.total_pnl || 0)}</div>
           <div className="kpi-hint">
             Win: <span className={moneyClass(m.buy_pnl)}>{asMoneySigned(m.buy_pnl || 0)}</span> | 
@@ -174,10 +179,12 @@ export default function DashboardPage() {
         {PERIOD_KEYS.map((p) => {
           const v = periodTotals[p] || {};
           return (
-            <article className="kpi-card period-box" key={p}>
-              <div className="kpi-label period-title">{p[0].toUpperCase() + p.slice(1)}</div>
+            <article className="kpi-card" key={p}>
+              <div className="panel-label">{p}</div>
               <div className="period-big-line">
-                <span className={moneyClass(v.total_pnl)}>{asMoneySigned(v.total_pnl || 0)}</span>
+                <span className={`kpi-value ${moneyClass(v.total_pnl)}`} style={{ fontSize: '24px' }}>
+                  {asMoneySigned(v.total_pnl || 0)}
+                </span>
               </div>
               <div className="kpi-hint">
                 Trades {v.total_trades || 0} | Wins {v.total_wins || 0} | Losses {v.total_losses || 0} | RR {asRR(v.total_rr || 0)}

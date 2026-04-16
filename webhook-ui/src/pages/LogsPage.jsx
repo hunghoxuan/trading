@@ -149,8 +149,8 @@ export default function LogsPage() {
         <div className="logs-detail-pane">
           {selectedEvent ? (
             <div className="event-detail-card">
-              <div className="detail-header" style={{ marginBottom: '20px' }}>
-                <h3 style={{ margin: 0 }}>EVENT DETAILS #{selectedEvent.id}</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                <div className="panel-label" style={{ margin: 0 }}>EVENT DETAILS #{selectedEvent.id}</div>
                 <div className="minor-text">{fDateTime(selectedEvent.event_time)}</div>
               </div>
               <div className="json-table-wrapper" style={{ marginTop: '20px' }}>

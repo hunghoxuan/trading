@@ -260,7 +260,7 @@ export default function TradesPage() {
               </div>
 
               <div style={{ marginTop: '20px' }}>
-                <h3 style={{ marginBottom: '16px', fontSize: '14px', color: 'var(--text)', fontWeight: 800 }}>HISTORY</h3>
+                <div className="panel-label">HISTORY</div>
                 {!tradeDetails?.events ? (
                   <div className="loading">FETCHING TELEMETRY LOGS...</div>
                 ) : (
@@ -275,17 +275,15 @@ export default function TradesPage() {
                          stCls = statusUi(raw).cls;
                       }
                       
-                      return (
-                        <div key={ev.id} className="panel" style={{ margin: 0 }}>
-                          <div className="panel-head" style={{ padding: '8px 16px', background: 'var(--panel)' }}>
+                        <div key={ev.id} className="panel" style={{ margin: 0, padding: '16px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span className="minor-text" style={{ fontWeight: 700, color: 'var(--text)' }}>{ev.event_type}</span>
+                              <span className="panel-label" style={{ margin: 0 }}>{ev.event_type}</span>
                               {stTxt && <span className={`badge ${stCls}`}>{stTxt}</span>}
                             </div>
                             <span className="minor-text">{fDateTime(ev.event_time)}</span>
                           </div>
-                          <div className="panel-body" style={{ padding: '12px 14px' }}>
-                            <div className="json-table-wrapper" style={{ marginTop: '20px' }}>
+                          <div className="json-table-wrapper">
                               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <tbody>
                                   {Object.entries(ev.payload_json || {}).map(([k, v]) => (
