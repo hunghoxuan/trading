@@ -71,11 +71,11 @@ function TableBlock({ title, rows }) {
       ) : (
         <div className="mini-table">
           <div className="mini-table-head wide" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '8px', background: 'transparent' }}>
-            <span style={{ flex: '2', fontSize: '11px', fontWeight: 700 }}>NAME</span>
-            <span style={{ fontSize: '11px', fontWeight: 700 }}>W/L</span>
-            <span style={{ fontSize: '11px', fontWeight: 700 }}>WR</span>
-            <span style={{ fontSize: '11px', fontWeight: 700 }}>PNL</span>
-            <span style={{ fontSize: '11px', fontWeight: 700 }}>RR</span>
+            <span style={{ flex: '2', fontSize: '10px', fontWeight: 800, color: 'var(--muted)' }}>NAME</span>
+            <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)' }}>W/L</span>
+            <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)' }}>WR</span>
+            <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)' }}>PNL</span>
+            <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)' }}>RR</span>
           </div>
           {sortedRows.map((r) => (
             <div className="mini-table-row wide" key={r.key} style={{ padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
@@ -154,21 +154,21 @@ export default function DashboardPage() {
         </select>
       </div>
 
-      <div className="kpi-grid three">
+      <div className="kpi-grid">
         <article className="kpi-card">
           <div className="panel-label">Total Trades / Signals</div>
           <div className="kpi-value">{m.total_trades || 0}</div>
-          <div className="kpi-hint">Signals: {m.total_signals || 0}</div>
+          <div className="minor-text" style={{ marginTop: '8px' }}>Signals: {m.total_signals || 0}</div>
         </article>
         <article className="kpi-card">
           <div className="panel-label">Wins / Losses</div>
           <div className="kpi-value">{m.wins || 0} / {m.losses || 0}</div>
-          <div className="kpi-hint">Winrate: {asPct(m.win_rate)}</div>
+          <div className="minor-text" style={{ marginTop: '8px' }}>Winrate: {asPct(m.win_rate)}</div>
         </article>
         <article className="kpi-card">
           <div className="panel-label">Total PnL</div>
           <div className={`kpi-value ${moneyClass(m.total_pnl)}`}>{asMoneySigned(m.total_pnl || 0)}</div>
-          <div className="kpi-hint">
+          <div className="minor-text" style={{ marginTop: '8px' }}>
             Win: <span className={moneyClass(m.buy_pnl)}>{asMoneySigned(m.buy_pnl || 0)}</span> | 
             Lose: <span className={moneyClass(m.sell_pnl)}>{asMoneySigned(m.sell_pnl || 0)}</span>
           </div>
@@ -186,7 +186,7 @@ export default function DashboardPage() {
                   {asMoneySigned(v.total_pnl || 0)}
                 </span>
               </div>
-              <div className="kpi-hint">
+              <div className="minor-text" style={{ marginTop: '8px' }}>
                 Trades {v.total_trades || 0} | Wins {v.total_wins || 0} | Losses {v.total_losses || 0} | RR {asRR(v.total_rr || 0)}
               </div>
             </article>
