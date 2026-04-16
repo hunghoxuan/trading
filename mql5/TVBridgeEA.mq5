@@ -38,7 +38,7 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-16.13";
+string EA_BUILD_VERSION = "2026-04-16.14";
 
 input string InpMappingFile = "TVBridge_Mappings.csv";
 
@@ -132,6 +132,8 @@ datetime g_syncLastTime = 0;
 
 string   g_lastPullPayload = "None";
 string   g_lastSyncPayload = "None";
+datetime g_lastPullUpdate = 0;
+datetime g_lastSyncUpdate = 0;
 
 // Reliable Ack Queue
 string   g_ackQSignalId[];
@@ -1004,11 +1006,13 @@ void RefreshDebugPanel()
       return;
 
    string mode = InpBacktestMode ? "BACKTEST" : "LIVE";
+   string stPull = g_lastPullUpdate > 0 ? (" [" + TimeToString(g_lastPullUpdate, TIME_SECONDS) + "]") : "";
+   string stSync = g_lastSyncUpdate > 0 ? (" [" + TimeToString(g_lastSyncUpdate, TIME_SECONDS) + "]") : "";
    string text =
       "TVBridgeEA | Build " + EA_BUILD_VERSION + " (" + mode + ")\n" +
       "--------------------------------------------------\n" +
-      "LAST PULL (GET):\n" + g_lastPullPayload + "\n\n" +
-      "LAST SYNC (PUSH):\n" + g_lastSyncPayload;
+      "LAST PULL (GET)" + stPull + ":\n" + g_lastPullPayload + "\n\n" +
+      "LAST SYNC (PUSH)" + stSync + ":\n" + g_lastSyncPayload;
    Comment(text);
 }
 
@@ -2329,11 +2333,13 @@ void OnTimer()
    if(!HttpGet(url, resp))
    {
       g_lastPullPayload = "GET FAILED: " + url;
+      g_lastPullUpdate = TimeCurrent();
       RefreshDebugPanel();
       return;
    }
 
    g_lastPullPayload = resp;
+   g_lastPullUpdate = TimeCurrent();
 
    if(StringFind(resp, "\"signal\":null") >= 0)
    {
@@ -2615,6 +2621,7 @@ void SyncWithVps()
    {
       g_lastSyncPayload = "FAIL: " + StringSubstr(resp, 0, 150);
    }
+   g_lastSyncUpdate = TimeCurrent();
    RefreshDebugPanel();
 }
 

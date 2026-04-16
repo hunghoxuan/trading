@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-06");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-07");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -2164,6 +2164,11 @@ async function mt5ListSignalEvents(signalId, limit = 200) {
 async function mt5ListActiveSignals() {
   const b = await mt5Backend();
   return b.listActiveSignals();
+}
+
+async function mt5BulkAckSignals(updates) {
+  const b = await mt5Backend();
+  return b.bulkAckSignals(updates);
 }
 
 async function mt5PruneSignals(days) {
