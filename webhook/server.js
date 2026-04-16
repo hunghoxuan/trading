@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-39");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-40");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -3361,18 +3361,14 @@ const server = http.createServer(async (req, res) => {
 
       if (updates.length > 0) {
         await mt5BulkAckSignals(updates);
-        // Skip individual RECONCILE events to reduce noise, as requested.
+        
+        await mt5AppendSignalEvent('SYSTEM_SYNC_PUSH', 'EA_SYNC_PUSH', { 
+          account: payload.account_id, 
+          active_count: activeSignals.length,
+          updates_count: updates.length,
+          updates_details: updates 
+        });
       }
-
-      // telemetry: Log the ID:Ticket mapping of what the EA sent
-      const telemetry = activeSignals.map(s => `${s.signal_id}:${s.ticket}`).slice(0, 20);
-
-      await mt5AppendSignalEvent('SYSTEM_SYNC_PUSH', 'EA_SYNC_PUSH', { 
-        account: payload.account_id, 
-        active_count: activeSignals.length,
-        updates_count: updates.length,
-        updates_details: updates 
-      });
 
       return json(res, 200, { ok: true, reconciled: updates.length, updates });
     } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
