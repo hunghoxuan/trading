@@ -74,17 +74,13 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
   // Volume line: ONLY show real broker facts after placement (ignore TV planned volume)
   let volText = null;
   
-  if (lotsActual && slPips) {
-    const riskStr = riskActual ? `$${money(riskActual)}` : null;
-    const rewardStr = rewardPlanned ? `$${money(rewardPlanned)}` : null;
-    volText = [
-      `${lotsActual} Lots`,
-      `${slPips.toFixed(1)}p SL`,
-      riskStr ? `Risk ${riskStr}` : null,
-      rewardStr ? `→ ${rewardStr}` : null,
-    ].filter(Boolean).join(" | ");
-  } else if (lotsActual) {
-    volText = `${lotsActual} Lots`;
+  if (lotsActual) {
+    const riskStr = riskActual ? ` ($${money(riskActual)})` : "";
+    volText = `${lotsActual} Lots${riskStr}`;
+    if (slPips) {
+      const rewardStr = rewardPlanned ? ` → $${money(rewardPlanned)}` : "";
+      volText += ` | ${slPips.toFixed(1)}p SL | Risk $${money(riskActual)}${rewardStr}`;
+    }
   }
 
   return (
@@ -97,6 +93,7 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
             <span className="order-type-pill">{orderType}</span>
             <span className="muted small blur">{trade.signal_id}</span>
             <span className="muted small blur">{new Date(trade.created_at).toLocaleString()}</span>
+            {trade.ack_ticket && <span className="muted small blur">Ticket: {trade.ack_ticket}</span>}
           </div>
           <div className="trade-status-col">
             <div className="trade-status-row">
@@ -118,7 +115,7 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
           <span className="kv">TP: {tpText}{tpPips ? <span className="muted small"> ({tpPips.toFixed(1)}p)</span> : null}</span>
           <span className="kv">SL: {slText}{slPips ? <span className="muted small"> ({slPips.toFixed(1)}p)</span> : null}</span>
           <span className="kv">RR: {rrText}</span>
-          {volText && <span className="kv">Volume: {volText}</span>}
+          {volText && <span className="kv">{volText}</span>}
           <span className={`pnl ${pnlClass}`}>{pnlText}</span>
         </div>
 

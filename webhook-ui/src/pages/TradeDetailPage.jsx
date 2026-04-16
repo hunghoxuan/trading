@@ -57,11 +57,12 @@ export default function TradeDetailPage() {
       <div className="panel">
         <div className="trade-grid two-cols">
           <div>Signal ID: {t.signal_id}</div>
+          {t.ack_ticket && <div>Ticket: <strong>{t.ack_ticket}</strong></div>}
           <div>Status: <span className={`badge ${status.cls}`}>{status.label}</span></div>
           <div>Order Type: <span className="order-type-pill">{orderType}</span></div>
           <div>Symbol: {t.symbol}</div>
           <div>Action: {t.action}</div>
-          <div>Volume: {t.volume} Lots</div>
+          <div>{t.volume} Lots {t.risk_money_actual ? `($${Number(t.risk_money_actual).toFixed(2)})` : ""}</div>
           <div>RR Planned: {t.rr_planned ?? "-"}</div>
           <div>Risk Planned: ${t.risk_money_planned ?? "-"}</div>
           <div>PnL Realized: <span style={{color: Number(t.pnl_money_realized) > 0 ? "#22c55e" : Number(t.pnl_money_realized) < 0 ? "#ef4444" : undefined}}>{t.pnl_money_realized != null ? `$${Number(t.pnl_money_realized).toFixed(2)}` : "-"}</span></div>
