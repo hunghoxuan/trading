@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-12");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-13");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -3237,7 +3237,7 @@ const server = http.createServer(async (req, res) => {
       if (CFG.mt5EaApiKeys.size > 0 && !CFG.mt5EaApiKeys.has(apiKey)) return json(res, 401, { ok: false, error: "invalid ea api key" });
       
       const activeSignals = payload.active_signals || []; 
-      const activeIds = new Set(activeSignals.map(s => String(s.signal_id)));
+      const confirmedDbIds = new Set();
       
       const dbSignals = await mt5ListActiveSignals(); // NEW, LOCKED, PLACED, OK, START
       const updates = [];
@@ -3261,6 +3261,7 @@ const server = http.createServer(async (req, res) => {
 
         if (sig) {
           const actualSid = sig.signal_id; // Always use the correct ID from our DB
+          confirmedDbIds.add(String(actualSid));
 
           // Resurrection / Unsticking / PnL Update
           const isLame = (sig.status === 'NEW' || sig.status === 'LOCKED' || sig.status === 'PLACED' || sig.status === 'OK');
@@ -3280,7 +3281,7 @@ const server = http.createServer(async (req, res) => {
 
       // 2. Identify Ghost Signals (VPS says active, but EA says gone)
       for (const sig of dbSignals) {
-        if (!activeIds.has(String(sig.signal_id))) {
+        if (!confirmedDbIds.has(String(sig.signal_id))) {
           // Only close if it's NOT a fresh signal (give it 30s to be pulled)
           const ageSec = (nowTs - new Date(sig.created_at).getTime()) / 1000;
           if (ageSec > 30 && (sig.status === 'OK' || sig.status === 'START' || sig.status === 'PLACED')) {

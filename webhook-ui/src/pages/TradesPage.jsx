@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import TradeCard from "../components/TradeCard";
 
-const STATUS_OPTIONS = ["", "NEW", "LOCKED", "OK", "START", "FAIL", "TP", "SL", "CANCEL", "EXPIRED"];
+const STATUS_OPTIONS = ["", "NEW", "LOCKED", "PLACED", "OK", "START", "FAIL", "TP", "SL", "CANCEL", "EXPIRED"];
 const BULK_ACTIONS = ["", "Download CSV", "Renew All", "Cancel All", "Delete All"];
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 200];
 const RANGE_OPTIONS = ["", "today", "week", "month"];
