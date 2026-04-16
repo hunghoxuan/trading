@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-08");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-09");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1161,7 +1161,7 @@ async function mt5InitBackend() {
           SELECT signal_id, created_at, user_id, action, symbol, volume, sl, tp, status,
                  ack_ticket, ack_status, pnl_money_realized, entry_price_exec, sl_exec, tp_exec
           FROM signals
-          WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'OK')
+          WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'OK', 'START')
           ORDER BY created_at ASC
         `).all().map((r) => ({
           ...r,
@@ -1674,10 +1674,13 @@ async function mt5InitBackend() {
         SELECT signal_id, created_at, user_id, action, symbol, volume, sl, tp, status,
                ack_ticket, ack_status, pnl_money_realized, entry_price_exec, sl_exec, tp_exec
         FROM signals
-        WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'OK')
+        WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'OK', 'START')
         ORDER BY created_at ASC
       `);
-      return res.rows.map(mt5MapDbRow);
+      return res.rows.map((r) => ({
+        ...r,
+        raw_json: r.raw_json || {},
+      }));
     },
     async bulkAckSignals(updates) {
       if (!Array.isArray(updates) || !updates.length) return { updated: 0 };
@@ -3202,21 +3205,35 @@ const server = http.createServer(async (req, res) => {
       const activeSignals = payload.active_signals || []; 
       const activeIds = new Set(activeSignals.map(s => String(s.signal_id)));
       
-      const dbSignals = await mt5ListActiveSignals(); // NEW, LOCKED, PLACED, OK
+      const dbSignals = await mt5ListActiveSignals(); // NEW, LOCKED, PLACED, OK, START
       const updates = [];
       const nowTs = Date.now();
 
-      // 1. Un-stick LOCKED/NEW signals that are actually active in EA
+      // 1. Reconcile EA Active Trades -> VPS
       for (const s of activeSignals) {
-        const sig = dbSignals.find(d => String(d.signal_id) === String(s.signal_id));
-        if (sig && (sig.status === 'NEW' || sig.status === 'LOCKED')) {
-          updates.push({
-            signal_id: s.signal_id,
-            status: s.status || 'START',
-            ticket: s.ticket,
-            pnl: s.pnl || 0,
-            note: 'reconciled_unstick'
-          });
+        // Find exact match by ID in active list
+        let sig = dbSignals.find(d => String(d.signal_id) === String(s.signal_id));
+        
+        // If not in active list, check if it exists in DB at all (could be ghost-closed or failed)
+        if (!sig) {
+          const rows = await mt5ListSignals(1, String(s.signal_id));
+          if (rows && rows.length > 0) sig = rows[0];
+        }
+
+        if (sig) {
+          // Resurrection / Unsticking / PnL Update
+          const isLame = (sig.status === 'NEW' || sig.status === 'LOCKED' || sig.status === 'PLACED' || sig.status === 'OK');
+          const isZombie = (sig.status === 'FAIL' || sig.status === 'CANCEL' || sig.status === 'EXPIRED');
+          
+          if (isLame || isZombie || Math.abs((sig.pnl_money_realized || 0) - (Number(s.pnl) || 0)) > 0.05) {
+             updates.push({
+               signal_id: s.signal_id,
+               status: s.status || 'START',
+               ticket: s.ticket,
+               pnl: s.pnl || 0,
+               note: isZombie ? 'reconciled_resurrect' : (isLame ? 'reconciled_unstick' : 'reconciled_pnl_sync')
+             });
+          }
         }
       }
 
