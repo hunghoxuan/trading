@@ -2161,6 +2161,11 @@ async function mt5ListSignalEvents(signalId, limit = 200) {
   return b.listSignalEvents(signalId, limit);
 }
 
+async function mt5ListActiveSignals() {
+  const b = await mt5Backend();
+  return b.listActiveSignals();
+}
+
 async function mt5PruneSignals(days) {
   const safeDays = Math.max(1, Math.min(3650, Number.isFinite(days) ? days : 14));
   const b = await mt5Backend();
