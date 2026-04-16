@@ -295,9 +295,8 @@ button { cursor: pointer; }
 }
 
 /* Logs Page Styles */
-.logs-page-container { height: calc(100vh - 100px); }
-.logs-layout { display: grid; grid-template-columns: 1.2fr 1.8fr; gap: 16px; height: 100%; }
-.logs-list-pane { display: flex; flex-direction: column; background: rgba(11, 17, 32, 0.6); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.logs-layout-split { display: flex; gap: 16px; height: 100%; min-height: 0; }
+.logs-list-pane { flex: 0 0 50%; min-width: 350px; display: flex; flex-direction: column; background: rgba(11, 17, 32, 0.6); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .events-table-wrap { flex: 1; overflow-y: auto; }
 .events-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .events-table th { text-align: left; padding: 10px; background: rgba(15, 23, 42, 0.8); border-bottom: 2px solid var(--border); color: var(--muted); position: sticky; top: 0; }
@@ -321,3 +320,14 @@ button { cursor: pointer; }
 .detail-body .field-block label { display: block; margin-bottom: 4px; font-weight: 600; color: var(--muted); }
 
 .empty-state { display: flex; height: 100%; align-items: center; justify-content: center; text-align: center; }
+
+/* Log Filter & Header styles */
+.panel-title-row { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 8px; }
+.logs-filters { display: flex; gap: 8px; margin-bottom: 12px; }
+.logs-filters input { flex: 1; }
+.logs-filters select { width: auto; min-width: 140px; }
+.ticket-tag { background: rgba(34, 211, 238, 0.15); color: #22d3ee; padding: 1px 4px; border-radius: 4px; border: 1px solid rgba(34, 211, 238, 0.3); font-size: 10px; margin-left: 6px; font-weight: bold; }
+.btn-danger.btn-xs { width: auto; padding: 2px 8px; font-size: 11px; background: #991b1b; }
+.btn-danger.btn-xs:hover { background: #b91c1c; }
+.accent { color: #22d3ee; font-weight: bold; }
+.panel-head { padding: 12px; border-bottom: 1px solid var(--border); background: rgba(15, 23, 42, 0.4); }

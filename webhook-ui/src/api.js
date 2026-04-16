@@ -265,4 +265,5 @@ export const api = {
     });
     return get(`/mt5/api/events?${q.toString()}`);
   },
+  deleteEvents: () => post("/mt5/api/events/delete", {}),
 };

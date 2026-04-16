@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-13");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-14");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1241,16 +1241,32 @@ async function mt5InitBackend() {
           payload_json: r.payload_json ? JSON.parse(r.payload_json) : {},
         }));
       },
-      async listAllEvents(limit, offset) {
+      async deleteAllEvents() {
+        return db.prepare(`DELETE FROM signal_events`).run();
+      },
+      async listAllEvents(limit, offset, filters = {}) {
         const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 1000));
         const safeOffset = Math.max(0, Number(offset) || 0);
-        return db.prepare(`
-          SELECT e.id, e.signal_id, e.event_type, e.event_time, e.payload_json, s.symbol
+        let sql = `
+          SELECT e.id, e.signal_id, e.event_type, e.event_time, e.payload_json, s.symbol, s.ack_ticket
           FROM signal_events e
           LEFT JOIN signals s ON e.signal_id = s.signal_id
-          ORDER BY e.event_time DESC
-          LIMIT ? OFFSET ?
-        `).all(safeLimit, safeOffset).map((r) => ({
+          WHERE 1=1
+        `;
+        const params = [];
+        if (filters.q) {
+          const q = `%${filters.q}%`;
+          sql += ` AND (e.signal_id LIKE ? OR CAST(s.ack_ticket AS TEXT) LIKE ? OR s.symbol LIKE ? OR e.event_type LIKE ?)`;
+          params.push(q, q, q, q);
+        }
+        if (filters.type) {
+          sql += ` AND e.event_type = ?`;
+          params.push(filters.type);
+        }
+        sql += ` ORDER BY e.event_time DESC LIMIT ? OFFSET ?`;
+        params.push(safeLimit, safeOffset);
+        
+        return db.prepare(sql).all(...params).map((r) => ({
           ...r,
           payload_json: r.payload_json ? JSON.parse(r.payload_json) : {},
         }));
@@ -1835,16 +1851,35 @@ async function mt5InitBackend() {
         payload_json: r.payload_json || {},
       }));
     },
-    async listAllEvents(limit, offset) {
+    async deleteAllEvents() {
+      return pool.query(`DELETE FROM signal_events`);
+    },
+    async listAllEvents(limit, offset, filters = {}) {
       const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 1000));
       const safeOffset = Math.max(0, Number(offset) || 0);
-      const res = await pool.query(`
-        SELECT e.id, e.signal_id, e.event_type, e.event_time, e.payload_json, s.symbol
+      let sql = `
+        SELECT e.id, e.signal_id, e.event_type, e.event_time, e.payload_json, s.symbol, s.ack_ticket
         FROM signal_events e
         LEFT JOIN signals s ON e.signal_id = s.signal_id
-        ORDER BY e.event_time DESC
-        LIMIT $1 OFFSET $2
-      `, [safeLimit, safeOffset]);
+        WHERE 1=1
+      `;
+      const params = [];
+      let pIdx = 1;
+      if (filters.q) {
+        const q = `%${filters.q}%`;
+        sql += ` AND (e.signal_id ILIKE $${pIdx} OR s.ack_ticket::text ILIKE $${pIdx} OR s.symbol ILIKE $${pIdx} OR e.event_type ILIKE $${pIdx})`;
+        params.push(q);
+        pIdx++;
+      }
+      if (filters.type) {
+        sql += ` AND e.event_type = $${pIdx}`;
+        params.push(filters.type);
+        pIdx++;
+      }
+      sql += ` ORDER BY e.event_time DESC LIMIT $${pIdx} OFFSET $${pIdx + 1}`;
+      params.push(safeLimit, safeOffset);
+
+      const res = await pool.query(sql, params);
       return res.rows.map((r) => ({
         ...r,
         payload_json: r.payload_json || {},
@@ -2243,10 +2278,18 @@ async function mt5BulkAckSignals(updates) {
   return b.bulkAckSignals(updates);
 }
 
-async function mt5ListAllEvents(limit = 1000, offset = 0) {
+async function mt5ListAllEvents(limit = 1000, offset = 0, filters = {}) {
   const b = await mt5Backend();
   if (!b.listAllEvents) return [];
-  return b.listAllEvents(limit, offset);
+  return b.listAllEvents(limit, offset, filters);
+}
+
+async function mt5DeleteAllEvents() {
+  const b = await mt5Backend();
+  if (!b.deleteAllEvents) return { deleted: 0 };
+  const res = await b.deleteAllEvents();
+  // Postgres returns rowCount, SQLite returns changes
+  return { deleted: res.rowCount ?? res.changes ?? 0 };
 }
 
 async function mt5PruneSignals(days) {
@@ -2421,10 +2464,12 @@ async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
     to: filters.to,
   });
   if (filters.q) {
+    const q = String(filters.q).toLowerCase();
     rows = rows.filter((r) =>
-      String(r.signal_id || "").toLowerCase().includes(filters.q)
-      || String(r.note || "").toLowerCase().includes(filters.q)
-      || String(r.symbol || "").toLowerCase().includes(filters.q),
+      String(r.signal_id || "").toLowerCase().includes(q)
+      || String(r.note || "").toLowerCase().includes(q)
+      || String(r.symbol || "").toLowerCase().includes(q)
+      || String(r.ack_ticket || "").toLowerCase().includes(q),
     );
   }
   const signalIds = mt5ResolveSignalIds(url, payload);
@@ -3229,6 +3274,18 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (req.method === "POST" && url.pathname === "/mt5/api/events/delete") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const resVal = await mt5DeleteAllEvents();
+      return json(res, 200, { ok: true, deleted: resVal.deleted });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
   if (req.method === "POST" && url.pathname === "/mt5/ea/sync") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
@@ -3296,9 +3353,7 @@ const server = http.createServer(async (req, res) => {
 
       if (updates.length > 0) {
         await mt5BulkAckSignals(updates);
-        for (const u of updates) {
-          await mt5AppendSignalEvent(u.signal_id, `RECONCILE_${u.status}`, { note: u.note, account: payload.account_id });
-        }
+        // Skip individual RECONCILE events to reduce noise, as requested.
       }
 
       // telemetry: Log the ID:Ticket mapping of what the EA sent
