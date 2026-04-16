@@ -2559,6 +2559,8 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
    CleanupVirtualGuardByTicket(positionTicket);
 }
 
+string g_lastStateHash = "";
+
 void SyncWithVps()
 {
    string updates = "";
@@ -2580,6 +2582,7 @@ void SyncWithVps()
             if(sid != "")
             {
                if(count > 0) updates += ",";
+               // We only include status/ticket/sid for the "State Fingerprint"
                updates += "{\"signal_id\":\"" + sid + "\",\"status\":\"START\",\"ticket\":\"" + IntegerToString((int)ticket) + "\",\"pnl\":" + DoubleToString(PositionGetDouble(POSITION_PROFIT), 2) + "}";
                count++;
             }
@@ -2610,16 +2613,25 @@ void SyncWithVps()
       }
    }
 
+   // [STATE DETECTION] If total state (IDs/Tickets/Statuses) hasn't changed, skip webhook
+   if(updates == g_lastStateHash) {
+      g_lastSyncPayload = "STABLE (No changes)";
+      RefreshDebugPanel();
+      return;
+   }
+   g_lastStateHash = updates;
+
    string body = "{\"api_key\":\"" + InpEaApiKey + "\",\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",\"active_signals\":[" + updates + "]}";
    string url = InpServerBaseUrl + "/mt5/ea/sync";
    string resp = "";
    if(HttpPostJsonWithResponse(url, body, resp))
    {
-      g_lastSyncPayload = "OK: " + StringSubstr(resp, 0, 150);
+      g_lastSyncPayload = "OK (Updated): " + StringSubstr(resp, 0, 150);
    }
    else
    {
       g_lastSyncPayload = "FAIL: " + StringSubstr(resp, 0, 150);
+      g_lastStateHash = ""; // Reset on fail to retry
    }
    g_lastSyncUpdate = TimeCurrent();
    RefreshDebugPanel();
