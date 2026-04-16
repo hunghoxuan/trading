@@ -10,9 +10,9 @@
 }
 
 * { box-sizing: border-box; }
-body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; line-height: 1.5; }
+body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 20px !important; line-height: 1.5; }
 
-.app-container { padding: 30px; width: 100%; max-width: 1800px; margin: 0 auto; }
+.app-container { width: 100%; max-width: 1800px; margin: 0 auto; }
 
 /* Navigation */
 .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
@@ -59,9 +59,10 @@ button:hover { opacity: 0.85; }
 button:disabled { opacity: 0.3; cursor: not-allowed; }
 
 /* Toolbar / Filters */
-.filters-top, .dashboard-filters, .logs-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 0; }
-.filters-top input { flex: 1; min-width: 200px; }
-.filters-top select, .dashboard-filters select { width: auto; min-width: 150px; }
+.logs-top-bar { display: flex; justify-content: space-between; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 20px; gap: 20px; }
+.logs-top-left { display: flex; align-items: center; gap: 16px; }
+.logs-filters { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+.filters-top, .dashboard-filters, .logs-filters { align-items: center; }
 
 /* Logs Dashboard (RESTORED 2/3 SPLIT) */
 .logs-page-container { height: calc(100vh - 120px); display: flex; flex-direction: column; gap: 12px; }
@@ -76,7 +77,10 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .events-table td { padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer; color: #e2e8f0; }
 .events-table tr:hover { background: rgba(255,255,255,0.04); }
 .events-table tr.active { background: rgba(34, 211, 238, 0.12); border-left: 2px solid var(--accent); }
-.events-table tr.active td { color: #ffffff; }
+.cell-wrap { display: flex; flex-direction: column; gap: 2px; }
+.cell-major { font-weight: 700; color: #fff; font-size: 13px; }
+.cell-minor { font-size: 11px; color: var(--muted); }
+.badge-fixed { min-width: 60px; text-align: center; }
 
 /* Pager */
 .pager { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 20px 0; font-size: 13px; }

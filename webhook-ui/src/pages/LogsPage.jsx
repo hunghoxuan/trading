@@ -1,6 +1,14 @@
 import { useEffect, useState, useMemo } from "react";
 import { api } from "../api";
 
+function fmtDateTime(v) {
+  if (!v) return "-";
+  return new Date(v).toLocaleString(undefined, {
+    year: 'numeric', month: '2-digit', day: '2-digit', 
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+}
+
 export default function LogsPage() {
   const [events, setEvents] = useState([]);
   const [symbols, setSymbols] = useState([]);
@@ -40,11 +48,11 @@ export default function LogsPage() {
   }
 
   async function onDeleteAll() {
-    if (!window.confirm("CRITICAL: Delete ALL events/logs? This cannot be undone.")) return;
+    if (!window.confirm("CRITICAL: DELETE ALL EVENTS/LOGS? THIS CANNOT BE UNDONE.")) return;
     try {
       setLoading(true);
       const res = await api.deleteEvents();
-      window.alert(`Deleted ${res.deleted || 0} event(s).`);
+      window.alert(`DELETED ${res.deleted || 0} EVENT(S).`);
       setPage(0);
       await loadEvents();
     } catch (err) {
@@ -54,68 +62,53 @@ export default function LogsPage() {
     }
   }
 
-  useEffect(() => {
-    loadSymbols();
-  }, []);
-
-  useEffect(() => {
-    loadEvents();
-  }, [query]);
+  useEffect(() => { loadSymbols(); }, []);
+  useEffect(() => { loadEvents(); }, [query]);
 
   return (
     <section className="logs-page-container">
       <div className="logs-top-bar">
+        <div className="logs-top-left">
+          <div className="muted small"><strong>{events.length}</strong> EVENTS</div>
+          <div className="pager-mini">
+            <button disabled={page === 0} onClick={() => setPage(p => p - 1)}>PREV</button>
+            <span>PAGE {page + 1}</span>
+            <button disabled={events.length < limit} onClick={() => setPage(p => p + 1)}>NEXT</button>
+          </div>
+        </div>
+        
         <div className="logs-filters">
           <input 
-            placeholder="Search Ticket, ID, Note..." 
+            placeholder="SEARCH TICKET, ID, NOTE..." 
             value={filter.q}
             onChange={e => { setFilter(f => ({ ...f, q: e.target.value })); setPage(0); }}
+            style={{ width: '220px' }}
           />
-          <select 
-            value={filter.type}
-            onChange={e => { setFilter(f => ({ ...f, type: e.target.value })); setPage(0); }}
-          >
-            <option value="">All Types</option>
+          <select value={filter.type} onChange={e => { setFilter(f => ({ ...f, type: e.target.value })); setPage(0); }}>
+            <option value="">ALL TYPES</option>
             <option value="EA_SYNC_PUSH">EA_SYNC_PUSH</option>
             <option value="SIGNAL_NEW">SIGNAL_NEW</option>
             <option value="SIGNAL_ACK">SIGNAL_ACK</option>
-            <option value="SIGNAL_UPDATE">SIGNAL_UPDATE</option>
             <option value="EA_PULLED">EA_PULLED</option>
             <option value="RECONCILE_START">RECONCILE_START</option>
-            <option value="RECONCILE_PLACED">RECONCILE_PLACED</option>
           </select>
-          <select 
-            value={filter.symbol}
-            onChange={e => { setFilter(f => ({ ...f, symbol: e.target.value })); setPage(0); }}
-          >
-            <option value="">All Symbols</option>
+          <select value={filter.symbol} onChange={e => { setFilter(f => ({ ...f, symbol: e.target.value })); setPage(0); }}>
+            <option value="">ALL SYMBOLS</option>
             {symbols.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
+          <button className="btn-danger btn-xs" onClick={onDeleteAll}>DELETE ALL LOGS</button>
         </div>
-        <button className="btn-danger btn-xs" onClick={onDeleteAll}>Delete All Logs</button>
       </div>
 
       <div className="logs-layout-split">
         <div className="logs-list-pane">
-          <div className="panel-head">
-            <h3>Event List</h3>
-            <div className="pager-mini">
-              <button disabled={page === 0} onClick={() => setPage(p => p - 1)}>Prev</button>
-              <span>Page {page + 1}</span>
-              <button disabled={events.length < limit} onClick={() => setPage(p => p + 1)}>Next</button>
-            </div>
-          </div>
-          
           {error && <div className="error">{error}</div>}
-          {loading && <div className="loading">Syncing data...</div>}
-          
           <div className="events-table-wrap">
             <table className="events-table">
               <thead>
                 <tr>
-                  <th>Time</th>
-                  <th>Type</th>
-                  <th>Context</th>
+                  <th>TIME / CONTEXT</th>
+                  <th>TYPE / ID</th>
                 </tr>
               </thead>
               <tbody>
@@ -125,11 +118,17 @@ export default function LogsPage() {
                     className={selectedEvent?.id === ev.id ? "active" : ""}
                     onClick={() => setSelectedEvent(ev)}
                   >
-                    <td className="small">{new Date(ev.event_time).toLocaleTimeString()}</td>
-                    <td><span className={`badge-event ${ev.event_type}`}>{ev.event_type}</span></td>
-                    <td className="small">
-                      {ev.symbol || ev.signal_id}
-                      {ev.ack_ticket ? <span className="ticket-tag">#{ev.ack_ticket}</span> : null}
+                    <td>
+                      <div className="cell-wrap">
+                        <div className="cell-major">{fmtDateTime(ev.event_time)}</div>
+                        <div className="cell-minor">{ev.symbol || 'NO SYMBOL'} {ev.ack_ticket ? `(#${ev.ack_ticket})` : ''}</div>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="cell-wrap">
+                        <div className="cell-major"><span className="badge">{ev.event_type}</span></div>
+                        <div className="cell-minor">{ev.signal_id}</div>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -142,38 +141,17 @@ export default function LogsPage() {
           {selectedEvent ? (
             <div className="event-detail-card">
               <div className="detail-header">
-                <h4>Event Details #{selectedEvent.id}</h4>
-                <div className="muted small">{new Date(selectedEvent.event_time).toLocaleString()}</div>
+                <h3>EVENT DETAILS #{selectedEvent.id}</h3>
+                <div className="muted small">{fmtDateTime(selectedEvent.event_time)}</div>
               </div>
-              <div className="detail-body">
-                <div className="field">
-                  <label>Type:</label>
-                  <span>{selectedEvent.event_type}</span>
-                </div>
-                <div className="field">
-                  <label>Signal ID:</label>
-                  <span>{selectedEvent.signal_id}</span>
-                </div>
-                {selectedEvent.ack_ticket && (
-                  <div className="field">
-                    <label>Ticket:</label>
-                    <span className="accent">#{selectedEvent.ack_ticket}</span>
-                  </div>
-                )}
-                <div className="field">
-                  <label>Symbol:</label>
-                  <span>{selectedEvent.symbol || "N/A"}</span>
-                </div>
-                <div className="field-block">
-                  <label>Payload (Full telemetry):</label>
-                  <pre className="payload-box">
-                    {JSON.stringify(selectedEvent.payload_json, null, 2)}
-                  </pre>
-                </div>
+              <div className="detail-body" style={{ marginTop: '20px' }}>
+                <pre className="payload-box">
+                  {JSON.stringify(selectedEvent.payload_json, null, 2)}
+                </pre>
               </div>
             </div>
           ) : (
-            <div className="empty-state muted">Select an entry to inspect full payload</div>
+            <div className="empty-state muted">SELECT AN ENTRY TO INSPECT FULL PAYLOAD</div>
           )}
         </div>
       </div>
