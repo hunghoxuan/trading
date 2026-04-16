@@ -70,12 +70,13 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
   const tpPips = positiveOrNull(trade?.tp_pips);
   const riskActual = positiveOrNull(trade?.risk_money_actual);
   const rewardPlanned = positiveOrNull(trade?.reward_money_planned);
+  const riskRaw = positiveOrNull(trade?.raw_json?.risk_money || trade?.raw_json?.risk);
 
   // Volume line: ONLY show real broker facts after placement (ignore TV planned volume)
   let volText = null;
   
   if (lotsActual) {
-    const riskDollar = riskActual ?? positiveOrNull(trade?.risk_money_planned);
+    const riskDollar = riskActual ?? positiveOrNull(trade?.risk_money_planned) ?? riskRaw;
     const riskStr = riskDollar ? ` ($${money(riskDollar)})` : "";
     volText = `${lotsActual} Lots${riskStr}`;
     if (slPips) {
