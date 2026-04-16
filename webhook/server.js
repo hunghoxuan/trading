@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-02");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-03");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1041,7 +1041,7 @@ async function mt5InitBackend() {
         const next = db.prepare(`
           SELECT signal_id, created_at, action, symbol, volume, sl, tp, note, entry_price_exec, raw_json
           FROM signals
-          WHERE status = 'NEW'
+          WHERE status = 'NEW' OR (status = 'LOCKED' AND locked_at < datetime('now', '-5 minutes'))
           ORDER BY created_at ASC
           LIMIT 1
         `).get();
@@ -1049,7 +1049,7 @@ async function mt5InitBackend() {
         const upd = db.prepare(`
           UPDATE signals
           SET status = 'LOCKED', locked_at = ?
-          WHERE signal_id = ? AND status = 'NEW'
+          WHERE signal_id = ? AND (status = 'NEW' OR (status = 'LOCKED' AND locked_at < datetime('now', '-5 minutes')))
         `).run(mt5NowIso(), next.signal_id);
         if (upd.changes < 1) return null;
         return next;
@@ -1058,14 +1058,14 @@ async function mt5InitBackend() {
         const next = db.prepare(`
           SELECT signal_id, created_at, action, symbol, volume, sl, tp, note, entry_price_exec, raw_json
           FROM signals
-          WHERE signal_id = ? AND status = 'NEW'
+          WHERE signal_id = ? AND (status = 'NEW' OR (status = 'LOCKED' AND locked_at < datetime('now', '-5 minutes')))
           LIMIT 1
         `).get(signalId);
         if (!next) return null;
         const upd = db.prepare(`
           UPDATE signals
           SET status = 'LOCKED', locked_at = ?
-          WHERE signal_id = ? AND status = 'NEW'
+          WHERE signal_id = ? AND (status = 'NEW' OR (status = 'LOCKED' AND locked_at < datetime('now', '-5 minutes')))
         `).run(mt5NowIso(), signalId);
         if (upd.changes < 1) return null;
         return next;
@@ -1552,7 +1552,7 @@ async function mt5InitBackend() {
         const sel = await client.query(`
           SELECT signal_id, created_at, action, symbol, volume, sl, tp, note, entry_price_exec, raw_json
           FROM signals
-          WHERE status = 'NEW'
+          WHERE status = 'NEW' OR (status = 'LOCKED' AND locked_at < NOW() - INTERVAL '5 minutes')
           ORDER BY created_at ASC
           LIMIT 1
           FOR UPDATE SKIP LOCKED
@@ -1565,7 +1565,7 @@ async function mt5InitBackend() {
         await client.query(`
           UPDATE signals
           SET status = 'LOCKED', locked_at = $1
-          WHERE signal_id = $2
+          WHERE signal_id = $2 AND (status = 'NEW' OR (status = 'LOCKED' AND locked_at < NOW() - INTERVAL '5 minutes'))
         `, [mt5NowIso(), next.signal_id]);
         await client.query("COMMIT");
         return mt5MapDbRow(next);
@@ -1583,7 +1583,7 @@ async function mt5InitBackend() {
         const sel = await client.query(`
           SELECT signal_id, created_at, action, symbol, volume, sl, tp, note, entry_price_exec, raw_json
           FROM signals
-          WHERE signal_id = $1 AND status = 'NEW'
+          WHERE signal_id = $1 AND (status = 'NEW' OR (status = 'LOCKED' AND locked_at < NOW() - INTERVAL '5 minutes'))
           LIMIT 1
           FOR UPDATE SKIP LOCKED
         `, [signalId]);
@@ -1595,7 +1595,7 @@ async function mt5InitBackend() {
         await client.query(`
           UPDATE signals
           SET status = 'LOCKED', locked_at = $1
-          WHERE signal_id = $2 AND status = 'NEW'
+          WHERE signal_id = $2 AND (status = 'NEW' OR (status = 'LOCKED' AND locked_at < NOW() - INTERVAL '5 minutes'))
         `, [mt5NowIso(), signalId]);
         await client.query("COMMIT");
         return mt5MapDbRow(next);
