@@ -111,7 +111,7 @@ export default function TradesPage() {
   const allSelected = rows.length > 0 && rows.every(r => selectedIds.has(r.signal_id));
 
   return (
-    <section className="logs-page-container">
+    <section className="logs-page-container stack-layout">
       <div className="logs-top-bar">
         <div className="logs-top-left">
           <div className="pager-area">

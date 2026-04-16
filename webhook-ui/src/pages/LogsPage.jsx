@@ -71,7 +71,7 @@ export default function LogsPage() {
   useEffect(() => { loadEvents(); }, [query]);
 
   return (
-    <section className="logs-page-container">
+    <section className="logs-page-container stack-layout">
       <div className="logs-top-bar">
         <div className="logs-top-left">
           <div className="pager-area">
