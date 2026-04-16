@@ -2603,7 +2603,7 @@ void SyncWithVps()
             if(sid != "")
             {
                if(count > 0) updates += ",";
-               updates += "{\"signal_id\":\"" + sid + "\",\"status\":\"PLACED\",\"ticket\":\"" + IntegerToString((int)ticket) + "\"}";
+               updates += "{\"signal_id\":\"" + sid + "\",\"status\":\"PLACED\",\"ticket\":\"" + IntegerToString((int)ticket) + "\",\"pnl\":0}";
                count++;
             }
          }
