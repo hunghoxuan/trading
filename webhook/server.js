@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-41");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-42");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -2170,6 +2170,7 @@ function mt5CanonicalStoredStatus(value) {
     CLOSED_SL: "SL",
     CLOSED_MANUAL: "CANCEL",
     CLOSED: "OK",
+    PLACED: "OK"
   };
   return legacyToCurrent[s] || s;
 }
@@ -3341,14 +3342,17 @@ const server = http.createServer(async (req, res) => {
          }
 
          if (sig) {
+            const dbCan = mt5CanonicalStoredStatus(sig.status);
+            const eaCan = mt5CanonicalStoredStatus(eaStatus);
+
             // "Only update when 2 statuses are different."
-            if (sig.status !== eaStatus) {
+            if (dbCan !== eaCan) {
                updates.push({
                   signal_id: sig.signal_id,
                   status: eaStatus,
                   ticket: ticket,
                   pnl: eaPnl,
-                  note: `sync_status_diff_${sig.status}_to_${eaStatus}`
+                  note: `sync_status_diff_${dbCan}_to_${eaCan}`
                });
             }
          }
