@@ -1,12 +1,23 @@
 :root {
-  --bg: #030712;
-  --surface: #0f172a;
-  --panel: #111827;
-  --border: #1e293b;
-  --text: #f8fafc;
-  --muted: #94a3b8;
+  /* Default Dark Theme Tokens */
+  --bg: #0b0f14;
+  --surface: #121821;
+  --border: #263244;
+  --text: #e6edf3;
+  --muted: #9fb0c4;
   --accent: #22d3ee;
-  --danger: #ef4444;
+  --accent-soft: rgba(34, 211, 238, 0.1);
+}
+
+[data-theme="light"] {
+  /* SMC Light Theme Tokens */
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --muted: #64748b;
+  --accent: #0ea5e9;
+  --accent-soft: rgba(14, 165, 233, 0.1);
 }
 
 * { box-sizing: border-box; }

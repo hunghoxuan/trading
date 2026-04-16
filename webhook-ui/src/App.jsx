@@ -9,22 +9,20 @@ import { api } from "./api";
 
 export default function App() {
   const [serverVersion, setServerVersion] = useState("");
+  const [theme, setTheme] = useState(() => localStorage.getItem("ui_theme") || "dark");
 
   useEffect(() => {
-    let mounted = true;
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("ui_theme", theme);
+  }, [theme]);
+
+  useEffect(() => {
     api.health()
-      .then((data) => {
-        if (!mounted) return;
-        setServerVersion(String(data?.version || ""));
-      })
-      .catch(() => {
-        if (!mounted) return;
-        setServerVersion("");
-      });
-    return () => {
-      mounted = false;
-    };
+      .then((data) => setServerVersion(String(data?.version || "")))
+      .catch(() => setServerVersion(""));
   }, []);
+
+  const toggleTheme = () => setTheme(prev => prev === "dark" ? "light" : "dark");
 
   return (
     <div className="app-shell">
@@ -38,6 +36,21 @@ export default function App() {
           <NavLink to="/trades" className={({ isActive }) => (isActive ? "active" : "")}>Trades</NavLink>
           <NavLink to="/logs" className={({ isActive }) => (isActive ? "active" : "")}>Logs</NavLink>
           <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")}>Settings</NavLink>
+          <button 
+             onClick={toggleTheme} 
+             style={{ 
+               background: 'transparent', 
+               border: '1px solid var(--border)', 
+               color: 'white', 
+               padding: '4px 10px', 
+               borderRadius: '6px', 
+               fontSize: '11px', 
+               cursor: 'pointer',
+               marginLeft: '20px'
+             }}
+          >
+            {theme === "dark" ? "☀️ LIGHT" : "🌙 DARK"}
+          </button>
         </nav>
       </header>
       <main className="page-wrap">
