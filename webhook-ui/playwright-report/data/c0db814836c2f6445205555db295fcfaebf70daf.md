@@ -1,0 +1,622 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: remote-ui.spec.js >> trades page loads list panel
+- Location: tests/e2e/remote-ui.spec.js:25:1
+
+# Error details
+
+```
+Error: expect(locator).toBeVisible() failed
+
+Locator: getByRole('heading', { name: 'Trades' })
+Expected: visible
+Timeout: 20000ms
+Error: element(s) not found
+
+Call log:
+  - Expect "toBeVisible" with timeout 20000ms
+  - waiting for getByRole('heading', { name: 'Trades' })
+
+```
+
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: 📈 Trading
+      - generic [ref=e7]: v2026.04.15-03
+    - navigation [ref=e8]:
+      - link "Dashboard" [ref=e9] [cursor=pointer]:
+        - /url: /ui/dashboard
+      - link "Trades" [ref=e10] [cursor=pointer]:
+        - /url: /ui/trades
+      - link "Settings" [ref=e11] [cursor=pointer]:
+        - /url: /ui/settings
+  - main [ref=e12]:
+    - generic [ref=e13]:
+      - generic [ref=e15]:
+        - textbox "Search signal id, note..." [ref=e16]
+        - combobox [ref=e17]:
+          - option "All symbols" [selected]
+          - option "AUDCAD"
+          - option "BTCUSD"
+          - option "DE40"
+          - option "EURGBP"
+          - option "EURJPY"
+          - option "EURSGD"
+          - option "EURUSD"
+          - option "GBPJPY"
+          - option "GBPUSD"
+          - option "NZDCAD"
+          - option "TEST"
+          - option "USDCAD"
+          - option "XAGUSD"
+        - combobox [ref=e18]:
+          - option "All statuses" [selected]
+          - option "NEW"
+          - option "LOCKED"
+          - option "OK"
+          - option "START"
+          - option "FAIL"
+          - option "TP"
+          - option "SL"
+          - option "CANCEL"
+          - option "EXPIRED"
+        - combobox [ref=e19]:
+          - option "All time" [selected]
+          - option "Today"
+          - option "This week"
+          - option "This month"
+        - combobox [ref=e20]:
+          - option "Bulk Action..." [selected]
+          - option "Download CSV"
+          - option "Renew All"
+          - option "Cancel All"
+          - option "Delete All"
+        - button "OK" [disabled] [ref=e21] [cursor=pointer]
+      - generic [ref=e22]:
+        - generic [ref=e23]:
+          - generic [ref=e24]: 190 results
+          - generic [ref=e26]:
+            - checkbox "Select page" [ref=e27]
+            - generic [ref=e28]: Select page
+        - generic [ref=e29]:
+          - article [ref=e30]:
+            - 'link "TEST BUY LIMIT local_test_1776262514362 4/15/2026, 4:15:14 PM PLACED Select local_test_1776262514362 Price: 70,000 TP: 75,000 SL: 65,000 RR: 2 Volume: 0.01 $12.34 ChartTF: -, HTF: - Strategy: - Note: local smoke test" [ref=e31] [cursor=pointer]':
+              - /url: /ui/trades/local_test_1776262514362
+              - generic [ref=e32]:
+                - generic [ref=e33]:
+                  - generic [ref=e34]: TEST
+                  - generic [ref=e35]: BUY
+                  - generic [ref=e36]: LIMIT
+                  - generic [ref=e37]: local_test_1776262514362
+                  - generic [ref=e38]: 4/15/2026, 4:15:14 PM
+                - generic [ref=e40]:
+                  - generic [ref=e41]: PLACED
+                  - checkbox "Select local_test_1776262514362" [ref=e42]
+              - generic [ref=e43]:
+                - generic [ref=e44]: "Price: 70,000"
+                - generic [ref=e45]: "TP: 75,000"
+                - generic [ref=e46]: "SL: 65,000"
+                - generic [ref=e47]: "RR: 2"
+                - generic [ref=e48]: "Volume: 0.01"
+                - generic [ref=e49]: $12.34
+              - generic [ref=e50]:
+                - generic [ref=e51]: "ChartTF: -, HTF: -"
+                - generic [ref=e52]: "Strategy: -"
+                - generic [ref=e53]: "Note: local smoke test"
+          - article [ref=e54]:
+            - 'link "EURJPY BUY LIMIT SMC_RJ_15m_1_10948_617 4/15/2026, 2:09:02 PM TP Select SMC_RJ_15m_1_10948_617 Price: 187.415 TP: 187.4626 SL: 187.3614 RR: 1 Volume: 0.01 $0.48 ChartTF: 1m, HTF: 15 Strategy: Hung-SMC Note: Hung-SMC | 1m | RJ.15m.1 | Ba ie Touch (suppo t touch)" [ref=e55] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_15m_1_10948_617
+              - generic [ref=e56]:
+                - generic [ref=e57]:
+                  - generic [ref=e58]: EURJPY
+                  - generic [ref=e59]: BUY
+                  - generic [ref=e60]: LIMIT
+                  - generic [ref=e61]: SMC_RJ_15m_1_10948_617
+                  - generic [ref=e62]: 4/15/2026, 2:09:02 PM
+                - generic [ref=e64]:
+                  - generic [ref=e65]: TP
+                  - checkbox "Select SMC_RJ_15m_1_10948_617" [ref=e66]
+              - generic [ref=e67]:
+                - generic [ref=e68]: "Price: 187.415"
+                - generic [ref=e69]: "TP: 187.4626"
+                - generic [ref=e70]: "SL: 187.3614"
+                - generic [ref=e71]: "RR: 1"
+                - generic [ref=e72]: "Volume: 0.01"
+                - generic [ref=e73]: $0.48
+              - generic [ref=e74]:
+                - generic [ref=e75]: "ChartTF: 1m, HTF: 15"
+                - generic [ref=e76]: "Strategy: Hung-SMC"
+                - generic [ref=e77]: "Note: Hung-SMC | 1m | RJ.15m.1 | Ba ie Touch (suppo t touch)"
+          - article [ref=e78]:
+            - 'link "EURJPY BUY LIMIT SMC_RJ_15m_0_2_10948_615 4/15/2026, 2:09:02 PM TP Select SMC_RJ_15m_0_2_10948_615 Price: 187.415 TP: 187.42212 SL: 187.3614 RR: 0.2 Volume: 0.01 $0.42 ChartTF: 1m, HTF: 15 Strategy: Hung-SMC Note: Hung-SMC | 1m | RJ.15m.0.2 | Ba ie Touch (suppo t touch)" [ref=e79] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_15m_0_2_10948_615
+              - generic [ref=e80]:
+                - generic [ref=e81]:
+                  - generic [ref=e82]: EURJPY
+                  - generic [ref=e83]: BUY
+                  - generic [ref=e84]: LIMIT
+                  - generic [ref=e85]: SMC_RJ_15m_0_2_10948_615
+                  - generic [ref=e86]: 4/15/2026, 2:09:02 PM
+                - generic [ref=e88]:
+                  - generic [ref=e89]: TP
+                  - checkbox "Select SMC_RJ_15m_0_2_10948_615" [ref=e90]
+              - generic [ref=e91]:
+                - generic [ref=e92]: "Price: 187.415"
+                - generic [ref=e93]: "TP: 187.42212"
+                - generic [ref=e94]: "SL: 187.3614"
+                - generic [ref=e95]: "RR: 0.2"
+                - generic [ref=e96]: "Volume: 0.01"
+                - generic [ref=e97]: $0.42
+              - generic [ref=e98]:
+                - generic [ref=e99]: "ChartTF: 1m, HTF: 15"
+                - generic [ref=e100]: "Strategy: Hung-SMC"
+                - generic [ref=e101]: "Note: Hung-SMC | 1m | RJ.15m.0.2 | Ba ie Touch (suppo t touch)"
+          - article [ref=e102]:
+            - 'link "EURJPY BUY LIMIT SMC_RJ_15m_0_5_10948_616 4/15/2026, 2:09:02 PM TP Select SMC_RJ_15m_0_5_10948_616 Price: 187.415 TP: 187.4373 SL: 187.3614 RR: 0.5 Volume: 0.01 $0.42 ChartTF: 1m, HTF: 15 Strategy: Hung-SMC Note: Hung-SMC | 1m | RJ.15m.0.5 | Ba ie Touch (suppo t touch)" [ref=e103] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_15m_0_5_10948_616
+              - generic [ref=e104]:
+                - generic [ref=e105]:
+                  - generic [ref=e106]: EURJPY
+                  - generic [ref=e107]: BUY
+                  - generic [ref=e108]: LIMIT
+                  - generic [ref=e109]: SMC_RJ_15m_0_5_10948_616
+                  - generic [ref=e110]: 4/15/2026, 2:09:02 PM
+                - generic [ref=e112]:
+                  - generic [ref=e113]: TP
+                  - checkbox "Select SMC_RJ_15m_0_5_10948_616" [ref=e114]
+              - generic [ref=e115]:
+                - generic [ref=e116]: "Price: 187.415"
+                - generic [ref=e117]: "TP: 187.4373"
+                - generic [ref=e118]: "SL: 187.3614"
+                - generic [ref=e119]: "RR: 0.5"
+                - generic [ref=e120]: "Volume: 0.01"
+                - generic [ref=e121]: $0.42
+              - generic [ref=e122]:
+                - generic [ref=e123]: "ChartTF: 1m, HTF: 15"
+                - generic [ref=e124]: "Strategy: Hung-SMC"
+                - generic [ref=e125]: "Note: Hung-SMC | 1m | RJ.15m.0.5 | Ba ie Touch (suppo t touch)"
+          - article [ref=e126]:
+            - 'link "EURJPY BUY LIMIT SMC_RJ_15m_0_2_10944_612 4/15/2026, 2:05:02 PM TP Select SMC_RJ_15m_0_2_10944_612 Price: 187.415 TP: 187.42212 SL: 187.3614 RR: 0.2 Volume: 0.01 $0.45 ChartTF: 1m, HTF: 15 Strategy: Hung-SMC Note: Hung-SMC | 1m | RJ.15m.0.2 | Ba ie Touch (suppo t touch)" [ref=e127] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_15m_0_2_10944_612
+              - generic [ref=e128]:
+                - generic [ref=e129]:
+                  - generic [ref=e130]: EURJPY
+                  - generic [ref=e131]: BUY
+                  - generic [ref=e132]: LIMIT
+                  - generic [ref=e133]: SMC_RJ_15m_0_2_10944_612
+                  - generic [ref=e134]: 4/15/2026, 2:05:02 PM
+                - generic [ref=e136]:
+                  - generic [ref=e137]: TP
+                  - checkbox "Select SMC_RJ_15m_0_2_10944_612" [ref=e138]
+              - generic [ref=e139]:
+                - generic [ref=e140]: "Price: 187.415"
+                - generic [ref=e141]: "TP: 187.42212"
+                - generic [ref=e142]: "SL: 187.3614"
+                - generic [ref=e143]: "RR: 0.2"
+                - generic [ref=e144]: "Volume: 0.01"
+                - generic [ref=e145]: $0.45
+              - generic [ref=e146]:
+                - generic [ref=e147]: "ChartTF: 1m, HTF: 15"
+                - generic [ref=e148]: "Strategy: Hung-SMC"
+                - generic [ref=e149]: "Note: Hung-SMC | 1m | RJ.15m.0.2 | Ba ie Touch (suppo t touch)"
+          - article [ref=e150]:
+            - 'link "EURJPY BUY LIMIT SMC_RJ_15m_0_5_10944_613 4/15/2026, 2:05:02 PM TP Select SMC_RJ_15m_0_5_10944_613 Price: 187.415 TP: 187.4373 SL: 187.3614 RR: 0.5 Volume: 0.01 $0.45 ChartTF: 1m, HTF: 15 Strategy: Hung-SMC Note: Hung-SMC | 1m | RJ.15m.0.5 | Ba ie Touch (suppo t touch)" [ref=e151] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_15m_0_5_10944_613
+              - generic [ref=e152]:
+                - generic [ref=e153]:
+                  - generic [ref=e154]: EURJPY
+                  - generic [ref=e155]: BUY
+                  - generic [ref=e156]: LIMIT
+                  - generic [ref=e157]: SMC_RJ_15m_0_5_10944_613
+                  - generic [ref=e158]: 4/15/2026, 2:05:02 PM
+                - generic [ref=e160]:
+                  - generic [ref=e161]: TP
+                  - checkbox "Select SMC_RJ_15m_0_5_10944_613" [ref=e162]
+              - generic [ref=e163]:
+                - generic [ref=e164]: "Price: 187.415"
+                - generic [ref=e165]: "TP: 187.4373"
+                - generic [ref=e166]: "SL: 187.3614"
+                - generic [ref=e167]: "RR: 0.5"
+                - generic [ref=e168]: "Volume: 0.01"
+                - generic [ref=e169]: $0.45
+              - generic [ref=e170]:
+                - generic [ref=e171]: "ChartTF: 1m, HTF: 15"
+                - generic [ref=e172]: "Strategy: Hung-SMC"
+                - generic [ref=e173]: "Note: Hung-SMC | 1m | RJ.15m.0.5 | Ba ie Touch (suppo t touch)"
+          - article [ref=e174]:
+            - 'link "EURJPY BUY LIMIT SMC_RJ_15m_1_10944_614 4/15/2026, 2:05:02 PM TP Select SMC_RJ_15m_1_10944_614 Price: 187.415 TP: 187.4626 SL: 187.3614 RR: 1 Volume: 0.01 $0.45 ChartTF: 1m, HTF: 15 Strategy: Hung-SMC Note: Hung-SMC | 1m | RJ.15m.1 | Ba ie Touch (suppo t touch)" [ref=e175] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_15m_1_10944_614
+              - generic [ref=e176]:
+                - generic [ref=e177]:
+                  - generic [ref=e178]: EURJPY
+                  - generic [ref=e179]: BUY
+                  - generic [ref=e180]: LIMIT
+                  - generic [ref=e181]: SMC_RJ_15m_1_10944_614
+                  - generic [ref=e182]: 4/15/2026, 2:05:02 PM
+                - generic [ref=e184]:
+                  - generic [ref=e185]: TP
+                  - checkbox "Select SMC_RJ_15m_1_10944_614" [ref=e186]
+              - generic [ref=e187]:
+                - generic [ref=e188]: "Price: 187.415"
+                - generic [ref=e189]: "TP: 187.4626"
+                - generic [ref=e190]: "SL: 187.3614"
+                - generic [ref=e191]: "RR: 1"
+                - generic [ref=e192]: "Volume: 0.01"
+                - generic [ref=e193]: $0.45
+              - generic [ref=e194]:
+                - generic [ref=e195]: "ChartTF: 1m, HTF: 15"
+                - generic [ref=e196]: "Strategy: Hung-SMC"
+                - generic [ref=e197]: "Note: Hung-SMC | 1m | RJ.15m.1 | Ba ie Touch (suppo t touch)"
+          - article [ref=e198]:
+            - 'link "EURSGD BUY LIMIT SMC_RJ_1h_0_5_10932_643 4/15/2026, 1:43:02 PM TP Select SMC_RJ_1h_0_5_10932_643 Price: 1.49855 TP: 1.498805 SL: 1.49804 RR: 0.5 Volume: 0.01 $0.44 ChartTF: 1m, HTF: 60 Strategy: Hung-SMC Note: Hung-SMC | 1m | RJ.1h.0.5 | Ba ie Touch (suppo t touch)" [ref=e199] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_1h_0_5_10932_643
+              - generic [ref=e200]:
+                - generic [ref=e201]:
+                  - generic [ref=e202]: EURSGD
+                  - generic [ref=e203]: BUY
+                  - generic [ref=e204]: LIMIT
+                  - generic [ref=e205]: SMC_RJ_1h_0_5_10932_643
+                  - generic [ref=e206]: 4/15/2026, 1:43:02 PM
+                - generic [ref=e208]:
+                  - generic [ref=e209]: TP
+                  - checkbox "Select SMC_RJ_1h_0_5_10932_643" [ref=e210]
+              - generic [ref=e211]:
+                - generic [ref=e212]: "Price: 1.49855"
+                - generic [ref=e213]: "TP: 1.498805"
+                - generic [ref=e214]: "SL: 1.49804"
+                - generic [ref=e215]: "RR: 0.5"
+                - generic [ref=e216]: "Volume: 0.01"
+                - generic [ref=e217]: $0.44
+              - generic [ref=e218]:
+                - generic [ref=e219]: "ChartTF: 1m, HTF: 60"
+                - generic [ref=e220]: "Strategy: Hung-SMC"
+                - generic [ref=e221]: "Note: Hung-SMC | 1m | RJ.1h.0.5 | Ba ie Touch (suppo t touch)"
+          - article [ref=e222]:
+            - 'link "EURSGD BUY LIMIT SMC_RJ_1h_1_10932_644 4/15/2026, 1:43:02 PM TP Select SMC_RJ_1h_1_10932_644 Price: 1.49855 TP: 1.49906 SL: 1.49804 RR: 1 Volume: 0.01 $0.44 ChartTF: 1m, HTF: 60 Strategy: Hung-SMC Note: Hung-SMC | 1m | RJ.1h.1 | Ba ie Touch (suppo t touch)" [ref=e223] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_1h_1_10932_644
+              - generic [ref=e224]:
+                - generic [ref=e225]:
+                  - generic [ref=e226]: EURSGD
+                  - generic [ref=e227]: BUY
+                  - generic [ref=e228]: LIMIT
+                  - generic [ref=e229]: SMC_RJ_1h_1_10932_644
+                  - generic [ref=e230]: 4/15/2026, 1:43:02 PM
+                - generic [ref=e232]:
+                  - generic [ref=e233]: TP
+                  - checkbox "Select SMC_RJ_1h_1_10932_644" [ref=e234]
+              - generic [ref=e235]:
+                - generic [ref=e236]: "Price: 1.49855"
+                - generic [ref=e237]: "TP: 1.49906"
+                - generic [ref=e238]: "SL: 1.49804"
+                - generic [ref=e239]: "RR: 1"
+                - generic [ref=e240]: "Volume: 0.01"
+                - generic [ref=e241]: $0.44
+              - generic [ref=e242]:
+                - generic [ref=e243]: "ChartTF: 1m, HTF: 60"
+                - generic [ref=e244]: "Strategy: Hung-SMC"
+                - generic [ref=e245]: "Note: Hung-SMC | 1m | RJ.1h.1 | Ba ie Touch (suppo t touch)"
+          - article [ref=e246]:
+            - 'link "EURSGD BUY LIMIT SMC_RJ_1h_0_2_10932_642 4/15/2026, 1:43:02 PM TP Select SMC_RJ_1h_0_2_10932_642 Price: 1.49855 TP: 1.498652 SL: 1.49804 RR: 0.2 Volume: 0.01 $0.44 ChartTF: 1m, HTF: 60 Strategy: Hung-SMC Note: Hung-SMC | 1m | RJ.1h.0.2 | Ba ie Touch (suppo t touch)" [ref=e247] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_1h_0_2_10932_642
+              - generic [ref=e248]:
+                - generic [ref=e249]:
+                  - generic [ref=e250]: EURSGD
+                  - generic [ref=e251]: BUY
+                  - generic [ref=e252]: LIMIT
+                  - generic [ref=e253]: SMC_RJ_1h_0_2_10932_642
+                  - generic [ref=e254]: 4/15/2026, 1:43:02 PM
+                - generic [ref=e256]:
+                  - generic [ref=e257]: TP
+                  - checkbox "Select SMC_RJ_1h_0_2_10932_642" [ref=e258]
+              - generic [ref=e259]:
+                - generic [ref=e260]: "Price: 1.49855"
+                - generic [ref=e261]: "TP: 1.498652"
+                - generic [ref=e262]: "SL: 1.49804"
+                - generic [ref=e263]: "RR: 0.2"
+                - generic [ref=e264]: "Volume: 0.01"
+                - generic [ref=e265]: $0.44
+              - generic [ref=e266]:
+                - generic [ref=e267]: "ChartTF: 1m, HTF: 60"
+                - generic [ref=e268]: "Strategy: Hung-SMC"
+                - generic [ref=e269]: "Note: Hung-SMC | 1m | RJ.1h.0.2 | Ba ie Touch (suppo t touch)"
+          - article [ref=e270]:
+            - 'link "GBPJPY BUY LIMIT SMC_RJ_1h_0_2_10828_1200 4/15/2026, 1:41:01 PM PLACED Select SMC_RJ_1h_0_2_10828_1200 Price: 215.386 TP: 215.3964 SL: 215.262 RR: 0.2 Volume: 5.20% - ChartTF: 5m, HTF: 60 Strategy: Hung-SMC Note: Hung-SMC | 5m | RJ.1h.0.2 | Ba ie Touch (suppo t touch)" [ref=e271] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_1h_0_2_10828_1200
+              - generic [ref=e272]:
+                - generic [ref=e273]:
+                  - generic [ref=e274]: GBPJPY
+                  - generic [ref=e275]: BUY
+                  - generic [ref=e276]: LIMIT
+                  - generic [ref=e277]: SMC_RJ_1h_0_2_10828_1200
+                  - generic [ref=e278]: 4/15/2026, 1:41:01 PM
+                - generic [ref=e280]:
+                  - generic [ref=e281]: PLACED
+                  - checkbox "Select SMC_RJ_1h_0_2_10828_1200" [ref=e282]
+              - generic [ref=e283]:
+                - generic [ref=e284]: "Price: 215.386"
+                - generic [ref=e285]: "TP: 215.3964"
+                - generic [ref=e286]: "SL: 215.262"
+                - generic [ref=e287]: "RR: 0.2"
+                - generic [ref=e288]: "Volume: 5.20%"
+                - generic [ref=e289]: "-"
+              - generic [ref=e290]:
+                - generic [ref=e291]: "ChartTF: 5m, HTF: 60"
+                - generic [ref=e292]: "Strategy: Hung-SMC"
+                - generic [ref=e293]: "Note: Hung-SMC | 5m | RJ.1h.0.2 | Ba ie Touch (suppo t touch)"
+          - article [ref=e294]:
+            - 'link "GBPJPY BUY LIMIT SMC_RJ_1h_1_10828_1202 4/15/2026, 1:41:01 PM PLACED Select SMC_RJ_1h_1_10828_1202 Price: 215.386 TP: 215.486 SL: 215.262 RR: 1 Volume: 5.20% - ChartTF: 5m, HTF: 60 Strategy: Hung-SMC Note: Hung-SMC | 5m | RJ.1h.1 | Ba ie Touch (suppo t touch)" [ref=e295] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_1h_1_10828_1202
+              - generic [ref=e296]:
+                - generic [ref=e297]:
+                  - generic [ref=e298]: GBPJPY
+                  - generic [ref=e299]: BUY
+                  - generic [ref=e300]: LIMIT
+                  - generic [ref=e301]: SMC_RJ_1h_1_10828_1202
+                  - generic [ref=e302]: 4/15/2026, 1:41:01 PM
+                - generic [ref=e304]:
+                  - generic [ref=e305]: PLACED
+                  - checkbox "Select SMC_RJ_1h_1_10828_1202" [ref=e306]
+              - generic [ref=e307]:
+                - generic [ref=e308]: "Price: 215.386"
+                - generic [ref=e309]: "TP: 215.486"
+                - generic [ref=e310]: "SL: 215.262"
+                - generic [ref=e311]: "RR: 1"
+                - generic [ref=e312]: "Volume: 5.20%"
+                - generic [ref=e313]: "-"
+              - generic [ref=e314]:
+                - generic [ref=e315]: "ChartTF: 5m, HTF: 60"
+                - generic [ref=e316]: "Strategy: Hung-SMC"
+                - generic [ref=e317]: "Note: Hung-SMC | 5m | RJ.1h.1 | Ba ie Touch (suppo t touch)"
+          - article [ref=e318]:
+            - 'link "GBPJPY BUY LIMIT SMC_RJ_1h_0_5_10828_1201 4/15/2026, 1:41:01 PM PLACED Select SMC_RJ_1h_0_5_10828_1201 Price: 215.386 TP: 215.43 SL: 215.262 RR: 0.5 Volume: 5.20% - ChartTF: 5m, HTF: 60 Strategy: Hung-SMC Note: Hung-SMC | 5m | RJ.1h.0.5 | Ba ie Touch (suppo t touch)" [ref=e319] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_1h_0_5_10828_1201
+              - generic [ref=e320]:
+                - generic [ref=e321]:
+                  - generic [ref=e322]: GBPJPY
+                  - generic [ref=e323]: BUY
+                  - generic [ref=e324]: LIMIT
+                  - generic [ref=e325]: SMC_RJ_1h_0_5_10828_1201
+                  - generic [ref=e326]: 4/15/2026, 1:41:01 PM
+                - generic [ref=e328]:
+                  - generic [ref=e329]: PLACED
+                  - checkbox "Select SMC_RJ_1h_0_5_10828_1201" [ref=e330]
+              - generic [ref=e331]:
+                - generic [ref=e332]: "Price: 215.386"
+                - generic [ref=e333]: "TP: 215.43"
+                - generic [ref=e334]: "SL: 215.262"
+                - generic [ref=e335]: "RR: 0.5"
+                - generic [ref=e336]: "Volume: 5.20%"
+                - generic [ref=e337]: "-"
+              - generic [ref=e338]:
+                - generic [ref=e339]: "ChartTF: 5m, HTF: 60"
+                - generic [ref=e340]: "Strategy: Hung-SMC"
+                - generic [ref=e341]: "Note: Hung-SMC | 5m | RJ.1h.0.5 | Ba ie Touch (suppo t touch)"
+          - article [ref=e342]:
+            - 'link "GBPJPY BUY LIMIT SMC_RJ_1h_1_10824_1199 4/15/2026, 1:21:01 PM TP Select SMC_RJ_1h_1_10824_1199 Price: 1.49855 TP: 215.486 SL: 215.262 RR: 1 Volume: 0.01 $0.59 ChartTF: 5m, HTF: 60 Strategy: Hung-SMC Note: Hung-SMC | 5m | RJ.1h.1 | Ba ie Touch (suppo t touch)" [ref=e343] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_1h_1_10824_1199
+              - generic [ref=e344]:
+                - generic [ref=e345]:
+                  - generic [ref=e346]: GBPJPY
+                  - generic [ref=e347]: BUY
+                  - generic [ref=e348]: LIMIT
+                  - generic [ref=e349]: SMC_RJ_1h_1_10824_1199
+                  - generic [ref=e350]: 4/15/2026, 1:21:01 PM
+                - generic [ref=e352]:
+                  - generic [ref=e353]: TP
+                  - checkbox "Select SMC_RJ_1h_1_10824_1199" [ref=e354]
+              - generic [ref=e355]:
+                - generic [ref=e356]: "Price: 1.49855"
+                - generic [ref=e357]: "TP: 215.486"
+                - generic [ref=e358]: "SL: 215.262"
+                - generic [ref=e359]: "RR: 1"
+                - generic [ref=e360]: "Volume: 0.01"
+                - generic [ref=e361]: $0.59
+              - generic [ref=e362]:
+                - generic [ref=e363]: "ChartTF: 5m, HTF: 60"
+                - generic [ref=e364]: "Strategy: Hung-SMC"
+                - generic [ref=e365]: "Note: Hung-SMC | 5m | RJ.1h.1 | Ba ie Touch (suppo t touch)"
+          - article [ref=e366]:
+            - 'link "GBPJPY BUY LIMIT SMC_RJ_1h_0_5_10824_1198 4/15/2026, 1:21:01 PM TP Select SMC_RJ_1h_0_5_10824_1198 Price: 1.49855 TP: 215.43 SL: 215.262 RR: 0.5 Volume: 0.01 $0.51 ChartTF: 5m, HTF: 60 Strategy: Hung-SMC Note: Hung-SMC | 5m | RJ.1h.0.5 | Ba ie Touch (suppo t touch)" [ref=e367] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_1h_0_5_10824_1198
+              - generic [ref=e368]:
+                - generic [ref=e369]:
+                  - generic [ref=e370]: GBPJPY
+                  - generic [ref=e371]: BUY
+                  - generic [ref=e372]: LIMIT
+                  - generic [ref=e373]: SMC_RJ_1h_0_5_10824_1198
+                  - generic [ref=e374]: 4/15/2026, 1:21:01 PM
+                - generic [ref=e376]:
+                  - generic [ref=e377]: TP
+                  - checkbox "Select SMC_RJ_1h_0_5_10824_1198" [ref=e378]
+              - generic [ref=e379]:
+                - generic [ref=e380]: "Price: 1.49855"
+                - generic [ref=e381]: "TP: 215.43"
+                - generic [ref=e382]: "SL: 215.262"
+                - generic [ref=e383]: "RR: 0.5"
+                - generic [ref=e384]: "Volume: 0.01"
+                - generic [ref=e385]: $0.51
+              - generic [ref=e386]:
+                - generic [ref=e387]: "ChartTF: 5m, HTF: 60"
+                - generic [ref=e388]: "Strategy: Hung-SMC"
+                - generic [ref=e389]: "Note: Hung-SMC | 5m | RJ.1h.0.5 | Ba ie Touch (suppo t touch)"
+          - article [ref=e390]:
+            - 'link "GBPJPY BUY LIMIT SMC_RJ_1h_0_2_10824_1197 4/15/2026, 1:21:01 PM TP Select SMC_RJ_1h_0_2_10824_1197 Price: 1.49855 TP: 215.3964 SL: 215.262 RR: 0.2 Volume: 0.01 $0.51 ChartTF: 5m, HTF: 60 Strategy: Hung-SMC Note: Hung-SMC | 5m | RJ.1h.0.2 | Ba ie Touch (suppo t touch)" [ref=e391] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_1h_0_2_10824_1197
+              - generic [ref=e392]:
+                - generic [ref=e393]:
+                  - generic [ref=e394]: GBPJPY
+                  - generic [ref=e395]: BUY
+                  - generic [ref=e396]: LIMIT
+                  - generic [ref=e397]: SMC_RJ_1h_0_2_10824_1197
+                  - generic [ref=e398]: 4/15/2026, 1:21:01 PM
+                - generic [ref=e400]:
+                  - generic [ref=e401]: TP
+                  - checkbox "Select SMC_RJ_1h_0_2_10824_1197" [ref=e402]
+              - generic [ref=e403]:
+                - generic [ref=e404]: "Price: 1.49855"
+                - generic [ref=e405]: "TP: 215.3964"
+                - generic [ref=e406]: "SL: 215.262"
+                - generic [ref=e407]: "RR: 0.2"
+                - generic [ref=e408]: "Volume: 0.01"
+                - generic [ref=e409]: $0.51
+              - generic [ref=e410]:
+                - generic [ref=e411]: "ChartTF: 5m, HTF: 60"
+                - generic [ref=e412]: "Strategy: Hung-SMC"
+                - generic [ref=e413]: "Note: Hung-SMC | 5m | RJ.1h.0.2 | Ba ie Touch (suppo t touch)"
+          - article [ref=e414]:
+            - 'link "EURSGD BUY LIMIT SMC_RJ_1h_1_10908_641 4/15/2026, 1:19:05 PM TP Select SMC_RJ_1h_1_10908_641 Price: 187.415 TP: 1.49906 SL: 1.49804 RR: 1 Volume: 0.01 $0.51 ChartTF: 1m, HTF: 60 Strategy: Hung-SMC Note: Hung-SMC | 1m | RJ.1h.1 | Ba ie Touch (suppo t touch)" [ref=e415] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_1h_1_10908_641
+              - generic [ref=e416]:
+                - generic [ref=e417]:
+                  - generic [ref=e418]: EURSGD
+                  - generic [ref=e419]: BUY
+                  - generic [ref=e420]: LIMIT
+                  - generic [ref=e421]: SMC_RJ_1h_1_10908_641
+                  - generic [ref=e422]: 4/15/2026, 1:19:05 PM
+                - generic [ref=e424]:
+                  - generic [ref=e425]: TP
+                  - checkbox "Select SMC_RJ_1h_1_10908_641" [ref=e426]
+              - generic [ref=e427]:
+                - generic [ref=e428]: "Price: 187.415"
+                - generic [ref=e429]: "TP: 1.49906"
+                - generic [ref=e430]: "SL: 1.49804"
+                - generic [ref=e431]: "RR: 1"
+                - generic [ref=e432]: "Volume: 0.01"
+                - generic [ref=e433]: $0.51
+              - generic [ref=e434]:
+                - generic [ref=e435]: "ChartTF: 1m, HTF: 60"
+                - generic [ref=e436]: "Strategy: Hung-SMC"
+                - generic [ref=e437]: "Note: Hung-SMC | 1m | RJ.1h.1 | Ba ie Touch (suppo t touch)"
+          - article [ref=e438]:
+            - 'link "EURSGD BUY LIMIT SMC_RJ_1h_0_2_10908_639 4/15/2026, 1:19:01 PM TP Select SMC_RJ_1h_0_2_10908_639 Price: 187.415 TP: 1.498652 SL: 1.49804 RR: 0.2 Volume: 0.01 $0.51 ChartTF: 1m, HTF: 60 Strategy: Hung-SMC Note: Hung-SMC | 1m | RJ.1h.0.2 | Ba ie Touch (suppo t touch)" [ref=e439] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_1h_0_2_10908_639
+              - generic [ref=e440]:
+                - generic [ref=e441]:
+                  - generic [ref=e442]: EURSGD
+                  - generic [ref=e443]: BUY
+                  - generic [ref=e444]: LIMIT
+                  - generic [ref=e445]: SMC_RJ_1h_0_2_10908_639
+                  - generic [ref=e446]: 4/15/2026, 1:19:01 PM
+                - generic [ref=e448]:
+                  - generic [ref=e449]: TP
+                  - checkbox "Select SMC_RJ_1h_0_2_10908_639" [ref=e450]
+              - generic [ref=e451]:
+                - generic [ref=e452]: "Price: 187.415"
+                - generic [ref=e453]: "TP: 1.498652"
+                - generic [ref=e454]: "SL: 1.49804"
+                - generic [ref=e455]: "RR: 0.2"
+                - generic [ref=e456]: "Volume: 0.01"
+                - generic [ref=e457]: $0.51
+              - generic [ref=e458]:
+                - generic [ref=e459]: "ChartTF: 1m, HTF: 60"
+                - generic [ref=e460]: "Strategy: Hung-SMC"
+                - generic [ref=e461]: "Note: Hung-SMC | 1m | RJ.1h.0.2 | Ba ie Touch (suppo t touch)"
+          - article [ref=e462]:
+            - 'link "EURSGD BUY LIMIT SMC_RJ_1h_0_5_10908_640 4/15/2026, 1:19:01 PM TP Select SMC_RJ_1h_0_5_10908_640 Price: 187.415 TP: 1.498805 SL: 1.49804 RR: 0.5 Volume: 0.01 $0.51 ChartTF: 1m, HTF: 60 Strategy: Hung-SMC Note: Hung-SMC | 1m | RJ.1h.0.5 | Ba ie Touch (suppo t touch)" [ref=e463] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_1h_0_5_10908_640
+              - generic [ref=e464]:
+                - generic [ref=e465]:
+                  - generic [ref=e466]: EURSGD
+                  - generic [ref=e467]: BUY
+                  - generic [ref=e468]: LIMIT
+                  - generic [ref=e469]: SMC_RJ_1h_0_5_10908_640
+                  - generic [ref=e470]: 4/15/2026, 1:19:01 PM
+                - generic [ref=e472]:
+                  - generic [ref=e473]: TP
+                  - checkbox "Select SMC_RJ_1h_0_5_10908_640" [ref=e474]
+              - generic [ref=e475]:
+                - generic [ref=e476]: "Price: 187.415"
+                - generic [ref=e477]: "TP: 1.498805"
+                - generic [ref=e478]: "SL: 1.49804"
+                - generic [ref=e479]: "RR: 0.5"
+                - generic [ref=e480]: "Volume: 0.01"
+                - generic [ref=e481]: $0.51
+              - generic [ref=e482]:
+                - generic [ref=e483]: "ChartTF: 1m, HTF: 60"
+                - generic [ref=e484]: "Strategy: Hung-SMC"
+                - generic [ref=e485]: "Note: Hung-SMC | 1m | RJ.1h.0.5 | Ba ie Touch (suppo t touch)"
+          - article [ref=e486]:
+            - 'link "EURSGD BUY LIMIT SMC_RJ_1h_1_10884_638 4/15/2026, 12:55:02 PM TP Select SMC_RJ_1h_1_10884_638 Price: 1.49855 TP: 1.49906 SL: 1.49804 RR: 1 Volume: 0.01 $0.42 ChartTF: 1m, HTF: 60 Strategy: Hung-SMC Note: Hung-SMC | 1m | RJ.1h.1 | Ba ie Touch (suppo t touch)" [ref=e487] [cursor=pointer]':
+              - /url: /ui/trades/SMC_RJ_1h_1_10884_638
+              - generic [ref=e488]:
+                - generic [ref=e489]:
+                  - generic [ref=e490]: EURSGD
+                  - generic [ref=e491]: BUY
+                  - generic [ref=e492]: LIMIT
+                  - generic [ref=e493]: SMC_RJ_1h_1_10884_638
+                  - generic [ref=e494]: 4/15/2026, 12:55:02 PM
+                - generic [ref=e496]:
+                  - generic [ref=e497]: TP
+                  - checkbox "Select SMC_RJ_1h_1_10884_638" [ref=e498]
+              - generic [ref=e499]:
+                - generic [ref=e500]: "Price: 1.49855"
+                - generic [ref=e501]: "TP: 1.49906"
+                - generic [ref=e502]: "SL: 1.49804"
+                - generic [ref=e503]: "RR: 1"
+                - generic [ref=e504]: "Volume: 0.01"
+                - generic [ref=e505]: $0.42
+              - generic [ref=e506]:
+                - generic [ref=e507]: "ChartTF: 1m, HTF: 60"
+                - generic [ref=e508]: "Strategy: Hung-SMC"
+                - generic [ref=e509]: "Note: Hung-SMC | 1m | RJ.1h.1 | Ba ie Touch (suppo t touch)"
+        - generic [ref=e510]:
+          - combobox [ref=e511]:
+            - option "10/page"
+            - option "20/page" [selected]
+            - option "50/page"
+            - option "100/page"
+            - option "200/page"
+          - button "«" [disabled] [ref=e512] [cursor=pointer]
+          - button "‹" [disabled] [ref=e513] [cursor=pointer]
+          - generic [ref=e514]: Page 1 / 10
+          - button "›" [ref=e515] [cursor=pointer]
+          - button "»" [ref=e516] [cursor=pointer]
+```
+
+# Test source
+
+```ts
+  1  | import { test, expect } from "@playwright/test";
+  2  | 
+  3  | const API_KEY = process.env.API_KEY || "";
+  4  | const API_BASE = process.env.BASE_URL || "http://139.59.211.192";
+  5  | 
+  6  | test.beforeEach(async ({ page }) => {
+  7  |   await page.addInitScript(([apiKey, apiBase]) => {
+  8  |     if (apiKey) {
+  9  |       localStorage.setItem("tvbridge_api_key", apiKey);
+  10 |     }
+  11 |     if (apiBase) {
+  12 |       localStorage.setItem("tvbridge_api_base", apiBase);
+  13 |     }
+  14 |   }, [API_KEY, API_BASE]);
+  15 | });
+  16 | 
+  17 | test("dashboard page loads data", async ({ page }) => {
+  18 |   await page.goto("dashboard");
+  19 |   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible({ timeout: 20_000 });
+  20 |   await expect(page.getByText("Loading dashboard...")).toHaveCount(0);
+  21 |   await expect(page.locator(".error")).toHaveCount(0);
+  22 |   await expect(page.getByText("Total Trades")).toBeVisible();
+  23 | });
+  24 | 
+  25 | test("trades page loads list panel", async ({ page }) => {
+  26 |   await page.goto("trades");
+> 27 |   await expect(page.getByRole("heading", { name: "Trades" })).toBeVisible({ timeout: 20_000 });
+     |                                                               ^ Error: expect(locator).toBeVisible() failed
+  28 |   await expect(page.getByText("Loading trades...")).toHaveCount(0);
+  29 |   await expect(page.locator(".error")).toHaveCount(0);
+  30 |   await expect(page.getByRole("heading", { name: "Filters" })).toBeVisible();
+  31 | });
+  32 | 
+```

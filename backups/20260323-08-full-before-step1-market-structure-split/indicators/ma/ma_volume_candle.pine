@@ -1,8 +1,0 @@
-//@version=3
-study(title="Volume Candle", shorttitle="VolumeCandle", overlay=true)
-periodo = input(20,'Period')
-fator=input(1.25,'Proportion to average:(1,25 = 125% of average', minval=0)
-up = close > open 
-down=open>close
-pesado = volume>(ema(volume,periodo)*fator)
-barcolor((pesado and up)? lime:(pesado and down)?red:up?silver:gray)

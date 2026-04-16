@@ -1,19 +1,20 @@
 # SOP: Add Task
 
-**Goal:** Correctly intake a random user request, format it, assign a priority, and place it in the Backlog.
+Goal: intake a new feature request and register it correctly before planning or coding.
 
-## 1. Intake & Normalize
-- Read user prompt. Break down the request into actionable development units.
-- Strip emotional formatting; extract pure technical requirements.
+## Steps
 
-## 2. Open Backlog
-- Modify `.agents/backlog.md`.
-- Format new entries strictly as:
-  `- [ ] [YYYY-MM-DD HH:MM] [Module] [Author: AI/User] Task: Brief Description. (P0/P1/P2)`
-  - P0 = Critical break / Stop the world.
-  - P1 = High priority feature / Core to the sprint.
-  - P2 = "Nice to have" / UI Polish.
+1. Parse the request into one clear task statement.
+2. Choose priority intent:
+- `P0`: system down / data loss / production block.
+- `P1`: high-impact feature or reliability improvement.
+- `P2`: enhancement/polish.
+3. Append to `.agents/backlog.md` using strict format:
+- `- [ ] [YYYY-MM-DD HH:MM] [Module/File] [Author: User] Feature: <description>.`
+4. Confirm in chat that task was queued.
+5. Ask whether to prioritize into sprint now or keep in backlog.
 
-## 3. Notify User
-- Provide a short confirmation that the task is queued.
-- Ask the user if they wish to transition straight into `11-sop-plan-feature.md` for this task, or leave it in the backlog for later.
+## Output Contract
+
+- Never skip backlog registration for a new feature.
+- Do not start coding from this SOP; hand off to `11-sop-plan-feature.md`.

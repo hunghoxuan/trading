@@ -1,0 +1,12 @@
+
+Running 2 tests using 1 worker
+
+  ✓  1 tests/e2e/remote-ui.spec.js:17:1 › dashboard page loads data (612ms)
+  ✓  2 tests/e2e/remote-ui.spec.js:25:1 › trades page loads list panel (379ms)
+
+  2 passed (1.6s)
+
+To open last HTML report run:
+[36m[39m
+[36m  npx playwright show-report[39m
+[36m[39m

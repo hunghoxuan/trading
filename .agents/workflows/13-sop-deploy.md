@@ -1,20 +1,28 @@
 # SOP: Deploy
 
-**Goal:** Safely ship code from the local development workspace to the production VPS without causing downtime.
+Goal: deploy webhook/webhook-ui safely to VPS with reproducible commands.
 
-## 1. Pre-Deployment Check
-- Ensure all logic is fully coded and `SERVER_VERSION` / `EA_BUILD_VERSION` / `version` was bumped.
-- Ensure all files are saved.
+## Steps
 
-## 2. Commit to Git
-- All deployment relies on Git. The VPS pulls from `origin/main`.
-- Command: `git add . && git commit -m "chore: deployment sync" && git push origin main`
+1. Pre-check
+- Confirm approved code is committed.
+- Confirm required build version constants are bumped.
 
-## 3. Execute Deploy Pipeline
-- The VPS requires specific environment routing to automatically deploy the Webhook server.
-- Command: `VPS_APP_DIR=/opt/trading bash scripts/deploy_webhook.sh`
+2. Git push (non-interactive, explicit)
+- `git add <changed-files>`
+- `git commit -m "<message>"`
+- `git push origin main`
 
-## 4. Verification
-- Wait for the bash script to return `[PM2] [webhook](X) ✓`.
-- Ensure there are no cascading Node errors in the output logs.
-- The deployment is only successful if the health check curl returns HTTP 200.
+3. Deploy webhook stack
+- `PUSH_FIRST=0 VPS_APP_DIR=/opt/trading bash scripts/deploy_webhook.sh`
+
+4. Verify
+- PM2 processes online (`webhook`, `webhook-ui`).
+- Health endpoints return success.
+- UI loads expected bundle/version.
+
+## Required verification commands
+
+- `ssh root@139.59.211.192 "pm2 ls"`
+- `ssh root@139.59.211.192 "curl -sS http://127.0.0.1:80/health && echo"`
+- `ssh root@139.59.211.192 "curl -sS http://127.0.0.1:80/mt5/health && echo"`

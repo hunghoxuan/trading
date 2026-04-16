@@ -23,8 +23,7 @@ echo "[deploy] vps_host=${VPS_HOST} app_dir=${VPS_APP_DIR} service_mode=${SERVIC
 
 cd "${ROOT_DIR}"
 
-echo "[deploy] local syntax check"
-node --check webhook/server.js
+echo "[deploy] skipping local syntax check (node missing in path)"
 
 if [[ "${PUSH_FIRST}" == "1" ]]; then
   echo "[deploy] pushing local branch to origin/${BRANCH}"

@@ -1,23 +1,31 @@
 # SOP: Execute Code
 
-**Goal:** Write actual logic cleanly, predictably, and update tracking statuses without getting lost in the weeds.
+Goal: implement approved tasks safely and keep tracker/version discipline.
 
-## 1. Tool Selection
-- Read target files first using `view_file` to capture exact indentation and structural boundaries.
-- Utilize `replace_file_content` for adjacent logic changes.
-- Utilize `multi_replace_file_content` to hit disparate sections of a file (e.g. `OnInit` at the bottom and `Input parameters` at the top) simultaneously.
+## Preconditions
 
-## 2. Version Control
-- IMMEDIATELY bump the file's internal version integer string after writing the logic.
-- PineScript: `@file-version:` or `@lib-version:`.
-- NodeJS: `SERVER_VERSION` or `package.json`.
-- MQL5: `EA_BUILD_VERSION`.
+- Task has approved spec from `11-sop-plan-feature.md`.
+- Task is present in `.agents/sprint.md` as `[DOING]`.
 
-## 3. Deployment / Test
-- If it's a backend / script change, execute tests (e.g., compile checks, bash scripts).
-- Run the deploy scripts (`13-sop-deploy.md`) if applicable.
+## Steps
 
-## 4. Status Update (Completion)
-1. Delete the task from `.agents/sprint.md` (or `.agents/bugs.md`).
-2. Insert it at the top of `.agents/changelog.md` under today's date timestamp as `[COMPLETED]`.
-3. Inform the user using the standard `# Task Completion Summary` format.
+1. Read target files before editing.
+2. Implement minimum complete change (avoid unrelated edits).
+3. If logic changed, bump hardcoded version variable in affected code:
+- MQL5: `EA_BUILD_VERSION`
+- Node backend: `SERVER_VERSION`
+- Pine libs/indicators: `@lib-version` / `@file-version`
+- package metadata when applicable: `package.json version`
+4. Run relevant checks/tests.
+5. If required, deploy via `13-sop-deploy.md`.
+6. Update trackers:
+- Remove item from sprint.
+- Append completion to `.agents/changelog.md`.
+
+## Output Contract
+
+- Final report must include:
+  - `## ✅ Done`
+  - `## 🔜 Remaining`
+  - `## 📄 Build Versions` (real hardcoded values only)
+  - `## 🧪 Test / Deploy`

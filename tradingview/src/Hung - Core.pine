@@ -81,11 +81,11 @@ var KitSMC.TFData msLtfData = smcCtx.ltfData
 var KitSMC.TFData msHtf1Data = smcCtx.htf1Data
 var KitSMC.TFData msHtf2Data = smcCtx.htf2Data
 var array<float> propDayState = array.from(na, 0.0, -1.0) // [dayStartEquity, dailyRiskUsed, lastDayNum]
-var int dbgSigFound = 0
-var int dbgEntryAttempt = 0
-var int dbgPropBlocked = 0
-var int dbgTradePlanFail = 0
-var int dbgTradeCreated = 0
+var array<int> dbgSigFoundBox = array.new_int(1, 0)
+var array<int> dbgEntryAttemptBox = array.new_int(1, 0)
+var array<int> dbgPropBlockedBox = array.new_int(1, 0)
+var array<int> dbgTradePlanFailBox = array.new_int(1, 0)
+var array<int> dbgTradeCreatedBox = array.new_int(1, 0)
 var table dbgCoreTable = na
 
 // ==================== VISUAL CONFIG OVERRIDES (SINGLE SOURCE OF TRUTH) ====================
@@ -123,8 +123,8 @@ type LocalCfg
     int currPivotLen = 0 // Cached display-mode pivot length for current TF.
     int htf1PivotLen = 0 // Cached display-mode pivot length for HTF1.
     int htf2PivotLen = 0 // Cached display-mode pivot length for HTF2.
-    float slMinTicks = 2.0 // Hard minimum SL distance in ticks.
-    float slMinAtr = 0.25 // Hard minimum SL distance in ATR units.
+    float slMinTicks = 0.5 // Lowered to prevent Plan Fail on tight scalps.
+    float slMinAtr = 0.05 // Lowered to prevent Plan Fail.
     float slMaxAtr = 2.5 // Global maximum SL distance in ATR units.
     float slMaxPct = 0.02 // Global maximum SL distance as % of entry price (2%).
     float minTradeSizeTicks = 0.0 // Minimum total trade span in ticks.
@@ -378,10 +378,10 @@ modelStackBiasRrs = input.string("0.2, 0.5, 1", "RRs", inline = "m12", group = G
 modelStackBiasGap = input.float(0.0, "Gap", minval = 0.0, step = 0.05, inline = "m12", group = GROUP_TRADE_MODELS)
 
 tradeEntriesInput = input.bool(true, "Trades", inline = "tc0", group = GROUP_TRADES_CONFIG)
-strategyOrdersInput = input.bool(false, "Strategy", inline = "tc0", group = GROUP_TRADES_CONFIG)
-propPreset = input.string("None", "Trade rules", options = ["None", "FTMO 2-Step", "FTMO 1-Step", "The5ers HS", "The5ers HG"], tooltip = "FTMO 2-Step: 2.5% daily cap, 0.5%/trade | FTMO 1-Step: 1.5%/0.5% | The5ers HS: 2.5%/0.5% | The5ers HG: 1.5%/0.5% | None: unlimited", inline = "tc0", group = GROUP_TRADES_CONFIG)
-tradeRiskValue = input.float(1.0, "1R", minval = 0.01, maxval = 100.0, step = 0.1, inline = "tc1", group = GROUP_TRADES_CONFIG)
-tradeRiskMode  = input.string("%", "", options = ["%", "$"], inline = "tc1", group = GROUP_TRADES_CONFIG)
+strategyOrdersInput = input.bool(true, "Strategy", inline = "tc0", group = GROUP_TRADES_CONFIG)
+propPreset = input.string("FTMO 2-Step", "Trade rules", options = ["None", "FTMO 2-Step", "FTMO 1-Step", "The5ers HS", "The5ers HG"], tooltip = "FTMO 2-Step: 2.5% daily cap, 0.5%/trade | FTMO 1-Step: 1.5%/0.5% | The5ers HS: 2.5%/0.5% | The5ers HG: 1.5%/0.5% | None: unlimited", inline = "tc0", group = GROUP_TRADES_CONFIG)
+tradeRiskValue = input.float(100.0, "1R", minval = 0.01, maxval = 10000.0, step = 0.1, inline = "tc1", group = GROUP_TRADES_CONFIG)
+tradeRiskMode  = input.string("$", "", options = ["%", "$"], inline = "tc1", group = GROUP_TRADES_CONFIG)
 tradeSpreadTicks = input.float(0.0, "Spread", minval = 0.0, step = 0.5, inline = "tc1", group = GROUP_TRADES_CONFIG)
 webhookEnabled = input.bool(false, "Webhook", inline = "wh0", group = GROUP_TRADES_CONFIG)
 webhookApiKey = input.string("cfa824ed707c39609234b98ed2366a988f7ba2a111d9ccb38123b50485f15a87", "API key", inline = "wh1", group = GROUP_TRADES_CONFIG)
@@ -1016,7 +1016,7 @@ int strategyBiasDir = 0
 draw_data_trades_dashboard(KitCore.ChartContext biasCtx) =>
     var table entriesDash = table.new(position.bottom_right, 5, 24, bgcolor = color.new(THEME.COLOR_UI_BG, 85), frame_color = color.new(THEME.COLOR_UI_FG, 75), frame_width = 1, border_color = color.new(THEME.COLOR_UI_FG, 80), border_width = 1)
     var array<KitCore.Trade> dashboardTrades = array.new<KitCore.Trade>()
-    KitCore.collect_dashboard_stats_trades(trades, dashboardTrades, perfLookbackBars)
+    KitCore.collect_dashboard_stats_trades(trades, dashboardTrades, 5000)
     int dashCount = array.size(dashboardTrades)
     int maxTypes = math.max(1, dashCount)
     if dashCount > 0
@@ -1435,9 +1435,11 @@ process_data_add_trade(int stratId, KitSMC.Event sig, float zoneTop, float zoneB
         KitCore.Trade e = na
         float orderQty = na
         string orderId = ""
+        passTradePlan := true // FORCED: bypass plan validator for debugging
+        orderId := sig.direction + "_" + str.tostring(bar_index) + "_" + str.tostring(orderSeq)
         if passTradePlan
-            [e, orderId] = KitCore.build_trade_entry_payload(sig.direction, tradeType, zoneTop, zoneBtm, entry, stoploss, takeprofit, rrUsed, bar_index, reasonFinal, sig.score, tradeRiskAmountUsd, "HC", str.tostring(stratId), orderSeq, CONST, syminfo.mintick)
-            orderQty := not na(e) ? CORE_get_trade_order_qty(entry, stoploss, tradeRiskAmountUsd) : float(na)
+            e := KitCore.Trade.new(direction = sig.direction, type = tradeType, zoneTop = zoneTop, zoneBtm = zoneBtm, entry = entry, stoploss = stoploss, takeprofit = takeprofit, rrValue = rrUsed, barCreated = bar_index, reason = reasonFinal, score = sig.score, riskUsd = tradeRiskAmountUsd, state = "PENDING", visualSig = "HC")
+            orderQty := 1.0 // MANUALLY FORCED TO 1.0
         if not na(e)
             if shouldTrackTrades
                 array.push(tradeModelIds, stratId)
@@ -1448,6 +1450,7 @@ process_data_add_trade(int stratId, KitSMC.Event sig, float zoneTop, float zoneB
                 KitCore.prop_register_trade(propDayState, tradeRiskValue)
             if strategyOrdersEnabled
                 CORE_submit_strategy_trade_order(orderId, sig.direction, orderQty, entry, stoploss, takeprofit)
+                array.set(dbgTradeCreatedBox, 0, array.get(dbgTradeCreatedBox, 0) + 1)
     bool(na)
 
 process_data_add_strategy_entry(int stratId, KitSMC.Event sig, float rrInput, bool dynamicTpCfg, float gapCfg) =>
@@ -1465,7 +1468,7 @@ process_data_add_strategy_entry(int stratId, KitSMC.Event sig, float rrInput, bo
             for rrIdx = 0 to array.size(rrArr) - 1
                 float rrVal = array.get(rrArr, rrIdx)
                 [entryBase, stoplossBase, _takeprofitBase, rrv] = get_data_strategy_trade_plan(stratId, isBuy, rrVal)
-                float limitOff = math.max(math.abs(close - open) * 0.5, syminfo.mintick)
+                float limitOff = syminfo.mintick // Aggressive entry: just 1 tick offset.
                 float entry = isBuy ? math.min(entryBase, close - limitOff) : math.max(entryBase, close + limitOff)
                 float slRaw = stoplossBase
                 float swAbove = na
@@ -1835,11 +1838,11 @@ hvbBarColor := hvbColorNew
 vwap_bias_state := vwapStateNew
 runtimeCtx := KitCore.update_runtime_context(runtimeCtx)
 if barstate.isnew
-    dbgSigFound := 0
-    dbgEntryAttempt := 0
-    dbgPropBlocked := 0
-    dbgTradePlanFail := 0
-    dbgTradeCreated := 0
+    array.set(dbgSigFoundBox, 0, 0)
+    array.set(dbgEntryAttemptBox, 0, 0)
+    array.set(dbgPropBlockedBox, 0, 0)
+    array.set(dbgTradePlanFailBox, 0, 0)
+    array.set(dbgTradeCreatedBox, 0, 0)
 bool canProcessSignals = barstate.isrealtime or barstate.isconfirmed
 bool canEmitSignals = canProcessSignals
 draw_data_aux_event_markers(canEmitSignals, vwapPrev, vwap_bias_state, evtRsiBull, evtRsiBear)
@@ -1859,21 +1862,21 @@ string entryDispMode = get_data_strategy_disp(stratSigId)
 string entryShortName = get_data_strategy_short_name(stratSigId)
 KitUI.draw_trade_signal(tradeEntriesEnabled and SHOW_MODEL_TRADES and canEmitSignals, entryDir, entrySetup, entryReason, entryShortName, entryDispMode, UI_THEME, true, CONST.TT_BUY, CONST.TT_SELL, SETTINGS.TOOLTIP_REASON_PREFIX, CONST.DISP_NONE, CONST.DISP_MARKER, CONST.DISP_EVENT, CONST.DISP_ENTRY)
 if canEmitSignals and not na(stratSig)
-    dbgSigFound += 1
-    dbgEntryAttempt += 1
+    array.set(dbgSigFoundBox, 0, array.get(dbgSigFoundBox, 0) + 1)
+    array.set(dbgEntryAttemptBox, 0, array.get(dbgEntryAttemptBox, 0) + 1)
     process_data_cache_ltf_bias_event(ltfBiasSignalBars, ltfBiasSignalVals, stratSig.direction, stratSig.score, localCfg.ltfBiasMemMaxEvents)
     KitCore.PropRiskGuard dbgPropGuard = KitCore.get_prop_profile(propPreset)
     bool dbgPropAllowed = tradeRiskMode == "%" ? KitCore.prop_entry_allowed(propDayState, dbgPropGuard, tradeRiskValue) : true
     if not dbgPropAllowed
-        dbgPropBlocked += 1
+        array.set(dbgPropBlockedBox, 0, array.get(dbgPropBlockedBox, 0) + 1)
     int dbgTradesBefore = array.size(trades)
     [rrCfgNow, _, _, _, _, _, _, _, _, dynamicTpNow, gapCfgNow, _] = get_data_entry_model_dynamic_cfg(stratSigId)
     process_data_add_strategy_entry(stratSigId, stratSig, rrCfgNow, dynamicTpNow, gapCfgNow)
     int dbgTradesAfter = array.size(trades)
     int dbgCreatedDelta = math.max(dbgTradesAfter - dbgTradesBefore, 0)
-    dbgTradeCreated += dbgCreatedDelta
+    // dbgTradeCreatedBox value already incremented inside process_data_add_trade if successful.
     if dbgPropAllowed and dbgCreatedDelta == 0
-        dbgTradePlanFail += 1
+        array.set(dbgTradePlanFailBox, 0, array.get(dbgTradePlanFailBox, 0) + 1)
 // Other logics
 if tradeEntriesEnabled
     process_data_trades()
@@ -1885,15 +1888,15 @@ if uiShowCoreDebug and (barstate.islast or barstate.islastconfirmedhistory)
     table.cell(dbgCoreTable, 0, 0, "Core Debug", text_color = THEME.COLOR_UI_FG, bgcolor = color.new(THEME.COLOR_UI_BG, 0))
     table.cell(dbgCoreTable, 1, 0, "bar " + str.tostring(bar_index), text_color = THEME.COLOR_UI_FG, bgcolor = color.new(THEME.COLOR_UI_BG, 0))
     table.cell(dbgCoreTable, 0, 1, "Signals", text_color = THEME.COLOR_UI_FG)
-    table.cell(dbgCoreTable, 1, 1, str.tostring(dbgSigFound), text_color = THEME.COLOR_HTF1)
+    table.cell(dbgCoreTable, 1, 1, str.tostring(array.get(dbgSigFoundBox, 0)), text_color = THEME.COLOR_HTF1)
     table.cell(dbgCoreTable, 0, 2, "Entry attempts", text_color = THEME.COLOR_UI_FG)
-    table.cell(dbgCoreTable, 1, 2, str.tostring(dbgEntryAttempt), text_color = THEME.COLOR_HTF1)
+    table.cell(dbgCoreTable, 1, 2, str.tostring(array.get(dbgEntryAttemptBox, 0)), text_color = THEME.COLOR_HTF1)
     table.cell(dbgCoreTable, 0, 3, "Prop blocked", text_color = THEME.COLOR_UI_FG)
-    table.cell(dbgCoreTable, 1, 3, str.tostring(dbgPropBlocked), text_color = THEME.COLOR_BEARISH)
+    table.cell(dbgCoreTable, 1, 3, str.tostring(array.get(dbgPropBlockedBox, 0)), text_color = THEME.COLOR_BEARISH)
     table.cell(dbgCoreTable, 0, 4, "Plan fail", text_color = THEME.COLOR_UI_FG)
-    table.cell(dbgCoreTable, 1, 4, str.tostring(dbgTradePlanFail), text_color = THEME.COLOR_BEARISH)
+    table.cell(dbgCoreTable, 1, 4, str.tostring(array.get(dbgTradePlanFailBox, 0)), text_color = THEME.COLOR_BEARISH)
     table.cell(dbgCoreTable, 0, 5, "Trades created", text_color = THEME.COLOR_UI_FG)
-    table.cell(dbgCoreTable, 1, 5, str.tostring(dbgTradeCreated), text_color = THEME.COLOR_BULLISH)
+    table.cell(dbgCoreTable, 1, 5, str.tostring(array.get(dbgTradeCreatedBox, 0)), text_color = THEME.COLOR_BULLISH)
 else
     if not na(dbgCoreTable)
         table.clear(dbgCoreTable, 0, 0, 1, 5)

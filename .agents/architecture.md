@@ -17,7 +17,26 @@
   - Server still has TODO for heartbeat upsert into `accounts` (not fully wired yet).
 - Signals currently key primarily by `signal_id` + `user_id`; `account_id` linkage is partial/roadmap.
 
-## Dashboard Spec v1 (Design-First, No-Code Yet)
+## Dashboard Status (Implemented + Remaining)
+
+### Implemented (2026-04-15)
+
+- New backend endpoint: `GET /mt5/dashboard/advanced`.
+- Supported filters: `user_id`, `symbol`, `strategy`, `range`, `metric`.
+- Advanced aggregates delivered:
+  - summary tiers (`OPEN`, `WINS_LOSSES`, `CLOSED`)
+  - status breakdown
+  - period totals (`today`, `week`, `month`, `year`) with total and avg pnl
+  - top winrate tables by symbol, entry model, account
+  - pnl time series
+- UI dashboard consumes this endpoint and renders filter row, metric toggle, tier cards, status chart, and top tables.
+
+### Remaining Gap
+
+- Account balance/equity/free-margin cards are not fully wired from `accounts` heartbeat snapshots yet.
+- E2E smoke tests for updated dashboard layout/selectors need refresh.
+
+## Dashboard Spec v1 (Historical Design Notes)
 
 ### Goals
 
@@ -62,7 +81,11 @@
 
 - Recent trades table/list with key columns:
   - time, symbol, side, order_type, status, pnl, note, signal_id
-- Click opens trade detail/timeline page
+- [x] Phase 1: Core Webhook Receiver & DB Schema
+- [x] Phase 2: MT5 - TVBridgeEA (Reliable Handshake Build 16.06)
+- [x] Phase 3: Web Dashboard & Stats (Basic)
+- [x] Phase 2.5: Perfect Sync & Data Rescue (Reliability hardening)
+- [ ] Phase 4: Multiple User Support & Licensing
 
 ### Filter Behavior
 
@@ -78,7 +101,22 @@
 - **Win Rate:** `TP / (TP + SL + FAIL + CANCEL + REJECT)` for selected range.
 - **OTHER bucket:** status in `{FAIL, CANCEL, REJECT}` plus unknown failure-like statuses.
 
-### API Contract (Planned)
+### 3. Synchronization & Reliability Layer (The "Perfect Sync")
+
+To ensure 100% data integrity between the MT5 EA and the Web VPS, the following mechanisms are mandatory:
+
+#### A. Event-Driven status Reporting (The Observer Pattern)
+*   **Request-Based (Do NOT use)**: Reporting status based on the immediate return value of `trade.Buy()`. This is unreliable due to the asynchronous nature of MT5.
+*   **Transaction-Based (Mandatory)**: Status updates (`START`, `TP`, `SL`, `CANCEL`) must ONLY be emitted by the `OnTradeTransaction` event handler. This ensures the VPS only reflects what has physically occurred in the trading account.
+
+#### B. Reliable Handshake (Retry Queue)
+*   The EA maintains a persistent **Acknowledgment Queue**.
+*   Any status update that fails to reach the VPS (due to network or server downtime) is stored and retried until a successful `200 OK` is received.
+
+#### C. Smart Log Recovery (Parsing Fallback)
+*   The VPS server implements a **Log Parser**. If structured data fields (like risk money) are missing from a payload, the server must scan the text notes/logs sent by the EA to extract and "rescue" numeric values (e.g., parsing `risk$=100.29` from a text string).
+
+### 4. Deployment Environment
 
 - `GET /mt5/dashboard/summary?range=today|week|month|year&symbols=...`
   - returns:

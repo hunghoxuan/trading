@@ -1,19 +1,22 @@
 # SOP: Plan Feature
 
-**Goal:** Ensure heavy/large tasks are scoped, approved, and tracked before wasting token limits on incorrect assumptions.
+Goal: produce an approved, implementation-ready design before writing code.
 
-## 1. Write the Spec
-- Open `.agents/sprint.md`.
-- Add the task under `## Currently Doing` or `## Up Next` as a `[DOING]` or `[TODO]` item.
-- Underneath the bullet, use italicized sub-bullets to build the plan:
-  - *- Phase 1: Define X*
-  - *- Phase 2: Refactor Y*
+## Steps
 
-## 2. Check Architecture Constraints
-- Read `.agents/rules.md`. Ensure the plan doesn't violate rules (e.g. modifying `Kit` files without a local replica first, if the rule exists, or bypassing DB schema rules).
-- Review `architecture.md` (or update it if adding major modules).
+1. Read constraints from:
+- `.agents/rules.md`
+- `.agents/architecture.md`
+2. Produce a concise spec containing:
+- Scope and non-scope
+- API/data/schema impacts
+- UI/UX behavior (if applicable)
+- Risk + rollback
+- Test/deploy plan
+3. Register status in `.agents/sprint.md` as `[DOING]` only when user wants this task prioritized now.
+4. Ask explicit approval to proceed to coding.
 
-## 3. Request Approval
-- Present the spec directly to the user.
-- Explicitly ask: "Does this plan look correct? Should I proceed with coding Phase 1?"
-- Await the user's "Yes" before invoking `replace_file_content`.
+## Approval Gate (Mandatory)
+
+- No production code changes until user explicitly approves the spec.
+- If approval is not explicit, keep task in planning state.

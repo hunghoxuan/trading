@@ -30,7 +30,7 @@ input int    InpVirtualMaxHoldMinutes = 0; // 0=disable time stop, else close af
 input bool   InpStrictSymbolResolve = true;   // Ignore signal if symbol cannot be resolved.
 input bool   InpEnableDuplicateGate = true;   // Ignore duplicated signal_id.
 input int    InpDedupKeepSeconds    = 86400;  // Keep processed signal_id cache for this many seconds.
-input int    InpMaxSignalAgeSeconds = 1800;   // 0 = disable. Ignore signal if too old.
+input int    InpMaxSignalAgeSeconds = 7200;   // 0 = disable. Ignore signal if too old.
 input bool   InpBacktestMode        = false;  // Replay signals from file in Strategy Tester.
 input string InpBacktestFileCommon  = "tvbridge_signals.csv"; // Common/Files CSV.
 input bool   InpBacktestHasHeader   = true;
@@ -38,7 +38,7 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-16.03";
+string EA_BUILD_VERSION = "2026-04-16.12";
 
 input string InpMappingFile = "TVBridge_Mappings.csv";
 
@@ -128,6 +128,28 @@ bool     g_posMapOpenedAckSent[];
 
 ulong    g_ordMapTicket[];
 string   g_ordMapSignalId[];
+datetime g_syncLastTime = 0;
+
+// Reliable Ack Queue
+string   g_ackQSignalId[];
+string   g_ackQStatus[];
+string   g_ackQTicket[];
+string   g_ackQError[];
+string   g_ackQBody[];
+int      g_ackQRetryCount[];
+
+struct SVpsSyncSignal
+{
+   string signal_id;
+   string status;
+   string symbol;
+   string action;
+   string ticket;
+   double volume;
+   double sl;
+   double tp;
+   double pnl;
+};
 
 string JsonGetString(const string json, const string key)
 {
@@ -1479,7 +1501,7 @@ void Ack(const string signalId, const string status, const string ticket, const 
    body += "\"sl_pips\":" + DoubleToString(g_ackSlPips, 2) + ",";
    body += "\"tp_pips\":" + DoubleToString(g_ackTpPips, 2) + ",";
    body += "\"risk_money_actual\":" + DoubleToString(g_ackRiskMoneyActual, 2) + ",";
-   body += "\"reward_money_planned\":" + DoubleToString(g_ackRewardMoneyPlanned, 2) + ",";
+   body += "\"reward_money_planned\":" + DoubleToString(g_ackRewardMoneyPlanned, 4) + ",";
    if(g_ackHasPnlRealized)
       body += "\"pnl_money_realized\":" + DoubleToString(g_ackPnlRealized, 2) + ",";
    else
@@ -1487,7 +1509,65 @@ void Ack(const string signalId, const string status, const string ticket, const 
    body += "\"signal_ts\":" + IntegerToString((int)g_ackSignalTs) + ",";
    body += "\"exec_ts\":" + IntegerToString((int)g_ackExecTs);
    body += "}";
-   HttpPostJson(url, body);
+
+   int n = ArraySize(g_ackQSignalId);
+   ArrayResize(g_ackQSignalId, n + 1);
+   ArrayResize(g_ackQStatus, n+1);
+   ArrayResize(g_ackQTicket, n+1);
+   ArrayResize(g_ackQError, n+1);
+   ArrayResize(g_ackQBody, n+1);
+   ArrayResize(g_ackQRetryCount, n+1);
+   
+   g_ackQSignalId[n] = signalId;
+   g_ackQStatus[n] = status;
+   g_ackQTicket[n] = ticket;
+   g_ackQError[n] = err;
+   g_ackQBody[n] = body;
+   g_ackQRetryCount[n] = 0;
+   
+   Print("Queued Ack status=", status, " id=", signalId, " ticket=", ticket);
+}
+
+void ProcessAckQueue()
+{
+   int n = ArraySize(g_ackQSignalId);
+   if(n == 0) return;
+   
+   string url = InpServerBaseUrl + "/mt5/ea/ack";
+   int w = 0;
+   for(int i=0; i<n; i++)
+   {
+      string body = g_ackQBody[i];
+      if(HttpPostJson(url, body))
+      {
+         Print("Reliable Ack SENT OK: status=", g_ackQStatus[i], " id=", g_ackQSignalId[i], " ticket=", g_ackQTicket[i]);
+         continue;
+      }
+      
+      g_ackQRetryCount[i]++;
+      if(g_ackQRetryCount[i] < 100) // Keep trying
+      {
+         if(w != i)
+         {
+            g_ackQSignalId[w] = g_ackQSignalId[i];
+            g_ackQStatus[w] = g_ackQStatus[i];
+            g_ackQTicket[w] = g_ackQTicket[i];
+            g_ackQError[w] = g_ackQError[i];
+            g_ackQBody[w] = g_ackQBody[i];
+            g_ackQRetryCount[w] = g_ackQRetryCount[i];
+         }
+         w++;
+      }
+      else {
+         Print("Reliable Ack GAVE UP: status=", g_ackQStatus[i], " id=", g_ackQSignalId[i]);
+      }
+   }
+   ArrayResize(g_ackQSignalId, w);
+   ArrayResize(g_ackQStatus, w);
+   ArrayResize(g_ackQTicket, w);
+   ArrayResize(g_ackQError, w);
+   ArrayResize(g_ackQBody, w);
+   ArrayResize(g_ackQRetryCount, w);
 }
 
 void CloseBySymbol(const string symbol)
@@ -1677,6 +1757,35 @@ bool ExecuteSignal(const string signalId,
    g_ackExecTs = TimeCurrent();
    g_ackRetcode = 0;
    g_ackRetmsg = "";
+
+   // --- INITIAL TELEMETRY CALCULATION (DO THIS FIRST SO WE HAVE DATA EVEN ON ERRORS) ---
+   g_ackPipValuePerLot = 0;
+   g_ackSlPips = 0;
+   g_ackTpPips = 0;
+   g_ackRiskMoneyActual = 0;
+   g_ackRewardMoneyPlanned = 0;
+   
+   double pps = SymbolInfoDouble(symbolRaw, SYMBOL_POINT);
+   double pV = 0;
+   if(pps > 0.0)
+   {
+      double profitOnePip = 0;
+      if(OrderCalcProfit(actionRaw=="BUY"?ORDER_TYPE_BUY:ORDER_TYPE_SELL, symbolRaw, 1.0, 1.0, 1.0 + pps, profitOnePip))
+         pV = MathAbs(profitOnePip);
+   }
+   g_ackPipValuePerLot = pV;
+   
+   double entryRef = (entry > 0.0) ? entry : ((actionRaw=="BUY") ? SymbolInfoDouble(symbolRaw, SYMBOL_ASK) : SymbolInfoDouble(symbolRaw, SYMBOL_BID));
+   if(pps > 0.0)
+   {
+      double slDist = (sl > 0.0) ? MathAbs(entryRef - sl) : 0.0;
+      double tpDist = (tp > 0.0) ? MathAbs(tp - entryRef) : 0.0;
+      g_ackSlPips = slDist / pps; 
+      g_ackTpPips = tpDist / pps;
+   }
+   g_ackRiskMoneyActual = volume * g_ackPipValuePerLot * g_ackSlPips;
+   g_ackRewardMoneyPlanned = volume * g_ackPipValuePerLot * g_ackTpPips;
+   // -----------------------------------------------------------------------------------
 
    string action = actionRaw;
    StringToUpper(action);
@@ -1876,9 +1985,14 @@ bool ExecuteSignal(const string signalId,
             if(StringLen(volumeNote) > 0) volumeNote += " ";
             volumeNote += marginNote;
          }
-         volumeUse = marginVolume;
+         // 3. New task: Periodic state reconciliation
+      if(TimeCurrent() - g_syncLastTime >= 300)
+      {
+         SyncWithVps();
+         g_syncLastTime = TimeCurrent();
       }
    }
+}
    g_ackVolumeNote = volumeNote;
    g_ackUsedVolume = volumeUse;
    if(action == "BUY" || action == "SELL")
@@ -1893,38 +2007,7 @@ bool ExecuteSignal(const string signalId,
       }
    }
 
-   // Compute pip telemetry now that both stops and volume are finalized.
-   {
-      int    digits    = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
-      double point     = SymbolInfoDouble(symbol, SYMBOL_POINT);
-      if(point <= 0.0) point = 0.00001;
-      double pipMult   = (digits == 3 || digits == 5) ? 10.0 : 1.0;
-      double pipSize   = point * pipMult;
-      g_ackPipsPerPoint = pipMult;
-
-      ENUM_ORDER_TYPE ot = (action == "BUY") ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
-      MqlTick tk;
-      double pipVal = 0.0;
-      if(SymbolInfoTick(symbol, tk) && pipSize > 0.0)
-      {
-         double refEntry = (action == "BUY") ? tk.ask : tk.bid;
-         double refExit  = (action == "BUY") ? refEntry + pipSize : refEntry - pipSize;
-         double profitOnePip = 0.0;
-         if(OrderCalcProfit(ot, symbol, 1.0, refEntry, refExit, profitOnePip))
-            pipVal = MathAbs(profitOnePip);
-      }
-      g_ackPipValuePerLot = pipVal;
-
-      if(pipSize > 0.0)
-      {
-         // Use the signal entry as reference if a limit order; fall back to current ask/bid.
-         double ref = (entry > 0.0) ? entry : ((action=="BUY") ? tk.ask : tk.bid);
-         g_ackSlPips = (slUse > 0.0) ? MathAbs(ref - slUse) / pipSize : 0.0;
-         g_ackTpPips = (tpUse > 0.0) ? MathAbs(tpUse - ref) / pipSize : 0.0;
-      }
-      g_ackRiskMoneyActual    = (pipVal > 0.0) ? volumeUse * pipVal * g_ackSlPips : 0.0;
-      g_ackRewardMoneyPlanned = (pipVal > 0.0) ? volumeUse * pipVal * g_ackTpPips : 0.0;
-   }
+   // Telemetry already populated at top of function.
    bool usedMarketExecution = false;
    string tradeComment = signalId;
    if(StringLen(tradeComment) > 31)
@@ -2234,10 +2317,19 @@ void OnTimer()
    if(InpBacktestMode)
       return;
 
+   ProcessAckQueue();
    ProcessStopRetryQueue();
    ProcessVirtualGuards();
 
    datetime now = TimeCurrent();
+   
+   // Periodic state reconciliation
+   if(now - g_syncLastTime >= 300)
+   {
+      SyncWithVps();
+      g_syncLastTime = now;
+   }
+
    static datetime lastHeartbeat = 0;
    if(now - lastHeartbeat >= 5)
    {
@@ -2303,16 +2395,23 @@ void OnTimer()
    {
       g_dbgPollExecOk++;
       g_dbgLastPollSummary = "poll#" + IntegerToString(g_dbgPollCount) + " EXEC_OK id=" + signalId + " action=" + action + " ticket=" + ticket;
-      Ack(signalId, "OK", ticket, "");
+      // If market, go straight to START. If pending, use SUBMITTED (maps to PLACED).
+      string initialStatus = (orderType == "market") ? "START" : "SUBMITTED";
+      Ack(signalId, initialStatus, ticket, "exec_ok_" + orderType);
    }
    else
    {
       g_dbgPollExecFail++;
       g_dbgLastPollSummary = "poll#" + IntegerToString(g_dbgPollCount) + " EXEC_FAIL id=" + signalId + " action=" + action + " err=" + err;
-      string ackStatus = "FAIL";
-      if(StringFind(err, "Expired signal ignored:") == 0)
-         ackStatus = "EXPIRED";
+      
+      // Tell VPS about the failure immediately so it doesn't stay LOCKED and block the queue.
+      string ackStatus = (StringFind(err, "Expired") == 0) ? "EXPIRED" : "FAIL";
       Ack(signalId, ackStatus, "", err);
+      
+      if(StringFind(err, "Expired") < 0 && StringFind(err, "Symbol not found") < 0)
+      {
+         Print("Broker error occurred (", err, "), reported FAIL to VPS to unblock queue.");
+      }
    }
    Print("TVBridgeEA poll summary: ", g_dbgLastPollSummary);
    RefreshDebugPanel();
@@ -2421,6 +2520,8 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
    GetSignalIdByPositionTicket(positionTicket, signalId, posIdx);
    if(StringLen(signalId) == 0)
       GetSignalIdByOrderTicket(orderTicket, signalId, ordIdx);
+   if(StringLen(signalId) == 0 && orderTicket > 0 && HistoryOrderSelect(orderTicket))
+      signalId = HistoryOrderGetString(orderTicket, ORDER_COMMENT);
    if(StringLen(signalId) == 0)
       signalId = dealComment;
    if(StringLen(signalId) == 0)
@@ -2486,6 +2587,111 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
    if(ordIdx >= 0)
       RemoveOrderMapAt(ordIdx);
    CleanupVirtualGuardByTicket(positionTicket);
+}
+
+void SyncWithVps()
+{
+   string url = InpServerBaseUrl + "/mt5/ea/sync?api_key=" + InpEaApiKey;
+   string response = "";
+   if(!HttpGet(url, response)) return;
+
+   int countIdx = StringFind(response, "\"count\":");
+   if(countIdx < 0) return;
+   
+   int sigsIdx = StringFind(response, "\"signals\":[");
+   if(sigsIdx < 0) return;
+   
+   string updates = "";
+   int foundMismatches = 0;
+
+   // Simple incremental parser for the sync array
+   int cursor = sigsIdx + 11;
+   while(cursor < StringLen(response))
+   {
+      int start = StringFind(response, "{", cursor);
+      if(start < 0) break;
+      int end = StringFind(response, "}", start);
+      if(end < 0) break;
+      cursor = end + 1;
+      
+      string obj = StringSubstr(response, start, end - start + 1);
+      string sid = JsonGetString(obj, "signal_id");
+      string status = JsonGetString(obj, "status");
+      ulong ticket = (ulong)StringToInteger(JsonGetString(obj, "ticket"));
+      string sym = JsonGetString(obj, "symbol");
+      
+      bool isClosed = false;
+      string newStatus = "";
+      double finalPnl = 0;
+
+      // Logic: If VPS thinks it's active, check if MT5 agrees.
+      if(status == "OK" || status == "START")
+      {
+         if(ticket > 0)
+         {
+            if(!PositionSelectByTicket(ticket))
+            {
+               isClosed = true;
+               // Determine why it closed
+               if(HistoryDealSelect(ticket)) // Note: ticket here might be posId or dealId depending on server storage
+               {
+                  // We'll rely on the server resolving detailed reasons if possible, 
+                  // but here we just push a 'RECONCILED' state.
+                  newStatus = "FAIL"; // Placeholder for closed
+                  if(HistorySelect(0, TimeCurrent()))
+                  {
+                     int total = HistoryDealsTotal();
+                     for(int i=total-1; i>=0; i--)
+                     {
+                        ulong d = HistoryDealGetTicket(i);
+                        if(HistoryDealGetInteger(d, DEAL_POSITION_ID) == (long)ticket)
+                        {
+                           finalPnl += HistoryDealGetDouble(d, DEAL_PROFIT) + HistoryDealGetDouble(d, DEAL_SWAP) + HistoryDealGetDouble(d, DEAL_COMMISSION);
+                           long reason = HistoryDealGetInteger(d, DEAL_REASON);
+                           if(reason == DEAL_REASON_TP) newStatus = "TP";
+                           else if(reason == DEAL_REASON_SL) newStatus = "SL";
+                           else newStatus = "CANCEL";
+                        }
+                     }
+                  }
+               }
+               else {
+                  newStatus = "CANCEL";
+               }
+            }
+         }
+      }
+      else if(status == "PLACED")
+      {
+         if(ticket > 0 && !OrderSelect(ticket))
+         {
+            // Pending order gone: either filled (should have handled in START) OR cancelled/expired.
+            // If it's not a position now, it's definitely gone.
+            if(!PositionSelectByTicket(ticket)) // Position ID often matches initial order ticket
+            {
+               isClosed = true;
+               newStatus = "CANCEL";
+            }
+         }
+      }
+
+      if(isClosed)
+      {
+         if(foundMismatches > 0) updates += ",";
+         updates += "{\"signal_id\":\"" + sid + "\",\"status\":\"" + newStatus + "\",\"ticket\":\"" + IntegerToString((int)ticket) + "\",\"pnl\":" + DoubleToString(finalPnl, 2) + "}";
+         foundMismatches++;
+      }
+   }
+
+   if(foundMismatches > 0)
+   {
+      string body = "{\"api_key\":\"" + InpEaApiKey + "\",\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",\"updates\":[" + updates + "]}";
+      string bulkUrl = InpServerBaseUrl + "/mt5/ea/bulk-sync";
+      if(HttpPostJson(bulkUrl, body))
+      {
+         Print("SyncWithVps: Batch updated ", foundMismatches, " mismatches.");
+      }
+   }
 }
 
 int OnInit()

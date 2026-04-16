@@ -36,9 +36,12 @@ After **every** completed task or phase, end your response with exactly this for
 - **Overnight Autonomous Mode:** Run automatically during 23:00-07:00 (Europe/Berlin) without per-step confirmations for approved plans.
 - **Skill Extraction (Workflows):** If you perform any repeatable, multi-step chore (e.g. updating DB schemas, deployments, deep refactors), or if the user asks, you MUST extract the execution sequence into a reusable workflow file natively saved in `.agents/workflows/XX-action-name.md`.
 
-## 3. Pine Script Coding Standards
+# Mandatory Technical Standards
+1. **Production Database**: Always prioritize **Postgres** logic. The local `.env` may show SQLite, but the VPS uses a remote Postgres instance.
+2. **Environment Verification**: Before making database changes, ALWAYS check the `https://signal.mozasolution.com/mt5/health` endpoint to verify the active storage engine.
+3. **MQL5 Synchronization**: Use `OnTradeTransaction` for trade acknowledgements to ensure one-to-one mapping between broker tickets and signal IDs.
 
-- **Version Headers:** KIT library files use `@lib-version: N`. Indicator files use `@file-version: MMDD-NN`. Increment `@lib-version` on code additions and update `import` statements across indicators. Do NOT bump for bug fixes unless the API changes.
+## 3. Pine Script Coding Standards
 - **Naming:** 
   - `get_data_xxx` (gathering), `draw_data_xxx` (rendering), `process_data_xxx` (orchestration).
   - Use `local_` prefix for indicator-local helpers. 

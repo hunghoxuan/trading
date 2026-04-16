@@ -1,0 +1,19 @@
+[start] 20260413-075422
+BASE_URL=http://139.59.211.192
+VPS=root@139.59.211.192:/opt/trading
+[1/3] Cleaning old test rows (tvtest_*) from remote Postgres...
+[2/3] Pushing 5 random signals via /mt5/tv/webhook ...
+[ok] pushed: tvtest_20260413-075422_1_329 SELL BTCUSD
+[ok] pushed: tvtest_20260413-075422_2_26602 BUY ETHUSD
+[ok] pushed: tvtest_20260413-075422_3_17374 BUY BTCUSD
+[ok] pushed: tvtest_20260413-075422_4_29130 SELL ETHUSD
+[ok] pushed: tvtest_20260413-075422_5_22617 SELL ETHUSD
+[3/3] Verifying pushed signals are queryable...
+[ok] verified: tvtest_20260413-075422_1_329
+[ok] verified: tvtest_20260413-075422_2_26602
+[ok] verified: tvtest_20260413-075422_3_17374
+[ok] verified: tvtest_20260413-075422_4_29130
+[ok] verified: tvtest_20260413-075422_5_22617
+[done] PASS
+report=/Users/macmini/Trade/Bot/trading/test-results/webhook-push-random-20260413-075422.log
+latest=/Users/macmini/Trade/Bot/trading/test-results/webhook-push-random-latest.log

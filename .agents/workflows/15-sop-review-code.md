@@ -1,26 +1,25 @@
 # SOP: Review Code
 
-**Goal:** A strict, non-skippable self-review checklist the AI must run before finalizing a coding task and marking it as complete.
+Goal: perform mandatory pre-ship review before claiming completion.
 
 ## Checklist
 
-### 1. Variables & Orphans
-- Did I declare a variable but never use it?
-- Did I delete a variable that another part of the file still references?
+1. Scope correctness
+- Change matches approved spec only.
+- No unrelated edits.
 
-### 2. Version Bumping
-- Did I manually bump the version string INSIDE the file?
-  - `server.js` -> `SERVER_VERSION`
-  - `.mq5` -> `EA_BUILD_VERSION`
-  - `.pine` -> `@lib-version: XX` or `@file-version: XX`
+2. Build version discipline
+- Hardcoded version vars bumped when logic changed.
+- Versions reported in final response are exact in-file values.
 
-### 3. File Syntax (The "Unclosed Bracket" Check)
-- Did the chunk replacement accidentally delete a closing `}` or bracket? (Very common AI mistake).
-- If I'm unsure, I must run a syntax check (e.g., `node -c server.js`) before deploying.
+3. Syntax & safety
+- Run syntax/build checks for touched runtimes.
+- Confirm no missing braces/imports/undefined references.
 
-### 4. Rule Adherence
-- Pine Script: Did I maintain the strict 5-section layout?
-- Node.js: Did I adhere to the local PM2/Postgres constraints?
-- MQL5: Are my `OrderSelect` and `HistoryOrderSelect` logic branches distinct and safe?
+4. Rules compliance
+- `.agents/rules.md` constraints respected.
+- Tracker files updated (sprint/changelog/bugs/backlog as needed).
 
-*If any step is violated, I must fix it before outputting `## ✅ Done`.*
+5. Deploy readiness
+- Explicit test/deploy commands prepared.
+- Rollback path understood for risky infra/backend changes.

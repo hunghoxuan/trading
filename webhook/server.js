@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-03");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-04");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1156,6 +1156,52 @@ async function mt5InitBackend() {
           raw_json: r.raw_json ? JSON.parse(r.raw_json) : {},
         }));
       },
+      async listActiveSignals() {
+        return db.prepare(`
+          SELECT signal_id, created_at, user_id, action, symbol, volume, sl, tp, status,
+                 ack_ticket, ack_status, pnl_money_realized, entry_price_exec, sl_exec, tp_exec
+          FROM signals
+          WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'OK')
+          ORDER BY created_at ASC
+        `).all().map((r) => ({
+          ...r,
+          raw_json: r.raw_json ? JSON.parse(r.raw_json) : {},
+        }));
+      },
+      async bulkAckSignals(updates) {
+        if (!Array.isArray(updates) || !updates.length) return { updated: 0 };
+        const now = mt5NowIso();
+        const updateStmt = db.prepare(`
+          UPDATE signals
+          SET status = ?,
+              ack_at = ?,
+              ack_status = ?,
+              ack_ticket = COALESCE(?, ack_ticket),
+              pnl_money_realized = COALESCE(?, pnl_money_realized),
+              closed_at = CASE WHEN (? IN ('TP','SL','FAIL','CANCEL','EXPIRED')) THEN ? ELSE closed_at END
+          WHERE signal_id = ?
+        `);
+        let count = 0;
+        const tx = db.transaction((arr) => {
+          for (const u of arr) {
+            const internalStatus = mt5StatusToInternal(u.status);
+            const ackStatus = mt5CanonicalStoredStatus(u.status);
+            const res = updateStmt.run(
+              internalStatus,
+              now,
+              ackStatus,
+              u.ticket ?? null,
+              u.pnl ?? null,
+              internalStatus,
+              now,
+              u.signal_id
+            );
+            count += res.changes || 0;
+          }
+        });
+        tx(updates);
+        return { updated: count };
+      },
       async appendSignalEvent(signalId, eventType, payload = {}) {
         db.prepare(`
           INSERT INTO signal_events (signal_id, event_type, event_time, payload_json)
@@ -1599,6 +1645,53 @@ async function mt5InitBackend() {
         `, [mt5NowIso(), signalId]);
         await client.query("COMMIT");
         return mt5MapDbRow(next);
+      } finally {
+        client.release();
+      }
+    },
+    async listActiveSignals() {
+      const res = await pool.query(`
+        SELECT signal_id, created_at, user_id, action, symbol, volume, sl, tp, status,
+               ack_ticket, ack_status, pnl_money_realized, entry_price_exec, sl_exec, tp_exec
+        FROM signals
+        WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'OK')
+        ORDER BY created_at ASC
+      `);
+      return res.rows.map(mt5MapDbRow);
+    },
+    async bulkAckSignals(updates) {
+      if (!Array.isArray(updates) || !updates.length) return { updated: 0 };
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        let count = 0;
+        const now = mt5NowIso();
+        for (const u of updates) {
+          const internalStatus = mt5StatusToInternal(u.status);
+          const ackStatus = mt5CanonicalStoredStatus(u.status);
+          const res = await client.query(`
+            UPDATE signals
+            SET status = $1,
+                ack_at = $2,
+                ack_status = $3,
+                ack_ticket = COALESCE($4, ack_ticket),
+                pnl_money_realized = COALESCE($5, pnl_money_realized),
+                closed_at = CASE WHEN ($6 IN ('TP','SL','FAIL','CANCEL','EXPIRED')) THEN $7 ELSE closed_at END
+            WHERE signal_id = $8
+          `, [
+            internalStatus,
+            now,
+            ackStatus,
+            u.ticket ?? null,
+            u.pnl ?? null,
+            internalStatus,
+            now,
+            u.signal_id
+          ]);
+          count += res.rowCount || 0;
+        }
+        await client.query("COMMIT");
+        return { updated: count };
       } catch (err) {
         await client.query("ROLLBACK");
         throw err;
@@ -3015,6 +3108,37 @@ const server = http.createServer(async (req, res) => {
     });
     res.end(body);
     return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/mt5/ea/sync") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    const apiKey = String(url.searchParams.get("api_key") || "");
+    if (CFG.mt5EaApiKeys.size > 0 && !CFG.mt5EaApiKeys.has(apiKey)) return json(res, 401, { ok: false, error: "invalid ea api key" });
+    try {
+      const signals = await mt5ListActiveSignals();
+      const data = signals.map(s => ({
+        signal_id: s.signal_id, status: s.status, symbol: s.symbol, action: s.action,
+        ticket: s.ack_ticket || "", pnl: s.pnl_money_realized || 0,
+        volume: s.volume, sl: s.sl, tp: s.tp
+      }));
+      return json(res, 200, { ok: true, count: data.length, signals: data });
+    } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
+  }
+
+  if (req.method === "POST" && url.pathname === "/mt5/ea/bulk-sync") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    try {
+      const payload = await readJson(req);
+      const apiKey = String(payload.api_key || "");
+      if (CFG.mt5EaApiKeys.size > 0 && !CFG.mt5EaApiKeys.has(apiKey)) return json(res, 401, { ok: false, error: "invalid ea api key" });
+      const updates = payload.updates || [];
+      if (!Array.isArray(updates)) return json(res, 400, { ok: false, error: "updates array required" });
+      const result = await mt5BulkAckSignals(updates);
+      for (const u of updates) {
+        await mt5AppendSignalEvent(u.signal_id, `EA_SYNC_${u.status}`, { ticket: u.ticket, pnl: u.pnl, account: payload.account_id });
+      }
+      return json(res, 200, { ok: true, updated: result.updated });
+    } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
   }
 
 
