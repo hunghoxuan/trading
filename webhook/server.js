@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-09");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-10");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1127,6 +1127,18 @@ async function mt5InitBackend() {
           signalId,
         );
       },
+      async findSignalById(signalId) {
+        const r = db.prepare(`SELECT * FROM signals WHERE signal_id = ? LIMIT 1`).get(String(signalId));
+        if (!r) return null;
+        return { ...r, raw_json: r.raw_json ? JSON.parse(r.raw_json) : {} };
+      },
+      async getSignalByTicket(ticket) {
+        const r = db.prepare(`
+          SELECT * FROM signals WHERE ack_ticket = ? LIMIT 1
+        `).get(String(ticket));
+        if (!r) return null;
+        return { ...r, raw_json: r.raw_json ? JSON.parse(r.raw_json) : {} };
+      },
       async listSignals(limit, statusFilter) {
         if (statusFilter) {
           return db.prepare(`
@@ -1155,6 +1167,13 @@ async function mt5InitBackend() {
           ...r,
           raw_json: r.raw_json ? JSON.parse(r.raw_json) : {},
         }));
+      },
+      async getSignalByTicket(ticket) {
+        const r = db.prepare(`
+          SELECT * FROM signals WHERE ack_ticket = ? LIMIT 1
+        `).get(String(ticket));
+        if (!r) return null;
+        return { ...r, raw_json: r.raw_json ? JSON.parse(r.raw_json) : {} };
       },
       async listActiveSignals() {
         return db.prepare(`
@@ -1762,6 +1781,14 @@ async function mt5InitBackend() {
       ]);
       return { changes: res.rowCount || 0 };
     },
+    async findSignalById(signalId) {
+      const res = await pool.query(`SELECT * FROM signals WHERE signal_id = $1 LIMIT 1`, [signalId]);
+      return res.rows[0] || null;
+    },
+    async getSignalByTicket(ticket) {
+      const res = await pool.query(`SELECT * FROM signals WHERE ack_ticket = $1 LIMIT 1`, [String(ticket)]);
+      return res.rows[0] || null;
+    },
     async listSignals(limit, statusFilter) {
       if (statusFilter) {
         const res = await pool.query(`
@@ -2175,6 +2202,11 @@ async function mt5PullAndLockSignalById(signalId) {
 async function mt5FindSignalById(signalId) {
   const b = await mt5Backend();
   return b.findSignalById(signalId);
+}
+
+async function mt5GetSignalByTicket(ticket) {
+  const b = await mt5Backend();
+  return b.getSignalByTicket(ticket);
 }
 
 async function mt5AckSignal(signalId, status, ticket, error, extra = {}) {
@@ -3211,23 +3243,30 @@ const server = http.createServer(async (req, res) => {
 
       // 1. Reconcile EA Active Trades -> VPS
       for (const s of activeSignals) {
-        // Find exact match by ID in active list
+        // Find match by ID first
         let sig = dbSignals.find(d => String(d.signal_id) === String(s.signal_id));
         
-        // If not in active list, check if it exists in DB at all (could be ghost-closed or failed)
+        // If not in active list, check if it exists in DB by ID
         if (!sig) {
           const rows = await mt5ListSignals(1, String(s.signal_id));
           if (rows && rows.length > 0) sig = rows[0];
         }
 
+        // If STILL not found, check if we have a signal with this ticket (HEALING mapping loss)
+        if (!sig && s.ticket) {
+          sig = await mt5GetSignalByTicket(String(s.ticket));
+        }
+
         if (sig) {
+          const actualSid = sig.signal_id; // Always use the correct ID from our DB
+
           // Resurrection / Unsticking / PnL Update
           const isLame = (sig.status === 'NEW' || sig.status === 'LOCKED' || sig.status === 'PLACED' || sig.status === 'OK');
           const isZombie = (sig.status === 'FAIL' || sig.status === 'CANCEL' || sig.status === 'EXPIRED');
           
           if (isLame || isZombie || Math.abs((sig.pnl_money_realized || 0) - (Number(s.pnl) || 0)) > 0.05) {
              updates.push({
-               signal_id: s.signal_id,
+               signal_id: actualSid, 
                status: s.status || 'START',
                ticket: s.ticket,
                pnl: s.pnl || 0,
@@ -3258,11 +3297,14 @@ const server = http.createServer(async (req, res) => {
           await mt5AppendSignalEvent(u.signal_id, `RECONCILE_${u.status}`, { note: u.note, account: payload.account_id });
         }
       }
-      
-      // Global Log of the Sync Call
+
+      // telemetry: Log the ID:Ticket mapping of what the EA sent
+      const telemetry = activeSignals.map(s => `${s.signal_id}:${s.ticket}`).slice(0, 20);
+
       await mt5AppendSignalEvent('SYSTEM_SYNC_PUSH', 'EA_SYNC_PUSH', { 
         account: payload.account_id, 
         active_count: activeSignals.length,
+        sent_telemetry: telemetry,
         updates_count: updates.length,
         reconciled_ids: updates.map(u => u.signal_id),
         updates_details: updates 
