@@ -65,6 +65,18 @@ function envStr(value, fallback = "") {
   return s === "" ? fallback : s;
 }
 
+function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
+  if (value instanceof Date) {
+    const ms = value.getTime();
+    return Number.isFinite(ms) ? new Date(ms).toISOString() : fallback;
+  }
+  const raw = String(value ?? "").trim();
+  if (!raw) return fallback;
+  const ms = Date.parse(raw);
+  if (!Number.isFinite(ms)) return fallback;
+  return new Date(ms).toISOString();
+}
+
 loadEnvFile();
 
 const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.17-46");
@@ -307,8 +319,8 @@ async function uiReadAuthStateByEmail(emailRaw) {
     is_active: normalizeUserActive(row.is_active, true),
     password_salt: String(row.password_salt || ""),
     password_hash: String(row.password_hash || ""),
-    updated_at: String(row.updated_at || ""),
-    created_at: String(row.created_at || ""),
+    updated_at: normalizeIsoTimestamp(row.updated_at, new Date().toISOString()),
+    created_at: normalizeIsoTimestamp(row.created_at, mt5NowIso()),
   };
 }
 
@@ -327,8 +339,8 @@ async function uiReadAuthStateByUserId(userIdRaw) {
     is_active: normalizeUserActive(row.is_active, true),
     password_salt: String(row.password_salt || ""),
     password_hash: String(row.password_hash || ""),
-    updated_at: String(row.updated_at || ""),
-    created_at: String(row.created_at || ""),
+    updated_at: normalizeIsoTimestamp(row.updated_at, new Date().toISOString()),
+    created_at: normalizeIsoTimestamp(row.created_at, mt5NowIso()),
   };
 }
 
@@ -343,8 +355,8 @@ async function uiWriteAuthState(nextState) {
     is_active: normalizeUserActive(nextState.is_active, true),
     password_salt: String(nextState.password_salt || ""),
     password_hash: String(nextState.password_hash || ""),
-    updated_at: String(nextState.updated_at || new Date().toISOString()),
-    created_at: String(nextState.created_at || mt5NowIso()),
+    updated_at: normalizeIsoTimestamp(nextState.updated_at, new Date().toISOString()),
+    created_at: normalizeIsoTimestamp(nextState.created_at, mt5NowIso()),
   });
 }
 
@@ -2273,8 +2285,8 @@ async function mt5InitBackend() {
           normalizeUserActive(user?.is_active, true) ? 1 : 0,
           String(user?.password_salt || ""),
           String(user?.password_hash || ""),
-          String(user?.updated_at || new Date().toISOString()),
-          String(user?.created_at || mt5NowIso()),
+          normalizeIsoTimestamp(user?.updated_at, new Date().toISOString()),
+          normalizeIsoTimestamp(user?.created_at, mt5NowIso()),
         );
         return { ok: true };
       },
@@ -3085,8 +3097,8 @@ async function mt5InitBackend() {
         normalizeUserActive(user?.is_active, true),
         String(user?.password_salt || ""),
         String(user?.password_hash || ""),
-        String(user?.updated_at || new Date().toISOString()),
-        String(user?.created_at || mt5NowIso()),
+        normalizeIsoTimestamp(user?.updated_at, new Date().toISOString()),
+        normalizeIsoTimestamp(user?.created_at, mt5NowIso()),
       ]);
       return { ok: true };
     },
