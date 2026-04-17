@@ -148,6 +148,13 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .danger-button:hover {
   background: rgba(239, 68, 68, 0.1);
 }
+.icon-button {
+  min-width: 30px;
+  height: 28px;
+  padding: 0 8px !important;
+  font-size: 14px;
+  line-height: 1;
+}
 
 /* Specific Components (Standardized Toolbars) */
 .toolbar-panel { 

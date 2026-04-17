@@ -52,6 +52,10 @@
 - Status/state visual rule:
   - Active/True -> yellow
   - Inactive/Disable/False -> gray
+- Button labeling rule:
+  - In grid/table action columns, use icon-only buttons to save horizontal space.
+  - In forms/detail panels, use icon + full text labels for clarity.
+  - Example: edit action uses a pencil icon.
 
 ## TradingView Emission Contract (Refactor-Safe)
 

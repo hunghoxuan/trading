@@ -480,12 +480,12 @@ export default function UsersPage({ authUser }) {
                 roleOptions={ROLE_OPTIONS}
                 showActive={false}
                 passwordLabel="Password"
-                primaryLabel="SAVE USER"
+                primaryLabel="💾 SAVE USER"
                 onPrimary={onCreateUser}
                 primaryDisabled={saving}
                 fieldErrors={createUserErrors}
                 formMessage={createUserAlert}
-                secondaryLabel="CANCEL"
+                secondaryLabel="✖ CANCEL"
                 onSecondary={cancelCreateMode}
                 secondaryDisabled={saving}
               />
@@ -507,12 +507,12 @@ export default function UsersPage({ authUser }) {
                 roleOptions={ROLE_OPTIONS}
                 disableRole={isDefaultUser}
                 disableActive={isDefaultUser || isSelf}
-                primaryLabel="SAVE USER"
+                primaryLabel="💾 SAVE USER"
                 onPrimary={onSaveProfile}
                 primaryDisabled={saving}
                 fieldErrors={profileErrors}
                 formMessage={profileAlert}
-                secondaryLabel="DEACTIVATE"
+                secondaryLabel="⏸ DEACTIVATE"
                 onSecondary={onDeactivateUser}
                 secondaryDisabled={saving || isDefaultUser || isSelf || !selectedUser.is_active}
                 secondaryDanger
@@ -553,7 +553,7 @@ export default function UsersPage({ authUser }) {
                       ) : null}
                       {accountAlert.text ? <div className={`form-message msg-${accountAlert.type || "error"}`}>{accountAlert.text}</div> : null}
                       <div style={{ display: "flex", gap: 8 }}>
-                        <button type="button" className="primary-button" onClick={onSaveAccount} disabled={saving} style={{ padding: "8px 16px" }}>SAVE ACCOUNT</button>
+                        <button type="button" className="primary-button" onClick={onSaveAccount} disabled={saving} style={{ padding: "8px 16px" }}>💾 SAVE ACCOUNT</button>
                         <button
                           type="button"
                           className="secondary-button"
@@ -565,7 +565,7 @@ export default function UsersPage({ authUser }) {
                           }}
                           disabled={saving}
                         >
-                          CANCEL
+                          ✖ CANCEL
                         </button>
                       </div>
                     </>
@@ -595,7 +595,9 @@ export default function UsersPage({ authUser }) {
                               <td style={{ textAlign: 'right' }}>
                                 <button
                                   type="button"
-                                  className="secondary-button"
+                                  className="secondary-button icon-button"
+                                  title="Edit account"
+                                  aria-label="Edit account"
                                   style={{ padding: "4px 10px" }}
                                   onClick={() => {
                                   setEditingAccountId(String(a.account_id || ""));
@@ -607,15 +609,17 @@ export default function UsersPage({ authUser }) {
                                     });
                                   }}
                                 >
-                                  EDIT
+                                  ✏
                                 </button>
                                 <button
                                   type="button"
-                                  className="danger-button"
+                                  className="danger-button icon-button"
+                                  title="Deactivate account"
+                                  aria-label="Deactivate account"
                                   style={{ padding: "4px 10px", marginLeft: 6 }}
                                   onClick={() => onDeactivateAccount(a)}
                                 >
-                                  DEACTIVATE
+                                  ⏸
                                 </button>
                               </td>
                             </tr>
@@ -644,7 +648,7 @@ export default function UsersPage({ authUser }) {
                       }}
                       disabled={saving}
                     >
-                      {accountFormOpen ? "CANCEL" : "CREATE ACCOUNT"}
+                      {accountFormOpen ? "✖ CANCEL" : "＋ CREATE ACCOUNT"}
                     </button>
                   </div>
                 </div>
@@ -662,8 +666,8 @@ export default function UsersPage({ authUser }) {
                           {apiKeyErrors.label ? <div className="field-validation msg-error">{apiKeyErrors.label}</div> : null}
                         </label>
                         <div style={{ display: "flex", gap: 8 }}>
-                          <button type="button" className="primary-button" onClick={onCreateApiKey} disabled={saving} style={{ padding: "8px 16px" }}>SAVE API KEY</button>
-                          <button type="button" className="secondary-button" onClick={() => { setApiKeyFormOpen(false); setApiKeyLabel(""); setApiKeyErrors({}); }} disabled={saving}>CANCEL</button>
+                          <button type="button" className="primary-button" onClick={onCreateApiKey} disabled={saving} style={{ padding: "8px 16px" }}>💾 SAVE API KEY</button>
+                          <button type="button" className="secondary-button" onClick={() => { setApiKeyFormOpen(false); setApiKeyLabel(""); setApiKeyErrors({}); }} disabled={saving}>✖ CANCEL</button>
                         </div>
                       </div>
                       {apiKeyAlert.text ? <div className={`form-message msg-${apiKeyAlert.type || "error"}`}>{apiKeyAlert.text}</div> : null}
@@ -686,16 +690,25 @@ export default function UsersPage({ authUser }) {
                             <td className="cell-minor">{k.key_masked || "-"}</td>
                             <td><span className={`badge ${k.is_active ? "ACTIVE" : "INACTIVE"}`}>{k.is_active ? "ACTIVE" : "INACTIVE"}</span></td>
                             <td style={{ textAlign: 'right' }}>
-                              <button type="button" className="secondary-button" style={{ padding: "4px 10px" }} onClick={() => onToggleApiKey(k)}>
-                                {k.is_active ? "DISABLE" : "ENABLE"}
+                              <button
+                                type="button"
+                                className="secondary-button icon-button"
+                                style={{ padding: "4px 10px" }}
+                                title={k.is_active ? "Disable API key" : "Enable API key"}
+                                aria-label={k.is_active ? "Disable API key" : "Enable API key"}
+                                onClick={() => onToggleApiKey(k)}
+                              >
+                                {k.is_active ? "⏸" : "▶"}
                               </button>
                               <button
                                 type="button"
-                                className="danger-button"
+                                className="danger-button icon-button"
+                                title="Delete API key"
+                                aria-label="Delete API key"
                                 style={{ padding: "4px 10px", marginLeft: 6 }}
                                 onClick={() => onDeleteApiKey(k)}
                               >
-                                DELETE
+                                🗑
                               </button>
                             </td>
                           </tr>
@@ -721,7 +734,7 @@ export default function UsersPage({ authUser }) {
                       }}
                       disabled={saving}
                     >
-                      {apiKeyFormOpen ? "CANCEL" : "CREATE API KEY"}
+                      {apiKeyFormOpen ? "✖ CANCEL" : "＋ CREATE API KEY"}
                     </button>
                   </div>
                   <div className="minor-text">API keys are active for API auth when status is ACTIVE (sent via x-api-key).</div>

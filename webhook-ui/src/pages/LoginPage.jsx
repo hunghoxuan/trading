@@ -51,7 +51,7 @@ export default function LoginPage({ onLogin }) {
         </label>
         {error ? <div className="error">{error}</div> : null}
         <button type="submit" className="secondary-button" disabled={loading} style={{ width: '100%', padding: '12px' }}>
-          {loading ? "AUTHORIZING..." : "SIGN IN"}
+          {loading ? "🔐 AUTHORIZING..." : "🔐 SIGN IN"}
         </button>
       </form>
     </section>

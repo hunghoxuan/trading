@@ -10,7 +10,7 @@ export default function UserDetailSection({
   disableRole = false,
   disableActive = false,
   passwordLabel = "New Password (optional)",
-  primaryLabel = "SAVE",
+  primaryLabel = "💾 SAVE",
   onPrimary,
   primaryDisabled = false,
   secondaryLabel = "",

@@ -113,7 +113,7 @@ export default function SettingsPage({ authUser }) {
         showRole={false}
         showActive={false}
         passwordLabel="New Password (optional)"
-        primaryLabel={profileLoading ? "SAVING..." : "SAVE ACCOUNT"}
+        primaryLabel={profileLoading ? "💾 SAVING..." : "💾 SAVE ACCOUNT"}
         onPrimary={saveMyAccount}
         primaryDisabled={profileLoading}
         footer={msg ? <span className="minor-text">{msg}</span> : null}
@@ -133,7 +133,7 @@ export default function SettingsPage({ authUser }) {
             />
           </label>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button className="primary-button" onClick={saveApiKey} style={{ width: "auto" }}>Save API Key</button>
+            <button className="primary-button" onClick={saveApiKey} style={{ width: "auto" }}>💾 SAVE API KEY</button>
           </div>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -169,7 +169,7 @@ export default function SettingsPage({ authUser }) {
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button className="secondary-button" onClick={resetPassword} style={{ width: "auto" }} disabled={pwdLoading}>
-              {pwdLoading ? "Updating..." : "Reset Password"}
+              {pwdLoading ? "🔐 UPDATING..." : "🔐 RESET PASSWORD"}
             </button>
           </div>
         </div>

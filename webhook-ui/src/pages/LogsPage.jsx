@@ -212,8 +212,8 @@ export default function LogsPage() {
                   />
                 </label>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" className="primary-button" onClick={onCreateEvent} disabled={loading}>{loading ? "SAVING..." : "SAVE EVENT"}</button>
-                  <button type="button" className="secondary-button" onClick={() => setCreateMode(false)} disabled={loading}>CANCEL</button>
+                  <button type="button" className="primary-button" onClick={onCreateEvent} disabled={loading}>{loading ? "💾 SAVING..." : "💾 SAVE EVENT"}</button>
+                  <button type="button" className="secondary-button" onClick={() => setCreateMode(false)} disabled={loading}>✖ CANCEL</button>
                 </div>
               </div>
             </div>

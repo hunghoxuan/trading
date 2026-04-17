@@ -248,8 +248,8 @@ export default function DatabasePage() {
                   />
                 </label>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" className="primary-button" onClick={onCreateRow} disabled={createBusy}>{createBusy ? "SAVING..." : "SAVE ROW"}</button>
-                  <button type="button" className="secondary-button" onClick={() => setCreateMode(false)} disabled={createBusy}>CANCEL</button>
+                  <button type="button" className="primary-button" onClick={onCreateRow} disabled={createBusy}>{createBusy ? "💾 SAVING..." : "💾 SAVE ROW"}</button>
+                  <button type="button" className="secondary-button" onClick={() => setCreateMode(false)} disabled={createBusy}>✖ CANCEL</button>
                 </div>
               </div>
             </div>

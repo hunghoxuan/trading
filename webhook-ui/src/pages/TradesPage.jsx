@@ -357,8 +357,8 @@ export default function TradesPage() {
                   <input value={createForm.note} onChange={(e) => setCreateForm((p) => ({ ...p, note: e.target.value }))} placeholder="Optional note" />
                 </label>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" className="primary-button" onClick={onCreateTrade} disabled={bulkBusy}>{bulkBusy ? "SAVING..." : "SAVE TRADE"}</button>
-                  <button type="button" className="secondary-button" onClick={() => setCreateMode(false)} disabled={bulkBusy}>CANCEL</button>
+                  <button type="button" className="primary-button" onClick={onCreateTrade} disabled={bulkBusy}>{bulkBusy ? "💾 SAVING..." : "💾 SAVE TRADE"}</button>
+                  <button type="button" className="secondary-button" onClick={() => setCreateMode(false)} disabled={bulkBusy}>✖ CANCEL</button>
                 </div>
               </div>
             </div>
