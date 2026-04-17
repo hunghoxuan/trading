@@ -9,6 +9,7 @@ import SettingsPage from "./pages/SettingsPage";
 import UsersPage from "./pages/UsersPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
 import SourcesPage from "./pages/SourcesPage";
+import ExecutionV2Page from "./pages/ExecutionV2Page";
 import { api } from "./api";
 import LoginPage from "./pages/LoginPage";
 
@@ -84,6 +85,7 @@ export default function App() {
           {canAccessSystemPages ? <NavLink to="/users" className={({ isActive }) => (isActive ? "active" : "")}>Users</NavLink> : null}
           {canAccessSystemPages ? <NavLink to="/sources" className={({ isActive }) => (isActive ? "active" : "")}>Sources</NavLink> : null}
           {canAccessSystemPages ? <NavLink to="/subscriptions" className={({ isActive }) => (isActive ? "active" : "")}>Subscriptions</NavLink> : null}
+          {canAccessSystemPages ? <NavLink to="/execution-v2" className={({ isActive }) => (isActive ? "active" : "")}>Execution V2</NavLink> : null}
           <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")}>My Account</NavLink>
           <button onClick={handleLogout} className="secondary-button" style={{ marginLeft: 8, padding: '4px 10px', fontSize: '11px' }}>Logout</button>
           <button 
@@ -111,6 +113,7 @@ export default function App() {
           <Route path="/users" element={canAccessSystemPages ? <UsersPage authUser={authUser} /> : <Navigate to="/dashboard" replace />} />
           <Route path="/sources" element={canAccessSystemPages ? <SourcesPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/subscriptions" element={canAccessSystemPages ? <SubscriptionsPage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/execution-v2" element={canAccessSystemPages ? <ExecutionV2Page /> : <Navigate to="/dashboard" replace />} />
           <Route path="/settings" element={<SettingsPage authUser={authUser} />} />
           <Route path="/login" element={<Navigate to="/dashboard" replace />} />
         </Routes>

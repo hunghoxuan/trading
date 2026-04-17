@@ -2544,6 +2544,70 @@ async function mt5InitBackend() {
           metadata: r.metadata ? (() => { try { return JSON.parse(r.metadata); } catch { return {}; } })() : {},
         }));
       },
+      async listTradesV2(filters = {}, page = 1, pageSize = 50) {
+        const safePage = Math.max(1, Number(page) || 1);
+        const safePageSize = Math.max(1, Math.min(200, Number(pageSize) || 50));
+        const offset = (safePage - 1) * safePageSize;
+        const clauses = [];
+        const params = [];
+        function addClause(sql, value) {
+          if (value === undefined || value === null || String(value).trim() === "") return;
+          clauses.push(sql);
+          params.push(String(value).trim());
+        }
+        addClause(`account_id = ?`, filters.account_id);
+        addClause(`source_id = ?`, filters.source_id);
+        addClause(`dispatch_status = ?`, filters.dispatch_status);
+        addClause(`execution_status = ?`, filters.execution_status);
+        addClause(`origin_kind = ?`, filters.origin_kind);
+        addClause(`symbol = ?`, filters.symbol);
+        addClause(`side = ?`, filters.side);
+        const q = String(filters.q || "").trim();
+        if (q) {
+          clauses.push(`(trade_id LIKE ? OR signal_id LIKE ? OR broker_trade_id LIKE ?)`);
+          params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+        }
+        const whereSql = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+        const totalRow = db.prepare(`SELECT COUNT(*) AS total FROM trades ${whereSql}`).get(...params);
+        const total = Number(totalRow?.total || 0);
+        const rows = db.prepare(`
+          SELECT trade_id, account_id, broker_id, signal_id, source_id, origin_kind,
+                 symbol, side, dispatch_status, execution_status, close_reason,
+                 broker_trade_id, broker_order_id, intent_entry, intent_sl, intent_tp, intent_volume,
+                 entry_exec, sl_exec, tp_exec, opened_at, closed_at, pnl_realized,
+                 error_code, error_message, created_at, updated_at, metadata
+          FROM trades
+          ${whereSql}
+          ORDER BY created_at DESC
+          LIMIT ? OFFSET ?
+        `).all(...params, safePageSize, offset);
+        return {
+          items: (rows || []).map((r) => ({
+            ...r,
+            metadata: r.metadata ? (() => { try { return JSON.parse(r.metadata); } catch { return {}; } })() : {},
+          })),
+          total,
+          page: safePage,
+          page_size: safePageSize,
+        };
+      },
+      async listTradeEventsV2(tradeId, limit = 200) {
+        const tid = String(tradeId || "").trim();
+        const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 200));
+        if (!tid) return [];
+        const rows = db.prepare(`
+          SELECT event_id, trade_id, event_type, event_time, idempotency_key, payload_json, metadata
+          FROM trade_events
+          WHERE trade_id = ?
+          ORDER BY event_time DESC
+          LIMIT ?
+        `).all(tid, safeLimit);
+        return (rows || []).map((r) => ({
+          ...r,
+          payload_json: r.payload_json ? (() => { try { return JSON.parse(r.payload_json); } catch { return {}; } })() : {},
+          metadata: r.metadata ? (() => { try { return JSON.parse(r.metadata); } catch { return {}; } })() : {},
+        }));
+      },
       async rotateSourceSecretV2(sourceId) {
         const sid = String(sourceId || "").trim();
         if (!sid) return null;
@@ -4101,6 +4165,71 @@ async function mt5InitBackend() {
       `, [sid, safeLimit]);
       return res.rows || [];
     },
+    async listTradesV2(filters = {}, page = 1, pageSize = 50) {
+      const safePage = Math.max(1, Number(page) || 1);
+      const safePageSize = Math.max(1, Math.min(200, Number(pageSize) || 50));
+      const offset = (safePage - 1) * safePageSize;
+      const clauses = [];
+      const params = [];
+      function addClause(sql, value) {
+        if (value === undefined || value === null || String(value).trim() === "") return;
+        params.push(String(value).trim());
+        clauses.push(sql.replace("?", `$${params.length}`));
+      }
+      addClause("account_id = ?", filters.account_id);
+      addClause("source_id = ?", filters.source_id);
+      addClause("dispatch_status = ?", filters.dispatch_status);
+      addClause("execution_status = ?", filters.execution_status);
+      addClause("origin_kind = ?", filters.origin_kind);
+      addClause("symbol = ?", filters.symbol);
+      addClause("side = ?", filters.side);
+      const q = String(filters.q || "").trim();
+      if (q) {
+        params.push(`%${q}%`);
+        const idx = params.length;
+        clauses.push(`(trade_id ILIKE $${idx} OR signal_id ILIKE $${idx} OR broker_trade_id ILIKE $${idx})`);
+      }
+      const whereSql = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+      const countRes = await pool.query(`
+        SELECT COUNT(*)::int AS total
+        FROM trades
+        ${whereSql}
+      `, params);
+      const total = Number(countRes.rows?.[0]?.total || 0);
+      const limitIdx = params.length + 1;
+      const offsetIdx = params.length + 2;
+      const rowsRes = await pool.query(`
+        SELECT trade_id, account_id, broker_id, signal_id, source_id, origin_kind,
+               symbol, side, dispatch_status, execution_status, close_reason,
+               broker_trade_id, broker_order_id, intent_entry, intent_sl, intent_tp, intent_volume,
+               entry_exec, sl_exec, tp_exec, opened_at, closed_at, pnl_realized,
+               error_code, error_message, created_at, updated_at, metadata
+        FROM trades
+        ${whereSql}
+        ORDER BY created_at DESC
+        LIMIT $${limitIdx}
+        OFFSET $${offsetIdx}
+      `, [...params, safePageSize, offset]);
+      return {
+        items: rowsRes.rows || [],
+        total,
+        page: safePage,
+        page_size: safePageSize,
+      };
+    },
+    async listTradeEventsV2(tradeId, limit = 200) {
+      const tid = String(tradeId || "").trim();
+      const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 200));
+      if (!tid) return [];
+      const res = await pool.query(`
+        SELECT event_id, trade_id, event_type, event_time, idempotency_key, payload_json, metadata
+        FROM trade_events
+        WHERE trade_id = $1
+        ORDER BY event_time DESC
+        LIMIT $2
+      `, [tid, safeLimit]);
+      return res.rows || [];
+    },
     async rotateSourceSecretV2(sourceId) {
       const sid = String(sourceId || "").trim();
       if (!sid) return null;
@@ -5200,6 +5329,18 @@ async function mt5ListSourceEventsV2(sourceId, limit = 100) {
   const b = await mt5Backend();
   if (!b.listSourceEventsV2) return [];
   return b.listSourceEventsV2(sourceId, limit);
+}
+
+async function mt5ListTradesV2(filters = {}, page = 1, pageSize = 50) {
+  const b = await mt5Backend();
+  if (!b.listTradesV2) return { items: [], total: 0, page: 1, page_size: Math.max(1, Number(pageSize) || 50) };
+  return b.listTradesV2(filters, page, pageSize);
+}
+
+async function mt5ListTradeEventsV2(tradeId, limit = 200) {
+  const b = await mt5Backend();
+  if (!b.listTradeEventsV2) return [];
+  return b.listTradeEventsV2(tradeId, limit);
 }
 
 async function mt5RotateSourceSecretV2(sourceId) {
@@ -7055,6 +7196,55 @@ const appHandler = async (req, res) => {
     try {
       const rows = await mt5ListSourcesV2();
       return json(res, 200, { ok: true, items: rows });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/v2/trades") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const pageRaw = Number(url.searchParams.get("page") || 1);
+      const pageSizeRaw = Number(url.searchParams.get("pageSize") || url.searchParams.get("limit") || 50);
+      const page = Math.max(1, Number.isFinite(pageRaw) ? pageRaw : 1);
+      const pageSize = Math.max(1, Math.min(200, Number.isFinite(pageSizeRaw) ? pageSizeRaw : 50));
+      const filters = {
+        account_id: url.searchParams.get("account_id") || "",
+        source_id: url.searchParams.get("source_id") || "",
+        dispatch_status: url.searchParams.get("dispatch_status") || "",
+        execution_status: url.searchParams.get("execution_status") || "",
+        origin_kind: url.searchParams.get("origin_kind") || "",
+        symbol: url.searchParams.get("symbol") || "",
+        side: url.searchParams.get("side") || "",
+        q: url.searchParams.get("q") || "",
+      };
+      const out = await mt5ListTradesV2(filters, page, pageSize);
+      const total = Number(out?.total || 0);
+      return json(res, 200, {
+        ok: true,
+        items: Array.isArray(out?.items) ? out.items : [],
+        page: Number(out?.page || page),
+        pageSize: Number(out?.page_size || pageSize),
+        total,
+        pages: Math.max(1, Math.ceil(total / Math.max(1, Number(out?.page_size || pageSize)))),
+      });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "GET" && /^\/v2\/trades\/[^/]+\/events$/.test(url.pathname)) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const m = url.pathname.match(/^\/v2\/trades\/([^/]+)\/events$/);
+      const tradeId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!tradeId) return json(res, 400, { ok: false, error: "trade_id is required" });
+      const limitRaw = Number(url.searchParams.get("limit") || 200);
+      const limit = Math.max(1, Math.min(1000, Number.isFinite(limitRaw) ? limitRaw : 200));
+      const rows = await mt5ListTradeEventsV2(tradeId, limit);
+      return json(res, 200, { ok: true, trade_id: tradeId, items: rows });
     } catch (error) {
       return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }

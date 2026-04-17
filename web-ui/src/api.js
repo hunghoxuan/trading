@@ -351,6 +351,14 @@ export const api = {
   deleteUserApiKey: (userId, keyId) => del(`/auth/users/${encodeURIComponent(userId)}/api-keys/${encodeURIComponent(keyId)}`),
   v2Accounts: () => get("/v2/accounts"),
   v2Sources: () => get("/v2/sources"),
+  v2Trades: (params = {}) => {
+    const q = new URLSearchParams();
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && String(v) !== "") q.set(k, String(v));
+    });
+    return get(`/v2/trades?${q.toString()}`);
+  },
+  v2TradeEvents: (tradeId, limit = 200) => get(`/v2/trades/${encodeURIComponent(tradeId)}/events?limit=${encodeURIComponent(limit)}`),
   v2CreateSource: (payload = {}) => post("/v2/sources", payload),
   v2UpdateSource: (sourceId, payload = {}) => put(`/v2/sources/${encodeURIComponent(sourceId)}`, payload),
   v2SourceEvents: (sourceId, limit = 100) => get(`/v2/sources/${encodeURIComponent(sourceId)}/events?limit=${encodeURIComponent(limit)}`),
