@@ -371,6 +371,7 @@ export const api = {
     return get(`/mt5/trades/search?${q.toString()}`);
   },
   trade: (signalId) => get(`/mt5/trades/${encodeURIComponent(signalId)}`),
+  createTrade: (payload = {}) => post("/mt5/trades/create", payload),
   deleteTrades: (params) => post("/mt5/trades/delete", params),
   cancelTrades: (params) => post("/mt5/trades/cancel", params),
   renewTrades: (params) => post("/mt5/trades/renew", params),
@@ -382,6 +383,7 @@ export const api = {
     });
     return get(`/mt5/api/events?${q.toString()}`);
   },
+  createEvent: (payload = {}) => post("/mt5/api/events/create", payload),
   deleteEvents: () => post("/mt5/api/events/delete", {}),
   dbTables: () => get("/mt5/db/tables"),
   dbRows: (params = {}) => {
@@ -391,4 +393,5 @@ export const api = {
     });
     return get(`/mt5/db/rows?${q.toString()}`);
   },
+  dbCreateRow: (payload = {}) => post("/mt5/db/rows/create", payload),
 };

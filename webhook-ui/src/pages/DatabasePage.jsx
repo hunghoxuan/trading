@@ -30,6 +30,10 @@ export default function DatabasePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectedRow, setSelectedRow] = useState(null);
+  const [createMode, setCreateMode] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createMsg, setCreateMsg] = useState("");
+  const [createRowJson, setCreateRowJson] = useState("{\n  \"signal_id\": \"\",\n  \"action\": \"BUY\",\n  \"symbol\": \"XAUUSD\",\n  \"volume\": 0.01\n}");
   const inFlightRef = useRef(false);
 
   const [filter, setFilter] = useState({
@@ -79,11 +83,28 @@ export default function DatabasePage() {
     setSelectedTable(e.target.value);
     setFilter(prev => ({ ...prev, page: 1 }));
     setSelectedRow(null);
+    setCreateMode(false);
   };
 
   const handlePageChange = (p) => {
     setFilter(prev => ({ ...prev, page: p }));
   };
+
+  async function onCreateRow() {
+    try {
+      setCreateBusy(true);
+      const parsed = createRowJson ? JSON.parse(createRowJson) : {};
+      await api.dbCreateRow({ table: selectedTable, row: parsed });
+      setCreateMsg("Row created.");
+      setCreateMode(false);
+      await loadRows();
+    } catch (e) {
+      setError(e?.message || "Failed to create row");
+    } finally {
+      setCreateBusy(false);
+      window.setTimeout(() => setCreateMsg(""), 2200);
+    }
+  }
 
   const tableHeaders = useMemo(() => {
     if (!rows.length) return [];
@@ -144,13 +165,14 @@ export default function DatabasePage() {
         </div>
 
         <div className="toolbar-group toolbar-create">
-          <button type="button" disabled title="Create is not available on DB page">CREATE</button>
+          <button type="button" onClick={() => { setCreateMode(true); setSelectedRow(null); }}>CREATE</button>
         </div>
       </div>
 
       <div className="logs-layout-split">
         <div className="logs-list-pane">
           {error && <div className="error">{error}</div>}
+          {createMsg ? <div className="loading" style={{ padding: 10 }}>{createMsg}</div> : null}
           <div className="events-table-wrap">
             <table className="events-table">
               <thead>
@@ -164,7 +186,7 @@ export default function DatabasePage() {
                 {!loading && rows.map((row, idx) => (
                   <tr 
                     key={idx} 
-                    onClick={() => setSelectedRow(row)} 
+                    onClick={() => { setCreateMode(false); setSelectedRow(row); }} 
                     className={selectedRow === row ? "active" : ""}
                   >
                     {tableHeaders.map(h => {
@@ -193,7 +215,29 @@ export default function DatabasePage() {
         </div>
 
         <div className="logs-detail-pane">
-          {selectedRow ? (
+          {createMode ? (
+            <div className="panel" style={{ margin: 0 }}>
+              <div className="panel-label">CREATE DB ROW ({selectedTable})</div>
+              <div className="stack-layout" style={{ gap: 10 }}>
+                <div className="minor-text">
+                  Supported tables: <code>signals</code>, <code>signal_events</code>, <code>users</code>, <code>accounts</code>, <code>user_api_keys</code>.
+                </div>
+                <label>
+                  <div className="muted small">Row JSON</div>
+                  <textarea
+                    value={createRowJson}
+                    onChange={(e) => setCreateRowJson(e.target.value)}
+                    rows={14}
+                    style={{ width: "100%", resize: "vertical" }}
+                  />
+                </label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" onClick={onCreateRow} disabled={createBusy}>{createBusy ? "CREATING..." : "CREATE ROW"}</button>
+                  <button type="button" onClick={() => setCreateMode(false)} style={{ background: "var(--panel)", color: "var(--text)", border: "1px solid var(--border)" }}>CANCEL</button>
+                </div>
+              </div>
+            </div>
+          ) : selectedRow ? (
             <div className="trade-detail-content scrollable fadeIn">
               <div className="detail-header" style={{ marginBottom: '15px' }}>
                  <h2 style={{ margin: 0 }}>ROW DETAILS</h2>

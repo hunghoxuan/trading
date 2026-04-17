@@ -22,6 +22,13 @@ export default function LogsPage() {
   const [pageSize, setPageSize] = useState(50);
   const [bulkAction, setBulkAction] = useState("");
   const [filter, setFilter] = useState({ q: "", type: "", symbol: "" });
+  const [createMode, setCreateMode] = useState(false);
+  const [createMsg, setCreateMsg] = useState("");
+  const [createForm, setCreateForm] = useState({
+    signal_id: "",
+    event_type: "UI_NOTE",
+    payload_json: "{\n  \"note\": \"\"\n}",
+  });
 
   const query = useMemo(() => ({ 
     q: filter.q, 
@@ -64,6 +71,26 @@ export default function LogsPage() {
        } finally {
          setLoading(false);
        }
+    }
+  }
+
+  async function onCreateEvent() {
+    try {
+      setLoading(true);
+      const payload = {
+        signal_id: String(createForm.signal_id || "").trim(),
+        event_type: String(createForm.event_type || "").trim(),
+        payload_json: createForm.payload_json ? JSON.parse(createForm.payload_json) : {},
+      };
+      await api.createEvent(payload);
+      setCreateMsg("Event created.");
+      setCreateMode(false);
+      await loadEvents();
+    } catch (err) {
+      setError(err?.message || "Failed to create event");
+    } finally {
+      setLoading(false);
+      window.setTimeout(() => setCreateMsg(""), 2000);
     }
   }
 
@@ -114,13 +141,14 @@ export default function LogsPage() {
         </div>
 
         <div className="toolbar-group toolbar-create">
-          <button type="button" disabled title="Create is not available on Logs page">CREATE</button>
+          <button type="button" onClick={() => { setCreateMode(true); setSelectedEvent(null); }}>CREATE</button>
         </div>
       </div>
 
       <div className="logs-layout-split">
         <div className="logs-list-pane">
           {error && <div className="error">{error}</div>}
+          {createMsg ? <div className="loading" style={{ padding: 10 }}>{createMsg}</div> : null}
           <div className="events-table-wrap">
             <table className="events-table">
               <thead>
@@ -136,7 +164,7 @@ export default function LogsPage() {
                   <tr 
                     key={ev.id} 
                     className={selectedEvent?.id === ev.id ? "active" : ""}
-                    onClick={() => setSelectedEvent(ev)}
+                    onClick={() => { setCreateMode(false); setSelectedEvent(ev); }}
                   >
                     <td><strong className="minor-text" style={{ color: 'var(--text)' }}>{ev.symbol || 'N/A'}</strong></td>
                     <td><span className="badge">{ev.event_type}</span></td>
@@ -155,7 +183,34 @@ export default function LogsPage() {
         </div>
 
         <div className="logs-detail-pane">
-          {selectedEvent ? (
+          {createMode ? (
+            <div className="panel" style={{ margin: 0 }}>
+              <div className="panel-label">CREATE LOG EVENT</div>
+              <div className="stack-layout" style={{ gap: 10 }}>
+                <label>
+                  <div className="muted small">Signal ID</div>
+                  <input value={createForm.signal_id} onChange={(e) => setCreateForm((p) => ({ ...p, signal_id: e.target.value }))} placeholder="tv_..." />
+                </label>
+                <label>
+                  <div className="muted small">Event Type</div>
+                  <input value={createForm.event_type} onChange={(e) => setCreateForm((p) => ({ ...p, event_type: e.target.value }))} placeholder="UI_NOTE" />
+                </label>
+                <label>
+                  <div className="muted small">Payload JSON</div>
+                  <textarea
+                    value={createForm.payload_json}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, payload_json: e.target.value }))}
+                    rows={10}
+                    style={{ width: "100%", resize: "vertical" }}
+                  />
+                </label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" onClick={onCreateEvent} disabled={loading}>{loading ? "CREATING..." : "CREATE EVENT"}</button>
+                  <button type="button" onClick={() => setCreateMode(false)} style={{ background: "var(--panel)", color: "var(--text)", border: "1px solid var(--border)" }}>CANCEL</button>
+                </div>
+              </div>
+            </div>
+          ) : selectedEvent ? (
             <div className="event-detail-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                 <div className="panel-label" style={{ margin: 0 }}>EVENT DETAILS #{selectedEvent.id}</div>

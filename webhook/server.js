@@ -4691,6 +4691,41 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (req.method === "POST" && url.pathname === "/mt5/trades/create") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const payload = await readJson(req);
+      const sess = getUiSessionFromReq(req);
+      const enqueue = await mt5EnqueueSignalFromPayload({
+        id: payload.signal_id || payload.id || "",
+        action: payload.action,
+        symbol: payload.symbol,
+        volume: payload.volume ?? payload.lots,
+        sl: payload.sl ?? null,
+        tp: payload.tp ?? null,
+        rr: payload.rr ?? payload.risk_reward ?? null,
+        risk_money: payload.risk_money ?? payload.money_risk ?? null,
+        price: payload.price ?? payload.entry ?? null,
+        strategy: payload.strategy || "Manual",
+        timeframe: payload.timeframe || "manual",
+        note: payload.note || "",
+        user_id: payload.user_id || sess.user_id || CFG.mt5DefaultUserId,
+        order_type: payload.order_type || "limit",
+        provider: "ui",
+        raw_json: payload && typeof payload === "object" ? payload : {},
+      }, {
+        source: "ui_manual",
+        eventType: "UI_CREATE_TRADE",
+        fallbackIdPrefix: "ui",
+      });
+      return json(res, 200, { ok: true, trade: enqueue });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
   if (req.method === "POST" && url.pathname === "/mt5/trades/delete") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
@@ -4778,6 +4813,88 @@ const server = http.createServer(async (req, res) => {
         pageSize, 
         pages: Math.max(1, Math.ceil(total / pageSize)) 
       });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error.message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/mt5/db/rows/create") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const payload = await readJson(req);
+      const table = String(payload.table || "").trim().toLowerCase();
+      const row = payload.row && typeof payload.row === "object" ? payload.row : {};
+      const sess = getUiSessionFromReq(req);
+      if (!table) return json(res, 400, { ok: false, error: "table is required" });
+
+      if (table === "signals") {
+        const created = await mt5EnqueueSignalFromPayload({
+          id: row.signal_id || row.id || "",
+          action: row.action,
+          symbol: row.symbol,
+          volume: row.volume ?? row.lots,
+          sl: row.sl ?? null,
+          tp: row.tp ?? null,
+          rr: row.rr ?? row.risk_reward ?? null,
+          risk_money: row.risk_money ?? row.money_risk ?? null,
+          price: row.price ?? row.entry ?? null,
+          strategy: row.strategy || "DB Insert",
+          timeframe: row.timeframe || "manual",
+          note: row.note || "",
+          user_id: row.user_id || sess.user_id || CFG.mt5DefaultUserId,
+          order_type: row.order_type || "limit",
+          provider: "ui_db",
+          raw_json: row,
+        }, {
+          source: "ui_db",
+          eventType: "UI_DB_INSERT_SIGNAL",
+          fallbackIdPrefix: "db",
+        });
+        return json(res, 200, { ok: true, table, created });
+      }
+
+      if (table === "signal_events") {
+        const signalId = String(row.signal_id || "").trim();
+        const eventType = String(row.event_type || "").trim();
+        if (!signalId) return json(res, 400, { ok: false, error: "row.signal_id is required" });
+        if (!eventType) return json(res, 400, { ok: false, error: "row.event_type is required" });
+        const payloadJson = row.payload_json && typeof row.payload_json === "object"
+          ? { ...row.payload_json }
+          : (row.payload && typeof row.payload === "object" ? { ...row.payload } : {});
+        delete payloadJson.apiKey;
+        delete payloadJson.api_key;
+        delete payloadJson.password;
+        delete payloadJson.token;
+        payloadJson.via = "ui_db_create";
+        payloadJson.created_by = sess.user_id || CFG.mt5DefaultUserId;
+        await mt5AppendSignalEvent(signalId, eventType, payloadJson);
+        return json(res, 200, { ok: true, table, created: { signal_id: signalId, event_type: eventType } });
+      }
+
+      if (table === "users") {
+        const out = await uiCreateUser(row);
+        if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to create user" });
+        return json(res, 200, { ok: true, table, created: out.user });
+      }
+
+      if (table === "accounts") {
+        const userId = String(row.user_id || "").trim();
+        if (!userId) return json(res, 400, { ok: false, error: "row.user_id is required" });
+        const out = await uiUpsertUserAccount(userId, row);
+        if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to create account" });
+        return json(res, 200, { ok: true, table, created: out.account });
+      }
+
+      if (table === "user_api_keys") {
+        const userId = String(row.user_id || "").trim();
+        if (!userId) return json(res, 400, { ok: false, error: "row.user_id is required" });
+        const out = await uiCreateUserApiKey(userId, row);
+        if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to create API key" });
+        return json(res, 200, { ok: true, table, created: out.api_key });
+      }
+
+      return json(res, 400, { ok: false, error: `Create is not supported for table: ${table}` });
     } catch (error) {
       return json(res, 400, { ok: false, error: error.message });
     }
@@ -4963,6 +5080,33 @@ const server = http.createServer(async (req, res) => {
       }
       
       return json(res, 200, { ok: true, events: rows.slice(0, limit) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/mt5/api/events/create") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const payload = await readJson(req);
+      const sess = getUiSessionFromReq(req);
+      const signalId = String(payload.signal_id || "").trim();
+      const eventType = String(payload.event_type || "").trim();
+      if (!signalId) return json(res, 400, { ok: false, error: "signal_id is required" });
+      if (!eventType) return json(res, 400, { ok: false, error: "event_type is required" });
+      const payloadJson = payload.payload_json && typeof payload.payload_json === "object"
+        ? { ...payload.payload_json }
+        : (payload.payload && typeof payload.payload === "object" ? { ...payload.payload } : {});
+      delete payloadJson.apiKey;
+      delete payloadJson.api_key;
+      delete payloadJson.password;
+      delete payloadJson.token;
+      payloadJson.via = "ui_manual_log";
+      payloadJson.created_by = sess.user_id || CFG.mt5DefaultUserId;
+      await mt5AppendSignalEvent(signalId, eventType, payloadJson);
+      return json(res, 200, { ok: true, event: { signal_id: signalId, event_type: eventType } });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });

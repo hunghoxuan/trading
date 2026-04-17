@@ -53,6 +53,19 @@ export default function TradesPage() {
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [tradeDetails, setTradeDetails] = useState(null);
   const [error, setError] = useState("");
+  const [createMode, setCreateMode] = useState(false);
+  const [createMsg, setCreateMsg] = useState("");
+  const [createForm, setCreateForm] = useState({
+    action: "BUY",
+    symbol: "",
+    volume: "0.01",
+    price: "",
+    sl: "",
+    tp: "",
+    strategy: "Manual",
+    timeframe: "manual",
+    note: "",
+  });
   const inFlightRef = useRef(false);
 
   const [filter, setFilter] = useState({
@@ -97,6 +110,36 @@ export default function TradesPage() {
       setTradeDetails(res);
     } catch (e) {
       console.error("Failed to load details:", e);
+    }
+  }
+
+  async function onCreateTrade() {
+    try {
+      setBulkBusy(true);
+      const payload = {
+        action: String(createForm.action || "BUY").toUpperCase(),
+        symbol: String(createForm.symbol || "").trim().toUpperCase(),
+        volume: createForm.volume === "" ? undefined : Number(createForm.volume),
+        price: createForm.price === "" ? undefined : Number(createForm.price),
+        sl: createForm.sl === "" ? undefined : Number(createForm.sl),
+        tp: createForm.tp === "" ? undefined : Number(createForm.tp),
+        strategy: String(createForm.strategy || "Manual").trim(),
+        timeframe: String(createForm.timeframe || "manual").trim(),
+        note: String(createForm.note || "").trim(),
+      };
+      const out = await api.createTrade(payload);
+      setCreateMsg(`Trade created: ${out?.trade?.signal_id || "ok"}`);
+      setCreateMode(false);
+      await loadTrades();
+      if (out?.trade?.signal_id) {
+        const created = { signal_id: out.trade.signal_id, action: payload.action, symbol: payload.symbol, status: "NEW" };
+        setSelectedTrade(created);
+      }
+    } catch (e) {
+      setError(e?.message || "Failed to create trade");
+    } finally {
+      setBulkBusy(false);
+      window.setTimeout(() => setCreateMsg(""), 2200);
     }
   }
 
@@ -160,12 +203,14 @@ export default function TradesPage() {
         </div>
 
         <div className="toolbar-group toolbar-create">
-          <button type="button" disabled title="Create is not available on Trades page">CREATE</button>
+          <button type="button" onClick={() => { setCreateMode(true); setSelectedTrade(null); }}>CREATE</button>
         </div>
       </div>
 
       <div className="logs-layout-split">
         <div className="logs-list-pane">
+          {error ? <div className="error">{error}</div> : null}
+          {createMsg ? <div className="loading" style={{ padding: 10 }}>{createMsg}</div> : null}
           <div className="events-table-wrap">
             <table className="events-table">
               <thead>
@@ -199,7 +244,7 @@ export default function TradesPage() {
                     <tr 
                       key={t.signal_id} 
                       className={selectedTrade?.signal_id === t.signal_id ? "active" : ""}
-                      onClick={() => setSelectedTrade(t)}
+                      onClick={() => { setCreateMode(false); setSelectedTrade(t); }}
                     >
                       <td onClick={e => e.stopPropagation()}>
                         <input 
@@ -251,7 +296,58 @@ export default function TradesPage() {
         </div>
 
         <div className="logs-detail-pane">
-          {!selectedTrade ? (
+          {createMode ? (
+            <div className="panel" style={{ margin: 0 }}>
+              <div className="panel-label">CREATE TRADE</div>
+              <div className="stack-layout" style={{ gap: 10 }}>
+                <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2, minmax(0,1fr))" }}>
+                  <label>
+                    <div className="muted small">Action</div>
+                    <select value={createForm.action} onChange={(e) => setCreateForm((p) => ({ ...p, action: e.target.value }))}>
+                      <option value="BUY">BUY</option>
+                      <option value="SELL">SELL</option>
+                    </select>
+                  </label>
+                  <label>
+                    <div className="muted small">Symbol</div>
+                    <input value={createForm.symbol} onChange={(e) => setCreateForm((p) => ({ ...p, symbol: e.target.value }))} placeholder="XAUUSD" />
+                  </label>
+                  <label>
+                    <div className="muted small">Volume</div>
+                    <input value={createForm.volume} onChange={(e) => setCreateForm((p) => ({ ...p, volume: e.target.value }))} placeholder="0.01" />
+                  </label>
+                  <label>
+                    <div className="muted small">Entry Price</div>
+                    <input value={createForm.price} onChange={(e) => setCreateForm((p) => ({ ...p, price: e.target.value }))} placeholder="3345.20" />
+                  </label>
+                  <label>
+                    <div className="muted small">SL</div>
+                    <input value={createForm.sl} onChange={(e) => setCreateForm((p) => ({ ...p, sl: e.target.value }))} placeholder="3330.00" />
+                  </label>
+                  <label>
+                    <div className="muted small">TP</div>
+                    <input value={createForm.tp} onChange={(e) => setCreateForm((p) => ({ ...p, tp: e.target.value }))} placeholder="3365.00" />
+                  </label>
+                  <label>
+                    <div className="muted small">Strategy</div>
+                    <input value={createForm.strategy} onChange={(e) => setCreateForm((p) => ({ ...p, strategy: e.target.value }))} />
+                  </label>
+                  <label>
+                    <div className="muted small">Timeframe</div>
+                    <input value={createForm.timeframe} onChange={(e) => setCreateForm((p) => ({ ...p, timeframe: e.target.value }))} />
+                  </label>
+                </div>
+                <label>
+                  <div className="muted small">Note</div>
+                  <input value={createForm.note} onChange={(e) => setCreateForm((p) => ({ ...p, note: e.target.value }))} placeholder="Optional note" />
+                </label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" onClick={onCreateTrade} disabled={bulkBusy}>{bulkBusy ? "CREATING..." : "CREATE TRADE"}</button>
+                  <button type="button" onClick={() => setCreateMode(false)} style={{ background: "var(--panel)", color: "var(--text)", border: "1px solid var(--border)" }}>CANCEL</button>
+                </div>
+              </div>
+            </div>
+          ) : !selectedTrade ? (
             <div className="empty-state minor-text">SELECT A TRADE TO INSPECT HISTORY</div>
           ) : (
             <div className="trade-detail-content">
