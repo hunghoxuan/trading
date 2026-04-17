@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import DashboardPage from "./pages/DashboardPage";
 import TradesPage from "./pages/TradesPage";
-import TradeDetailPage from "./pages/TradeDetailPage";
 import LogsPage from "./pages/LogsPage";
 import DatabasePage from "./pages/DatabasePage";
 import SettingsPage from "./pages/SettingsPage";
