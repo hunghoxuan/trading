@@ -12,6 +12,7 @@ import SourcesPage from "./pages/SourcesPage";
 import ExecutionV2Page from "./pages/ExecutionV2Page";
 import AccountsV2Page from "./pages/AccountsV2Page";
 import BrokersPage from "./pages/BrokersPage";
+import SignalsPage from "./pages/SignalsPage";
 import { api } from "./api";
 import LoginPage from "./pages/LoginPage";
 
@@ -81,6 +82,7 @@ export default function App() {
         </div>
         <nav>
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? "active" : "")}>Dashboard</NavLink>
+          <NavLink to="/signals" className={({ isActive }) => (isActive ? "active" : "")}>Signals</NavLink>
           <NavLink to="/trades" className={({ isActive }) => (isActive ? "active" : "")}>Trades</NavLink>
           {canAccessSystemPages ? <NavLink to="/logs" className={({ isActive }) => (isActive ? "active" : "")}>Logs</NavLink> : null}
           {canAccessSystemPages ? <NavLink to="/db" className={({ isActive }) => (isActive ? "active" : "")}>DB</NavLink> : null}
@@ -110,6 +112,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/signals" element={<SignalsPage />} />
           <Route path="/trades" element={<TradesPage />} />
           <Route path="/trades/:signalId" element={<TradeDetailPage />} />
           <Route path="/logs" element={canAccessSystemPages ? <LogsPage /> : <Navigate to="/dashboard" replace />} />
