@@ -249,7 +249,14 @@ export default function TradesPage() {
           <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)} disabled={bulkBusy}>
             {BULK_ACTIONS.map(s => <option key={s} value={s}>{s || "BULK ACTION..."}</option>)}
           </select>
-          <button type="button" className="primary-button" onClick={() => console.log("Bulk logic here")} disabled={bulkBusy || !bulkAction}>APPLY</button>
+          <button type="button" className="primary-button" onClick={onBulkOk} disabled={bulkBusy || !bulkAction}>APPLY</button>
+          <button 
+            type="button" 
+            className="primary-button" 
+            onClick={() => { if (createMode) { setCreateMode(false); setCreateMsg(""); } else { setCreateMode(true); setSelectedTrade(null); } }}
+          >
+            {createMode ? "CANCEL" : "+ CREATE TRADE"}
+          </button>
         </div>
 
       </div>
@@ -342,21 +349,6 @@ export default function TradesPage() {
               </tbody>
             </table>
           </div>
-          <div style={{ padding: "10px 12px", borderTop: "1px solid var(--border)" }}>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => {
-                if (createMode) {
-                  setCreateMode(false);
-                } else {
-                  setCreateMode(true);
-                  setSelectedTrade(null);
-                }
-              }}
-            >
-              {createMode ? "CANCEL" : "CREATE TRADE"}
-            </button>
           </div>
         </div>
 

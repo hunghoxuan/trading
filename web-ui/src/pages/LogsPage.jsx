@@ -149,6 +149,20 @@ export default function LogsPage() {
             {BULK_ACTIONS.map(a => <option key={a} value={a}>{a || "BULK ACTION..."}</option>)}
           </select>
           <button type="button" className="primary-button" onClick={onBulkOk} disabled={loading || !bulkAction}>APPLY</button>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => {
+              if (createMode) {
+                setCreateMode(false);
+              } else {
+                setCreateMode(true);
+                setSelectedEvent(null);
+              }
+            }}
+          >
+            {createMode ? "CANCEL" : "+ CREATE LOG"}
+          </button>
         </div>
 
       </div>
@@ -188,21 +202,6 @@ export default function LogsPage() {
               </tbody>
             </table>
           </div>
-          <div style={{ padding: "10px 12px", borderTop: "1px solid var(--border)" }}>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => {
-                if (createMode) {
-                  setCreateMode(false);
-                } else {
-                  setCreateMode(true);
-                  setSelectedEvent(null);
-                }
-              }}
-            >
-              {createMode ? "CANCEL" : "CREATE LOG"}
-            </button>
           </div>
         </div>
 
