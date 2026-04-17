@@ -1,5 +1,5 @@
 //@version=5
-// @lib-version: 80
+// @lib-version: 81
 library("KitCore", dynamic_requests = true)
 
 //s
@@ -1104,18 +1104,22 @@ json_escape_for_webhook(string raw) =>
 format_tf_for_webhook(string tfRaw) =>
     string raw = na(tfRaw) or tfRaw == "" ? timeframe.period : tfRaw
     float asNum = str.tonumber(raw)
-    string out = str.lower(raw)
+    string rawUpper = str.upper(raw)
+    string out = raw
     if not na(asNum)
-        out := asNum == 60 ? "1h" :
-          asNum == 120 ? "2h" :
-          asNum == 180 ? "3h" :
-          asNum == 240 ? "4h" :
-          asNum == 360 ? "6h" :
-          asNum == 480 ? "8h" :
-          asNum == 720 ? "12h" :
-          asNum == 1440 ? "1d" :
-          asNum == 10080 ? "1w" :
-          asNum == 43200 ? "1M" : (str.tostring(int(math.round(asNum))) + "m")
+        out := str.tostring(int(math.round(asNum)))
+    else
+        out := rawUpper == "D" or rawUpper == "1D" ? "1440" :
+          rawUpper == "W" or rawUpper == "1W" ? "10080" :
+          rawUpper == "M" or rawUpper == "1M" ? "43200" :
+          rawUpper == "H" or rawUpper == "1H" ? "60" :
+          rawUpper == "2H" ? "120" :
+          rawUpper == "3H" ? "180" :
+          rawUpper == "4H" ? "240" :
+          rawUpper == "6H" ? "360" :
+          rawUpper == "8H" ? "480" :
+          rawUpper == "12H" ? "720" :
+          rawUpper
     out
 
 normalize_side_for_webhook(string direction) =>
@@ -1136,12 +1140,13 @@ export build_trade_webhook_payload(string strategyName, string symbolName, strin
     string safeReason = json_escape_for_webhook(reasonText)
     float riskPctFinal = not na(riskPct) ? riskPct : (price > 0 ? math.abs(price - sl) / price * 100.0 : na)
     string msg = "{"
-    msg += "\"source\":\"TV." + safeStrategy + "\""
+    msg += "\"source\":\"" + safeStrategy + "\""
     msg += ",\"symbol\":\"" + safeSymbol + "\""
     msg += ",\"side\":\"" + safeSide + "\""
     msg += ",\"signal_tf\":\"" + safeSignalTf + "\""
     msg += ",\"id\":\"" + safeTradeId + "\""
     msg += ",\"provider\":\"" + safeProvider + "\""
+    msg += ",\"status\":\"" + safeStatus + "\""
     msg += ",\"chart_tf\":\"" + safeChartTf + "\""
     msg += ",\"entry_model\":\"" + safeModelType + "\""
     msg += ",\"reason\":\"" + safeReason + "\""

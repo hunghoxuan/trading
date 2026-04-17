@@ -3389,6 +3389,37 @@ function mt5BuildNote(payload) {
   return noteParts.join(" | ");
 }
 
+function mt5TfToMinutes(tf) {
+  if (!tf) return null;
+  const s = String(tf).toLowerCase().trim();
+  if (s === "1" || s === "1m") return "1";
+  if (s === "2" || s === "2m") return "2";
+  if (s === "3" || s === "3m") return "3";
+  if (s === "5" || s === "5m") return "5";
+  if (s === "10" || s === "10m") return "10";
+  if (s === "15" || s === "15m") return "15";
+  if (s === "30" || s === "30m") return "30";
+  if (s === "60" || s === "1h") return "60";
+  if (s === "120" || s === "2h") return "120";
+  if (s === "240" || s === "4h") return "240";
+  if (s === "1440" || s === "1d" || s === "d") return "1440";
+  if (s === "10080" || s === "1w" || s === "w") return "10080";
+  if (s === "43200" || s === "1m" || s === "1mn" || s === "mn" || s === "1mo") return "43200";
+  
+  const m = s.match(/^(\d+)([mhdwm])$/);
+  if (m) {
+    const val = parseInt(m[1]);
+    const unit = m[2];
+    if (unit === 'm') return String(val);
+    if (unit === 'h') return String(val * 60);
+    if (unit === 'd') return String(val * 1440);
+    if (unit === 'w') return String(val * 10080);
+    if (unit === 'm') return String(val * 43200);
+  }
+  const n = parseInt(s);
+  return isNaN(n) ? s : String(n);
+}
+
 async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   const source = String(payload.source || opts.source || "tradingview");
   const eventType = String(opts.eventType || "QUEUED");
@@ -3402,8 +3433,8 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   const userId = envStr(payload.user_id ?? payload.userId ?? payload.user ?? CFG.mt5DefaultUserId, CFG.mt5DefaultUserId);
   const rrPlanned = asNum(payload.rr ?? payload.risk_reward, NaN);
   const riskMoneyPlanned = asNum(payload.risk_money ?? payload.money_risk ?? payload.riskMoney, NaN);
-  const signalTf = envStr(payload.signal_tf ?? payload.signalTf ?? payload.sourceTf ?? payload.timeframe ?? payload.tf);
-  const chartTf = envStr(payload.chart_tf ?? payload.chartTf ?? payload.chartTimeframe ?? payload.chart_tf_period);
+  const signalTf = mt5TfToMinutes(payload.signal_tf ?? payload.signalTf ?? payload.sourceTf ?? payload.timeframe ?? payload.tf);
+  const chartTf = mt5TfToMinutes(payload.chart_tf ?? payload.chartTf ?? payload.chartTimeframe ?? payload.chart_tf_period);
   const note = mt5BuildNote(payload);
 
   const plannedEntry = asNum(payload.entry ?? payload.price, NaN);

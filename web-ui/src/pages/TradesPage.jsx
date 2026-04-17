@@ -14,6 +14,18 @@ function fPrice(v1, v2) {
   return "-";
 }
 
+function formatTimeframe(min) {
+  if (!min || min === 'manual') return min || "-";
+  const n = Number(min);
+  if (isNaN(n) || n <= 0) return min;
+  if (n < 60) return `${n}m`;
+  if (n < 1440) return `${n / 60}h`;
+  if (n < 10080) return `${n / 1440}d`;
+  if (n < 43200) return `${n / 10080}w`;
+  if (n === 43200) return "1M";
+  return `${n / 43200}M`;
+}
+
 function PnlDisplay({ value }) {
   const n = Number(value);
   if (n === null || n === undefined || n === 0) return null;
@@ -213,11 +225,11 @@ export default function TradesPage() {
           </select>
           <select value={filter.chart_tf} onChange={(e) => setFilter(f => ({ ...f, chart_tf: e.target.value, page: 1 }))}>
             <option value="">CHART TF</option>
-            {advFilters.chart_tfs.map(s => <option key={s}>{s}</option>)}
+            {advFilters.chart_tfs.map(s => <option key={s} value={s}>{formatTimeframe(s)}</option>)}
           </select>
           <select value={filter.signal_tf} onChange={(e) => setFilter(f => ({ ...f, signal_tf: e.target.value, page: 1 }))}>
             <option value="">SIGNAL TF</option>
-            {advFilters.signal_tfs.map(s => <option key={s}>{s}</option>)}
+            {advFilters.signal_tfs.map(s => <option key={s} value={s}>{formatTimeframe(s)}</option>)}
           </select>
           <select value={filter.range} onChange={(e) => setFilter(f => ({ ...f, range: e.target.value, page: 1 }))}>
             {RANGE_OPTIONS.map(s => <option key={s} value={s}>{s ? s.toUpperCase() : "ALL RANGES"}</option>)}
@@ -299,7 +311,7 @@ export default function TradesPage() {
                             {fPrice(t.entry_price_exec, t.entry_price)} → {fPrice(t.tp_exec, t.tp)} / {fPrice(t.sl_exec, t.sl)}
                           </div>
                           <div className="cell-minor">
-                            {t.chart_tf || 'n/a'} | {t.signal_tf || 'n/a'} | {t.rr_planned || '0'} rr | {t.volume || '0'} lots
+                            {formatTimeframe(t.chart_tf)} | {formatTimeframe(t.signal_tf)} | {t.rr_planned || '0'} rr | {t.volume || '0'} lots
                           </div>
                         </div>
                       </td>
@@ -405,7 +417,7 @@ export default function TradesPage() {
                   </h2>
                   <div className="cell-minor" style={{ marginTop: '4px' }}>{selectedTrade.signal_id}</div>
                   <div className="cell-minor" style={{ marginTop: '4px', fontWeight: 800, color: 'var(--primary)' }}>
-                    {selectedTrade.source} | {selectedTrade.entry_model} | {selectedTrade.chart_tf || 'n/a'} | {selectedTrade.signal_tf || 'n/a'}
+                    {selectedTrade.source} | {selectedTrade.entry_model} | {formatTimeframe(selectedTrade.chart_tf)} | {formatTimeframe(selectedTrade.signal_tf)}
                   </div>
                 </div>
                 <div className={`badge ${statusUi(selectedTrade.status).cls}`} style={{ height: 'fit-content', padding: '6px 14px' }}>

@@ -51,6 +51,18 @@ function moneyClass(v) {
   return n > 0 ? "money-pos" : "money-neg";
 }
 
+function formatTimeframe(min) {
+  if (!min) return "-";
+  const n = Number(min);
+  if (isNaN(n) || n <= 0) return min;
+  if (n < 60) return `${n}m`;
+  if (n < 1440) return `${n / 60}h`;
+  if (n < 10080) return `${n / 1440}d`;
+  if (n < 43200) return `${n / 10080}w`;
+  if (n === 43200) return "1M";
+  return `${n / 43200}M`;
+}
+
 function TableBlock({ title, rows, noun = "ITEMS" }) {
   const [sortKey, setSortKey] = useState("WR");
   const [sortDir, setSortDir] = useState("DESC");
@@ -188,11 +200,11 @@ export default function DashboardPage() {
         </select>
         <select value={filters.chart_tf} onChange={(e) => setFilters((prev) => ({ ...prev, chart_tf: e.target.value }))}>
           <option value="">Chart TF</option>
-          {(f.chart_tfs || []).map(v => <option key={v} value={v}>{v}</option>)}
+          {(f.chart_tfs || []).map(v => <option key={v} value={v}>{formatTimeframe(v)}</option>)}
         </select>
         <select value={filters.signal_tf} onChange={(e) => setFilters((prev) => ({ ...prev, signal_tf: e.target.value }))}>
           <option value="">Signal TF</option>
-          {(f.signal_tfs || []).map(v => <option key={v} value={v}>{v}</option>)}
+          {(f.signal_tfs || []).map(v => <option key={v} value={v}>{formatTimeframe(v)}</option>)}
         </select>
         <select value={filters.range} onChange={(e) => setFilters((prev) => ({ ...prev, range: e.target.value }))} style={{ marginLeft: 'auto' }}>
           {RANGE_OPTIONS.map((r) => <option key={r.val} value={r.val}>{r.lab}</option>)}

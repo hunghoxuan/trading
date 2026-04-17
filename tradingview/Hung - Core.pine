@@ -3,7 +3,7 @@
 strategy("Hung - Core", overlay = true, scale = scale.right, max_bars_back = 5000, pyramiding = 20, process_orders_on_close = false, calc_on_order_fills = true, calc_on_every_tick = true, use_bar_magnifier = false, currency = currency.USD, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500, initial_capital = 100000, margin_long = 1, margin_short = 1)
 
 import hunghoxuan/KitUI/32
-import hunghoxuan/KitCore/80
+import hunghoxuan/KitCore/81
 import hunghoxuan/KitSMC/66
 // ==================== TYPES, CONSTANTS ====================
 
@@ -610,20 +610,33 @@ get_data_first_rr_for_strategy_key(string key, float fallback) =>
     array<float> rrArr = get_data_rr_array_for_strategy_key(key)
     array.size(rrArr) > 0 ? array.get(rrArr, 0) : fallback
 
+get_data_trade_tf_suffix(string sourceTf) =>
+    KitUI.get_friendly_tf(na(sourceTf) or sourceTf == "" ? timeframe.period : sourceTf)
+
+get_data_trade_source_label(string baseType) =>
+    string k = str.upper(baseType)
+    int dotPos = str.pos(k, ".")
+    k := dotPos >= 0 ? str.substring(k, 0, dotPos) : k
+    string fullName = k == "VEM" ? "VWAP+EMA [1m]" :
+                      k == "EMS" ? "EMA+Stoch [5m]" :
+                      k == "BBS" ? "BB Squeeze [15m-1h]" :
+                      k == "ICH" ? "Ichimoku+MACD [4h]" :
+                      k == "FIB" ? "Fib [1D]" :
+                      k == "SMD" ? "SMA+Div [1W]" :
+                      k == "GDC" ? "Golden/Death [1D-1W]" :
+                      k == "CPB" ? "Candle Pattern" :
+                      k == "SWP" ? "Sweep" :
+                      k == "TPG" ? "TPG RSI" :
+                      k == "ADX" ? "ADX+EMA" :
+                      k == "STK" ? "MA+RSI+VWAP Bias" : "Model"
+    k + " - " + fullName
+
 get_data_trade_type_for_source_rr(string baseType, string sourceTf, float rrVal) =>
-    string fullName = baseType == "VEM" ? "VWAP+EMA [1m]" :
-                      baseType == "EMS" ? "EMA+Stoch [5m]" :
-                      baseType == "BBS" ? "BB Squeeze [15m-1h]" :
-                      baseType == "ICH" ? "Ichimoku+MACD [4h]" :
-                      baseType == "FIB" ? "Fib [1D]" :
-                      baseType == "SMD" ? "SMA+Div [1W]" :
-                      baseType == "GDC" ? "Golden/Death [1D-1W]" :
-                      baseType == "CPB" ? "Candle Pattern" :
-                      baseType == "SWP" ? "Sweep" :
-                      baseType == "TPG" ? "TPG RSI" :
-                      baseType == "ADX" ? "ADX+EMA" :
-                      baseType == "STK" ? "MA+RSI+VWAP Bias" : "Model"
-    baseType + " - " + fullName
+    string k = str.upper(baseType)
+    int dotPos = str.pos(k, ".")
+    k := dotPos >= 0 ? str.substring(k, 0, dotPos) : k
+    string rrText = na(rrVal) ? "na" : str.tostring(rrVal)
+    k + "." + get_data_trade_tf_suffix(sourceTf) + "." + rrText
 
 process_data_init_strategy_defs() =>
     array.clear(strategyDefs)
@@ -1436,6 +1449,7 @@ process_data_add_trade(int stratId, KitSMC.Event sig, float zoneTop, float zoneB
         string setupShort = str.length(sig.type) > 5 ? str.substring(sig.type, 0, 5) : sig.type
         string sourceTf = na(sig.sourceTf) or sig.sourceTf == "" ? timeframe.period : sig.sourceTf
         string tradeType = get_data_trade_type_for_source_rr(setupShort, sourceTf, rrUsed)
+        string sourceLabel = get_data_trade_source_label(setupShort)
         bool passTradePlan = KitCore.is_trade_plan_valid_with_limits(entry, stoploss, takeprofit, localCfg.minTradeSizeTicks, 0.0)
         string longName = get_data_strategy_name_by_id(stratId)
         string eventsLine = "events: " + KitSMC.get_trade_relevant_events_text(signalHist, sig.direction, sig.type, "", 5, 40, 28, CONST.SYM_ARR2_UP, CONST.SYM_ARR2_DN, CONST.SYM_DASH)
@@ -1456,7 +1470,7 @@ process_data_add_trade(int stratId, KitSMC.Event sig, float zoneTop, float zoneB
                 array.push(tradeModelIds, stratId)
             CORE_track_trade_entry(trades, tradeOrderIds, e, orderId, shouldTrackTrades)
             string webhookNote = sig.reason
-            KitCore.emit_trade_webhook_new_trade(webhookEnabled, true, "Hung-Core", syminfo.ticker, sig.direction, sourceTf, entry, stoploss, takeprofit, webhookNote, orderId, "ctrader", "PENDING", rrUsed, tradeType, tradeRiskAmountUsd, tradeRiskMode == "%" ? tradeRiskValue : na, time, sig.reason, timeframe.period)
+            KitCore.emit_trade_webhook_new_trade(webhookEnabled, true, sourceLabel, syminfo.ticker, sig.direction, sourceTf, entry, stoploss, takeprofit, webhookNote, orderId, "ctrader", "PENDING", rrUsed, sourceLabel, tradeRiskAmountUsd, tradeRiskMode == "%" ? tradeRiskValue : na, time, sig.reason, timeframe.period)
             if tradeRiskMode == "%"
                 KitCore.prop_register_trade(propDayState, tradeRiskValue)
             if strategyOrdersEnabled
