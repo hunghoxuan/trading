@@ -12,11 +12,10 @@ After **every** completed task or phase, end your response with exactly this for
 - [ ] [remaining task 1]
 - [ ] [remaining task 2]
 
-## 📄 Build Versions
-- [filename]: [Hardcoded Code Version (e.g., EA_VERSION "1.23", lib-version: 80)]
-
-## 🧪 Test / Deploy
-- [exact runnable commands — curl, ssh, compile, publish]
+## 🧪 Test & Deploy
+- [x] [done test/deploy item] (Build: [visually observable UI version, if any])
+- [x] [done test/deploy item] (Build: [visually observable UI version, if any])
+- [ ] [remaining test/deploy item] (Build: [visually observable UI version, if any])
 
 ## 🧭 What's Next
 - [next feature / roadmap item 1]
@@ -24,10 +23,14 @@ After **every** completed task or phase, end your response with exactly this for
 - [next feature / roadmap item 3]
 ```
 
-- **Rule:** All 4 sections always included. Keep each section short (max 5 bullets).  
+- **Rule:** All 3 sections always included. Keep each section short (max 5 bullets).  
 - **Rule (Sprint / Feature section):** Merge done and remaining into one checklist. Completed items must be checked (`[x]`), remaining items unchecked (`[ ]`), and remaining items must be listed last.
+- **Rule (Test & Deploy section):** Use checklist format like Sprint/Feature. Completed items checked (`[x]`), pending items unchecked (`[ ]`) and listed last.
+- **Rule (Build version visibility):** For each Test & Deploy item, include build version next to the item. Build version MUST be visually observable in UI (not only backend/internal constants).
+- **Rule (Automation default):** Always AUTO test and AUTO deploy when technically possible.
+- **Rule (Manual fallback):** If any step cannot be executed by the agent and requires user action, provide explicit step-by-step instructions.
 - **Rule (What's Next):** Always provide exactly 3 roadmap/feature options for the user to choose from.
-- **Rule (Build Versions):** You MUST report the actual incremental version variable explicitly defined inside the code (e.g. `#define EA_VERSION "1.xx"`, `package.json version`, `@lib-version: 80`). NEVER write "updated" or "local_version". If you change logic, you MUST safely increment that hardcoded version in the file before reporting it. Test/deploy must be real commands.
+- **Rule (Version integrity):** You MUST report the real incremental version defined in code and make sure it maps to the version shown in UI. NEVER write "updated" or "local_version".
 
 ## 2. Execution Discipline (Task Lifecycle)
 
@@ -129,7 +132,7 @@ Every single entry across Sprint, Backlog, and Bugs must follow this exact schem
 2. **Remove:** Delete the item from `sprint.md` (or `bugs.md`/`backlog.md`).
 3. **Append:** Move the completed entry down into `.agents/changelog.md`.
 4. **Format:** `## YYYY-MM-DD` (Group by date heading) -> `- [x] [HH:MM] [Module] [Author: Gemini] Task: Description.`
-5. **Output:** Proceed to print the standard `✅ Done / 🔜 Remaining / 📄 File Versions / 🧪 Test / Deploy` summary block.
+5. **Output:** Proceed to print the standard `✅ Sprint / Feature / 🧪 Test & Deploy / 🧭 What's Next` summary block.
 
 ## 8. Requirement Lifecycle Protocol (Global)
 

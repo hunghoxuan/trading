@@ -104,11 +104,13 @@ export default function LogsPage() {
         <div className="toolbar-group toolbar-pagination">
           <div className="pager-area">
             <strong>{events.length}</strong> RESULTS
-            <div className="pager-mini">
-              <button disabled={page === 0} onClick={() => setPage(p => p - 1)}>PREV</button>
-              <span className="minor-text">PAGE {page + 1}</span>
-              <button disabled={events.length < pageSize} onClick={() => setPage(p => p + 1)}>NEXT</button>
-            </div>
+            {!(page === 0 && events.length < pageSize) && (
+              <div className="pager-mini">
+                <button disabled={page === 0} onClick={() => setPage(p => p - 1)}>PREV</button>
+                <span className="minor-text">PAGE {page + 1}</span>
+                <button disabled={events.length < pageSize} onClick={() => setPage(p => p + 1)}>NEXT</button>
+              </div>
+            )}
             <select 
               className="minor-text" 
               style={{ padding: '0 4px', height: '22px', marginLeft: '10px' }}

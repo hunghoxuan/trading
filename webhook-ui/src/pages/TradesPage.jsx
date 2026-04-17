@@ -160,11 +160,13 @@ export default function TradesPage() {
         <div className="toolbar-group toolbar-pagination">
           <div className="pager-area">
             <strong>{total}</strong> RESULTS
-            <div className="pager-mini">
-              <button disabled={filter.page <= 1} onClick={() => setFilter(f => ({ ...f, page: f.page - 1 }))}>PREV</button>
-              <span className="minor-text">PAGE {filter.page} / {pages}</span>
-              <button disabled={filter.page >= pages} onClick={() => setFilter(f => ({ ...f, page: f.page + 1 }))}>NEXT</button>
-            </div>
+            {pages > 1 && (
+              <div className="pager-mini">
+                <button disabled={filter.page <= 1} onClick={() => setFilter(f => ({ ...f, page: f.page - 1 }))}>PREV</button>
+                <span className="minor-text">PAGE {filter.page} / {pages}</span>
+                <button disabled={filter.page >= pages} onClick={() => setFilter(f => ({ ...f, page: f.page + 1 }))}>NEXT</button>
+              </div>
+            )}
             <select 
               className="minor-text" 
               style={{ padding: '0 4px', height: '22px', marginLeft: '10px' }}

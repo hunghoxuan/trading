@@ -122,25 +122,49 @@ export default function SettingsPage({ authUser }) {
       <section className="panel settings-page" style={{ maxWidth: "700px" }}>
         <div className="panel-label">API ACCESS & PASSWORD</div>
         <div className="stack-layout" style={{ gap: 10 }}>
-          <label>
-            <div className="muted small">API Key</div>
-            <input type="password" placeholder="Enter API key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div className="minor-text">API Key</div>
+            <input
+              type="password"
+              placeholder="Enter API key"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              style={{ width: '100%', maxWidth: '400px' }}
+            />
           </label>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button onClick={saveApiKey} style={{ width: "auto" }}>Save API Key</button>
           </div>
 
-          <label>
-            <div className="muted small">Current Password</div>
-            <input type="password" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div className="minor-text">Current Password</div>
+            <input
+              type="password"
+              placeholder="Current password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              style={{ width: '100%', maxWidth: '400px' }}
+            />
           </label>
-          <label>
-            <div className="muted small">New Password</div>
-            <input type="password" placeholder="At least 8 characters" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div className="minor-text">New Password</div>
+            <input
+              type="password"
+              placeholder="At least 8 characters"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              style={{ width: '100%', maxWidth: '400px' }}
+            />
           </label>
-          <label>
-            <div className="muted small">Confirm New Password</div>
-            <input type="password" placeholder="Re-enter new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div className="minor-text">Confirm New Password</div>
+            <input
+              type="password"
+              placeholder="Re-enter new password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              style={{ width: '100%', maxWidth: '400px' }}
+            />
           </label>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

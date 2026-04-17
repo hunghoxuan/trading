@@ -12,14 +12,16 @@ Every page MUST start with a wrapping `div` that enforces the institutional vert
 </div>
 ```
 
-### B. The Standard Toolbar (`toolbar-panel`)
+### C. The Standard Toolbar (`toolbar-panel`)
 All data exploration pages (Trades, Logs, DB) MUST follow this functional grouping:
 
 1.  **Toolbar Left (`toolbar-left`)**: 
     - **Header Label**: The `.kpi-label` identifying the component.
-    - **Pagination**: The `.pager-mini` control group (Prev/PageInfo/Next) + `.pageSize` select. High-priority for immediate navigation.
+    - **Pagination**: The `.pager-mini` control group.
+        - **Adaptive Visibility**: If `totalPages <= 1`, HIDE the navigation buttons (PREV/NEXT).
+        - **Persistent Data**: ALWAYS show the total record count (e.g., "Showing 10 of 18") or current page info.
 2.  **Toolbar Right (`toolbar-right`)**:
-    - **Search & Filters**: Keyword input + Contextual selects (Status, Symbols, Tables).
+    - **Search & Filters**: Keyword input + Contextual selects.
     - **Separator**: A `.toolbar-separator` to distinguish filters from actions.
     - **Bulk Actions**: A `.select` for action type + a `.button` (usually "OK" or "GO") to execute.
 
@@ -28,19 +30,28 @@ All data exploration pages (Trades, Logs, DB) MUST follow this functional groupi
 ## 🧩 3. Component Standards
 
 ### A. High-Density List (`events-table`)
-The list pane (`logs-list-pane`) MUST wrap the table in an `.events-table-wrap` for independently scrollable context.
-- **Side Highlights**: Use `.side-buy` (Green) and `.side-sell` (Red) prefixes for action-oriented rows.
-- **Cell Wrapping**: Use `.cell-wrap` to stack `.cell-major` (Label) and `.cell-minor` (Metadata).
+- **Sortable Headers**: Grid headers MUST be interactive, supporting both ascending and descending sorts. Remove legacy "Sort" combo boxes from the toolbar if header sorting is available.
+- **Dynamic Summaries**: Section headers (e.g., in the Dashboard) MUST show the total count (e.g., "18 SYMBOLS") instead of generic "Top" labels.
 
-### B. Detailed Inspection Pane (`logs-detail-pane`)
-The right-side auditing pane MUST present data in a granular, structured hierarchy:
-- **Header**: Standardized `<h2>` label.
-- **Detail Grid**: Use a vertical stack of detail rows with `border-bottom` separators.
+### B. Form Design (`settings-page`, `login-page`)
+- **Consistency**: Labels and Inputs MUST follow a strict vertical stack.
+- **Labels**: MUST use the `.minor-text` style (12px, `--muted`, uppercase) to match grid aesthetics.
+- **Inputs**: MUST occupy a generous width (at least 320px for singular inputs, or `100%` of container) to ensure high-grade data entry.
+
+### C. Detailed Inspection Pane (`logs-detail-pane`)
+- **Telemetry Audit**: Present data in a granular, structured hierarchy with `border-bottom` separators.
 - **Sensitive Data**: AI Agents MUST blacklist and never render credential fields (hashes, keys, tokens).
 
 ---
 
-## 🎨 4. Theme Tokens (CSS Variables)
+## 📊 4. Financial Logic (Dashboard)
+
+- **Win/Lose Calculation**: "Win" MUST be the sum of all positive PnL trades. "Lose" MUST be the sum of all negative PnL trades. Do not use trade direction (Buy/Sell) or trade counts for financial performance cards.
+- **Symbol Aggregation**: Do not separate performance by direction (Buy/Sell) in summary lists unless explicitly requested. Always show the combined total per Symbol/Strategy.
+
+---
+
+## 🎨 5. Theme Tokens (CSS Variables)
 
 | Token | Dark (Default) | Light | Usage |
 | :--- | :--- | :--- | :--- |

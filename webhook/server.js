@@ -3894,6 +3894,8 @@ function mt5ComputeTradeMetrics(rows) {
   let totalPnl = 0;
   let buyPnl = 0;
   let sellPnl = 0;
+  let winSumPnl = 0;
+  let loseSumPnl = 0;
   
   for (const r of trades) {
     const pnl = Number(r?.pnl_money_realized);
@@ -3902,6 +3904,9 @@ function mt5ComputeTradeMetrics(rows) {
       const act = String(r?.action || "").toUpperCase();
       if (act === "BUY") buyPnl += pnl;
       else if (act === "SELL") sellPnl += pnl;
+
+      if (pnl > 0) winSumPnl += pnl;
+      else if (pnl < 0) loseSumPnl += pnl;
     }
   }
 
@@ -3919,6 +3924,8 @@ function mt5ComputeTradeMetrics(rows) {
     total_pnl: totalPnl,
     buy_pnl: buyPnl,
     sell_pnl: sellPnl,
+    win_sum_pnl: winSumPnl,
+    lose_sum_pnl: loseSumPnl,
     total_rr: totalRr,
   };
 }
@@ -4621,9 +4628,9 @@ const server = http.createServer(async (req, res) => {
         metrics: mt5ComputeTradeMetrics(selectedRows),
         period_totals: periodTotals,
         top_winrate: {
-          symbols: mt5ComputeTopWinrateRows(selectedRows, (r) => String(r.symbol || "").toUpperCase(), { limit: 10, includeDirection: true }),
-          entry_models: mt5ComputeTopWinrateRows(selectedRows, (r) => mt5EntryModelFromRow(r), { limit: 10, includeDirection: true }),
-          accounts: mt5ComputeTopWinrateRows(selectedRows, (r) => envStr(r.user_id), { limit: 10, includeDirection: true }),
+          symbols: mt5ComputeTopWinrateRows(selectedRows, (r) => String(r.symbol || "").toUpperCase(), { limit: 100, includeDirection: false }),
+          entry_models: mt5ComputeTopWinrateRows(selectedRows, (r) => mt5EntryModelFromRow(r), { limit: 100, includeDirection: false }),
+          accounts: mt5ComputeTopWinrateRows(selectedRows, (r) => envStr(r.user_id), { limit: 100, includeDirection: false }),
         },
         pnl_series: pnlSeries,
       });

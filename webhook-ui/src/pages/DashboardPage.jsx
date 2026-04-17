@@ -35,50 +35,56 @@ function moneyClass(v) {
   return n > 0 ? "money-pos" : "money-neg";
 }
 
-function TableBlock({ title, rows }) {
-  const [orderBy, setOrderBy] = useState("WR");
+function TableBlock({ title, rows, noun = "ITEMS" }) {
+  const [sortKey, setSortKey] = useState("WR");
+  const [sortDir, setSortDir] = useState("DESC");
+
+  const toggleSort = (key) => {
+    if (sortKey === key) {
+      setSortDir(prev => prev === "ASC" ? "DESC" : "ASC");
+    } else {
+      setSortKey(key);
+      setSortDir("DESC");
+    }
+  };
 
   const sortedRows = [...rows].sort((a, b) => {
-    if (orderBy === "Name") return a.key < b.key ? -1 : 1;
-    if (orderBy === "WR") return b.win_rate - a.win_rate || b.trades - a.trades;
-    if (orderBy === "PnL") return b.pnl_total - a.pnl_total;
-    if (orderBy === "RR") return b.rr_total - a.rr_total;
-    if (orderBy === "W") return b.wins - a.wins;
-    if (orderBy === "L") return b.losses - a.losses;
-    return 0;
+    let va, vb;
+    if (sortKey === "Name") { va = String(a.key); vb = String(b.key); }
+    else if (sortKey === "WR") { va = a.win_rate; vb = b.win_rate; }
+    else if (sortKey === "PnL") { va = a.pnl_total; vb = b.pnl_total; }
+    else if (sortKey === "RR") { va = a.rr_total; vb = b.rr_total; }
+    else if (sortKey === "WL") { va = a.wins; vb = b.wins; }
+    else return 0;
+
+    if (va === vb) return 0;
+    const res = va > vb ? 1 : -1;
+    return sortDir === "DESC" ? -res : res;
   });
 
+  const sortMarker = (key) => {
+    if (sortKey !== key) return null;
+    return sortDir === "ASC" ? " ↑" : " ↓";
+  };
+
   return (
-    <div className="panel">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-        <div className="panel-label" style={{ margin: 0 }}>{title}</div>
-        <select 
-          className="minor-text" 
-          style={{ padding: '2px 4px', height: '22px', background: 'transparent', border: 'none', cursor: 'pointer' }} 
-          value={orderBy} 
-          onChange={(e) => setOrderBy(e.target.value)}
-        >
-          <option value="Name">Sort Name</option>
-          <option value="WR">Sort WR</option>
-          <option value="PnL">Sort PnL</option>
-          <option value="RR">Sort RR</option>
-          <option value="W">Sort Wins</option>
-          <option value="L">Sort Losses</option>
-        </select>
+    <div className="panel fadeIn">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <div className="panel-label" style={{ margin: 0 }}>{rows.length} {noun.toUpperCase()}</div>
       </div>
       {rows.length === 0 ? (
-        <div className="minor-text">No data.</div>
+        <div className="minor-text">No operational data.</div>
       ) : (
         <div className="mini-table">
           <div className="mini-table-head wide" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '8px', background: 'transparent' }}>
-            <span style={{ flex: '2', fontSize: '10px', fontWeight: 800, color: 'var(--muted)' }}>NAME</span>
-            <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)' }}>W/L</span>
-            <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)' }}>WR</span>
-            <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)' }}>PNL</span>
-            <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)' }}>RR</span>
+            <span onClick={() => toggleSort("Name")} style={{ flex: '2', fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>NAME{sortMarker("Name")}</span>
+            <span onClick={() => toggleSort("WL")} style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>W/L{sortMarker("WL")}</span>
+            <span onClick={() => toggleSort("WR")} style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>WR{sortMarker("WR")}</span>
+            <span onClick={() => toggleSort("PnL")} style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>PNL{sortMarker("PnL")}</span>
+            <span onClick={() => toggleSort("RR")} style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>RR{sortMarker("RR")}</span>
           </div>
           {sortedRows.map((r) => (
-            <div className="mini-table-row wide" key={r.key} style={{ padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
+            <div className="mini-table-row wide" key={r.key} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
               <span className="mini-name" style={{ flex: '2', whiteSpace: 'nowrap' }} title={r.key}>{r.key}</span>
               <span>{r.wins}/{r.losses}</span>
               <span>{asPct(r.win_rate)}</span>
@@ -135,7 +141,7 @@ export default function DashboardPage() {
   const f = data.filters || {};
 
   return (
-    <section className="stack-layout">
+    <section className="stack-layout fadeIn">
       <div className="toolbar-panel">
         <select value={filters.user_id} onChange={(e) => setFilters((prev) => ({ ...prev, user_id: e.target.value }))}>
           <option value="">All accounts</option>
@@ -175,8 +181,8 @@ export default function DashboardPage() {
             <span className={`kpi-value ${moneyClass(m.total_pnl)}`}>{asMoneySigned(m.total_pnl || 0)}</span>
           </div>
           <div className="minor-text" style={{ marginTop: '8px' }}>
-            Win: <span className={moneyClass(m.buy_pnl)}>{asMoneySigned(m.buy_pnl || 0)}</span> | 
-            Lose: <span className={moneyClass(m.sell_pnl)}>{asMoneySigned(m.sell_pnl || 0)}</span>
+            Win: <span className={moneyClass(m.win_sum_pnl)}>{asMoneySigned(m.win_sum_pnl || 0)}</span> | 
+            Lose: <span className={moneyClass(m.lose_sum_pnl)}>{asMoneySigned(m.lose_sum_pnl || 0)}</span>
           </div>
         </article>
       </div>
@@ -193,7 +199,8 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div className="minor-text" style={{ marginTop: '8px' }}>
-                Trades {v.total_trades || 0} | Wins {v.total_wins || 0} | Losses {v.total_losses || 0} | RR {asRR(v.total_rr || 0)}
+                Trades {v.total_trades || 0} | 
+                RR {asRR(v.total_rr || 0)}
               </div>
             </article>
           );
@@ -201,9 +208,9 @@ export default function DashboardPage() {
       </div>
 
       <div className="dashboard-grid tables">
-        <TableBlock title="Top Symbols" rows={Array.isArray(top.symbols) ? top.symbols : []} />
-        <TableBlock title="Top Entry Model" rows={Array.isArray(top.entry_models) ? top.entry_models : []} />
-        <TableBlock title="Top Accounts" rows={Array.isArray(top.accounts) ? top.accounts : []} />
+        <TableBlock title="Symbols" noun="Symbols" rows={Array.isArray(top.symbols) ? top.symbols : []} />
+        <TableBlock title="Entry Model" noun="Models" rows={Array.isArray(top.entry_models) ? top.entry_models : []} />
+        <TableBlock title="Accounts" noun="Accounts" rows={Array.isArray(top.accounts) ? top.accounts : []} />
       </div>
     </section>
   );
