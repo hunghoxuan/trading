@@ -445,12 +445,24 @@ export default function UsersPage({ authUser }) {
               <div className="panel" style={{ margin: 0 }}>
                 <div className="panel-label">ACCOUNT MANAGEMENT</div>
                 <div className="stack-layout" style={{ gap: 10 }}>
-                  <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1.1fr 1fr 1fr 1fr auto" }}>
-                    <input placeholder="Account ID" value={accountForm.account_id} onChange={(e) => setAccountForm((p) => ({ ...p, account_id: e.target.value }))} />
-                    <input placeholder="Name" value={accountForm.name} onChange={(e) => setAccountForm((p) => ({ ...p, name: e.target.value }))} />
-                    <input placeholder="Balance" value={accountForm.balance} onChange={(e) => setAccountForm((p) => ({ ...p, balance: e.target.value }))} />
-                    <input placeholder="Status" value={accountForm.status} onChange={(e) => setAccountForm((p) => ({ ...p, status: e.target.value }))} />
-                    <button type="button" onClick={onSaveAccount} disabled={saving}>{editingAccountId ? "UPDATE ACCOUNT" : "CREATE ACCOUNT"}</button>
+                  <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1.1fr 1fr 1fr 1fr auto", alignItems: 'flex-end' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div className="minor-text">Account ID</div>
+                      <input placeholder="Ex: 52836789" value={accountForm.account_id} onChange={(e) => setAccountForm((p) => ({ ...p, account_id: e.target.value }))} />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div className="minor-text">Name</div>
+                      <input placeholder="Friendly Name" value={accountForm.name} onChange={(e) => setAccountForm((p) => ({ ...p, name: e.target.value }))} />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div className="minor-text">Balance</div>
+                      <input placeholder="0.00" value={accountForm.balance} onChange={(e) => setAccountForm((p) => ({ ...p, balance: e.target.value }))} />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div className="minor-text">Status</div>
+                      <input placeholder="ACTIVE" value={accountForm.status} onChange={(e) => setAccountForm((p) => ({ ...p, status: e.target.value }))} />
+                    </label>
+                    <button type="button" onClick={onSaveAccount} disabled={saving} style={{ padding: '8px 16px' }}>{editingAccountId ? "UPDATE" : "CREATE"}</button>
                   </div>
 
                   <div className="events-table-wrap" style={{ maxHeight: 220 }}>
@@ -510,9 +522,12 @@ export default function UsersPage({ authUser }) {
               <div className="panel" style={{ margin: 0 }}>
                 <div className="panel-label">API KEY MANAGEMENT</div>
                 <div className="stack-layout" style={{ gap: 10 }}>
-                  <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr auto" }}>
-                    <input placeholder="API key label" value={apiKeyLabel} onChange={(e) => setApiKeyLabel(e.target.value)} />
-                    <button type="button" onClick={onCreateApiKey} disabled={saving}>CREATE KEY</button>
+                  <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr auto", alignItems: 'flex-end' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div className="minor-text">Key Label</div>
+                      <input placeholder="Ex: TradingView Bridge" value={apiKeyLabel} onChange={(e) => setApiKeyLabel(e.target.value)} />
+                    </label>
+                    <button type="button" onClick={onCreateApiKey} disabled={saving} style={{ padding: '8px 16px' }}>CREATE KEY</button>
                   </div>
                   <div className="events-table-wrap" style={{ maxHeight: 220 }}>
                     <table className="events-table">

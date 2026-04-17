@@ -22,31 +22,37 @@ export default function LoginPage({ onLogin }) {
   }
 
   return (
-    <section className="panel stack-layout login-page">
-      <h2>Login</h2>
-      <form onSubmit={submit} className="stack-layout">
-        <label>
-          <div className="muted small">Email</div>
+    <section className="panel stack-layout login-page fadeIn" style={{ maxWidth: '400px', margin: '100px auto' }}>
+      <div className="panel-label">AUTHENTICATION</div>
+      <form onSubmit={submit} className="stack-layout" style={{ gap: 20 }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div className="minor-text">Email Address</div>
           <input
             type="email"
             value={email}
+            placeholder="Enter your email"
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="username"
             required
+            style={{ width: '100%' }}
           />
         </label>
-        <label>
-          <div className="muted small">Password</div>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div className="minor-text">Password</div>
           <input
             type="password"
             value={password}
+            placeholder="Enter your password"
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
             required
+            style={{ width: '100%' }}
           />
         </label>
-        {error ? <div className="error-inline">{error}</div> : null}
-        <button type="submit" disabled={loading}>{loading ? "Signing in..." : "Sign in"}</button>
+        {error ? <div className="error">{error}</div> : null}
+        <button type="submit" disabled={loading} style={{ width: '100%', padding: '12px' }}>
+          {loading ? "AUTHORIZING..." : "SIGN IN"}
+        </button>
       </form>
     </section>
   );
