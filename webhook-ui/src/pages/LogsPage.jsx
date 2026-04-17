@@ -109,9 +109,7 @@ export default function LogsPage() {
                 <button className="secondary-button" disabled={events.length < pageSize} onClick={() => setPage(p => p + 1)}>NEXT</button>
               </div>
             )}
-            <select 
-              className="minor-text" 
-              style={{ padding: '0 4px', height: '22px', marginLeft: '10px' }}
+            <select
               value={pageSize}
               onChange={e => { setPageSize(Number(e.target.value)); setPage(0); }}
             >
@@ -140,22 +138,6 @@ export default function LogsPage() {
           <button type="button" className="primary-button" onClick={onBulkOk} disabled={loading || !bulkAction}>APPLY</button>
         </div>
 
-        <div className="toolbar-group toolbar-create">
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => {
-              if (createMode) {
-                setCreateMode(false);
-              } else {
-                setCreateMode(true);
-                setSelectedEvent(null);
-              }
-            }}
-          >
-            {createMode ? "CANCEL" : "CREATE LOG"}
-          </button>
-        </div>
       </div>
 
       <div className="logs-layout-split">
@@ -193,6 +175,22 @@ export default function LogsPage() {
               </tbody>
             </table>
           </div>
+          <div style={{ padding: "10px 12px", borderTop: "1px solid var(--border)" }}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                if (createMode) {
+                  setCreateMode(false);
+                } else {
+                  setCreateMode(true);
+                  setSelectedEvent(null);
+                }
+              }}
+            >
+              {createMode ? "CANCEL" : "CREATE LOG"}
+            </button>
+          </div>
         </div>
 
         <div className="logs-detail-pane">
@@ -215,6 +213,7 @@ export default function LogsPage() {
                 </label>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button type="button" className="primary-button" onClick={onCreateEvent} disabled={loading}>{loading ? "SAVING..." : "SAVE EVENT"}</button>
+                  <button type="button" className="secondary-button" onClick={() => setCreateMode(false)} disabled={loading}>CANCEL</button>
                 </div>
               </div>
             </div>

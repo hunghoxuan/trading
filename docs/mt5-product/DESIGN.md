@@ -39,12 +39,19 @@
 
 ## UI Form Design Rules
 - Do not include editable ID fields (`*_id`) in create/update forms. IDs are system-generated and shown as read-only labels only when needed.
+- On create-new forms, hide auto-generated IDs entirely (for example `User ID`, `Account ID`). Show IDs only in update/edit mode.
 - For any `status`/`state` form field, use enum/select inputs only (never free-text). The first enum option is the default.
 - Create flows use a two-step pattern:
   - First step: a `secondary` toggle button (`Create <Entity>`) that only opens/closes the form.
   - Open state: toggle button text changes to `Cancel`.
   - Real data write uses a `primary` submit button inside the form (`Save <Entity>` / `Save`).
 - `primary` buttons are reserved for actual insert/update operations only. Buttons that only open forms must be `secondary`.
+- Place the secondary create-toggle button below the list/table area (not in filter toolbar).
+- Place submit (`Save <Entity>`) and create-toggle (`Create <Entity>` / `Cancel`) on the same line in the form.
+- If total pages is `1`, do not display pagination controls.
+- Status/state visual rule:
+  - Active/True -> yellow
+  - Inactive/Disable/False -> gray
 
 ## TradingView Emission Contract (Refactor-Safe)
 

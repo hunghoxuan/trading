@@ -33,6 +33,8 @@ function fDateTime(v) {
 
 function statusUi(statusRaw) {
   const s = String(statusRaw || "").toUpperCase();
+  if (s === "ACTIVE" || s === "TRUE") return { cls: "ACTIVE", label: "ACTIVE" };
+  if (s === "INACTIVE" || s === "FALSE" || s === "DISABLE" || s === "DISABLED") return { cls: "INACTIVE", label: "INACTIVE" };
   if (s === "PLACED") return { cls: "PLACED", label: "PLACED" };
   if (s === "LOCKED") return { cls: "LOCKED", label: "LOCKED" };
   if (s === "START") return { cls: "START", label: "START" };
@@ -167,9 +169,7 @@ export default function TradesPage() {
                 <button className="secondary-button" disabled={filter.page >= pages} onClick={() => setFilter(f => ({ ...f, page: f.page + 1 }))}>NEXT</button>
               </div>
             )}
-            <select 
-              className="minor-text" 
-              style={{ padding: '0 4px', height: '22px', marginLeft: '10px' }}
+            <select
               value={filter.pageSize}
               onChange={e => setFilter(f => ({ ...f, pageSize: Number(e.target.value), page: 1 }))}
             >
@@ -204,22 +204,6 @@ export default function TradesPage() {
           <button type="button" className="primary-button" onClick={() => console.log("Bulk logic here")} disabled={bulkBusy || !bulkAction}>APPLY</button>
         </div>
 
-        <div className="toolbar-group toolbar-create">
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => {
-              if (createMode) {
-                setCreateMode(false);
-              } else {
-                setCreateMode(true);
-                setSelectedTrade(null);
-              }
-            }}
-          >
-            {createMode ? "CANCEL" : "CREATE TRADE"}
-          </button>
-        </div>
       </div>
 
       <div className="logs-layout-split">
@@ -308,6 +292,22 @@ export default function TradesPage() {
               </tbody>
             </table>
           </div>
+          <div style={{ padding: "10px 12px", borderTop: "1px solid var(--border)" }}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                if (createMode) {
+                  setCreateMode(false);
+                } else {
+                  setCreateMode(true);
+                  setSelectedTrade(null);
+                }
+              }}
+            >
+              {createMode ? "CANCEL" : "CREATE TRADE"}
+            </button>
+          </div>
         </div>
 
         <div className="logs-detail-pane">
@@ -358,6 +358,7 @@ export default function TradesPage() {
                 </label>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button type="button" className="primary-button" onClick={onCreateTrade} disabled={bulkBusy}>{bulkBusy ? "SAVING..." : "SAVE TRADE"}</button>
+                  <button type="button" className="secondary-button" onClick={() => setCreateMode(false)} disabled={bulkBusy}>CANCEL</button>
                 </div>
               </div>
             </div>

@@ -28,6 +28,14 @@ function fDate(v) {
   });
 }
 
+function statusLabel(v) {
+  const s = String(v || "").trim().toUpperCase();
+  if (s === "TRUE") return "ACTIVE";
+  if (s === "FALSE") return "INACTIVE";
+  if (s === "DISABLE" || s === "DISABLED") return "INACTIVE";
+  return s || "-";
+}
+
 export default function UsersPage({ authUser }) {
   const EMPTY_ALERT = { type: "", text: "" };
   const [users, setUsers] = useState([]);
@@ -378,12 +386,14 @@ export default function UsersPage({ authUser }) {
 
       <div className="toolbar-panel">
         <div className="toolbar-group toolbar-pagination">
-          <div className="pager-mini">
-            <button className="secondary-button" disabled={safePage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>PREV</button>
-            <span className="minor-text">PAGE {safePage} / {pages}</span>
-            <button className="secondary-button" disabled={safePage >= pages} onClick={() => setPage((p) => Math.min(pages, p + 1))}>NEXT</button>
-          </div>
-          <select className="minor-text" style={{ padding: "0 4px", height: "22px" }} value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+          {pages > 1 ? (
+            <div className="pager-mini">
+              <button className="secondary-button" disabled={safePage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>PREV</button>
+              <span className="minor-text">PAGE {safePage} / {pages}</span>
+              <button className="secondary-button" disabled={safePage >= pages} onClick={() => setPage((p) => Math.min(pages, p + 1))}>NEXT</button>
+            </div>
+          ) : null}
+          <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
             {PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n} / page</option>)}
           </select>
         </div>
@@ -403,19 +413,6 @@ export default function UsersPage({ authUser }) {
           <button type="button" className="primary-button" onClick={onApplyBulkAction} disabled={saving || !bulkAction}>APPLY</button>
         </div>
 
-        <div className="toolbar-group toolbar-create">
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => {
-              if (detailMode === "create") cancelCreateMode();
-              else openCreateMode();
-            }}
-            disabled={saving}
-          >
-            {detailMode === "create" ? "CANCEL" : "CREATE USER"}
-          </button>
-        </div>
       </div>
 
       <div className="logs-layout-split">
@@ -448,11 +445,24 @@ export default function UsersPage({ authUser }) {
                     </td>
                     <td className="cell-minor">{u.email || "-"}</td>
                     <td><span className="badge">{u.role || "User"}</span></td>
-                    <td className="cell-minor">{u.is_active ? "ACTIVE" : "INACTIVE"}</td>
+                    <td><span className={`badge ${u.is_active ? "ACTIVE" : "INACTIVE"}`}>{u.is_active ? "ACTIVE" : "INACTIVE"}</span></td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+          <div style={{ padding: "10px 12px", borderTop: "1px solid var(--border)" }}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                if (detailMode === "create") cancelCreateMode();
+                else openCreateMode();
+              }}
+              disabled={saving}
+            >
+              {detailMode === "create" ? "CANCEL" : "CREATE USER"}
+            </button>
           </div>
         </div>
 
@@ -475,7 +485,7 @@ export default function UsersPage({ authUser }) {
                 primaryDisabled={saving}
                 fieldErrors={createUserErrors}
                 formMessage={createUserAlert}
-                secondaryLabel="BACK"
+                secondaryLabel="CANCEL"
                 onSecondary={cancelCreateMode}
                 secondaryDisabled={saving}
               />
@@ -512,35 +522,8 @@ export default function UsersPage({ authUser }) {
                 <div className="panel-label">ACCOUNT MANAGEMENT</div>
                 <div className="stack-layout" style={{ gap: 10 }}>
                   <div>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => {
-                        if (accountFormOpen) {
-                          setAccountFormOpen(false);
-                          setEditingAccountId("");
-                          setAccountForm({ name: "", balance: "", status: ACCOUNT_STATUS_OPTIONS[0] });
-                          setAccountErrors({});
-                        } else {
-                          setAccountFormOpen(true);
-                          setEditingAccountId("");
-                          setAccountForm({ name: "", balance: "", status: ACCOUNT_STATUS_OPTIONS[0] });
-                          setAccountErrors({});
-                          if (accountAlert.type === "error") setAccountAlert(EMPTY_ALERT);
-                        }
-                      }}
-                      disabled={saving}
-                    >
-                      {accountFormOpen ? "CANCEL" : "CREATE ACCOUNT"}
-                    </button>
-                  </div>
-                  {accountFormOpen ? (
-                    <>
-                      <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1.1fr 1fr 1fr 1fr" }}>
-                        <div className="cell-wrap" style={{ justifyContent: "center" }}>
-                          <div className="minor-text">User ID</div>
-                          <div className="cell-major">{selectedUser?.user_id || "-"}</div>
-                        </div>
+                    {accountFormOpen ? (
+                      <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr 1fr" }}>
                         <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                           <div className="minor-text">Name</div>
                           <input placeholder="Friendly Name" value={accountForm.name} onChange={(e) => { setAccountForm((p) => ({ ...p, name: e.target.value })); setAccountErrors((p) => ({ ...p, name: "" })); if (accountAlert.type === "error") setAccountAlert(EMPTY_ALERT); }} />
@@ -558,13 +541,32 @@ export default function UsersPage({ authUser }) {
                           </select>
                         </label>
                       </div>
-                      <div className="cell-wrap" style={{ marginTop: "-4px" }}>
-                        <div className="minor-text">Account ID</div>
-                        <div className="cell-major">{editingAccountId || "AUTO-GENERATED ON CREATE"}</div>
-                      </div>
+                    ) : null}
+                  </div>
+                  {accountFormOpen ? (
+                    <>
+                      {editingAccountId ? (
+                        <div className="cell-wrap" style={{ marginTop: "-4px" }}>
+                          <div className="minor-text">User ID: {selectedUser?.user_id || "-"}</div>
+                          <div className="minor-text">Account ID: {editingAccountId}</div>
+                        </div>
+                      ) : null}
                       {accountAlert.text ? <div className={`form-message msg-${accountAlert.type || "error"}`}>{accountAlert.text}</div> : null}
                       <div style={{ display: "flex", gap: 8 }}>
                         <button type="button" className="primary-button" onClick={onSaveAccount} disabled={saving} style={{ padding: "8px 16px" }}>SAVE ACCOUNT</button>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => {
+                            setAccountFormOpen(false);
+                            setEditingAccountId("");
+                            setAccountForm({ name: "", balance: "", status: ACCOUNT_STATUS_OPTIONS[0] });
+                            setAccountErrors({});
+                          }}
+                          disabled={saving}
+                        >
+                          CANCEL
+                        </button>
                       </div>
                     </>
                   ) : null}
@@ -589,7 +591,7 @@ export default function UsersPage({ authUser }) {
                                 </div>
                               </td>
                               <td className="cell-minor">{a.balance === null || a.balance === undefined ? "-" : Number(a.balance).toLocaleString()}</td>
-                              <td className="cell-minor">{a.status || "-"}</td>
+                              <td><span className={`badge ${statusLabel(a.status)}`}>{statusLabel(a.status)}</span></td>
                               <td style={{ textAlign: 'right' }}>
                                 <button
                                   type="button"
@@ -622,32 +624,35 @@ export default function UsersPage({ authUser }) {
                       </tbody>
                     </table>
                   </div>
+                  <div style={{ paddingTop: 2 }}>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => {
+                        if (accountFormOpen) {
+                          setAccountFormOpen(false);
+                          setEditingAccountId("");
+                          setAccountForm({ name: "", balance: "", status: ACCOUNT_STATUS_OPTIONS[0] });
+                          setAccountErrors({});
+                        } else {
+                          setAccountFormOpen(true);
+                          setEditingAccountId("");
+                          setAccountForm({ name: "", balance: "", status: ACCOUNT_STATUS_OPTIONS[0] });
+                          setAccountErrors({});
+                          if (accountAlert.type === "error") setAccountAlert(EMPTY_ALERT);
+                        }
+                      }}
+                      disabled={saving}
+                    >
+                      {accountFormOpen ? "CANCEL" : "CREATE ACCOUNT"}
+                    </button>
+                  </div>
                 </div>
               </div>
 
               <div className="panel" style={{ margin: 0 }}>
                 <div className="panel-label">API KEY MANAGEMENT</div>
                 <div className="stack-layout" style={{ gap: 10 }}>
-                  <div>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => {
-                        if (apiKeyFormOpen) {
-                          setApiKeyFormOpen(false);
-                          setApiKeyLabel("");
-                          setApiKeyErrors({});
-                        } else {
-                          setApiKeyFormOpen(true);
-                          setApiKeyErrors({});
-                          if (apiKeyAlert.type === "error") setApiKeyAlert(EMPTY_ALERT);
-                        }
-                      }}
-                      disabled={saving}
-                    >
-                      {apiKeyFormOpen ? "CANCEL" : "CREATE API KEY"}
-                    </button>
-                  </div>
                   {apiKeyFormOpen ? (
                     <>
                       <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr auto", alignItems: "flex-end" }}>
@@ -656,7 +661,10 @@ export default function UsersPage({ authUser }) {
                           <input placeholder="Ex: TradingView Bridge" value={apiKeyLabel} onChange={(e) => { setApiKeyLabel(e.target.value); setApiKeyErrors((p) => ({ ...p, label: "" })); if (apiKeyAlert.type === "error") setApiKeyAlert(EMPTY_ALERT); }} />
                           {apiKeyErrors.label ? <div className="field-validation msg-error">{apiKeyErrors.label}</div> : null}
                         </label>
-                        <button type="button" className="primary-button" onClick={onCreateApiKey} disabled={saving} style={{ padding: "8px 16px" }}>SAVE API KEY</button>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button type="button" className="primary-button" onClick={onCreateApiKey} disabled={saving} style={{ padding: "8px 16px" }}>SAVE API KEY</button>
+                          <button type="button" className="secondary-button" onClick={() => { setApiKeyFormOpen(false); setApiKeyLabel(""); setApiKeyErrors({}); }} disabled={saving}>CANCEL</button>
+                        </div>
                       </div>
                       {apiKeyAlert.text ? <div className={`form-message msg-${apiKeyAlert.type || "error"}`}>{apiKeyAlert.text}</div> : null}
                     </>
@@ -676,7 +684,7 @@ export default function UsersPage({ authUser }) {
                           <tr key={k.key_id}>
                             <td className="cell-major">{k.label}</td>
                             <td className="cell-minor">{k.key_masked || "-"}</td>
-                            <td className="cell-minor">{k.is_active ? "ACTIVE" : "INACTIVE"}</td>
+                            <td><span className={`badge ${k.is_active ? "ACTIVE" : "INACTIVE"}`}>{k.is_active ? "ACTIVE" : "INACTIVE"}</span></td>
                             <td style={{ textAlign: 'right' }}>
                               <button type="button" className="secondary-button" style={{ padding: "4px 10px" }} onClick={() => onToggleApiKey(k)}>
                                 {k.is_active ? "DISABLE" : "ENABLE"}
@@ -695,6 +703,26 @@ export default function UsersPage({ authUser }) {
                         {(detail?.api_keys || []).length === 0 ? (<tr><td colSpan={4} className="minor-text">No API keys yet.</td></tr>) : null}
                       </tbody>
                     </table>
+                  </div>
+                  <div style={{ paddingTop: 2 }}>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => {
+                        if (apiKeyFormOpen) {
+                          setApiKeyFormOpen(false);
+                          setApiKeyLabel("");
+                          setApiKeyErrors({});
+                        } else {
+                          setApiKeyFormOpen(true);
+                          setApiKeyErrors({});
+                          if (apiKeyAlert.type === "error") setApiKeyAlert(EMPTY_ALERT);
+                        }
+                      }}
+                      disabled={saving}
+                    >
+                      {apiKeyFormOpen ? "CANCEL" : "CREATE API KEY"}
+                    </button>
                   </div>
                   <div className="minor-text">API keys are active for API auth when status is ACTIVE (sent via x-api-key).</div>
                 </div>
