@@ -2,6 +2,10 @@
 
 *(A strict append-only log of what was completed, with dates, module, and author)*
 
+## 2026-04-17
+- [x] [22:18] [webhook + web-ui] [Author: Codex] Task: Execution Hub V2 source security lifecycle completed. Added source auth-secret rotate/revoke APIs, `source_events` audit table/API, and Sources UI controls/audit viewer. Deployed live (`index-BKaMxoxM.js`) and verified with `/webhook/v2/sources/{id}/auth-secret/*` + `/webhook/v2/sources/{id}/events`.
+- [x] [22:32] [webhook + web-ui] [Author: Codex] Task: Execution Hub V2 trade observability completed. Added admin read APIs `/v2/trades` and `/v2/trades/{id}/events`, plus `Execution V2` page for filters/list/detail events. Deployed live (`index-BWHjpCJz.js`) and verified via production smoke calls.
+
 ## 2026-04-16
 - [x] [14:02] [webhook + EA] [Author: Gemini] Task: **Full State Reconciliation System**. Implemented `/mt5/ea/sync` and `/mt5/ea/bulk-sync` in server.js, added `SyncWithVps()` 5-min reconciliation loop in `TVBridgeEA.mq5`, and resolved VPS deployment conflicts (untracked node_modules). Server v04 / EA v12.
 
