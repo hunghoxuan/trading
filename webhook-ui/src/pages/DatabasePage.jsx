@@ -101,11 +101,9 @@ export default function DatabasePage() {
 
   return (
     <div className="stack-layout fadeIn">
+      <h2 className="page-title">DB</h2>
       <div className="toolbar-panel">
-        <div className="toolbar-left">
-          <div className="kpi-label">DATABASE</div>
-          <div className="toolbar-separator" />
-          
+        <div className="toolbar-group toolbar-pagination">
           <div className="pager-mini">
             <button disabled={filter.page <= 1} onClick={() => handlePageChange(filter.page - 1)}>PREV</button>
             <span className="minor-text">PAGE {filter.page} / {pages}</span>
@@ -122,7 +120,7 @@ export default function DatabasePage() {
           </select>
         </div>
 
-        <div className="toolbar-right">
+        <div className="toolbar-group toolbar-search-filter">
           <select value={selectedTable} onChange={handleTableChange} style={{ minWidth: '140px' }}>
             {tables.map(t => <option key={t} value={t}>{t.toUpperCase()}</option>)}
           </select>
@@ -134,19 +132,19 @@ export default function DatabasePage() {
             onChange={handleSearchChange} 
             style={{ width: "180px" }}
           />
+        </div>
 
-          <div className="toolbar-separator" />
-
+        <div className="toolbar-group toolbar-bulk-action">
           <select disabled={loading}>
             <option value="">BULK ACTION...</option>
             <option value="export">DOWNLOAD CSV</option>
             <option value="delete">DELETE ALL</option>
           </select>
-          <button type="button" onClick={() => alert("Action triggered")} disabled={loading}>OK</button>
-          
-          <button type="button" onClick={() => loadRows()} disabled={loading} style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }}>
-             ↻
-          </button>
+          <button type="button" onClick={() => alert("Action triggered")} disabled={loading}>APPLY</button>
+        </div>
+
+        <div className="toolbar-group toolbar-create">
+          <button type="button" disabled title="Create is not available on DB page">CREATE</button>
         </div>
       </div>
 

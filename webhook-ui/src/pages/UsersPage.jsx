@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import UserDetailSection from "../components/UserDetailSection";
 
 const ROLE_OPTIONS = ["System", "Admin", "User", "Guest"];
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
+const BULK_ACTIONS = ["", "Deactivate Selected User"];
 
 function byCreatedAsc(a, b) {
   const ad = String(a?.created_at || "");
@@ -35,18 +37,21 @@ export default function UsersPage({ authUser }) {
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
 
-  const [query, setQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
+  const [bulkAction, setBulkAction] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [detailMode, setDetailMode] = useState("view");
 
   const [createUserForm, setCreateUserForm] = useState({ user_name: "", email: "", role: "User", password: "" });
   const [profileForm, setProfileForm] = useState({ user_name: "", email: "", role: "User", is_active: true, password: "" });
   const [accountForm, setAccountForm] = useState({ account_id: "", name: "", balance: "", status: "" });
+  const [editingAccountId, setEditingAccountId] = useState("");
   const [apiKeyLabel, setApiKeyLabel] = useState("");
 
   const filteredUsers = useMemo(() => {
-    const q = String(query || "").trim().toLowerCase();
+    const q = String(searchQuery || "").trim().toLowerCase();
     return [...users]
       .filter((u) => {
         if (roleFilter && String(u.role || "") !== roleFilter) return false;
@@ -58,7 +63,7 @@ export default function UsersPage({ authUser }) {
         );
       })
       .sort(byCreatedAsc);
-  }, [users, query, roleFilter]);
+  }, [users, searchQuery, roleFilter]);
 
   const pages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
   const safePage = Math.max(1, Math.min(page, pages));
@@ -73,7 +78,9 @@ export default function UsersPage({ authUser }) {
       const out = await api.listUsers();
       const rows = Array.isArray(out?.users) ? out.users : [];
       setUsers(rows);
-      if (!selectedUserId && rows.length > 0) setSelectedUserId(String(rows[0].user_id || ""));
+      if (!selectedUserId && rows.length > 0) {
+        setSelectedUserId(String(rows[0].user_id || ""));
+      }
       setError("");
     } catch (e) {
       setError(e?.message || "Failed to load users");
@@ -99,6 +106,8 @@ export default function UsersPage({ authUser }) {
         is_active: Boolean(user.is_active),
         password: "",
       });
+      setEditingAccountId("");
+      setAccountForm({ account_id: "", name: "", balance: "", status: "" });
       setError("");
     } catch (e) {
       setError(e?.message || "Failed to load user detail");
@@ -108,8 +117,25 @@ export default function UsersPage({ authUser }) {
   }
 
   useEffect(() => { loadUsers(); }, []);
-  useEffect(() => { if (selectedUserId) loadDetail(selectedUserId); else setDetail(null); }, [selectedUserId]);
-  useEffect(() => { setPage(1); }, [query, roleFilter, pageSize]);
+  useEffect(() => {
+    if (detailMode === "create") return;
+    if (selectedUserId) loadDetail(selectedUserId);
+    else setDetail(null);
+  }, [selectedUserId, detailMode]);
+  useEffect(() => { setPage(1); }, [searchQuery, roleFilter, pageSize]);
+
+  function openCreateMode() {
+    setDetailMode("create");
+    setSelectedUserId("");
+    setDetail(null);
+    setCreateUserForm({ user_name: "", email: "", role: "User", password: "" });
+    setError("");
+  }
+
+  function openViewMode(userId) {
+    setDetailMode("view");
+    setSelectedUserId(String(userId || ""));
+  }
 
   async function onCreateUser() {
     const payload = {
@@ -124,10 +150,11 @@ export default function UsersPage({ authUser }) {
     }
     try {
       setSaving(true);
-      await api.createUser(payload);
-      setCreateUserForm({ user_name: "", email: "", role: "User", password: "" });
+      const out = await api.createUser(payload);
+      const createdUserId = String(out?.user?.user_id || "");
       setMsg("User created.");
       await loadUsers();
+      if (createdUserId) openViewMode(createdUserId);
     } catch (e) {
       setError(e?.message || "Failed to create user");
     } finally {
@@ -176,6 +203,18 @@ export default function UsersPage({ authUser }) {
     }
   }
 
+  async function onApplyBulkAction() {
+    if (!bulkAction) return;
+    if (!selectedUser) {
+      setError("Select a user first.");
+      return;
+    }
+    if (bulkAction === "Deactivate Selected User") {
+      await onDeactivateUser();
+      setBulkAction("");
+    }
+  }
+
   async function onSaveAccount() {
     if (!selectedUser) return;
     const payload = {
@@ -188,11 +227,18 @@ export default function UsersPage({ authUser }) {
       setError("Account ID and account name are required.");
       return;
     }
+
     try {
       setSaving(true);
-      await api.createUserAccount(selectedUser.user_id, payload);
+      if (editingAccountId) {
+        await api.updateUserAccount(selectedUser.user_id, editingAccountId, payload);
+        setMsg("Account updated.");
+      } else {
+        await api.createUserAccount(selectedUser.user_id, payload);
+        setMsg("Account created.");
+      }
+      setEditingAccountId("");
       setAccountForm({ account_id: "", name: "", balance: "", status: "" });
-      setMsg("Account saved.");
       await loadDetail(selectedUser.user_id);
     } catch (e) {
       setError(e?.message || "Failed to save account");
@@ -202,16 +248,20 @@ export default function UsersPage({ authUser }) {
     }
   }
 
-  async function onDeleteAccount(accountId) {
-    if (!selectedUser) return;
-    if (!window.confirm(`Delete account ${accountId}?`)) return;
+  async function onDeactivateAccount(account) {
+    if (!selectedUser || !account) return;
+    if (!window.confirm(`Deactivate account ${account.account_id}?`)) return;
     try {
       setSaving(true);
-      await api.deleteUserAccount(selectedUser.user_id, accountId);
-      setMsg("Account deleted.");
+      await api.updateUserAccount(selectedUser.user_id, account.account_id, {
+        name: String(account.name || account.account_id || ""),
+        balance: account.balance === null || account.balance === undefined ? null : Number(account.balance),
+        status: "INACTIVE",
+      });
+      setMsg("Account deactivated.");
       await loadDetail(selectedUser.user_id);
     } catch (e) {
-      setError(e?.message || "Failed to delete account");
+      setError(e?.message || "Failed to deactivate account");
     } finally {
       setSaving(false);
       window.setTimeout(() => setMsg(""), 1800);
@@ -273,59 +323,37 @@ export default function UsersPage({ authUser }) {
 
   return (
     <div className="stack-layout fadeIn">
+      <h2 className="page-title">Users</h2>
+
       <div className="toolbar-panel">
-        <div className="toolbar-left">
-          <div className="kpi-label">USER MANAGEMENT</div>
-          <div className="toolbar-separator" />
+        <div className="toolbar-group toolbar-pagination">
           <div className="pager-mini">
             <button disabled={safePage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>PREV</button>
             <span className="minor-text">PAGE {safePage} / {pages}</span>
             <button disabled={safePage >= pages} onClick={() => setPage((p) => Math.min(pages, p + 1))}>NEXT</button>
           </div>
-          <select
-            className="minor-text"
-            style={{ padding: "0 4px", height: "22px", marginLeft: "10px" }}
-            value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
-          >
+          <select className="minor-text" style={{ padding: "0 4px", height: "22px" }} value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
             {PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n} / page</option>)}
           </select>
         </div>
 
-        <div className="toolbar-right">
-          <input
-            placeholder="SEARCH USER, EMAIL..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            style={{ width: "220px" }}
-          />
+        <div className="toolbar-group toolbar-search-filter">
+          <input placeholder="SEARCH USER, EMAIL..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ width: "220px" }} />
           <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
             <option value="">ALL ROLES</option>
             {ROLE_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
-          <input
-            placeholder="NEW USER NAME"
-            value={createUserForm.user_name}
-            onChange={(e) => setCreateUserForm((p) => ({ ...p, user_name: e.target.value }))}
-            style={{ width: "160px" }}
-          />
-          <input
-            placeholder="NEW USER EMAIL"
-            value={createUserForm.email}
-            onChange={(e) => setCreateUserForm((p) => ({ ...p, email: e.target.value }))}
-            style={{ width: "180px" }}
-          />
-          <select value={createUserForm.role} onChange={(e) => setCreateUserForm((p) => ({ ...p, role: e.target.value }))}>
-            {ROLE_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+        </div>
+
+        <div className="toolbar-group toolbar-bulk-action">
+          <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)}>
+            {BULK_ACTIONS.map((a) => <option key={a} value={a}>{a || "BULK ACTION..."}</option>)}
           </select>
-          <input
-            type="password"
-            placeholder="PASSWORD"
-            value={createUserForm.password}
-            onChange={(e) => setCreateUserForm((p) => ({ ...p, password: e.target.value }))}
-            style={{ width: "150px" }}
-          />
-          <button type="button" onClick={onCreateUser} disabled={saving}>CREATE</button>
+          <button type="button" onClick={onApplyBulkAction} disabled={saving || !bulkAction}>APPLY</button>
+        </div>
+
+        <div className="toolbar-group toolbar-create">
+          <button type="button" onClick={openCreateMode} disabled={saving}>CREATE</button>
         </div>
       </div>
 
@@ -349,8 +377,8 @@ export default function UsersPage({ authUser }) {
                 ) : pageRows.map((u) => (
                   <tr
                     key={u.user_id}
-                    className={String(u.user_id) === String(selectedUserId) ? "active" : ""}
-                    onClick={() => setSelectedUserId(String(u.user_id || ""))}
+                    className={String(u.user_id) === String(selectedUserId) && detailMode !== "create" ? "active" : ""}
+                    onClick={() => openViewMode(u.user_id)}
                   >
                     <td>
                       <div className="cell-wrap">
@@ -369,91 +397,62 @@ export default function UsersPage({ authUser }) {
         </div>
 
         <div className="logs-detail-pane">
-          {!selectedUser ? (
+          {detailMode === "create" ? (
+            <div className="stack-layout">
+              <UserDetailSection
+                title="CREATE USER"
+                form={createUserForm}
+                setForm={setCreateUserForm}
+                roleOptions={ROLE_OPTIONS}
+                showActive={false}
+                passwordLabel="Password"
+                primaryLabel="CREATE USER"
+                onPrimary={onCreateUser}
+                primaryDisabled={saving}
+                secondaryLabel="CANCEL"
+                onSecondary={() => {
+                  if (users.length > 0) {
+                    openViewMode(users[0].user_id);
+                  } else {
+                    setDetailMode("view");
+                  }
+                }}
+                secondaryDisabled={saving}
+              />
+            </div>
+          ) : !selectedUser ? (
             <div className="empty-state minor-text">SELECT A USER TO INSPECT DETAIL</div>
           ) : loadingDetail ? (
             <div className="loading">Loading user detail...</div>
           ) : (
             <div className="stack-layout">
-              <div className="panel" style={{ margin: 0 }}>
-                <div className="panel-label">USER DETAIL</div>
-                <div className="stack-layout" style={{ gap: 10 }}>
-                  <label>
-                    <div className="muted small">Username</div>
-                    <input value={profileForm.user_name} onChange={(e) => setProfileForm((p) => ({ ...p, user_name: e.target.value }))} />
-                  </label>
-                  <label>
-                    <div className="muted small">Email</div>
-                    <input value={profileForm.email} onChange={(e) => setProfileForm((p) => ({ ...p, email: e.target.value }))} />
-                  </label>
-                  <label>
-                    <div className="muted small">Role</div>
-                    <select
-                      value={profileForm.role}
-                      onChange={(e) => setProfileForm((p) => ({ ...p, role: e.target.value }))}
-                      disabled={isDefaultUser}
-                    >
-                      {ROLE_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
-                    </select>
-                  </label>
-                  <label>
-                    <div className="muted small">New Password (optional)</div>
-                    <input
-                      type="password"
-                      value={profileForm.password}
-                      onChange={(e) => setProfileForm((p) => ({ ...p, password: e.target.value }))}
-                      placeholder="Leave empty to keep current"
-                    />
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(profileForm.is_active)}
-                      onChange={(e) => setProfileForm((p) => ({ ...p, is_active: e.target.checked }))}
-                      disabled={isDefaultUser || isSelf}
-                    />
-                    <span className="minor-text">Active</span>
-                  </label>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button type="button" onClick={onSaveProfile} disabled={saving}>SAVE USER</button>
-                    <button
-                      type="button"
-                      onClick={onDeactivateUser}
-                      disabled={saving || isDefaultUser || isSelf || !selectedUser.is_active}
-                      style={{ background: "#7f1d1d", color: "#fee2e2" }}
-                    >
-                      DEACTIVATE
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <UserDetailSection
+                title="USER DETAIL"
+                form={profileForm}
+                setForm={setProfileForm}
+                roleOptions={ROLE_OPTIONS}
+                disableRole={isDefaultUser}
+                disableActive={isDefaultUser || isSelf}
+                primaryLabel="SAVE USER"
+                onPrimary={onSaveProfile}
+                primaryDisabled={saving}
+                secondaryLabel="DEACTIVATE"
+                onSecondary={onDeactivateUser}
+                secondaryDisabled={saving || isDefaultUser || isSelf || !selectedUser.is_active}
+                secondaryDanger
+              />
 
               <div className="panel" style={{ margin: 0 }}>
                 <div className="panel-label">ACCOUNT MANAGEMENT</div>
                 <div className="stack-layout" style={{ gap: 10 }}>
                   <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1.1fr 1fr 1fr 1fr auto" }}>
-                    <input
-                      placeholder="Account ID"
-                      value={accountForm.account_id}
-                      onChange={(e) => setAccountForm((p) => ({ ...p, account_id: e.target.value }))}
-                    />
-                    <input
-                      placeholder="Name"
-                      value={accountForm.name}
-                      onChange={(e) => setAccountForm((p) => ({ ...p, name: e.target.value }))}
-                    />
-                    <input
-                      placeholder="Balance"
-                      value={accountForm.balance}
-                      onChange={(e) => setAccountForm((p) => ({ ...p, balance: e.target.value }))}
-                    />
-                    <input
-                      placeholder="Status"
-                      value={accountForm.status}
-                      onChange={(e) => setAccountForm((p) => ({ ...p, status: e.target.value }))}
-                    />
-                    <button type="button" onClick={onSaveAccount} disabled={saving}>SAVE</button>
+                    <input placeholder="Account ID" value={accountForm.account_id} onChange={(e) => setAccountForm((p) => ({ ...p, account_id: e.target.value }))} />
+                    <input placeholder="Name" value={accountForm.name} onChange={(e) => setAccountForm((p) => ({ ...p, name: e.target.value }))} />
+                    <input placeholder="Balance" value={accountForm.balance} onChange={(e) => setAccountForm((p) => ({ ...p, balance: e.target.value }))} />
+                    <input placeholder="Status" value={accountForm.status} onChange={(e) => setAccountForm((p) => ({ ...p, status: e.target.value }))} />
+                    <button type="button" onClick={onSaveAccount} disabled={saving}>{editingAccountId ? "UPDATE ACCOUNT" : "CREATE ACCOUNT"}</button>
                   </div>
+
                   <div className="events-table-wrap" style={{ maxHeight: 220 }}>
                     <table className="events-table">
                       <thead>
@@ -479,28 +478,29 @@ export default function UsersPage({ authUser }) {
                               <button
                                 type="button"
                                 style={{ width: "auto", padding: "4px 10px" }}
-                                onClick={() => setAccountForm({
-                                  account_id: String(a.account_id || ""),
-                                  name: String(a.name || ""),
-                                  balance: a.balance === null || a.balance === undefined ? "" : String(a.balance),
-                                  status: String(a.status || ""),
-                                })}
+                                onClick={() => {
+                                  setEditingAccountId(String(a.account_id || ""));
+                                  setAccountForm({
+                                    account_id: String(a.account_id || ""),
+                                    name: String(a.name || ""),
+                                    balance: a.balance === null || a.balance === undefined ? "" : String(a.balance),
+                                    status: String(a.status || ""),
+                                  });
+                                }}
                               >
                                 EDIT
                               </button>
                               <button
                                 type="button"
                                 style={{ width: "auto", padding: "4px 10px", marginLeft: 6, background: "#7f1d1d", color: "#fee2e2" }}
-                                onClick={() => onDeleteAccount(a.account_id)}
+                                onClick={() => onDeactivateAccount(a)}
                               >
-                                DELETE
+                                DEACTIVATE
                               </button>
                             </td>
                           </tr>
                         ))}
-                        {(detail?.accounts || []).length === 0 ? (
-                          <tr><td colSpan={4} className="minor-text">No accounts yet.</td></tr>
-                        ) : null}
+                        {(detail?.accounts || []).length === 0 ? (<tr><td colSpan={4} className="minor-text">No accounts yet.</td></tr>) : null}
                       </tbody>
                     </table>
                   </div>
@@ -511,11 +511,7 @@ export default function UsersPage({ authUser }) {
                 <div className="panel-label">API KEY MANAGEMENT</div>
                 <div className="stack-layout" style={{ gap: 10 }}>
                   <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr auto" }}>
-                    <input
-                      placeholder="API key label"
-                      value={apiKeyLabel}
-                      onChange={(e) => setApiKeyLabel(e.target.value)}
-                    />
+                    <input placeholder="API key label" value={apiKeyLabel} onChange={(e) => setApiKeyLabel(e.target.value)} />
                     <button type="button" onClick={onCreateApiKey} disabled={saving}>CREATE KEY</button>
                   </div>
                   <div className="events-table-wrap" style={{ maxHeight: 220 }}>
@@ -535,11 +531,7 @@ export default function UsersPage({ authUser }) {
                             <td className="cell-minor">{k.key_masked || "-"}</td>
                             <td className="cell-minor">{k.is_active ? "ACTIVE" : "INACTIVE"}</td>
                             <td>
-                              <button
-                                type="button"
-                                style={{ width: "auto", padding: "4px 10px" }}
-                                onClick={() => onToggleApiKey(k)}
-                              >
+                              <button type="button" style={{ width: "auto", padding: "4px 10px" }} onClick={() => onToggleApiKey(k)}>
                                 {k.is_active ? "DISABLE" : "ENABLE"}
                               </button>
                               <button
@@ -552,13 +544,11 @@ export default function UsersPage({ authUser }) {
                             </td>
                           </tr>
                         ))}
-                        {(detail?.api_keys || []).length === 0 ? (
-                          <tr><td colSpan={4} className="minor-text">No API keys yet.</td></tr>
-                        ) : null}
+                        {(detail?.api_keys || []).length === 0 ? (<tr><td colSpan={4} className="minor-text">No API keys yet.</td></tr>) : null}
                       </tbody>
                     </table>
                   </div>
-                  <div className="minor-text">API keys are masked for security.</div>
+                  <div className="minor-text">API keys are active for API auth when status is ACTIVE (sent via x-api-key).</div>
                 </div>
               </div>
 

@@ -112,8 +112,9 @@ export default function TradesPage() {
 
   return (
     <section className="logs-page-container stack-layout">
+      <h2 className="page-title">Trades</h2>
       <div className="toolbar-panel">
-        <div className="toolbar-left">
+        <div className="toolbar-group toolbar-pagination">
           <div className="pager-area">
             <strong>{total}</strong> RESULTS
             <div className="pager-mini">
@@ -132,7 +133,7 @@ export default function TradesPage() {
           </div>
         </div>
 
-        <div className="toolbar-right">
+        <div className="toolbar-group toolbar-search-filter">
           <input 
             value={filter.q} 
             onChange={(e) => setFilter(f => ({ ...f, q: e.target.value, page: 1 }))} 
@@ -146,10 +147,20 @@ export default function TradesPage() {
           <select value={filter.status} onChange={(e) => setFilter(f => ({ ...f, status: e.target.value, page: 1 }))}>
             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s || "ALL STATUSES"}</option>)}
           </select>
+          <select value={filter.range} onChange={(e) => setFilter(f => ({ ...f, range: e.target.value, page: 1 }))}>
+            {RANGE_OPTIONS.map(s => <option key={s} value={s}>{s ? s.toUpperCase() : "ALL RANGES"}</option>)}
+          </select>
+        </div>
+
+        <div className="toolbar-group toolbar-bulk-action">
           <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)} disabled={bulkBusy}>
             {BULK_ACTIONS.map(s => <option key={s} value={s}>{s || "BULK ACTION..."}</option>)}
           </select>
-          <button type="button" onClick={() => console.log("Bulk logic here")} disabled={bulkBusy || !bulkAction}>OK</button>
+          <button type="button" onClick={() => console.log("Bulk logic here")} disabled={bulkBusy || !bulkAction}>APPLY</button>
+        </div>
+
+        <div className="toolbar-group toolbar-create">
+          <button type="button" disabled title="Create is not available on Trades page">CREATE</button>
         </div>
       </div>
 

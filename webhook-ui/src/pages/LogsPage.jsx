@@ -72,8 +72,9 @@ export default function LogsPage() {
 
   return (
     <section className="logs-page-container stack-layout">
+      <h2 className="page-title">Logs</h2>
       <div className="toolbar-panel">
-        <div className="toolbar-left">
+        <div className="toolbar-group toolbar-pagination">
           <div className="pager-area">
             <strong>{events.length}</strong> RESULTS
             <div className="pager-mini">
@@ -91,8 +92,8 @@ export default function LogsPage() {
             </select>
           </div>
         </div>
-        
-        <div className="toolbar-right">
+
+        <div className="toolbar-group toolbar-search-filter">
           <input 
             placeholder="SEARCH TICKET, ID..." 
             value={filter.q}
@@ -103,10 +104,17 @@ export default function LogsPage() {
             <option value="">ALL SYMBOLS</option>
             {symbols.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
+        </div>
+
+        <div className="toolbar-group toolbar-bulk-action">
           <select value={bulkAction} onChange={e => setBulkAction(e.target.value)}>
             {BULK_ACTIONS.map(a => <option key={a} value={a}>{a || "BULK ACTION..."}</option>)}
           </select>
-          <button type="button" onClick={onBulkOk} disabled={loading || !bulkAction}>OK</button>
+          <button type="button" onClick={onBulkOk} disabled={loading || !bulkAction}>APPLY</button>
+        </div>
+
+        <div className="toolbar-group toolbar-create">
+          <button type="button" disabled title="Create is not available on Logs page">CREATE</button>
         </div>
       </div>
 
