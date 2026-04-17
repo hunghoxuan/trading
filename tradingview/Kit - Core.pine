@@ -1,5 +1,5 @@
 //@version=5
-// @lib-version: 81
+// @lib-version: 82
 library("KitCore", dynamic_requests = true)
 
 //s

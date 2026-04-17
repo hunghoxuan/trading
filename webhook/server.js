@@ -1324,8 +1324,8 @@ function mt5MapDbRow(row) {
     tp_exec: Number.isFinite(execTp) && execTp > 0 ? execTp : null,
     note: String(row.note || ""),
     raw_json: raw,
-    signal_tf: String(row.signal_tf || raw.sourceTf || raw.timeframe || ""),
-    chart_tf: String(row.chart_tf || raw.chartTf || ""),
+    signal_tf: String(row.signal_tf || raw.signal_tf || raw.signalTf || raw.sourceTf || raw.timeframe || ""),
+    chart_tf: String(row.chart_tf || raw.chart_tf || raw.chartTf || ""),
     status: String(row.status || ""),
     locked_at: row.locked_at ?? null,
     ack_at: row.ack_at ?? null,
@@ -2547,6 +2547,15 @@ async function mt5InitBackend() {
       ack_error TEXT NULL,
       CONSTRAINT fk_signals_user FOREIGN KEY (user_id) REFERENCES users(user_id)
     )
+  `);
+  await pool.query(`
+    DO $$ 
+    BEGIN 
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='signals' AND column_name='source_tf') THEN
+        UPDATE signals SET signal_tf = source_tf WHERE signal_tf IS NULL;
+        ALTER TABLE signals DROP COLUMN source_tf;
+      END IF;
+    END $$;
   `);
   await pool.query(`
     ALTER TABLE signals

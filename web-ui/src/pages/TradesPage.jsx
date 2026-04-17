@@ -453,14 +453,20 @@ export default function TradesPage() {
                           <div className="json-table-wrapper">
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                               <tbody>
-                                {Object.entries(ev.payload_json || {}).map(([k, v]) => (
-                                  <tr key={k} style={{ borderBottom: '1px solid var(--border)' }}>
-                                    <td className="minor-text" style={{ padding: '8px 0', width: '30%', fontWeight: 700, color: 'var(--muted)' }}>{k}</td>
-                                    <td className="minor-text" style={{ padding: '8px 0', color: 'var(--text)' }}>
-                                      {typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v)}
-                                    </td>
-                                  </tr>
-                                ))}
+                                  {Object.entries(ev.payload_json || {}).map(([k, v]) => {
+                                    let label = k.replace(/_/g, ' ').toUpperCase();
+                                    if (label === 'SOURCE TF') label = 'SIGNAL TF';
+                                    if (label === 'CHART TF PERIOD') label = 'CHART TF';
+                                    
+                                    return (
+                                      <tr key={k} style={{ borderBottom: '1px solid var(--border)' }}>
+                                        <td className="minor-text" style={{ padding: '8px 0', width: '30%', fontWeight: 700, color: 'var(--muted)' }}>{label}</td>
+                                        <td className="minor-text" style={{ padding: '8px 0', color: 'var(--text)' }}>
+                                          {k.toLowerCase().includes('tf') || k.toLowerCase().includes('timeframe') ? formatTimeframe(v) : (typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v))}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
                               </tbody>
                             </table>
                           </div>
