@@ -4590,6 +4590,7 @@ const server = http.createServer(async (req, res) => {
       const userId = envStr(url.searchParams.get("user_id"));
       const symbol = envStr(url.searchParams.get("symbol")).toUpperCase();
       const strategy = envStr(url.searchParams.get("strategy"));
+      const model = envStr(url.searchParams.get("model"));
       const direction = envStr(url.searchParams.get("direction")).toUpperCase();
       const timeframe = envStr(url.searchParams.get("timeframe"));
       const range = envStr(url.searchParams.get("range"), "all").toLowerCase();
@@ -4601,8 +4602,13 @@ const server = http.createServer(async (req, res) => {
           const s = mt5StrategyFromRow(r);
           if (s !== strategy) return false;
         }
+        if (model) {
+          const m = mt5EntryModelFromRow(r);
+          if (m !== model) return false;
+        }
         if (direction && String(r.action || "").toUpperCase() !== direction) return false;
-        if (timeframe && String(r.timeframe || "") !== timeframe) return false;
+        const rtf = String(r.timeframe || r.raw_json?.chartTF || "");
+        if (timeframe && rtf !== timeframe) return false;
         return true;
       });
 
@@ -4653,13 +4659,15 @@ const server = http.createServer(async (req, res) => {
           user_id: userId || "",
           symbol,
           strategy,
+          model,
           direction,
           timeframe,
           range,
           accounts,
           symbols,
           strategies,
-          timeframes: [...new Set(allRows.map(r => String(r.timeframe || "")).filter(Boolean))].sort(),
+          models: [...new Set(allRows.map(r => mt5EntryModelFromRow(r)).filter(Boolean))].sort(),
+          timeframes: [...new Set(allRows.map(r => String(r.timeframe || r.raw_json?.chartTF || "")).filter(Boolean))].sort(),
         },
         metrics: mt5ComputeTradeMetrics(selectedRows),
         period_totals: periodTotals,
