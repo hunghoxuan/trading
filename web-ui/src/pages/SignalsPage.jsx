@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
+import { Link } from "react-router-dom";
 
 const STATUS_OPTIONS = ["", "NEW", "LOCKED", "PLACED", "START", "FAIL", "TP", "SL", "CANCEL", "EXPIRED"];
 const BULK_ACTIONS = ["", "Download CSV", "Renew All", "Cancel All", "Delete All"];
@@ -315,6 +316,7 @@ export default function SignalsPage() {
                   <th>POSITION</th>
                   <th>AUDIT</th>
                   <th>STATUS</th>
+                  <th style={{ textAlign: 'right' }}>ACTION</th>
                 </tr>
               </thead>
               <tbody>
@@ -370,6 +372,9 @@ export default function SignalsPage() {
                           <div className="cell-major"><span className={`badge ${status.cls} badge-fixed`}>{status.label}</span></div>
                           <PnlDisplay value={t.pnl_money_realized} />
                         </div>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <Link to={`/signals/${t.signal_id}`} className="primary-button small">VIEW</Link>
                       </td>
                     </tr>
                   );
