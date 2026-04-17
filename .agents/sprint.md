@@ -21,6 +21,8 @@ Achieve 100% synchronization reliability between MT5 and VPS to eliminate "Ghost
     - [x] Add `/v2/sources` POST + `/v2/sources/{id}` PUT + web-ui sources management page.
     - [x] Add `/v2/sources/{id}/auth-secret/rotate|revoke` + `/v2/sources/{id}/events` with source audit trail UI.
     - [x] Add `/v2/trades` + `/v2/trades/{id}/events` and web-ui `Execution V2` inspection page.
+    - [x] Add `/v2/accounts` POST + `/v2/accounts/{id}` PUT and web-ui `Accounts V2` management page.
+    - [x] Fix nullable balance regression on account updates (preserve `null` when balance is omitted).
 
 ## Up Next
 - [ ] [2026-04-15 12:25] [Infra/Deployment] Task: SSL/TLS and HTTPS Enforcement.
