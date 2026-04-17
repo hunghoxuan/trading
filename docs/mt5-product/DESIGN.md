@@ -8,7 +8,7 @@
 ## Architecture
 - `webhook/server.js`: ingestion + queue + read APIs.
 - `Postgres`: users + accounts + signals + signal_events.
-- `webhook-ui` (React + Vite): dashboard and trade exploration.
+- `web-ui` (React + Vite): dashboard and trade exploration.
 
 ## Key decisions
 1. Keep `/mt5/ea/pull` and `/mt5/ea/ack` unchanged so EA is stable.

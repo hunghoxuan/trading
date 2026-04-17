@@ -363,6 +363,7 @@ export const api = {
   dashboardSummary: (userId = "") => get(`/mt5/dashboard/summary${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`),
   dashboardSeries: (period = "month", userId = "") => get(`/mt5/dashboard/pnl-series?period=${encodeURIComponent(period)}${userId ? `&user_id=${encodeURIComponent(userId)}` : ""}`),
   symbols: (userId = "") => get(`/mt5/filters/symbols${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`),
+  filtersAdvanced: (userId = "") => get(`/mt5/filters/advanced${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`),
   trades: (params) => {
     const q = new URLSearchParams();
     Object.entries(params || {}).forEach(([k, v]) => {

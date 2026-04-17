@@ -122,10 +122,11 @@ export default function DashboardPage() {
   const [filters, setFilters] = useState({
     user_id: "",
     symbol: "",
-    strategy: "",
-    model: "",
+    source: "",
+    entry_model: "",
     direction: "",
-    timeframe: "",
+    chart_tf: "",
+    signal_tf: "",
     range: "all",
   });
   const inFlightRef = useRef(false);
@@ -146,12 +147,12 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load();
-  }, [filters.user_id, filters.symbol, filters.strategy, filters.model, filters.direction, filters.timeframe, filters.range]);
+  }, [filters.user_id, filters.symbol, filters.source, filters.entry_model, filters.direction, filters.chart_tf, filters.signal_tf, filters.range]);
 
   useEffect(() => {
     const t = setInterval(load, 10000);
     return () => clearInterval(t);
-  }, [filters.user_id, filters.symbol, filters.strategy, filters.model, filters.direction, filters.timeframe, filters.range]);
+  }, [filters.user_id, filters.symbol, filters.source, filters.entry_model, filters.direction, filters.chart_tf, filters.signal_tf, filters.range]);
 
   if (error) return <div className="error">{error}</div>;
   if (!data) return <div className="loading">Loading dashboard...</div>;
@@ -172,22 +173,26 @@ export default function DashboardPage() {
           <option value="">All symbols</option>
           {(f.symbols || []).map((v) => <option key={v} value={v}>{v}</option>)}
         </select>
-        <select value={filters.strategy} onChange={(e) => setFilters((prev) => ({ ...prev, strategy: e.target.value }))}>
-          <option value="">All strategies</option>
-          {(f.strategies || []).map((v) => <option key={v} value={v}>{v}</option>)}
+        <select value={filters.source} onChange={(e) => setFilters((prev) => ({ ...prev, source: e.target.value }))}>
+          <option value="">All Sources</option>
+          {(f.sources || []).map((v) => <option key={v} value={v}>{v}</option>)}
         </select>
-        <select value={filters.model} onChange={(e) => setFilters((prev) => ({ ...prev, model: e.target.value }))}>
-          <option value="">All models</option>
-          {(f.models || []).map((v) => <option key={v} value={v}>{v}</option>)}
+        <select value={filters.entry_model} onChange={(e) => setFilters((prev) => ({ ...prev, entry_model: e.target.value }))}>
+          <option value="">All Models</option>
+          {(f.entry_models || []).map((v) => <option key={v} value={v}>{v}</option>)}
         </select>
         <select value={filters.direction} onChange={(e) => setFilters((prev) => ({ ...prev, direction: e.target.value }))}>
           <option value="">All Direction</option>
           <option value="BUY">Buy</option>
           <option value="SELL">Sell</option>
         </select>
-        <select value={filters.timeframe} onChange={(e) => setFilters((prev) => ({ ...prev, timeframe: e.target.value }))}>
-          <option value="">All Timeframes</option>
-          {(f.timeframes || []).map(v => <option key={v} value={v}>{v}</option>)}
+        <select value={filters.chart_tf} onChange={(e) => setFilters((prev) => ({ ...prev, chart_tf: e.target.value }))}>
+          <option value="">Chart TF</option>
+          {(f.chart_tfs || []).map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <select value={filters.signal_tf} onChange={(e) => setFilters((prev) => ({ ...prev, signal_tf: e.target.value }))}>
+          <option value="">Signal TF</option>
+          {(f.signal_tfs || []).map(v => <option key={v} value={v}>{v}</option>)}
         </select>
         <select value={filters.range} onChange={(e) => setFilters((prev) => ({ ...prev, range: e.target.value }))} style={{ marginLeft: 'auto' }}>
           {RANGE_OPTIONS.map((r) => <option key={r.val} value={r.val}>{r.lab}</option>)}

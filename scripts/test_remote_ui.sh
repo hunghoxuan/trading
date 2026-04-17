@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-UI_DIR="${ROOT_DIR}/webhook-ui"
+UI_DIR="${ROOT_DIR}/web-ui"
 ENV_FILE="${ROOT_DIR}/webhook/.env"
 REPORT_DIR="${ROOT_DIR}/test-results"
 mkdir -p "${REPORT_DIR}"

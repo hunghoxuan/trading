@@ -132,7 +132,8 @@ const CFG = {
         : "./mt5-signals.db"),
   ),
   mt5PostgresUrl: envStr(process.env.MT5_POSTGRES_URL) || envStr(process.env.POSTGRES_URL) || envStr(process.env.POSTGRE_URL),
-  uiDistPath: path.resolve(__dirname, envStr(process.env.WEBHOOK_UI_DIST_PATH, "../webhook-ui/dist")),
+  uiDistPath: path.resolve(__dirname, envStr(process.env.WEB_UI_DIST_PATH || process.env.WEBHOOK_UI_DIST_PATH, "../web-ui/dist")),
+  landingDistPath: path.resolve(__dirname, envStr(process.env.WEB_LANDING_DIST_PATH, "../web")),
   uiAuthEnabled: asBool(process.env.UI_AUTH_ENABLED, true),
   uiBootstrapEmail: envStr(process.env.UI_BOOTSTRAP_EMAIL, "hung.hoxuan@gmail.com").toLowerCase(),
   uiBootstrapPassword: envStr(process.env.UI_BOOTSTRAP_PASSWORD, "BceTzkUuznrX7WDLTODBh077"),
@@ -739,9 +740,75 @@ function serveUiFile(res, filePath, method = "GET") {
   res.end(body);
 }
 
-function tryServeUi(url, req, res) {
+function normalizeHostHeader(hostRaw) {
+  return String(hostRaw || "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase()
+    .replace(/:\d+$/, "");
+}
+
+function isTradeHost(hostname) {
+  return hostname === "trade.mozasolution.com";
+}
+
+function isLandingHost(hostname) {
+  return hostname === "mozasolution.com" || hostname === "www.mozasolution.com";
+}
+
+function isApiPath(pathname) {
+  const p = String(pathname || "");
+  return (
+    p === "/health" ||
+    p === "/mt5/health" ||
+    p === "/csv" ||
+    p === "/auth" ||
+    p.startsWith("/auth/") ||
+    p === "/signal" ||
+    p.startsWith("/signal/") ||
+    p.startsWith("/mt5/") ||
+    p.startsWith("/webhook")
+  );
+}
+
+function stripWebhookPrefix(pathname) {
+  const p = String(pathname || "");
+  if (p === "/webhook") return "/";
+  if (p.startsWith("/webhook/")) return p.slice("/webhook".length) || "/";
+  return p;
+}
+
+function tryServeLanding(url, req, res, hostname) {
   if (!["GET", "HEAD"].includes(req.method)) return false;
-  const isUiPath = url.pathname.startsWith("/ui");
+  if (!isLandingHost(hostname)) return false;
+  if (!fs.existsSync(CFG.landingDistPath)) {
+    return json(res, 404, { ok: false, error: `Landing dist folder not found: ${CFG.landingDistPath}` });
+  }
+
+  if (url.pathname === "/" || url.pathname === "/index.html") {
+    const indexPath = path.join(CFG.landingDistPath, "index.html");
+    if (fs.existsSync(indexPath)) {
+      serveUiFile(res, indexPath, req.method);
+      return true;
+    }
+    return json(res, 404, { ok: false, error: `Landing entry not found: ${indexPath}` });
+  }
+
+  if (!url.pathname.startsWith("/landing-assets/")) return false;
+  const rel = url.pathname.replace(/^\/landing-assets\/+/, "");
+  if (!rel || rel.includes("..")) return json(res, 400, { ok: false, error: "Invalid landing asset path" });
+  const requested = path.join(CFG.landingDistPath, "assets", rel);
+  if (!fs.existsSync(requested) || !fs.statSync(requested).isFile()) {
+    return json(res, 404, { ok: false, error: "Landing asset not found" });
+  }
+  serveUiFile(res, requested, req.method);
+  return true;
+}
+
+function tryServeUi(url, req, res, hostname) {
+  if (!["GET", "HEAD"].includes(req.method)) return false;
+  const isTradeRootUiPath = isTradeHost(hostname) && !isApiPath(url.pathname);
+  const isUiPath = url.pathname.startsWith("/ui") || isTradeRootUiPath;
   const isUiAssetPath = url.pathname.startsWith("/assets/");
   if (!isUiPath && !isUiAssetPath) return false;
   if (!fs.existsSync(CFG.uiDistPath)) {
@@ -751,6 +818,9 @@ function tryServeUi(url, req, res) {
   let rel;
   if (isUiAssetPath) {
     rel = url.pathname;
+  } else if (isTradeRootUiPath) {
+    rel = url.pathname;
+    if (!rel || rel === "/") rel = "/index.html";
   } else {
     rel = url.pathname.slice("/ui".length);
     if (!rel || rel === "/") rel = "/index.html";
@@ -1254,7 +1324,7 @@ function mt5MapDbRow(row) {
     tp_exec: Number.isFinite(execTp) && execTp > 0 ? execTp : null,
     note: String(row.note || ""),
     raw_json: raw,
-    source_tf: String(row.source_tf || raw.sourceTf || raw.timeframe || ""),
+    signal_tf: String(row.signal_tf || raw.sourceTf || raw.timeframe || ""),
     chart_tf: String(row.chart_tf || raw.chartTf || ""),
     status: String(row.status || ""),
     locked_at: row.locked_at ?? null,
@@ -1711,7 +1781,7 @@ async function mt5InitBackend() {
       try { db.exec(`ALTER TABLE ${tbl} ADD COLUMN metadata TEXT`); } catch(e) {}
     });
 
-    ["source_tf", "chart_tf", "entry_model"].forEach(col => {
+    ["signal_tf", "chart_tf", "entry_model"].forEach(col => {
       try { db.exec(`ALTER TABLE signals ADD COLUMN ${col} TEXT`); } catch(e) {}
     });
     ["password_salt", "role", "updated_at", "is_active"].forEach(col => {
@@ -1846,8 +1916,8 @@ async function mt5InitBackend() {
           INSERT OR IGNORE INTO signals (
             signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
             rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
-            note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            note, entry_model, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           signal.signal_id,
           signal.created_at,
@@ -1865,6 +1935,7 @@ async function mt5InitBackend() {
           signal.sl_exec ?? null,
           signal.tp_exec ?? null,
           signal.note,
+          signal.entry_model ?? null,
           JSON.stringify(signal.raw_json || {}),
           signal.status,
           signal.locked_at,
@@ -2456,7 +2527,7 @@ async function mt5InitBackend() {
       volume DOUBLE PRECISION NOT NULL,
       sl DOUBLE PRECISION NULL,
       tp DOUBLE PRECISION NULL,
-      source_tf TEXT NULL,
+      signal_tf TEXT NULL,
       chart_tf TEXT NULL,
       rr_planned DOUBLE PRECISION NULL,
       risk_money_planned DOUBLE PRECISION NULL,
@@ -2479,7 +2550,7 @@ async function mt5InitBackend() {
   `);
   await pool.query(`
     ALTER TABLE signals
-    ADD COLUMN IF NOT EXISTS source_tf TEXT
+    ADD COLUMN IF NOT EXISTS signal_tf TEXT
   `);
   await pool.query(`
     ALTER TABLE signals
@@ -2588,7 +2659,7 @@ async function mt5InitBackend() {
   await pool.query(`
     INSERT INTO signals (
       signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
-      source_tf, chart_tf,
+      signal_tf, chart_tf,
       note, raw_json, status, locked_at, ack_at, ack_status, ack_ticket, ack_error
     )
     SELECT
@@ -2610,7 +2681,7 @@ async function mt5InitBackend() {
           await pool.query(`
             INSERT INTO signals (
               signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
-              source_tf, chart_tf,
+              signal_tf, chart_tf,
               rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
               note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27)
@@ -2623,7 +2694,7 @@ async function mt5InitBackend() {
               volume=EXCLUDED.volume,
               sl=EXCLUDED.sl,
               tp=EXCLUDED.tp,
-              source_tf=EXCLUDED.source_tf,
+              signal_tf=EXCLUDED.signal_tf,
               chart_tf=EXCLUDED.chart_tf,
               rr_planned=EXCLUDED.rr_planned,
               risk_money_planned=EXCLUDED.risk_money_planned,
@@ -2651,7 +2722,7 @@ async function mt5InitBackend() {
             Number(r.volume ?? CFG.mt5DefaultLot),
             r.sl ?? null,
             r.tp ?? null,
-            r.source_tf ?? r.raw_json?.sourceTf ?? r.raw_json?.timeframe ?? null,
+            r.signal_tf ?? r.raw_json?.sourceTf ?? r.raw_json?.timeframe ?? null,
             r.chart_tf ?? r.raw_json?.chartTf ?? null,
             r.rr_planned ?? null,
             r.risk_money_planned ?? null,
@@ -2686,10 +2757,10 @@ async function mt5InitBackend() {
       const r = await pool.query(`
         INSERT INTO signals (
           signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
-          source_tf, chart_tf,
+          signal_tf, chart_tf,
           rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
-          note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27)
+          note, entry_model, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,$22,$23,$24,$25,$26,$27,$28)
         ON CONFLICT (signal_id) DO NOTHING
         RETURNING signal_id
       `, [
@@ -2702,7 +2773,7 @@ async function mt5InitBackend() {
         signal.volume,
         signal.sl,
         signal.tp,
-        signal.source_tf ?? signal.raw_json?.sourceTf ?? signal.raw_json?.timeframe ?? null,
+        signal.signal_tf ?? signal.raw_json?.sourceTf ?? signal.raw_json?.timeframe ?? null,
         signal.chart_tf ?? signal.raw_json?.chartTf ?? null,
         signal.rr_planned ?? null,
         signal.risk_money_planned ?? null,
@@ -2711,6 +2782,7 @@ async function mt5InitBackend() {
         signal.sl_exec ?? null,
         signal.tp_exec ?? null,
         signal.note,
+        signal.entry_model ?? null,
         JSON.stringify(signal.raw_json || {}),
         signal.status,
         signal.locked_at,
@@ -3229,7 +3301,7 @@ async function mt5InitBackend() {
           const ins = await client.query(`
             INSERT INTO signals (
               signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
-              source_tf, chart_tf, rr_planned, risk_money_planned,
+              signal_tf, chart_tf, rr_planned, risk_money_planned,
               pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
               note, raw_json, status, locked_at, ack_at, opened_at, closed_at,
               ack_status, ack_ticket, ack_error
@@ -3244,7 +3316,7 @@ async function mt5InitBackend() {
             ON CONFLICT (signal_id) DO NOTHING
           `, [
             renewedId, now, row.user_id, row.source, row.action, row.symbol, row.volume, row.sl, row.tp,
-            row.source_tf, row.chart_tf, row.rr_planned, row.risk_money_planned,
+            row.signal_tf, row.chart_tf, row.rr_planned, row.risk_money_planned,
             row.note, row.raw_json,
           ]);
           if ((ins.rowCount || 0) <= 0) continue;
@@ -3313,12 +3385,12 @@ function mt5BuildSignalId(payload, fallbackPrefix = "tv") {
 }
 
 function mt5BuildNote(payload) {
-  const noteParts = [payload.strategy, payload.timeframe, payload.reason, payload.note].filter(Boolean);
+  const noteParts = [payload.source, payload.signal_tf, payload.reason, payload.note].filter(Boolean);
   return noteParts.join(" | ");
 }
 
 async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
-  const source = String(opts.source || "tradingview");
+  const source = String(payload.source || opts.source || "tradingview");
   const eventType = String(opts.eventType || "QUEUED");
   const fallbackIdPrefix = String(opts.fallbackIdPrefix || "tv");
 
@@ -3330,8 +3402,8 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   const userId = envStr(payload.user_id ?? payload.userId ?? payload.user ?? CFG.mt5DefaultUserId, CFG.mt5DefaultUserId);
   const rrPlanned = asNum(payload.rr ?? payload.risk_reward, NaN);
   const riskMoneyPlanned = asNum(payload.risk_money ?? payload.money_risk ?? payload.riskMoney, NaN);
-  const sourceTf = envStr(payload.sourceTf ?? payload.source_tf ?? payload.timeframe ?? payload.tf);
-  const chartTf = envStr(payload.chartTf ?? payload.chart_tf ?? payload.chartTimeframe ?? payload.chart_tf_period);
+  const signalTf = envStr(payload.signal_tf ?? payload.signalTf ?? payload.sourceTf ?? payload.timeframe ?? payload.tf);
+  const chartTf = envStr(payload.chart_tf ?? payload.chartTf ?? payload.chartTimeframe ?? payload.chart_tf_period);
   const note = mt5BuildNote(payload);
 
   const plannedEntry = asNum(payload.entry ?? payload.price, NaN);
@@ -3363,13 +3435,14 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
     tp: payload.tp ?? null,
     rr_planned: Number.isFinite(rrPlanned) ? rrPlanned : null,
     risk_money_planned: Number.isFinite(riskMoneyPlanned) ? riskMoneyPlanned : null,
-    source_tf: sourceTf || null,
+    signal_tf: signalTf || null,
     chart_tf: chartTf || null,
     pnl_money_realized: null,
     entry_price_exec: Number.isFinite(plannedEntry) && plannedEntry > 0 ? plannedEntry : null,
     sl_exec: null,
     tp_exec: null,
     note,
+    entry_model: String(payload.entry_model || payload.entryModel || payload.model || ""),
     raw_json: rawJsonNormalized,
     status: "NEW",
     locked_at: null,
@@ -3393,7 +3466,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
       action,
       symbol,
       order_type: orderType,
-      source_tf: sourceTf || null,
+      signal_tf: signalTf || null,
       chart_tf: chartTf || null,
       timeframe: payload.timeframe || null,
       strategy: payload.strategy || null,
@@ -3697,6 +3770,10 @@ function mt5ToMs(value) {
 function mt5FilterRows(rows, opts = {}) {
   const userId = envStr(opts.userId);
   const symbol = envStr(opts.symbol).toUpperCase();
+  const source = envStr(opts.source);
+  const entryModel = envStr(opts.entryModel);
+  const chartTf = envStr(opts.chartTf);
+  const signalTf = envStr(opts.signalTf);
   const statuses = Array.isArray(opts.statuses)
     ? opts.statuses.map((s) => mt5CanonicalStoredStatus(s)).filter(Boolean)
     : [];
@@ -3706,6 +3783,10 @@ function mt5FilterRows(rows, opts = {}) {
     const rs = mt5CanonicalStoredStatus(r.status);
     if (userId && String(r.user_id || "") !== userId) return false;
     if (symbol && String(r.symbol || "").toUpperCase() !== symbol) return false;
+    if (source && mt5StrategyFromRow(r) !== source) return false;
+    if (entryModel && mt5EntryModelFromRow(r) !== entryModel) return false;
+    if (chartTf && String(r.chart_tf || r.raw_json?.chart_tf || r.raw_json?.chartTf || "") !== chartTf) return false;
+    if (signalTf && String(r.signal_tf || r.raw_json?.signal_tf || r.raw_json?.sourceTf || r.raw_json?.timeframe || "") !== signalTf) return false;
     if (statuses.length > 0 && !statuses.includes(rs)) return false;
     const t = mt5ToMs(r.created_at);
     if (Number.isFinite(fromMs) && (!Number.isFinite(t) || t < fromMs)) return false;
@@ -3730,6 +3811,10 @@ function mt5ResolveTradeFilters(url, payload = null) {
   return {
     userId: pick("user_id"),
     symbol: pick("symbol"),
+    source: pick("source"),
+    entryModel: pick("entry_model"),
+    chartTf: pick("chart_tf"),
+    signalTf: pick("signal_tf"),
     statuses,
     from: pick("from") || period.start,
     to: pick("to") || period.end,
@@ -3759,6 +3844,10 @@ async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
   let rows = mt5FilterRows(await mt5ListSignals(limit, ""), {
     userId: filters.userId,
     symbol: filters.symbol,
+    source: filters.source,
+    entryModel: filters.entryModel,
+    chartTf: filters.chartTf,
+    signalTf: filters.signalTf,
     statuses: filters.statuses,
     from: filters.from,
     to: filters.to,
@@ -4196,7 +4285,7 @@ async function executeMt5(signal) {
     price: signal.price ?? null,
     strategy: signal.strategy || null,
     timeframe: signal.timeframe || null,
-    sourceTf: signal.raw?.sourceTf ?? signal.raw?.source_tf ?? signal.timeframe ?? null,
+    sourceTf: signal.raw?.sourceTf ?? signal.raw?.signal_tf ?? signal.timeframe ?? null,
     chartTf: signal.raw?.chartTf ?? signal.raw?.chart_tf ?? signal.raw?.chartTimeframe ?? signal.raw?.chart_tf_period ?? null,
     note: signal.note || "",
     user_id: signal.user_id || CFG.mt5DefaultUserId,
@@ -4217,11 +4306,19 @@ async function executeMt5(signal) {
 
 const appHandler = async (req, res) => {
   const proto = req?.socket?.encrypted ? "https" : "http";
-  const url = new URL(req.url, `${proto}://${req.headers.host || "localhost"}`);
+  const incomingUrl = new URL(req.url, `${proto}://${req.headers.host || "localhost"}`);
+  const hostname = normalizeHostHeader(req.headers.host);
 
-  if (tryServeUi(url, req, res)) {
+  if (tryServeLanding(incomingUrl, req, res, hostname)) {
     return;
   }
+
+  if (tryServeUi(incomingUrl, req, res, hostname)) {
+    return;
+  }
+
+  const url = new URL(incomingUrl.toString());
+  url.pathname = stripWebhookPrefix(incomingUrl.pathname);
 
   if (req.method === "GET" && url.pathname === "/auth/me") {
     const sess = getUiSessionFromReq(req);
@@ -4597,26 +4694,21 @@ const appHandler = async (req, res) => {
       const limit = Math.max(500, Math.min(200000, Number.isFinite(limitRaw) ? limitRaw : 50000));
       const userId = envStr(url.searchParams.get("user_id"));
       const symbol = envStr(url.searchParams.get("symbol")).toUpperCase();
-      const strategy = envStr(url.searchParams.get("strategy"));
-      const model = envStr(url.searchParams.get("model"));
+      const source = envStr(url.searchParams.get("source") || url.searchParams.get("strategy"));
+      const model = envStr(url.searchParams.get("entry_model") || url.searchParams.get("model"));
+      const chartTf = envStr(url.searchParams.get("chart_tf") || url.searchParams.get("chartTf"));
+      const signalTf = envStr(url.searchParams.get("signal_tf") || url.searchParams.get("timeframe"));
       const direction = envStr(url.searchParams.get("direction")).toUpperCase();
-      const timeframe = envStr(url.searchParams.get("timeframe"));
       const range = envStr(url.searchParams.get("range"), "all").toLowerCase();
 
       const allRows = mt5FilterRows(await mt5ListSignals(limit, ""), { userId });
       const rowsByDimension = allRows.filter((r) => {
         if (symbol && String(r.symbol || "").toUpperCase() !== symbol) return false;
-        if (strategy) {
-          const s = mt5StrategyFromRow(r);
-          if (s !== strategy) return false;
-        }
-        if (model) {
-          const m = mt5EntryModelFromRow(r);
-          if (m !== model) return false;
-        }
+        if (source && mt5StrategyFromRow(r) !== source) return false;
+        if (model && mt5EntryModelFromRow(r) !== model) return false;
+        if (chartTf && String(r.chart_tf || r.raw_json?.chart_tf || r.raw_json?.chartTf || "") !== chartTf) return false;
+        if (signalTf && String(r.signal_tf || r.raw_json?.signal_tf || r.raw_json?.sourceTf || r.raw_json?.timeframe || "") !== signalTf) return false;
         if (direction && String(r.action || "").toUpperCase() !== direction) return false;
-        const rtf = String(r.timeframe || r.raw_json?.chartTF || "");
-        if (timeframe && rtf !== timeframe) return false;
         return true;
       });
 
@@ -4666,16 +4758,18 @@ const appHandler = async (req, res) => {
         filters: {
           user_id: userId || "",
           symbol,
-          strategy,
-          model,
+          source,
+          entry_model: model,
+          chart_tf: chartTf,
+          signal_tf: signalTf,
           direction,
-          timeframe,
           range,
           accounts,
           symbols,
-          strategies,
-          models: [...new Set(allRows.map(r => mt5EntryModelFromRow(r)).filter(Boolean))].sort(),
-          timeframes: [...new Set(allRows.map(r => String(r.timeframe || r.raw_json?.chartTF || "")).filter(Boolean))].sort(),
+          sources: [...new Set(allRows.map(r => mt5StrategyFromRow(r)).filter(Boolean))].sort(),
+          entry_models: [...new Set(allRows.map(r => mt5EntryModelFromRow(r)).filter(Boolean))].sort(),
+          chart_tfs: [...new Set(allRows.map(r => String(r.chart_tf || r.raw_json?.chart_tf || r.raw_json?.chartTf || "")).filter(Boolean))].sort(),
+          signal_tfs: [...new Set(allRows.map(r => String(r.signal_tf || r.raw_json?.signal_tf || r.raw_json?.sourceTf || r.raw_json?.timeframe || "")).filter(Boolean))].sort(),
         },
         metrics: mt5ComputeTradeMetrics(selectedRows),
         period_totals: periodTotals,
@@ -4720,6 +4814,29 @@ const appHandler = async (req, res) => {
       }
       const points = [...map.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([x, y]) => ({ x, y }));
       return json(res, 200, { ok: true, period, points });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/mt5/filters/advanced") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const limitRaw = Number(url.searchParams.get("limit") || 20000);
+      const limit = Math.max(100, Math.min(100000, Number.isFinite(limitRaw) ? limitRaw : 20000));
+      const userId = envStr(url.searchParams.get("user_id"));
+      const allRows = mt5FilterRows(await mt5ListSignals(limit, ""), { userId });
+      
+      return json(res, 200, {
+        ok: true,
+        symbols: [...new Set(allRows.map((r) => String(r.symbol || "").toUpperCase()).filter(Boolean))].sort(),
+        sources: [...new Set(allRows.map(r => mt5StrategyFromRow(r)).filter(Boolean))].sort(),
+        entry_models: [...new Set(allRows.map(r => mt5EntryModelFromRow(r)).filter(Boolean))].sort(),
+        chart_tfs: [...new Set(allRows.map(r => String(r.chart_tf || r.raw_json?.chart_tf || r.raw_json?.chartTf || "")).filter(Boolean))].sort(),
+        signal_tfs: [...new Set(allRows.map(r => String(r.signal_tf || r.raw_json?.signal_tf || r.raw_json?.sourceTf || r.raw_json?.timeframe || "")).filter(Boolean))].sort(),
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });
@@ -5430,7 +5547,7 @@ const appHandler = async (req, res) => {
       if (status === "TP" || status === "SL") {
         try {
           const model = mt5EntryModelFromRow(sig);
-          const tf = sig.source_tf || sig.chart_tf || "n/a";
+          const tf = sig.signal_tf || sig.chart_tf || "n/a";
           const pnlStr = Number.isFinite(pnlRealized) ? (pnlRealized >= 0 ? `+$${pnlRealized.toFixed(2)}` : `-$${Math.abs(pnlRealized).toFixed(2)}`) : "n/a";
           const telMsg = `[${sig.symbol}, ${sig.action}, ${signalId}, ${pnlStr}, ${model}, ${tf}, ${status}]`;
           await sendTelegram(telMsg);

@@ -55,6 +55,7 @@ export default function TradesPage() {
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [tradeDetails, setTradeDetails] = useState(null);
   const [error, setError] = useState("");
+  const [advFilters, setAdvFilters] = useState({ sources: [], entry_models: [], chart_tfs: [], signal_tfs: [] });
   const [createMode, setCreateMode] = useState(false);
   const [createMsg, setCreateMsg] = useState("");
   const [createForm, setCreateForm] = useState({
@@ -75,6 +76,10 @@ export default function TradesPage() {
     symbol: "",
     status: "",
     range: "",
+    source: "",
+    entry_model: "",
+    chart_tf: "",
+    signal_tf: "",
     page: 1,
     pageSize: 50,
   });
@@ -83,8 +88,14 @@ export default function TradesPage() {
 
   async function loadSymbols() {
     try {
-      const data = await api.symbols();
+      const data = await api.filtersAdvanced();
       setSymbols(data.symbols || []);
+      setAdvFilters({
+        sources: data.sources || [],
+        entry_models: data.entry_models || [],
+        chart_tfs: data.chart_tfs || [],
+        signal_tfs: data.signal_tfs || [],
+      });
     } catch { /* ignore */ }
   }
 
@@ -192,6 +203,22 @@ export default function TradesPage() {
           <select value={filter.status} onChange={(e) => setFilter(f => ({ ...f, status: e.target.value, page: 1 }))}>
             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s || "ALL STATUSES"}</option>)}
           </select>
+          <select value={filter.source} onChange={(e) => setFilter(f => ({ ...f, source: e.target.value, page: 1 }))}>
+            <option value="">ALL SOURCES</option>
+            {advFilters.sources.map(s => <option key={s}>{s}</option>)}
+          </select>
+          <select value={filter.entry_model} onChange={(e) => setFilter(f => ({ ...f, entry_model: e.target.value, page: 1 }))}>
+            <option value="">ALL MODELS</option>
+            {advFilters.entry_models.map(s => <option key={s}>{s}</option>)}
+          </select>
+          <select value={filter.chart_tf} onChange={(e) => setFilter(f => ({ ...f, chart_tf: e.target.value, page: 1 }))}>
+            <option value="">CHART TF</option>
+            {advFilters.chart_tfs.map(s => <option key={s}>{s}</option>)}
+          </select>
+          <select value={filter.signal_tf} onChange={(e) => setFilter(f => ({ ...f, signal_tf: e.target.value, page: 1 }))}>
+            <option value="">SIGNAL TF</option>
+            {advFilters.signal_tfs.map(s => <option key={s}>{s}</option>)}
+          </select>
           <select value={filter.range} onChange={(e) => setFilter(f => ({ ...f, range: e.target.value, page: 1 }))}>
             {RANGE_OPTIONS.map(s => <option key={s} value={s}>{s ? s.toUpperCase() : "ALL RANGES"}</option>)}
           </select>
@@ -263,6 +290,7 @@ export default function TradesPage() {
                       <td>
                         <div className="cell-wrap">
                           <div className="cell-major"><span className={sideCls}>{t.action?.toUpperCase()}</span> {t.symbol}</div>
+                          <div className="cell-minor" style={{ fontWeight: 700, color: 'var(--primary)' }}>{t.source || 'TV.Unknown'}</div>
                           <div className="cell-minor">{t.signal_id} {t.ack_ticket ? `| #${t.ack_ticket}` : ''}</div>
                         </div>
                       </td>
@@ -271,7 +299,8 @@ export default function TradesPage() {
                           <div className="cell-major">
                             {fPrice(t.entry_price_exec, t.entry_price)} → {fPrice(t.tp_exec, t.tp)} / {fPrice(t.sl_exec, t.sl)}
                           </div>
-                          <div className="cell-minor">{t.rr_planned || '0'} rr | {t.volume || '0'} lots</div>
+                          <div className="cell-minor">{t.entry_model || '-'}</div>
+                          <div className="cell-minor">{t.signal_tf || t.chart_tf || '-'} | {t.volume || '0'} lots</div>
                         </div>
                       </td>
                       <td>
@@ -375,6 +404,9 @@ export default function TradesPage() {
                     {" "}{selectedTrade.symbol}
                   </h2>
                   <div className="cell-minor" style={{ marginTop: '4px' }}>{selectedTrade.signal_id}</div>
+                  <div className="cell-minor" style={{ marginTop: '4px', fontWeight: 800, color: 'var(--primary)' }}>
+                    {selectedTrade.source} | {selectedTrade.entry_model} | {selectedTrade.chart_tf || 'n/a'} | {selectedTrade.signal_tf || 'n/a'}
+                  </div>
                 </div>
                 <div className={`badge ${statusUi(selectedTrade.status).cls}`} style={{ height: 'fit-content', padding: '6px 14px' }}>
                   {statusUi(selectedTrade.status).label}

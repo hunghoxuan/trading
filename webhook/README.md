@@ -355,7 +355,7 @@ ON signal_events(signal_id, event_time);
 React UI app (Dashboard + Trades + Trade detail):
 
 ```bash
-cd /Users/macmini/Trade/Bot/trading/webhook-ui
+cd /Users/macmini/Trade/Bot/trading/web-ui
 npm install
 VITE_API_BASE=https://signal.mozasolution.com npm run dev
 ```
@@ -363,7 +363,7 @@ VITE_API_BASE=https://signal.mozasolution.com npm run dev
 Production build:
 
 ```bash
-cd /Users/macmini/Trade/Bot/trading/webhook-ui
+cd /Users/macmini/Trade/Bot/trading/web-ui
 npm run build
 ```
 
@@ -450,7 +450,7 @@ What it validates:
 
 Reports:
 - latest: `/Users/macmini/Trade/Bot/trading/test-results/remote-ui-latest.log`
-- Playwright HTML report: `/Users/macmini/Trade/Bot/trading/webhook-ui/playwright-report/index.html`
+- Playwright HTML report: `/Users/macmini/Trade/Bot/trading/web-ui/playwright-report/index.html`
 
 ## Remote API Test Framework (lightweight)
 

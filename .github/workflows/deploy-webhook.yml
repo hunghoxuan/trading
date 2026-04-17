@@ -19,6 +19,9 @@ on:
     branches: ["main"]
     paths:
       - "webhook/**"
+      - "web-ui/**"
+      - "web/**"
+      - "scripts/deploy_webhook.sh"
       - ".github/workflows/deploy-webhook.yml"
 
 jobs:
