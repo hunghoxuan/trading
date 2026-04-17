@@ -25,7 +25,6 @@ export default function LogsPage() {
   const [createMode, setCreateMode] = useState(false);
   const [createMsg, setCreateMsg] = useState("");
   const [createForm, setCreateForm] = useState({
-    signal_id: "",
     event_type: "UI_NOTE",
     payload_json: "{\n  \"note\": \"\"\n}",
   });
@@ -78,7 +77,6 @@ export default function LogsPage() {
     try {
       setLoading(true);
       const payload = {
-        signal_id: String(createForm.signal_id || "").trim(),
         event_type: String(createForm.event_type || "").trim(),
         payload_json: createForm.payload_json ? JSON.parse(createForm.payload_json) : {},
       };
@@ -143,7 +141,20 @@ export default function LogsPage() {
         </div>
 
         <div className="toolbar-group toolbar-create">
-          <button type="button" className="primary-button" onClick={() => { setCreateMode(true); setSelectedEvent(null); }}>CREATE</button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              if (createMode) {
+                setCreateMode(false);
+              } else {
+                setCreateMode(true);
+                setSelectedEvent(null);
+              }
+            }}
+          >
+            {createMode ? "CANCEL" : "CREATE LOG"}
+          </button>
         </div>
       </div>
 
@@ -187,12 +198,8 @@ export default function LogsPage() {
         <div className="logs-detail-pane">
           {createMode ? (
             <div className="panel" style={{ margin: 0 }}>
-              <div className="panel-label">CREATE LOG EVENT</div>
+              <div className="panel-label">LOG EVENT FORM</div>
               <div className="stack-layout" style={{ gap: 10 }}>
-                <label>
-                  <div className="muted small">Signal ID</div>
-                  <input value={createForm.signal_id} onChange={(e) => setCreateForm((p) => ({ ...p, signal_id: e.target.value }))} placeholder="tv_..." />
-                </label>
                 <label>
                   <div className="muted small">Event Type</div>
                   <input value={createForm.event_type} onChange={(e) => setCreateForm((p) => ({ ...p, event_type: e.target.value }))} placeholder="UI_NOTE" />
@@ -207,8 +214,7 @@ export default function LogsPage() {
                   />
                 </label>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" onClick={onCreateEvent} disabled={loading}>{loading ? "CREATING..." : "CREATE EVENT"}</button>
-                  <button type="button" onClick={() => setCreateMode(false)} style={{ background: "var(--panel)", color: "var(--text)", border: "1px solid var(--border)" }}>CANCEL</button>
+                  <button type="button" className="primary-button" onClick={onCreateEvent} disabled={loading}>{loading ? "SAVING..." : "SAVE EVENT"}</button>
                 </div>
               </div>
             </div>

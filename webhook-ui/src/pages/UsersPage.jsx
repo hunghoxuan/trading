@@ -3,6 +3,7 @@ import { api } from "../api";
 import UserDetailSection from "../components/UserDetailSection";
 
 const ROLE_OPTIONS = ["System", "Admin", "User", "Guest"];
+const ACCOUNT_STATUS_OPTIONS = ["ACTIVE", "INACTIVE"];
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 const BULK_ACTIONS = ["", "Deactivate Selected User"];
 
@@ -54,8 +55,10 @@ export default function UsersPage({ authUser }) {
 
   const [createUserForm, setCreateUserForm] = useState({ user_name: "", email: "", role: "User", password: "" });
   const [profileForm, setProfileForm] = useState({ user_name: "", email: "", role: "User", is_active: true, password: "" });
-  const [accountForm, setAccountForm] = useState({ name: "", balance: "", status: "" });
+  const [accountForm, setAccountForm] = useState({ name: "", balance: "", status: ACCOUNT_STATUS_OPTIONS[0] });
   const [editingAccountId, setEditingAccountId] = useState("");
+  const [accountFormOpen, setAccountFormOpen] = useState(false);
+  const [apiKeyFormOpen, setApiKeyFormOpen] = useState(false);
   const [apiKeyLabel, setApiKeyLabel] = useState("");
 
   const filteredUsers = useMemo(() => {
@@ -115,7 +118,9 @@ export default function UsersPage({ authUser }) {
         password: "",
       });
       setEditingAccountId("");
-      setAccountForm({ name: "", balance: "", status: "" });
+      setAccountForm({ name: "", balance: "", status: ACCOUNT_STATUS_OPTIONS[0] });
+      setAccountFormOpen(false);
+      setApiKeyFormOpen(false);
       setPageAlert(EMPTY_ALERT);
     } catch (e) {
       setPageAlert({ type: "error", text: e?.message || "Failed to load user detail" });
@@ -140,6 +145,15 @@ export default function UsersPage({ authUser }) {
     setPageAlert(EMPTY_ALERT);
     setCreateUserErrors({});
     setCreateUserAlert(EMPTY_ALERT);
+  }
+
+  function cancelCreateMode() {
+    if (users.length > 0) {
+      openViewMode(users[0].user_id);
+      return;
+    }
+    setDetailMode("view");
+    setSelectedUserId("");
   }
 
   function openViewMode(userId) {
@@ -248,7 +262,7 @@ export default function UsersPage({ authUser }) {
     const payload = {
       name: String(accountForm.name || "").trim(),
       balance: accountForm.balance === "" ? null : Number(accountForm.balance),
-      status: String(accountForm.status || "").trim(),
+      status: String(accountForm.status || ACCOUNT_STATUS_OPTIONS[0]).trim(),
     };
     const nextErrors = {};
     if (!payload.name) nextErrors.name = "Account name is required.";
@@ -271,7 +285,8 @@ export default function UsersPage({ authUser }) {
         setAccountAlert({ type: "success", text: "Account created." });
       }
       setEditingAccountId("");
-      setAccountForm({ name: "", balance: "", status: "" });
+      setAccountForm({ name: "", balance: "", status: ACCOUNT_STATUS_OPTIONS[0] });
+      setAccountFormOpen(false);
       await loadDetail(selectedUser.user_id);
     } catch (e) {
       setAccountAlert({ type: "error", text: e?.message || "Failed to save account" });
@@ -389,7 +404,17 @@ export default function UsersPage({ authUser }) {
         </div>
 
         <div className="toolbar-group toolbar-create">
-          <button type="button" className="primary-button" onClick={openCreateMode} disabled={saving}>CREATE</button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              if (detailMode === "create") cancelCreateMode();
+              else openCreateMode();
+            }}
+            disabled={saving}
+          >
+            {detailMode === "create" ? "CANCEL" : "CREATE USER"}
+          </button>
         </div>
       </div>
 
@@ -435,7 +460,7 @@ export default function UsersPage({ authUser }) {
           {detailMode === "create" ? (
             <div className="stack-layout">
               <UserDetailSection
-                title="CREATE USER"
+                title="USER FORM"
                 form={createUserForm}
                 setForm={(updater) => {
                   setCreateUserForm((prev) => (typeof updater === "function" ? updater(prev) : updater));
@@ -445,19 +470,13 @@ export default function UsersPage({ authUser }) {
                 roleOptions={ROLE_OPTIONS}
                 showActive={false}
                 passwordLabel="Password"
-                primaryLabel="CREATE USER"
+                primaryLabel="SAVE USER"
                 onPrimary={onCreateUser}
                 primaryDisabled={saving}
                 fieldErrors={createUserErrors}
                 formMessage={createUserAlert}
-                secondaryLabel="CANCEL"
-                onSecondary={() => {
-                  if (users.length > 0) {
-                    openViewMode(users[0].user_id);
-                  } else {
-                    setDetailMode("view");
-                  }
-                }}
+                secondaryLabel="BACK"
+                onSecondary={cancelCreateMode}
                 secondaryDisabled={saving}
               />
             </div>
@@ -492,34 +511,63 @@ export default function UsersPage({ authUser }) {
               <div className="panel" style={{ margin: 0 }}>
                 <div className="panel-label">ACCOUNT MANAGEMENT</div>
                 <div className="stack-layout" style={{ gap: 10 }}>
-                  <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1.1fr 1fr 1fr 1fr" }}>
-                    <div className="cell-wrap" style={{ justifyContent: "center" }}>
-                      <div className="minor-text">User ID</div>
-                      <div className="cell-major">{selectedUser?.user_id || "-"}</div>
-                    </div>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div className="minor-text">Name</div>
-                      <input placeholder="Friendly Name" value={accountForm.name} onChange={(e) => { setAccountForm((p) => ({ ...p, name: e.target.value })); setAccountErrors((p) => ({ ...p, name: "" })); if (accountAlert.type === "error") setAccountAlert(EMPTY_ALERT); }} />
-                      {accountErrors.name ? <div className="field-validation msg-error">{accountErrors.name}</div> : null}
-                    </label>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div className="minor-text">Balance</div>
-                      <input placeholder="0.00" value={accountForm.balance} onChange={(e) => { setAccountForm((p) => ({ ...p, balance: e.target.value })); setAccountErrors((p) => ({ ...p, balance: "" })); if (accountAlert.type === "error") setAccountAlert(EMPTY_ALERT); }} />
-                      {accountErrors.balance ? <div className="field-validation msg-error">{accountErrors.balance}</div> : null}
-                    </label>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div className="minor-text">Status</div>
-                      <input placeholder="ACTIVE" value={accountForm.status} onChange={(e) => setAccountForm((p) => ({ ...p, status: e.target.value }))} />
-                    </label>
+                  <div>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => {
+                        if (accountFormOpen) {
+                          setAccountFormOpen(false);
+                          setEditingAccountId("");
+                          setAccountForm({ name: "", balance: "", status: ACCOUNT_STATUS_OPTIONS[0] });
+                          setAccountErrors({});
+                        } else {
+                          setAccountFormOpen(true);
+                          setEditingAccountId("");
+                          setAccountForm({ name: "", balance: "", status: ACCOUNT_STATUS_OPTIONS[0] });
+                          setAccountErrors({});
+                          if (accountAlert.type === "error") setAccountAlert(EMPTY_ALERT);
+                        }
+                      }}
+                      disabled={saving}
+                    >
+                      {accountFormOpen ? "CANCEL" : "CREATE ACCOUNT"}
+                    </button>
                   </div>
-                  <div className="cell-wrap" style={{ marginTop: "-4px" }}>
-                    <div className="minor-text">Account ID</div>
-                    <div className="cell-major">{editingAccountId || "AUTO-GENERATED ON CREATE"}</div>
-                  </div>
-                  {accountAlert.text ? <div className={`form-message msg-${accountAlert.type || "error"}`}>{accountAlert.text}</div> : null}
-                  <div style={{ display: "flex", gap: 8 }}>
-                      <button type="button" className="primary-button" onClick={onSaveAccount} disabled={saving} style={{ padding: '8px 16px' }}>{editingAccountId ? "UPDATE" : "CREATE"}</button>
-                    </div>
+                  {accountFormOpen ? (
+                    <>
+                      <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1.1fr 1fr 1fr 1fr" }}>
+                        <div className="cell-wrap" style={{ justifyContent: "center" }}>
+                          <div className="minor-text">User ID</div>
+                          <div className="cell-major">{selectedUser?.user_id || "-"}</div>
+                        </div>
+                        <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          <div className="minor-text">Name</div>
+                          <input placeholder="Friendly Name" value={accountForm.name} onChange={(e) => { setAccountForm((p) => ({ ...p, name: e.target.value })); setAccountErrors((p) => ({ ...p, name: "" })); if (accountAlert.type === "error") setAccountAlert(EMPTY_ALERT); }} />
+                          {accountErrors.name ? <div className="field-validation msg-error">{accountErrors.name}</div> : null}
+                        </label>
+                        <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          <div className="minor-text">Balance</div>
+                          <input placeholder="0.00" value={accountForm.balance} onChange={(e) => { setAccountForm((p) => ({ ...p, balance: e.target.value })); setAccountErrors((p) => ({ ...p, balance: "" })); if (accountAlert.type === "error") setAccountAlert(EMPTY_ALERT); }} />
+                          {accountErrors.balance ? <div className="field-validation msg-error">{accountErrors.balance}</div> : null}
+                        </label>
+                        <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          <div className="minor-text">Status</div>
+                          <select value={accountForm.status} onChange={(e) => setAccountForm((p) => ({ ...p, status: e.target.value }))}>
+                            {ACCOUNT_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="cell-wrap" style={{ marginTop: "-4px" }}>
+                        <div className="minor-text">Account ID</div>
+                        <div className="cell-major">{editingAccountId || "AUTO-GENERATED ON CREATE"}</div>
+                      </div>
+                      {accountAlert.text ? <div className={`form-message msg-${accountAlert.type || "error"}`}>{accountAlert.text}</div> : null}
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button type="button" className="primary-button" onClick={onSaveAccount} disabled={saving} style={{ padding: "8px 16px" }}>SAVE ACCOUNT</button>
+                      </div>
+                    </>
+                  ) : null}
 
                     <div className="events-table-wrap" style={{ maxHeight: 220 }}>
                       <table className="events-table">
@@ -549,10 +597,11 @@ export default function UsersPage({ authUser }) {
                                   style={{ padding: "4px 10px" }}
                                   onClick={() => {
                                   setEditingAccountId(String(a.account_id || ""));
+                                  setAccountFormOpen(true);
                                   setAccountForm({
                                       name: String(a.name || ""),
                                       balance: a.balance === null || a.balance === undefined ? "" : String(a.balance),
-                                      status: String(a.status || ""),
+                                      status: String(a.status || ACCOUNT_STATUS_OPTIONS[0]),
                                     });
                                   }}
                                 >
@@ -579,15 +628,39 @@ export default function UsersPage({ authUser }) {
               <div className="panel" style={{ margin: 0 }}>
                 <div className="panel-label">API KEY MANAGEMENT</div>
                 <div className="stack-layout" style={{ gap: 10 }}>
-                  <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr auto", alignItems: 'flex-end' }}>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div className="minor-text">Key Label</div>
-                      <input placeholder="Ex: TradingView Bridge" value={apiKeyLabel} onChange={(e) => { setApiKeyLabel(e.target.value); setApiKeyErrors((p) => ({ ...p, label: "" })); if (apiKeyAlert.type === "error") setApiKeyAlert(EMPTY_ALERT); }} />
-                      {apiKeyErrors.label ? <div className="field-validation msg-error">{apiKeyErrors.label}</div> : null}
-                    </label>
-                    <button type="button" className="primary-button" onClick={onCreateApiKey} disabled={saving} style={{ padding: '8px 16px' }}>CREATE KEY</button>
+                  <div>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => {
+                        if (apiKeyFormOpen) {
+                          setApiKeyFormOpen(false);
+                          setApiKeyLabel("");
+                          setApiKeyErrors({});
+                        } else {
+                          setApiKeyFormOpen(true);
+                          setApiKeyErrors({});
+                          if (apiKeyAlert.type === "error") setApiKeyAlert(EMPTY_ALERT);
+                        }
+                      }}
+                      disabled={saving}
+                    >
+                      {apiKeyFormOpen ? "CANCEL" : "CREATE API KEY"}
+                    </button>
                   </div>
-                  {apiKeyAlert.text ? <div className={`form-message msg-${apiKeyAlert.type || "error"}`}>{apiKeyAlert.text}</div> : null}
+                  {apiKeyFormOpen ? (
+                    <>
+                      <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr auto", alignItems: "flex-end" }}>
+                        <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          <div className="minor-text">Key Label</div>
+                          <input placeholder="Ex: TradingView Bridge" value={apiKeyLabel} onChange={(e) => { setApiKeyLabel(e.target.value); setApiKeyErrors((p) => ({ ...p, label: "" })); if (apiKeyAlert.type === "error") setApiKeyAlert(EMPTY_ALERT); }} />
+                          {apiKeyErrors.label ? <div className="field-validation msg-error">{apiKeyErrors.label}</div> : null}
+                        </label>
+                        <button type="button" className="primary-button" onClick={onCreateApiKey} disabled={saving} style={{ padding: "8px 16px" }}>SAVE API KEY</button>
+                      </div>
+                      {apiKeyAlert.text ? <div className={`form-message msg-${apiKeyAlert.type || "error"}`}>{apiKeyAlert.text}</div> : null}
+                    </>
+                  ) : null}
                   <div className="events-table-wrap" style={{ maxHeight: 220 }}>
                     <table className="events-table">
                       <thead>

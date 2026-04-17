@@ -205,7 +205,20 @@ export default function TradesPage() {
         </div>
 
         <div className="toolbar-group toolbar-create">
-          <button type="button" className="primary-button" onClick={() => { setCreateMode(true); setSelectedTrade(null); }}>CREATE</button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              if (createMode) {
+                setCreateMode(false);
+              } else {
+                setCreateMode(true);
+                setSelectedTrade(null);
+              }
+            }}
+          >
+            {createMode ? "CANCEL" : "CREATE TRADE"}
+          </button>
         </div>
       </div>
 
@@ -300,7 +313,7 @@ export default function TradesPage() {
         <div className="logs-detail-pane">
           {createMode ? (
             <div className="panel" style={{ margin: 0 }}>
-              <div className="panel-label">CREATE TRADE</div>
+              <div className="panel-label">TRADE FORM</div>
               <div className="stack-layout" style={{ gap: 10 }}>
                 <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2, minmax(0,1fr))" }}>
                   <label>
@@ -344,8 +357,7 @@ export default function TradesPage() {
                   <input value={createForm.note} onChange={(e) => setCreateForm((p) => ({ ...p, note: e.target.value }))} placeholder="Optional note" />
                 </label>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" onClick={onCreateTrade} disabled={bulkBusy}>{bulkBusy ? "CREATING..." : "CREATE TRADE"}</button>
-                  <button type="button" onClick={() => setCreateMode(false)} style={{ background: "var(--panel)", color: "var(--text)", border: "1px solid var(--border)" }}>CANCEL</button>
+                  <button type="button" className="primary-button" onClick={onCreateTrade} disabled={bulkBusy}>{bulkBusy ? "SAVING..." : "SAVE TRADE"}</button>
                 </div>
               </div>
             </div>

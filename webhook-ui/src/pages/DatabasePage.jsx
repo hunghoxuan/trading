@@ -33,7 +33,7 @@ export default function DatabasePage() {
   const [createMode, setCreateMode] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [createMsg, setCreateMsg] = useState("");
-  const [createRowJson, setCreateRowJson] = useState("{\n  \"signal_id\": \"\",\n  \"action\": \"BUY\",\n  \"symbol\": \"XAUUSD\",\n  \"volume\": 0.01\n}");
+  const [createRowJson, setCreateRowJson] = useState("{\n  \"action\": \"BUY\",\n  \"symbol\": \"XAUUSD\",\n  \"volume\": 0.01\n}");
   const inFlightRef = useRef(false);
 
   const [filter, setFilter] = useState({
@@ -168,7 +168,20 @@ export default function DatabasePage() {
         </div>
 
         <div className="toolbar-group toolbar-create">
-          <button type="button" className="primary-button" onClick={() => { setCreateMode(true); setSelectedRow(null); }}>CREATE</button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              if (createMode) {
+                setCreateMode(false);
+              } else {
+                setCreateMode(true);
+                setSelectedRow(null);
+              }
+            }}
+          >
+            {createMode ? "CANCEL" : "CREATE ROW"}
+          </button>
         </div>
       </div>
 
@@ -220,7 +233,7 @@ export default function DatabasePage() {
         <div className="logs-detail-pane">
           {createMode ? (
             <div className="panel" style={{ margin: 0 }}>
-              <div className="panel-label">CREATE DB ROW ({selectedTable})</div>
+              <div className="panel-label">DB ROW FORM ({selectedTable})</div>
               <div className="stack-layout" style={{ gap: 10 }}>
                 <div className="minor-text">
                   Supported tables: <code>signals</code>, <code>signal_events</code>, <code>users</code>, <code>accounts</code>, <code>user_api_keys</code>.
@@ -235,8 +248,7 @@ export default function DatabasePage() {
                   />
                 </label>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" onClick={onCreateRow} disabled={createBusy}>{createBusy ? "CREATING..." : "CREATE ROW"}</button>
-                  <button type="button" onClick={() => setCreateMode(false)} style={{ background: "var(--panel)", color: "var(--text)", border: "1px solid var(--border)" }}>CANCEL</button>
+                  <button type="button" className="primary-button" onClick={onCreateRow} disabled={createBusy}>{createBusy ? "SAVING..." : "SAVE ROW"}</button>
                 </div>
               </div>
             </div>

@@ -37,6 +37,15 @@
 - Admin APIs use `SIGNAL_API_KEY`/`x-api-key` gate (current model).
 - Recommended next step: separate UI auth from webhook auth.
 
+## UI Form Design Rules
+- Do not include editable ID fields (`*_id`) in create/update forms. IDs are system-generated and shown as read-only labels only when needed.
+- For any `status`/`state` form field, use enum/select inputs only (never free-text). The first enum option is the default.
+- Create flows use a two-step pattern:
+  - First step: a `secondary` toggle button (`Create <Entity>`) that only opens/closes the form.
+  - Open state: toggle button text changes to `Cancel`.
+  - Real data write uses a `primary` submit button inside the form (`Save <Entity>` / `Save`).
+- `primary` buttons are reserved for actual insert/update operations only. Buttons that only open forms must be `secondary`.
+
 ## TradingView Emission Contract (Refactor-Safe)
 
 This contract is mandatory and must be preserved in refactors:
