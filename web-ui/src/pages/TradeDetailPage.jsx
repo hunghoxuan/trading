@@ -29,14 +29,8 @@ export default function TradeDetailPage() {
     async function loadData() {
       try {
         setLoading(true);
-        // We lack a direct api.v2Trade(tradeId) so we fetch from the list or events
-        // Actually api.v2TradeEvents(tradeId) is available.
         const evs = await api.v2TradeEvents(tradeId);
         setEvents(evs || []);
-        
-        // Find the trade object from the first event payload or fetch list
-        // For now, if no direct getter, we might need one or find it in list.
-        // I'll assume server.js has /v2/trades/:id but if not I'll just show events.
         const data = await api.v2Trades({ q: tradeId });
         if (data.items?.length > 0) {
           setTrade(data.items[0]);
