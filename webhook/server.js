@@ -2466,6 +2466,85 @@ async function mt5InitBackend() {
         `).run(brokerId, now, aid);
         return { ok: true, account_id: aid, broker_id: brokerId, last_seen_at: String(payload.now || now) };
       },
+      async listAccountsV2() {
+        const rows = db.prepare(`
+          SELECT account_id, user_id, name, status, broker_id, api_key_last4, api_key_rotated_at, created_at, updated_at
+          FROM accounts
+          ORDER BY updated_at DESC
+          LIMIT 500
+        `).all();
+        return (rows || []).map((r) => ({ ...r }));
+      },
+      async listSourcesV2() {
+        const rows = db.prepare(`
+          SELECT source_id, name, kind, auth_mode, is_active, metadata, created_at, updated_at
+          FROM sources
+          ORDER BY source_id ASC
+          LIMIT 500
+        `).all();
+        return (rows || []).map((r) => ({
+          ...r,
+          is_active: normalizeUserActive(r.is_active, true),
+          metadata: r.metadata ? (() => { try { return JSON.parse(r.metadata); } catch { return {}; } })() : {},
+        }));
+      },
+      async getAccountSubscriptionsV2(accountId) {
+        const aid = String(accountId || "").trim();
+        if (!aid) return [];
+        const rows = db.prepare(`
+          SELECT s.account_id, s.source_id, s.is_active, s.symbol_allowlist, s.strategy_allowlist, s.created_at, s.updated_at,
+                 src.name AS source_name, src.kind AS source_kind
+          FROM account_sources s
+          LEFT JOIN sources src ON src.source_id = s.source_id
+          WHERE s.account_id = ?
+          ORDER BY s.source_id ASC
+        `).all(aid);
+        return (rows || []).map((r) => ({
+          ...r,
+          is_active: normalizeUserActive(r.is_active, true),
+          symbol_allowlist: r.symbol_allowlist ? (() => { try { return JSON.parse(r.symbol_allowlist); } catch { return []; } })() : null,
+          strategy_allowlist: r.strategy_allowlist ? (() => { try { return JSON.parse(r.strategy_allowlist); } catch { return []; } })() : null,
+        }));
+      },
+      async replaceAccountSubscriptionsV2(accountId, items = []) {
+        const aid = String(accountId || "").trim();
+        if (!aid) return { ok: false, error: "account_id is required" };
+        const normalizedItems = Array.isArray(items) ? items : [];
+        const now = mt5NowIso();
+        db.exec("BEGIN IMMEDIATE");
+        try {
+          db.prepare(`DELETE FROM account_sources WHERE account_id = ?`).run(aid);
+          for (const item of normalizedItems) {
+            const sourceId = String(item?.source_id || "").trim();
+            if (!sourceId) continue;
+            const src = db.prepare(`SELECT source_id FROM sources WHERE source_id = ? LIMIT 1`).get(sourceId);
+            if (!src) {
+              db.exec("ROLLBACK");
+              return { ok: false, error: `unknown source_id: ${sourceId}` };
+            }
+            db.prepare(`
+              INSERT OR REPLACE INTO account_sources (
+                account_id, source_id, is_active, symbol_allowlist, strategy_allowlist, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM account_sources WHERE account_id = ? AND source_id = ?), ?), ?)
+            `).run(
+              aid,
+              sourceId,
+              normalizeUserActive(item?.is_active, true) ? 1 : 0,
+              item?.symbol_allowlist ? JSON.stringify(item.symbol_allowlist) : null,
+              item?.strategy_allowlist ? JSON.stringify(item.strategy_allowlist) : null,
+              aid,
+              sourceId,
+              now,
+              now,
+            );
+          }
+          db.exec("COMMIT");
+          return { ok: true };
+        } catch (error) {
+          db.exec("ROLLBACK");
+          throw error;
+        }
+      },
       async pullAndLockNextSignal() {
         const next = db.prepare(`
           SELECT signal_id, created_at, action, symbol, volume, sl, tp, note, entry_price_exec, raw_json
@@ -3873,6 +3952,81 @@ async function mt5InitBackend() {
       `, [brokerId, now, aid]);
       return { ok: true, account_id: aid, broker_id: brokerId, last_seen_at: String(payload.now || now) };
     },
+    async listAccountsV2() {
+      const res = await pool.query(`
+        SELECT account_id, user_id, name, status, broker_id, api_key_last4, api_key_rotated_at, created_at, updated_at
+        FROM accounts
+        ORDER BY updated_at DESC
+        LIMIT 500
+      `);
+      return res.rows || [];
+    },
+    async listSourcesV2() {
+      const res = await pool.query(`
+        SELECT source_id, name, kind, auth_mode, is_active, metadata, created_at, updated_at
+        FROM sources
+        ORDER BY source_id ASC
+        LIMIT 500
+      `);
+      return res.rows || [];
+    },
+    async getAccountSubscriptionsV2(accountId) {
+      const aid = String(accountId || "").trim();
+      if (!aid) return [];
+      const res = await pool.query(`
+        SELECT s.account_id, s.source_id, s.is_active, s.symbol_allowlist, s.strategy_allowlist, s.created_at, s.updated_at,
+               src.name AS source_name, src.kind AS source_kind
+        FROM account_sources s
+        LEFT JOIN sources src ON src.source_id = s.source_id
+        WHERE s.account_id = $1
+        ORDER BY s.source_id ASC
+      `, [aid]);
+      return res.rows || [];
+    },
+    async replaceAccountSubscriptionsV2(accountId, items = []) {
+      const aid = String(accountId || "").trim();
+      if (!aid) return { ok: false, error: "account_id is required" };
+      const normalizedItems = Array.isArray(items) ? items : [];
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(`DELETE FROM account_sources WHERE account_id = $1`, [aid]);
+        for (const item of normalizedItems) {
+          const sourceId = String(item?.source_id || "").trim();
+          if (!sourceId) continue;
+          const src = await client.query(`SELECT source_id FROM sources WHERE source_id = $1 LIMIT 1`, [sourceId]);
+          if ((src.rowCount || 0) < 1) {
+            await client.query("ROLLBACK");
+            return { ok: false, error: `unknown source_id: ${sourceId}` };
+          }
+          await client.query(`
+            INSERT INTO account_sources (
+              account_id, source_id, is_active, symbol_allowlist, strategy_allowlist, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $6)
+            ON CONFLICT (account_id, source_id)
+            DO UPDATE SET
+              is_active = EXCLUDED.is_active,
+              symbol_allowlist = EXCLUDED.symbol_allowlist,
+              strategy_allowlist = EXCLUDED.strategy_allowlist,
+              updated_at = EXCLUDED.updated_at
+          `, [
+            aid,
+            sourceId,
+            normalizeUserActive(item?.is_active, true),
+            item?.symbol_allowlist ? JSON.stringify(item.symbol_allowlist) : null,
+            item?.strategy_allowlist ? JSON.stringify(item.strategy_allowlist) : null,
+            mt5NowIso(),
+          ]);
+        }
+        await client.query("COMMIT");
+        return { ok: true };
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
     async pullAndLockNextSignal() {
       const client = await pool.connect();
       try {
@@ -4864,6 +5018,30 @@ async function mt5BrokerHeartbeatV2(accountId, payload) {
   const b = await mt5Backend();
   if (!b.brokerHeartbeatV2) return { ok: false, error: "not supported" };
   return b.brokerHeartbeatV2(accountId, payload);
+}
+
+async function mt5ListAccountsV2() {
+  const b = await mt5Backend();
+  if (!b.listAccountsV2) return [];
+  return b.listAccountsV2();
+}
+
+async function mt5ListSourcesV2() {
+  const b = await mt5Backend();
+  if (!b.listSourcesV2) return [];
+  return b.listSourcesV2();
+}
+
+async function mt5GetAccountSubscriptionsV2(accountId) {
+  const b = await mt5Backend();
+  if (!b.getAccountSubscriptionsV2) return [];
+  return b.getAccountSubscriptionsV2(accountId);
+}
+
+async function mt5ReplaceAccountSubscriptionsV2(accountId, items = []) {
+  const b = await mt5Backend();
+  if (!b.replaceAccountSubscriptionsV2) return { ok: false, error: "not supported" };
+  return b.replaceAccountSubscriptionsV2(accountId, items);
 }
 
 async function mt5ListSignalEvents(signalId, limit = 200) {
@@ -6677,6 +6855,61 @@ const appHandler = async (req, res) => {
     } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
   }
 
+
+  if (req.method === "GET" && url.pathname === "/v2/accounts") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const rows = await mt5ListAccountsV2();
+      return json(res, 200, { ok: true, items: rows });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/v2/sources") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const rows = await mt5ListSourcesV2();
+      return json(res, 200, { ok: true, items: rows });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "GET" && /^\/v2\/accounts\/[^/]+\/subscriptions$/.test(url.pathname)) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const m = url.pathname.match(/^\/v2\/accounts\/([^/]+)\/subscriptions$/);
+      const accountId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
+      const rows = await mt5GetAccountSubscriptionsV2(accountId);
+      return json(res, 200, { ok: true, account_id: accountId, items: rows });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "PUT" && /^\/v2\/accounts\/[^/]+\/subscriptions$/.test(url.pathname)) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    let payload = {};
+    try { payload = await readJson(req); } catch {}
+    if (!requireAdminKey(req, res, url, payload)) return;
+    try {
+      const m = url.pathname.match(/^\/v2\/accounts\/([^/]+)\/subscriptions$/);
+      const accountId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      const out = await mt5ReplaceAccountSubscriptionsV2(accountId, items);
+      if (!out?.ok) return json(res, 400, { ok: false, error: out?.error || "failed to update subscriptions" });
+      const rows = await mt5GetAccountSubscriptionsV2(accountId);
+      return json(res, 200, { ok: true, account_id: accountId, items: rows });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
 
   if (req.method === "POST" && url.pathname === "/v2/broker/pull") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });

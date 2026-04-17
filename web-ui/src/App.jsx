@@ -7,6 +7,7 @@ import LogsPage from "./pages/LogsPage";
 import DatabasePage from "./pages/DatabasePage";
 import SettingsPage from "./pages/SettingsPage";
 import UsersPage from "./pages/UsersPage";
+import SubscriptionsPage from "./pages/SubscriptionsPage";
 import { api } from "./api";
 import LoginPage from "./pages/LoginPage";
 
@@ -80,6 +81,7 @@ export default function App() {
           {canAccessSystemPages ? <NavLink to="/logs" className={({ isActive }) => (isActive ? "active" : "")}>Logs</NavLink> : null}
           {canAccessSystemPages ? <NavLink to="/db" className={({ isActive }) => (isActive ? "active" : "")}>DB</NavLink> : null}
           {canAccessSystemPages ? <NavLink to="/users" className={({ isActive }) => (isActive ? "active" : "")}>Users</NavLink> : null}
+          {canAccessSystemPages ? <NavLink to="/subscriptions" className={({ isActive }) => (isActive ? "active" : "")}>Subscriptions</NavLink> : null}
           <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")}>My Account</NavLink>
           <button onClick={handleLogout} className="secondary-button" style={{ marginLeft: 8, padding: '4px 10px', fontSize: '11px' }}>Logout</button>
           <button 
@@ -105,6 +107,7 @@ export default function App() {
           <Route path="/logs" element={canAccessSystemPages ? <LogsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/db" element={canAccessSystemPages ? <DatabasePage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/users" element={canAccessSystemPages ? <UsersPage authUser={authUser} /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/subscriptions" element={canAccessSystemPages ? <SubscriptionsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/settings" element={<SettingsPage authUser={authUser} />} />
           <Route path="/login" element={<Navigate to="/dashboard" replace />} />
         </Routes>
