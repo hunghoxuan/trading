@@ -5,20 +5,28 @@
 After **every** completed task or phase, end your response with exactly this format:
 
 ```
-## ✅ Done
-- [what was completed]
-
-## 🔜 Remaining
-- [what is left / next tasks]
+## ✅ Sprint / Feature
+- [Sprint/Feature Name]
+- [x] [completed task 1]
+- [x] [completed task 2]
+- [ ] [remaining task 1]
+- [ ] [remaining task 2]
 
 ## 📄 Build Versions
 - [filename]: [Hardcoded Code Version (e.g., EA_VERSION "1.23", lib-version: 80)]
 
 ## 🧪 Test / Deploy
 - [exact runnable commands — curl, ssh, compile, publish]
+
+## 🧭 What's Next
+- [next feature / roadmap item 1]
+- [next feature / roadmap item 2]
+- [next feature / roadmap item 3]
 ```
 
 - **Rule:** All 4 sections always included. Keep each section short (max 5 bullets).  
+- **Rule (Sprint / Feature section):** Merge done and remaining into one checklist. Completed items must be checked (`[x]`), remaining items unchecked (`[ ]`), and remaining items must be listed last.
+- **Rule (What's Next):** Always provide exactly 3 roadmap/feature options for the user to choose from.
 - **Rule (Build Versions):** You MUST report the actual incremental version variable explicitly defined inside the code (e.g. `#define EA_VERSION "1.xx"`, `package.json version`, `@lib-version: 80`). NEVER write "updated" or "local_version". If you change logic, you MUST safely increment that hardcoded version in the file before reporting it. Test/deploy must be real commands.
 
 ## 2. Execution Discipline (Task Lifecycle)

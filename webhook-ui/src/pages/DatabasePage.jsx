@@ -103,28 +103,50 @@ export default function DatabasePage() {
     <div className="stack-layout fadeIn">
       <div className="toolbar-panel">
         <div className="toolbar-left">
-          <div className="kpi-label">DATABASE EXPLORER</div>
+          <div className="kpi-label">DATABASE</div>
           <div className="toolbar-separator" />
           
-          <select value={selectedTable} onChange={handleTableChange} className="dashboard-filter-select">
+          <div className="pager-mini">
+            <button disabled={filter.page <= 1} onClick={() => handlePageChange(filter.page - 1)}>PREV</button>
+            <span className="minor-text">PAGE {filter.page} / {pages}</span>
+            <button disabled={filter.page >= pages} onClick={() => handlePageChange(filter.page + 1)}>NEXT</button>
+          </div>
+
+          <select 
+            className="minor-text" 
+            style={{ padding: '0 4px', height: '22px', marginLeft: '10px' }}
+            value={filter.pageSize}
+            onChange={e => setFilter(f => ({ ...f, pageSize: Number(e.target.value), page: 1 }))}
+          >
+            {[20, 50, 100, 200, 500].map(n => <option key={n} value={n}>{n} / page</option>)}
+          </select>
+        </div>
+
+        <div className="toolbar-right">
+          <select value={selectedTable} onChange={handleTableChange} style={{ minWidth: '140px' }}>
             {tables.map(t => <option key={t} value={t}>{t.toUpperCase()}</option>)}
           </select>
 
           <input 
             type="text" 
-            placeholder="SEARCH ROWS..." 
+            placeholder="SEARCH RECORDS..." 
             value={filter.q} 
             onChange={handleSearchChange} 
-            className="dashboard-filter-input"
-            style={{ width: "240px" }}
+            style={{ width: "180px" }}
           />
-        </div>
 
-        <div className="toolbar-right">
-          <button type="button" onClick={() => loadRows()} disabled={loading}>REFRESH</button>
           <div className="toolbar-separator" />
-          <button type="button" onClick={() => alert("CSV Export coming soon")}>DOWNLOAD CSV</button>
-          <button type="button" style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }} onClick={() => alert("Delete placeholder")}>DELETE ALL</button>
+
+          <select disabled={loading}>
+            <option value="">BULK ACTION...</option>
+            <option value="export">DOWNLOAD CSV</option>
+            <option value="delete">DELETE ALL</option>
+          </select>
+          <button type="button" onClick={() => alert("Action triggered")} disabled={loading}>OK</button>
+          
+          <button type="button" onClick={() => loadRows()} disabled={loading} style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+             ↻
+          </button>
         </div>
       </div>
 
@@ -169,17 +191,6 @@ export default function DatabasePage() {
                 ))}
               </tbody>
             </table>
-          </div>
-
-          <div className="pager-area" style={{ marginTop: '10px' }}>
-             <div className="pager-info minor-text">
-                Showing {rows.length} of {total}
-             </div>
-             <div className="pager-controls">
-                <button disabled={filter.page <= 1} onClick={() => handlePageChange(filter.page - 1)}>Prev</button>
-                <span className="minor-text">Page {filter.page} of {pages}</span>
-                <button disabled={filter.page >= pages} onClick={() => handlePageChange(filter.page + 1)}>Next</button>
-             </div>
           </div>
         </div>
 
