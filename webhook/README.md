@@ -315,6 +315,13 @@ cd /Users/macmini/Trade/Bot/trading
 node scripts/mt5_v2_backfill.js
 ```
 
+On VPS (if root workspace has no local `pg` dependency), use:
+
+```bash
+cd /opt/trading
+NODE_PATH=/opt/trading/webhook/node_modules node scripts/mt5_v2_backfill.js
+```
+
 MT5 Postgres schema (created automatically by `server.js`):
 
 ```sql
