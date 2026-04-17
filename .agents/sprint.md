@@ -17,6 +17,7 @@ Achieve 100% synchronization reliability between MT5 and VPS to eliminate "Ghost
     - [x] Add first v2 broker runtime endpoints: `/v2/broker/pull`, `/v2/broker/ack` (feature-flagged).
     - [x] Add `/v2/broker/sync` + account API-key rotation endpoint and production test scripts.
     - [x] Add `/v2/broker/heartbeat` + `/v2/broker/trades/create` endpoints and smoke scripts.
+    - [x] Add `/v2/accounts/{id}/subscriptions` GET/PUT + web-ui subscriptions management page.
 
 ## Up Next
 - [ ] [2026-04-15 12:25] [Infra/Deployment] Task: SSL/TLS and HTTPS Enforcement.

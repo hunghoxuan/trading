@@ -270,6 +270,10 @@ Header auth alternative (recommended for non-TV clients):
 - `POST /v2/broker/sync` (v2, reconcile account snapshot, feature-flagged)
 - `POST /v2/broker/heartbeat` (v2 broker liveness update, feature-flagged)
 - `POST /v2/broker/trades/create` (v2 broker-originated trade, feature-flagged)
+- `GET /v2/accounts` (v2 admin account list)
+- `GET /v2/sources` (v2 admin source list)
+- `GET /v2/accounts/{account_id}/subscriptions` (v2 admin subscription list)
+- `PUT /v2/accounts/{account_id}/subscriptions` (v2 admin replace subscriptions)
 - `POST /v2/accounts/{account_id}/api-key/rotate` (v2, admin protected)
 
 Open UI:
