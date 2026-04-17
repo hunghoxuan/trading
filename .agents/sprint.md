@@ -30,7 +30,11 @@ Achieve 100% synchronization reliability between MT5 and VPS to eliminate "Ghost
 - [ ] [2026-04-15 16:30] [Architecture] Task: Dashboard Phase-2 (Account Balance/Equity Cards).
 - [ ] [2026-04-17 21:12] [Architecture/DB/API/Web-UI] [Author: Codex] [TODO: Codex] Task: Plan and stage Execution Hub V2 migration (`signals` immutable reference feed, `trades` execution ledger, account-level API key ownership, account-source subscriptions, broker pull by account scope).
     - [x] Phase 1: Finalize v2 schema + API contracts + migration plan.
-    - [ ] Phase 2: Implement DB migrations + dual-write ingest (`signals` + `trades` fan-out).
-    - [ ] Phase 3: Implement broker v2 pull/ack/lease/sync endpoints.
-    - [ ] Phase 4: Upgrade Web UI management (sources/accounts/subscriptions/trades/events).
+    - [x] Phase 2: Implement DB migrations + dual-write ingest (`signals` + `trades` fan-out).
+    - [x] Phase 3: Implement broker v2 pull/ack/lease/sync endpoints.
+    - [x] Phase 4: Upgrade Web UI management (sources/accounts/subscriptions/trades/events).
+        - [x] Unify Timeframe format to numeric in DB, string labels in UI.
+        - [x] Standardize Dashboard Toolbar layout (Create button position).
+        - [x] Implement Account Detail Drawer (Subscriptions + Trade History).
+        - [x] Implement Broker Registry UI (Brokers Table + Mapping).
     - [ ] Phase 5: Cutover + deprecate legacy `user_api_keys` and signal-status flow.

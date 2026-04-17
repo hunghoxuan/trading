@@ -3,7 +3,7 @@
 strategy("Hung - SMC", overlay = true, scale = scale.right, max_bars_back = 5000, pyramiding = 20, process_orders_on_close = false, calc_on_order_fills = true, calc_on_every_tick = true, use_bar_magnifier = false, commission_type = strategy.commission.percent, commission_value = 0.0, slippage = 0, backtest_fill_limits_assumption = 0, dynamic_requests = true, currency = currency.USD, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500, initial_capital = 100000, margin_long = 1, margin_short = 1)
 
 import hunghoxuan/KitUI/32
-import hunghoxuan/KitCore/83
+import hunghoxuan/KitCore/84
 import hunghoxuan/KitSMC/66
 // ==================== TYPES, CONSTANTS ====================
 

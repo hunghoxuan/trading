@@ -370,6 +370,7 @@ export const api = {
   v2GetSubscriptions: (accountId) => get(`/v2/accounts/${encodeURIComponent(accountId)}/subscriptions`),
   v2PutSubscriptions: (accountId, items = []) => put(`/v2/accounts/${encodeURIComponent(accountId)}/subscriptions`, { items }),
   v2RotateAccountApiKey: (accountId) => post(`/v2/accounts/${encodeURIComponent(accountId)}/api-key/rotate`, {}),
+  v2Brokers: () => get("/v2/brokers"),
   login: (email, password) => post("/auth/login", { email, password }),
   logout: () => post("/auth/logout", {}),
   changePassword: (currentPassword, newPassword) => post("/auth/password", { currentPassword, newPassword }),

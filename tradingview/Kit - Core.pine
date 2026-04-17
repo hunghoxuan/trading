@@ -1,5 +1,5 @@
 //@version=5
-// @lib-version: 83
+// @lib-version: 84
 library("KitCore", dynamic_requests = true)
 
 //s
@@ -1800,15 +1800,12 @@ export get_bias_factor_texts_from_scores(int sStructure, int sVwap, int sEma50, 
 // Returns structure trend state from pivot breaks (-1 bear, 0 neutral, 1 bull).
 // Local Helper
 export get_trend_state(int len) =>
-    int safeLen = math.max(1, math.min(len, 50))
-    // Reserve enough history for dynamic pivot offsets used in request.security calls.
-    max_bars_back(high, 200)
-    max_bars_back(low, 200)
-    float pivHi = ta.pivothigh(high, safeLen, safeLen)
-    float pivLo = ta.pivotlow(low, safeLen, safeLen)
-    float ph = ta.valuewhen(not na(pivHi), pivHi, 0)
-    float pl = ta.valuewhen(not na(pivLo), pivLo, 0)
-    int result = na(ph) or na(pl) ? 0 : close > ph ? 1 : close < pl ? -1 : 0
+    int safeLen = math.max(2, math.min(len, 50))
+    int win = safeLen * 2 + 1
+    // Use window breakouts instead of dynamic pivot offsets to avoid history-buffer faults.
+    float hhPrev = ta.highest(high, win)[1]
+    float llPrev = ta.lowest(low, win)[1]
+    int result = na(hhPrev) or na(llPrev) ? 0 : close > hhPrev ? 1 : close < llPrev ? -1 : 0
     result
 
 // Candle direction helpers (offset-based).

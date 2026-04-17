@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.17-46");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.17-48");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -2624,6 +2624,28 @@ async function mt5InitBackend() {
         const item = await this.getAccountByIdV2(aid);
         return { ok: true, item, blocking_open_trades: 0 };
       },
+      async listBrokersV2() {
+        const rows = db.prepare(`
+          SELECT broker_id, name, broker_type, is_active, last_seen_at, metadata, created_at, updated_at
+          FROM brokers
+          ORDER BY last_seen_at DESC NULLS LAST
+          LIMIT 500
+        `).all();
+        return (rows || []).map((r) => ({
+          ...r,
+          is_active: normalizeUserActive(r.is_active, true),
+          metadata: r.metadata ? (() => { try { return JSON.parse(r.metadata); } catch { return {}; } })() : {},
+        }));
+      },
+      async listBrokerAccountsV2(brokerId) {
+        const rows = db.prepare(`
+          SELECT account_id, name, balance, status, updated_at
+          FROM accounts
+          WHERE broker_id = ?
+          ORDER BY updated_at DESC
+        `).all(String(brokerId));
+        return rows || [];
+      },
       async listSourcesV2() {
         const rows = db.prepare(`
           SELECT source_id, name, kind, auth_mode, is_active, metadata, created_at, updated_at
@@ -4381,6 +4403,24 @@ async function mt5InitBackend() {
       const item = await this.getAccountByIdV2(aid);
       return { ok: true, item, blocking_open_trades: 0 };
     },
+    async listBrokersV2() {
+      const res = await pool.query(`
+        SELECT broker_id, name, broker_type, is_active, last_seen_at, metadata, created_at, updated_at
+        FROM brokers
+        ORDER BY last_seen_at DESC NULLS LAST
+        LIMIT 500
+      `);
+      return res.rows || [];
+    },
+    async listBrokerAccountsV2(brokerId) {
+      const res = await pool.query(`
+        SELECT account_id, name, balance, status, updated_at
+        FROM accounts
+        WHERE broker_id = $1
+        ORDER BY updated_at DESC
+      `, [String(brokerId)]);
+      return res.rows || [];
+    },
     async listSourcesV2() {
       const res = await pool.query(`
         SELECT source_id, name, kind, auth_mode, is_active, metadata, created_at, updated_at
@@ -5620,6 +5660,18 @@ async function mt5ListTradeEventsV2(tradeId, limit = 200) {
   const b = await mt5Backend();
   if (!b.listTradeEventsV2) return [];
   return b.listTradeEventsV2(tradeId, limit);
+}
+
+async function mt5ListBrokersV2() {
+  const b = await mt5Backend();
+  if (!b.listBrokersV2) return [];
+  return b.listBrokersV2();
+}
+
+async function mt5ListBrokerAccountsV2(brokerId) {
+  const b = await mt5Backend();
+  if (!b.listBrokerAccountsV2) return [];
+  return b.listBrokerAccountsV2(brokerId);
 }
 
 async function mt5RotateSourceSecretV2(sourceId) {
@@ -7545,6 +7597,17 @@ const appHandler = async (req, res) => {
     if (!requireAdminKey(req, res, url)) return;
     try {
       const rows = await mt5ListSourcesV2();
+      return json(res, 200, { ok: true, items: rows });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/v2/brokers") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const rows = await mt5ListBrokersV2();
       return json(res, 200, { ok: true, items: rows });
     } catch (error) {
       return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });

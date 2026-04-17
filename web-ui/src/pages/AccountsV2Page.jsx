@@ -28,6 +28,7 @@ export default function AccountsV2Page() {
   const [editingId, setEditingId] = useState("");
   const [createdKey, setCreatedKey] = useState("");
   const [rotatedKey, setRotatedKey] = useState("");
+  const [selectedDetail, setSelectedDetail] = useState(null);
   const [form, setForm] = useState({
     account_id: "",
     user_id: "default",
@@ -298,6 +299,7 @@ export default function AccountsV2Page() {
                     <td>{row.balance ?? "-"}</td>
                     <td>{row.api_key_last4 ? `****${row.api_key_last4}` : "-"}</td>
                     <td style={{ display: "flex", gap: 8 }}>
+                      <button className="primary-button" onClick={() => setSelectedDetail(row)} style={{ padding: '4px 8px', fontSize: '11px' }}>VIEW</button>
                       <button className="secondary-button" onClick={() => onEdit(row)} disabled={saving}>EDIT</button>
                       <button className="secondary-button" onClick={() => onRotateApiKey(row)} disabled={saving}>ROTATE KEY</button>
                       <button className="secondary-button" onClick={() => onToggleStatus(row)} disabled={saving}>
@@ -319,6 +321,119 @@ export default function AccountsV2Page() {
           </div>
         ) : null}
       </section>
+
+      {selectedDetail && (
+        <AccountDetailDrawer
+          account={selectedDetail}
+          onClose={() => setSelectedDetail(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function AccountDetailDrawer({ account, onClose }) {
+  const [subs, setSubs] = useState([]);
+  const [trades, setTrades] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  async function loadDetail() {
+    setLoading(true);
+    try {
+      const [sData, tData] = await Promise.all([
+        api.v2GetSubscriptions(account.account_id),
+        api.v2Trades({ account_id: account.account_id, limit: 10 }),
+      ]);
+      setSubs(Array.isArray(sData?.items) ? sData.items : []);
+      setTrades(Array.isArray(tData?.items) ? tData.items : []);
+    } catch (e) {
+      console.error("Failed to load account details", e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { loadDetail(); }, [account.account_id]);
+
+  function isOnline(lastSeen) {
+    if (!lastSeen) return false;
+    const diff = Date.now() - new Date(lastSeen).getTime();
+    return diff < 65000;
+  }
+
+  return (
+    <div className="drawer-overlay" onClick={onClose}>
+      <div className="drawer-content panel" onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h3 className="panel-label" style={{ margin: 0 }}>ACCOUNT DETAIL</h3>
+          <button className="secondary-button" onClick={onClose}>CLOSE</button>
+        </div>
+
+        <div className="stack-layout" style={{ gap: 20 }}>
+          <section className="detail-header">
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div className={`status-dot ${isOnline(account.updated_at) ? "online" : "offline"}`} />
+              <h2 style={{ margin: 0 }}>{account.name || account.account_id}</h2>
+              <span className={`badge ${account.status}`}>{account.status}</span>
+            </div>
+            <div className="minor-text monospace" style={{ marginTop: 4 }}>ID: {account.account_id} | Broker: {account.broker_id || "None"}</div>
+          </section>
+
+          <section>
+            <div className="panel-label">SUBSCRIPTIONS</div>
+            {loading ? <div className="minor-text">Loading...</div> : (
+              <div className="stack-layout" style={{ gap: 8 }}>
+                {subs.filter(s => s.is_active).map(s => (
+                  <div key={s.source_id} className="sub-pill">
+                    <strong>{s.source_name || s.source_id}</strong>
+                    <span className="minor-text"> | {s.source_kind}</span>
+                  </div>
+                ))}
+                {subs.filter(s => s.is_active).length === 0 && <div className="muted">No active subscriptions.</div>}
+              </div>
+            )}
+          </section>
+
+          <section style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+            <div className="panel-label">RECENT EXECUTION (V2)</div>
+            {loading ? <div className="minor-text">Loading...</div> : (
+              <div style={{ flex: 1, overflowY: "auto" }}>
+                <table className="data-table" style={{ fontSize: "0.85rem" }}>
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Symbol</th>
+                      <th>Side</th>
+                      <th>Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {trades.map(t => (
+                      <tr key={t.trade_id}>
+                        <td><span className={`badge ${t.execution_status}`}>{t.execution_status}</span></td>
+                        <td>{t.symbol}</td>
+                        <td className={t.side === "BUY" ? "buy" : "sell"}>{t.side}</td>
+                        <td className="minor-text monospace">{new Date(t.created_at).toLocaleTimeString()}</td>
+                      </tr>
+                    ))}
+                    {trades.length === 0 && <tr><td colSpan={4} className="muted">No recent trades.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        .drawer-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; justify-content: flex-end; z-index: 1000; animation: fadeIn 0.2s ease-out; }
+        .drawer-content { width: 500px; height: 100%; border-radius: 0; border-left: 1px solid var(--color-border); padding: 30px; animation: slideIn 0.3s ease-out; display: flex; flexDirection: column; }
+        .sub-pill { background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--color-border); }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .status-dot.online { background: #00e5b0; box-shadow: 0 0 10px rgba(0,229,176,0.5); }
+        .status-dot.offline { background: #666; }
+        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+      `}} />
     </div>
   );
 }

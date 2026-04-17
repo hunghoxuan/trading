@@ -1,8 +1,18 @@
-# Changelog
+# Changelog (Latest first)
 
-*(A strict append-only log of what was completed, with dates, module, and author)*
-
-## 2026-04-17
+## 2026.04.17
+- Added V2 Broker Registry UI and Backend API.
+- Implemented Account Detail Drawer in Accounts V2 page (Subscriptions + Recent Trades + Heartbeat).
+- Standardized Timeframe display across all dashboard pages (1m, 15m, 1h, etc).
+- Enforced 'Create' button positioning after 'Apply BulkAction' across all pages.
+- Restored missing onBulkOk and BULK_ACTIONS constants to resolve dashboard crashes.
+- Version: 2026.04.17-48
+- [x] Unify Timeframe format to numeric in DB, string labels in UI.
+- [x] Standardize Dashboard Toolbar layout (Create button position).
+- [x] Implement Account Detail Drawer (Subscriptions + Trade History).
+- [x] Implement Broker Registry UI (Brokers Table + Mapping).
+- [ ] Implement V2 Broker Sync (Pull/Ack) Protocol.
+- [ ] Implement V2 Multi-Account Dispatcher Fan-out.
 - [x] [22:46] [webhook + web-ui] [Author: Codex] Task: Added guarded account archive flow (`DELETE /v2/accounts/{id}`) with open/pending trade protection and `ARCHIVE` action in Accounts V2 UI. Live smoke verified: archive success on empty account and blocked response with `blocking_open_trades` on active account.
 - [x] [22:42] [webhook + web-ui] [Author: Codex] Task: Execution Hub V2 account management completed. Added `/v2/accounts` POST + `/v2/accounts/{id}` PUT, `Accounts V2` admin page (create/edit/status toggle/rotate key), and deployed live bundle `index-12fYXWHN.js` with production smoke verification.
 - [x] [22:42] [webhook] [Author: Codex] Task: Fixed nullable account balance regression in v2 account update flow (omitted balance no longer coerces `null -> 0`). Verified via live API create/update regression smoke.
