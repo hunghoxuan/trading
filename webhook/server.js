@@ -3642,18 +3642,38 @@ function mt5SignalsToBacktestCsv(rows, includeHeader = true) {
 function mt5PeriodRange(period) {
   const now = new Date();
   const end = now.toISOString();
+
+  if (period === "all") {
+    return { start: null, end: null };
+  }
   if (period === "today") {
     const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
     return { start, end };
+  }
+  if (period === "yesterday") {
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1)).toISOString();
+    const endY = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+    return { start, end: endY };
   }
   if (period === "week") {
     const day = now.getUTCDay() || 7; // Monday=1 ... Sunday=7
     const startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (day - 1)));
     return { start: startDate.toISOString(), end };
   }
+  if (period === "last_week") {
+    const day = now.getUTCDay() || 7;
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (day - 1) - 7)).toISOString();
+    const endLW = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (day - 1))).toISOString();
+    return { start, end: endLW };
+  }
   if (period === "month") {
     const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
     return { start, end };
+  }
+  if (period === "last_month") {
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString();
+    const endLM = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+    return { start, end: endLM };
   }
   if (period === "year") {
     const start = new Date(Date.UTC(now.getUTCFullYear(), 0, 1)).toISOString();
@@ -4563,7 +4583,9 @@ const server = http.createServer(async (req, res) => {
       const userId = envStr(url.searchParams.get("user_id"));
       const symbol = envStr(url.searchParams.get("symbol")).toUpperCase();
       const strategy = envStr(url.searchParams.get("strategy"));
-      const range = envStr(url.searchParams.get("range"), "month").toLowerCase();
+      const direction = envStr(url.searchParams.get("direction")).toUpperCase();
+      const timeframe = envStr(url.searchParams.get("timeframe"));
+      const range = envStr(url.searchParams.get("range"), "all").toLowerCase();
 
       const allRows = mt5FilterRows(await mt5ListSignals(limit, ""), { userId });
       const rowsByDimension = allRows.filter((r) => {
@@ -4572,13 +4594,15 @@ const server = http.createServer(async (req, res) => {
           const s = mt5StrategyFromRow(r);
           if (s !== strategy) return false;
         }
+        if (direction && String(r.action || "").toUpperCase() !== direction) return false;
+        if (timeframe && String(r.timeframe || "") !== timeframe) return false;
         return true;
       });
 
       const period = mt5PeriodRange(range);
       const selectedRows = mt5FilterRows(rowsByDimension, { from: period.start, to: period.end });
 
-      const periods = ["today", "week", "month", "year"];
+      const periods = ["all", "today", "yesterday", "last_week", "last_month", "week", "month", "year"];
       const periodTotals = {};
       for (const p of periods) {
         const pr = mt5PeriodRange(p);
@@ -4620,10 +4644,13 @@ const server = http.createServer(async (req, res) => {
           user_id: userId || "",
           symbol,
           strategy,
+          direction,
+          timeframe,
           range,
           accounts,
           symbols,
           strategies,
+          timeframes: [...new Set(allRows.map(r => String(r.timeframe || "")).filter(Boolean))].sort(),
         },
         metrics: mt5ComputeTradeMetrics(selectedRows),
         period_totals: periodTotals,

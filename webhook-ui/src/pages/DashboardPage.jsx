@@ -1,8 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
-const RANGE_OPTIONS = ["today", "week", "month", "year"];
-const PERIOD_KEYS = ["today", "week", "month", "year"];
+const RANGE_OPTIONS = [
+  { val: "all", lab: "All times" },
+  { val: "today", lab: "Today" },
+  { val: "yesterday", lab: "Yesterday" },
+  { val: "last_week", lab: "Last week" },
+  { val: "last_month", lab: "Last month" },
+  { val: "week", lab: "This Week" },
+  { val: "month", lab: "This Month" },
+  { val: "year", lab: "This Year" },
+];
+
+const PERIOD_DISPLAY = [
+  { key: "all", lab: "All times" },
+  { key: "today", lab: "Today" },
+  { key: "week", lab: "This Week" },
+  { key: "month", lab: "This Month" },
+  { key: "year", lab: "This Year" },
+];
 
 function asMoney(v) {
   const n = Number(v);
@@ -48,7 +64,9 @@ function TableBlock({ title, rows, noun = "ITEMS" }) {
     }
   };
 
-  const sortedRows = [...rows].sort((a, b) => {
+  const filteredRows = rows.filter(r => Number(r.pnl_total) !== 0);
+
+  const sortedRows = [...filteredRows].sort((a, b) => {
     let va, vb;
     if (sortKey === "Name") { va = String(a.key); vb = String(b.key); }
     else if (sortKey === "WR") { va = a.win_rate; vb = b.win_rate; }
@@ -76,20 +94,20 @@ function TableBlock({ title, rows, noun = "ITEMS" }) {
         <div className="minor-text">No operational data.</div>
       ) : (
         <div className="mini-table">
-          <div className="mini-table-head wide" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '8px', background: 'transparent' }}>
-            <span onClick={() => toggleSort("Name")} style={{ flex: '2', fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>NAME{sortMarker("Name")}</span>
-            <span onClick={() => toggleSort("WL")} style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>W/L{sortMarker("WL")}</span>
-            <span onClick={() => toggleSort("WR")} style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>WR{sortMarker("WR")}</span>
-            <span onClick={() => toggleSort("PnL")} style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>PNL{sortMarker("PnL")}</span>
-            <span onClick={() => toggleSort("RR")} style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>RR{sortMarker("RR")}</span>
+          <div className="mini-table-head wide" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '8px', background: 'transparent', display: 'flex', gap: '12px' }}>
+            <span onClick={() => toggleSort("Name")} style={{ flex: '3', fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>NAME{sortMarker("Name")}</span>
+            <span onClick={() => toggleSort("WL")} style={{ flex: '1', textAlign: 'right', fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>W/L{sortMarker("WL")}</span>
+            <span onClick={() => toggleSort("WR")} style={{ flex: '1', textAlign: 'right', fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>WR{sortMarker("WR")}</span>
+            <span onClick={() => toggleSort("PnL")} style={{ flex: '1.5', textAlign: 'right', fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>PNL{sortMarker("PnL")}</span>
+            <span onClick={() => toggleSort("RR")} style={{ flex: '1', textAlign: 'right', fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>RR{sortMarker("RR")}</span>
           </div>
           {sortedRows.map((r) => (
-            <div className="mini-table-row wide" key={r.key} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-              <span className="mini-name" style={{ flex: '2', whiteSpace: 'nowrap' }} title={r.key}>{r.key}</span>
-              <span>{r.wins}/{r.losses}</span>
-              <span>{asPct(r.win_rate)}</span>
-              <span className={moneyClass(r.pnl_total)}>{asMoneySigned(r.pnl_total)}</span>
-              <span>{asRR(r.rr_total)}</span>
+            <div className="mini-table-row wide" key={r.key} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <span className="mini-name" style={{ flex: '3', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.key}>{r.key}</span>
+              <span style={{ flex: '1', textAlign: 'right' }}>{r.wins}/{r.losses}</span>
+              <span style={{ flex: '1', textAlign: 'right' }}>{asPct(r.win_rate)}</span>
+              <span style={{ flex: '1.5', textAlign: 'right' }} className={moneyClass(r.pnl_total)}>{asMoneySigned(r.pnl_total)}</span>
+              <span style={{ flex: '1', textAlign: 'right' }}>{asRR(r.rr_total)}</span>
             </div>
           ))}
         </div>
@@ -105,7 +123,9 @@ export default function DashboardPage() {
     user_id: "",
     symbol: "",
     strategy: "",
-    range: "month",
+    direction: "",
+    timeframe: "",
+    range: "all",
   });
   const inFlightRef = useRef(false);
 
@@ -125,12 +145,12 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load();
-  }, [filters.user_id, filters.symbol, filters.strategy, filters.range]);
+  }, [filters.user_id, filters.symbol, filters.strategy, filters.direction, filters.timeframe, filters.range]);
 
   useEffect(() => {
     const t = setInterval(load, 10000);
     return () => clearInterval(t);
-  }, [filters.user_id, filters.symbol, filters.strategy, filters.range]);
+  }, [filters.user_id, filters.symbol, filters.strategy, filters.direction, filters.timeframe, filters.range]);
 
   if (error) return <div className="error">{error}</div>;
   if (!data) return <div className="loading">Loading dashboard...</div>;
@@ -155,27 +175,22 @@ export default function DashboardPage() {
           <option value="">All strategies</option>
           {(f.strategies || []).map((v) => <option key={v} value={v}>{v}</option>)}
         </select>
-        <select value={filters.range} onChange={(e) => setFilters((prev) => ({ ...prev, range: e.target.value }))}>
-          {RANGE_OPTIONS.map((r) => <option key={r} value={r}>{r[0].toUpperCase() + r.slice(1)}</option>)}
+        <select value={filters.direction} onChange={(e) => setFilters((prev) => ({ ...prev, direction: e.target.value }))}>
+          <option value="">All Direction</option>
+          <option value="BUY">Buy</option>
+          <option value="SELL">Sell</option>
+        </select>
+        <select value={filters.timeframe} onChange={(e) => setFilters((prev) => ({ ...prev, timeframe: e.target.value }))}>
+          <option value="">All Timeframes</option>
+          {(f.timeframes || ["15", "60", "240"]).map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <select value={filters.range} onChange={(e) => setFilters((prev) => ({ ...prev, range: e.target.value }))} style={{ marginLeft: 'auto' }}>
+          {RANGE_OPTIONS.map((r) => <option key={r.val} value={r.val}>{r.lab}</option>)}
         </select>
       </div>
 
-      <div className="kpi-grid">
-        <article className="kpi-card">
-          <div className="panel-label">Total Trades / Signals</div>
-          <div className="period-big-line">
-            <span className="kpi-value">{m.total_trades || 0}</span>
-          </div>
-          <div className="minor-text" style={{ marginTop: '8px' }}>Signals: {m.total_signals || 0}</div>
-        </article>
-        <article className="kpi-card">
-          <div className="panel-label">Wins / Losses</div>
-          <div className="period-big-line">
-            <span className="kpi-value">{m.wins || 0} / {m.losses || 0}</span>
-          </div>
-          <div className="minor-text" style={{ marginTop: '8px' }}>Winrate: {asPct(m.win_rate)}</div>
-        </article>
-        <article className="kpi-card">
+      <div className="kpi-grid" style={{ gridTemplateColumns: "1fr" }}>
+        <article className="kpi-card" style={{ maxWidth: '400px' }}>
           <div className="panel-label">Total PnL</div>
           <div className="period-big-line">
             <span className={`kpi-value ${moneyClass(m.total_pnl)}`}>{asMoneySigned(m.total_pnl || 0)}</span>
@@ -187,20 +202,23 @@ export default function DashboardPage() {
         </article>
       </div>
 
-      <div className="period-box-grid">
-        {PERIOD_KEYS.map((p) => {
-          const v = periodTotals[p] || {};
+      <div className="period-box-grid" style={{ gridTemplateColumns: "repeat(5, 1fr)", gap: '16px' }}>
+        {PERIOD_DISPLAY.map((conf) => {
+          const v = periodTotals[conf.key] || {};
+          const winrate = v.total_wins + v.total_losses > 0 
+            ? (v.total_wins / (v.total_wins + v.total_losses)) * 100 
+            : 0;
+
           return (
-            <article className="kpi-card" key={p}>
-              <div className="panel-label">{p}</div>
+            <article className="kpi-card" key={conf.key}>
+              <div className="panel-label">{conf.lab.toUpperCase()}</div>
               <div className="period-big-line">
                 <span className={`kpi-value ${moneyClass(v.total_pnl)}`} style={{ fontSize: '24px' }}>
                   {asMoneySigned(v.total_pnl || 0)}
                 </span>
               </div>
-              <div className="minor-text" style={{ marginTop: '8px' }}>
-                Trades {v.total_trades || 0} | 
-                RR {asRR(v.total_rr || 0)}
+              <div className="minor-text" style={{ marginTop: '8px', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                Trades: {v.total_trades || 0} | Win: {v.total_wins} | Lose: {v.total_losses} | WR: {asPct(winrate)} | RR: {asRR(v.total_rr || 0)}
               </div>
             </article>
           );
