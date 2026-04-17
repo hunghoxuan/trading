@@ -119,6 +119,9 @@ const CFG = {
   mt5EaApiKeys: parseKeySet(process.env.MT5_EA_API_KEYS),
   mt5AuthAllowLegacyPayloadKey: asBool(process.env.MT5_AUTH_ALLOW_LEGACY_PAYLOAD_KEY, true),
   mt5AuthAllowLegacyQueryKey: asBool(process.env.MT5_AUTH_ALLOW_LEGACY_QUERY_KEY, true),
+  mt5V2DualWriteEnabled: asBool(process.env.MT5_V2_DUAL_WRITE_ENABLED, false),
+  mt5V2BrokerApiEnabled: asBool(process.env.MT5_V2_BROKER_API_ENABLED, false),
+  mt5V2LeaseSeconds: asNum(process.env.MT5_V2_LEASE_SECONDS, 30),
   mt5DefaultLot: asNum(process.env.MT5_DEFAULT_LOT, 0.01),
   mt5DefaultUserId: envStr(process.env.MT5_DEFAULT_USER_ID, "default"),
   mt5PruneEnabled: asBool(process.env.MT5_PRUNE_ENABLED, true),
@@ -259,6 +262,10 @@ function makeSaltHex() {
 
 function hashPassword(passwordRaw, saltHex) {
   return crypto.scryptSync(String(passwordRaw || ""), saltHex, 64).toString("hex");
+}
+
+function hashApiKey(raw) {
+  return crypto.createHash("sha256").update(String(raw || ""), "utf8").digest("hex");
 }
 
 function timingSafeEqHex(aHex, bHex) {
@@ -1775,6 +1782,94 @@ async function mt5InitBackend() {
         ON signal_events(signal_id, event_time);
       CREATE INDEX IF NOT EXISTS idx_user_api_keys_user_created
         ON user_api_keys(user_id, created_at);
+      CREATE TABLE IF NOT EXISTS brokers (
+        broker_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        broker_type TEXT NOT NULL DEFAULT 'mt5_ea',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        last_seen_at TEXT,
+        metadata TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS sources (
+        source_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        kind TEXT NOT NULL DEFAULT 'api',
+        auth_mode TEXT NOT NULL DEFAULT 'token',
+        auth_secret_hash TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        metadata TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS account_sources (
+        account_id TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        symbol_allowlist TEXT,
+        strategy_allowlist TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (account_id, source_id),
+        FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE,
+        FOREIGN KEY (source_id) REFERENCES sources(source_id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS trades (
+        trade_id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL,
+        broker_id TEXT,
+        signal_id TEXT,
+        source_id TEXT,
+        origin_kind TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        side TEXT NOT NULL,
+        intent_entry REAL,
+        intent_sl REAL,
+        intent_tp REAL,
+        intent_volume REAL,
+        intent_note TEXT,
+        dispatch_status TEXT NOT NULL DEFAULT 'NEW',
+        lease_token TEXT,
+        lease_expires_at TEXT,
+        pulled_at TEXT,
+        execution_status TEXT NOT NULL DEFAULT 'PENDING',
+        close_reason TEXT,
+        broker_trade_id TEXT,
+        broker_order_id TEXT,
+        entry_exec REAL,
+        sl_exec REAL,
+        tp_exec REAL,
+        opened_at TEXT,
+        closed_at TEXT,
+        pnl_realized REAL,
+        error_code TEXT,
+        error_message TEXT,
+        metadata TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_trades_account_signal
+        ON trades(account_id, signal_id)
+        WHERE signal_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_trades_dispatch_queue
+        ON trades(account_id, dispatch_status, created_at);
+      CREATE TABLE IF NOT EXISTS trade_events (
+        event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trade_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        event_time TEXT NOT NULL DEFAULT (datetime('now')),
+        idempotency_key TEXT,
+        payload_json TEXT,
+        metadata TEXT,
+        FOREIGN KEY (trade_id) REFERENCES trades(trade_id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_trade_events_trade_time
+        ON trade_events(trade_id, event_time);
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_trade_events_idem
+        ON trade_events(trade_id, idempotency_key)
+        WHERE idempotency_key IS NOT NULL;
     `);
 
     ["users", "accounts", "signals", "signal_events"].forEach(tbl => {
@@ -1783,6 +1878,9 @@ async function mt5InitBackend() {
 
     ["signal_tf", "chart_tf", "entry_model"].forEach(col => {
       try { db.exec(`ALTER TABLE signals ADD COLUMN ${col} TEXT`); } catch(e) {}
+    });
+    ["broker_id", "api_key_hash", "api_key_last4", "api_key_rotated_at", "source_ids_cache"].forEach(col => {
+      try { db.exec(`ALTER TABLE accounts ADD COLUMN ${col} TEXT`); } catch(e) {}
     });
     ["password_salt", "role", "updated_at", "is_active"].forEach(col => {
       try {
@@ -1947,6 +2045,426 @@ async function mt5InitBackend() {
           signal.ack_error,
         );
         return { inserted: Number(ins.changes || 0) > 0 };
+      },
+      async upsertSourceV2(source) {
+        const now = mt5NowIso();
+        db.prepare(`
+          INSERT INTO sources (source_id, name, kind, auth_mode, auth_secret_hash, is_active, metadata, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(source_id) DO UPDATE SET
+            name = excluded.name,
+            kind = excluded.kind,
+            auth_mode = excluded.auth_mode,
+            auth_secret_hash = excluded.auth_secret_hash,
+            is_active = excluded.is_active,
+            metadata = excluded.metadata,
+            updated_at = excluded.updated_at
+        `).run(
+          String(source?.source_id || ""),
+          String(source?.name || ""),
+          String(source?.kind || "api"),
+          String(source?.auth_mode || "token"),
+          source?.auth_secret_hash ?? null,
+          normalizeUserActive(source?.is_active, true) ? 1 : 0,
+          JSON.stringify(source?.metadata || {}),
+          now,
+          now,
+        );
+        return true;
+      },
+      async fanoutSignalTradeV2(payload = {}) {
+        const signalId = String(payload.signal_id || "").trim();
+        const sourceId = String(payload.source_id || "").trim();
+        const userId = String(payload.user_id || CFG.mt5DefaultUserId).trim();
+        if (!signalId || !sourceId) return { created: 0, account_ids: [] };
+
+        const accountRows = db.prepare(`
+          SELECT DISTINCT a.account_id, a.broker_id
+          FROM accounts a
+          LEFT JOIN account_sources s
+            ON s.account_id = a.account_id AND s.source_id = ? AND s.is_active = 1
+          WHERE a.user_id = ?
+            AND (
+              s.account_id IS NOT NULL
+              OR NOT EXISTS (
+                SELECT 1 FROM account_sources sx
+                WHERE sx.account_id = a.account_id AND sx.is_active = 1
+              )
+            )
+        `).all(sourceId, userId);
+
+        const now = mt5NowIso();
+        let created = 0;
+        const accountIds = [];
+        for (const row of accountRows || []) {
+          const accountId = String(row.account_id || "").trim();
+          if (!accountId) continue;
+          const tradeId = `trd_${signalId}_${accountId}`;
+          const ins = db.prepare(`
+            INSERT OR IGNORE INTO trades (
+              trade_id, account_id, broker_id, signal_id, source_id, origin_kind,
+              symbol, side, intent_entry, intent_sl, intent_tp, intent_volume, intent_note,
+              dispatch_status, execution_status, metadata, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, 'SIGNAL', ?, ?, ?, ?, ?, ?, ?, 'NEW', 'PENDING', ?, ?, ?)
+          `).run(
+            tradeId,
+            accountId,
+            row.broker_id ?? null,
+            signalId,
+            sourceId,
+            String(payload.symbol || ""),
+            String(payload.side || "BUY"),
+            payload.intent_entry ?? null,
+            payload.intent_sl ?? null,
+            payload.intent_tp ?? null,
+            payload.intent_volume ?? null,
+            payload.intent_note ?? null,
+            JSON.stringify(payload.metadata || {}),
+            now,
+            now,
+          );
+          if (Number(ins.changes || 0) > 0) {
+            created += 1;
+            accountIds.push(accountId);
+          }
+        }
+        return { created, account_ids: accountIds };
+      },
+      async findAccountByApiKeyHash(apiKeyHash) {
+        const hash = String(apiKeyHash || "").trim();
+        if (!hash) return null;
+        return db.prepare(`
+          SELECT account_id, user_id, broker_id, name, status, api_key_hash, api_key_last4
+          FROM accounts
+          WHERE api_key_hash = ?
+          LIMIT 1
+        `).get(hash) || null;
+      },
+      async pullLeasedTradesV2(accountId, maxItems = 1, leaseSeconds = 30) {
+        const aid = String(accountId || "").trim();
+        const safeMax = Math.max(1, Math.min(100, Number(maxItems) || 1));
+        const leaseSec = Math.max(5, Math.min(300, Number(leaseSeconds) || 30));
+        if (!aid) return [];
+        const now = new Date();
+        const nowIso = now.toISOString();
+        const leaseExpireIso = new Date(now.getTime() + leaseSec * 1000).toISOString();
+        db.exec("BEGIN IMMEDIATE");
+        try {
+          const rows = db.prepare(`
+            SELECT trade_id, account_id, signal_id, source_id, symbol, side, intent_entry, intent_sl, intent_tp, intent_volume, intent_note, metadata
+            FROM trades
+            WHERE account_id = ?
+              AND (
+                dispatch_status = 'NEW'
+                OR (dispatch_status = 'LEASED' AND lease_expires_at IS NOT NULL AND lease_expires_at < ?)
+              )
+            ORDER BY created_at ASC
+            LIMIT ?
+          `).all(aid, nowIso, safeMax);
+          const out = [];
+          for (const row of rows || []) {
+            const leaseToken = crypto.randomUUID();
+            const upd = db.prepare(`
+              UPDATE trades
+              SET dispatch_status = 'LEASED',
+                  lease_token = ?,
+                  lease_expires_at = ?,
+                  pulled_at = ?,
+                  updated_at = ?
+              WHERE trade_id = ?
+                AND account_id = ?
+                AND (
+                  dispatch_status = 'NEW'
+                  OR (dispatch_status = 'LEASED' AND lease_expires_at IS NOT NULL AND lease_expires_at < ?)
+                )
+            `).run(leaseToken, leaseExpireIso, nowIso, nowIso, row.trade_id, aid, nowIso);
+            if (Number(upd.changes || 0) > 0) {
+              let metadata = {};
+              try { metadata = row.metadata ? JSON.parse(row.metadata) : {}; } catch { metadata = {}; }
+              out.push({
+                ...row,
+                lease_token: leaseToken,
+                lease_expires_at: leaseExpireIso,
+                metadata,
+              });
+            }
+          }
+          db.exec("COMMIT");
+          return out;
+        } catch (error) {
+          db.exec("ROLLBACK");
+          throw error;
+        }
+      },
+      async ackTradeV2(accountId, payload = {}) {
+        const aid = String(accountId || "").trim();
+        const tradeId = String(payload.trade_id || "").trim();
+        const leaseToken = String(payload.lease_token || "").trim();
+        if (!aid || !tradeId || !leaseToken) return { ok: false, error: "missing trade_id/lease_token/account_id" };
+        const now = mt5NowIso();
+        const executionStatus = String(payload.execution_status || "PENDING").trim().toUpperCase();
+        const closeReasonRaw = String(payload.close_reason || "").trim().toUpperCase();
+        const closeReason = closeReasonRaw ? closeReasonRaw : null;
+        const upd = db.prepare(`
+          UPDATE trades
+          SET dispatch_status = 'CONSUMED',
+              execution_status = ?,
+              close_reason = ?,
+              broker_trade_id = COALESCE(?, broker_trade_id),
+              broker_order_id = COALESCE(?, broker_order_id),
+              entry_exec = COALESCE(?, entry_exec),
+              sl_exec = COALESCE(?, sl_exec),
+              tp_exec = COALESCE(?, tp_exec),
+              opened_at = COALESCE(?, opened_at),
+              closed_at = COALESCE(?, closed_at),
+              pnl_realized = COALESCE(?, pnl_realized),
+              error_code = COALESCE(?, error_code),
+              error_message = COALESCE(?, error_message),
+              updated_at = ?
+          WHERE trade_id = ?
+            AND account_id = ?
+            AND dispatch_status = 'LEASED'
+            AND lease_token = ?
+        `).run(
+          executionStatus,
+          closeReason,
+          payload.broker_trade_id ?? null,
+          payload.broker_order_id ?? null,
+          payload.entry_exec ?? null,
+          payload.sl_exec ?? null,
+          payload.tp_exec ?? null,
+          payload.opened_at ?? null,
+          payload.closed_at ?? null,
+          payload.pnl_realized ?? null,
+          payload.error_code ?? null,
+          payload.error_message ?? null,
+          now,
+          tradeId,
+          aid,
+          leaseToken,
+        );
+        if (Number(upd.changes || 0) < 1) return { ok: false, error: "trade not leased or invalid token" };
+        db.prepare(`
+          INSERT OR IGNORE INTO trade_events (trade_id, event_type, event_time, idempotency_key, payload_json, metadata)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          tradeId,
+          String(payload.event_type || "ACK"),
+          String(payload.event_time || now),
+          payload.idempotency_key ? String(payload.idempotency_key) : null,
+          JSON.stringify(payload.payload_json || {}),
+          JSON.stringify({ account_id: aid }),
+        );
+        const row = db.prepare(`SELECT dispatch_status, execution_status FROM trades WHERE trade_id = ? LIMIT 1`).get(tradeId);
+        return { ok: true, dispatch_status: row?.dispatch_status || "CONSUMED", execution_status: row?.execution_status || executionStatus };
+      },
+      async rotateAccountApiKeyV2(accountId) {
+        const aid = String(accountId || "").trim();
+        if (!aid) return null;
+        const apiKeyPlaintext = `ak_${crypto.randomBytes(24).toString("hex")}`;
+        const keyHash = hashApiKey(apiKeyPlaintext);
+        const now = mt5NowIso();
+        const upd = db.prepare(`
+          UPDATE accounts
+          SET api_key_hash = ?,
+              api_key_last4 = ?,
+              api_key_rotated_at = ?,
+              updated_at = ?
+          WHERE account_id = ?
+        `).run(keyHash, apiKeyPlaintext.slice(-4), now, now, aid);
+        if (Number(upd.changes || 0) < 1) return null;
+        return { account_id: aid, api_key_plaintext: apiKeyPlaintext };
+      },
+      async brokerSyncV2(accountId, payload = {}) {
+        const aid = String(accountId || "").trim();
+        if (!aid) return { ok: false, error: "account_id is required" };
+        const resolveMissing = normalizeUserActive(payload?.resolve_missing, false);
+        const createOrphans = normalizeUserActive(payload?.create_orphans, false);
+        const now = mt5NowIso();
+
+        const positions = Array.isArray(payload?.positions) ? payload.positions : [];
+        const orders = Array.isArray(payload?.orders) ? payload.orders : [];
+        const snapshotItems = [...positions, ...orders];
+        const brokerTickets = new Set(snapshotItems.map((x) => mt5NormalizeBrokerTicket(x)).filter(Boolean));
+
+        const openRows = db.prepare(`
+          SELECT trade_id, broker_trade_id, symbol, side
+          FROM trades
+          WHERE account_id = ?
+            AND execution_status IN ('PENDING', 'OPEN')
+        `).all(aid);
+
+        const knownTickets = new Set(
+          (openRows || [])
+            .map((r) => String(r.broker_trade_id || "").trim())
+            .filter(Boolean)
+        );
+
+        const missingOnBroker = (openRows || []).filter((r) => {
+          const t = String(r.broker_trade_id || "").trim();
+          return t && !brokerTickets.has(t);
+        });
+        const orphanTickets = [...brokerTickets].filter((t) => !knownTickets.has(t));
+
+        let closedBySync = 0;
+        if (resolveMissing && missingOnBroker.length > 0) {
+          const ids = missingOnBroker.map((r) => String(r.trade_id || "")).filter(Boolean);
+          for (const tradeId of ids) {
+            const upd = db.prepare(`
+              UPDATE trades
+              SET execution_status = 'CLOSED',
+                  close_reason = 'FAIL',
+                  closed_at = ?,
+                  updated_at = ?
+              WHERE trade_id = ?
+                AND account_id = ?
+                AND execution_status IN ('PENDING', 'OPEN')
+            `).run(now, now, tradeId, aid);
+            if (Number(upd.changes || 0) > 0) {
+              closedBySync += 1;
+              db.prepare(`
+                INSERT INTO trade_events (trade_id, event_type, event_time, payload_json, metadata)
+                VALUES (?, 'SYNC_CLOSE_MISSING_ON_BROKER', ?, ?, ?)
+              `).run(
+                tradeId,
+                now,
+                JSON.stringify({ source: "broker_sync_v2" }),
+                JSON.stringify({ account_id: aid }),
+              );
+            }
+          }
+        }
+
+        let createdOrphans = 0;
+        if (createOrphans && orphanTickets.length > 0) {
+          for (const ticket of orphanTickets) {
+            const item = snapshotItems.find((x) => mt5NormalizeBrokerTicket(x) === ticket) || {};
+            const tradeId = `orphan_${aid}_${ticket}_${Date.now()}`;
+            const ins = db.prepare(`
+              INSERT OR IGNORE INTO trades (
+                trade_id, account_id, signal_id, source_id, origin_kind,
+                symbol, side, broker_trade_id, dispatch_status, execution_status,
+                metadata, created_at, updated_at
+              ) VALUES (?, ?, NULL, NULL, 'BROKER', ?, ?, ?, 'CONSUMED', ?, ?, ?, ?)
+            `).run(
+              tradeId,
+              aid,
+              String(item.symbol || "UNKNOWN"),
+              mt5MapActionToSide(item.side || item.action || "BUY"),
+              ticket,
+              mt5NormalizeExecutionStatusV2(item.execution_status || "OPEN"),
+              JSON.stringify({ orphan_created_by_sync: true, raw: item }),
+              now,
+              now,
+            );
+            if (Number(ins.changes || 0) > 0) createdOrphans += 1;
+          }
+        }
+
+        return {
+          ok: true,
+          snapshot_positions: positions.length,
+          snapshot_orders: orders.length,
+          known_open_trades: openRows.length,
+          missing_on_broker: missingOnBroker.length,
+          orphan_on_broker: orphanTickets.length,
+          closed_by_sync: closedBySync,
+          created_orphans: createdOrphans,
+        };
+      },
+      async createBrokerTradeV2(accountId, payload = {}) {
+        const aid = String(accountId || "").trim();
+        if (!aid) return { ok: false, error: "account_id is required" };
+        const tradeId = String(payload.trade_id || "").trim() || `brk_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+        const now = mt5NowIso();
+        const ins = db.prepare(`
+          INSERT OR IGNORE INTO trades (
+            trade_id, account_id, broker_id, signal_id, source_id, origin_kind,
+            symbol, side, intent_entry, intent_sl, intent_tp, intent_volume, intent_note,
+            dispatch_status, execution_status, broker_trade_id, broker_order_id,
+            entry_exec, sl_exec, tp_exec, opened_at, closed_at, pnl_realized,
+            error_code, error_message, metadata, created_at, updated_at
+          ) VALUES (
+            ?, ?, ?, ?, ?, 'BROKER',
+            ?, ?, ?, ?, ?, ?, ?,
+            'CONSUMED', ?, ?, ?,
+            ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?
+          )
+        `).run(
+          tradeId,
+          aid,
+          payload.broker_id ?? null,
+          payload.signal_id ?? null,
+          payload.source_id ?? null,
+          String(payload.symbol || ""),
+          mt5MapActionToSide(payload.side || payload.action || "BUY"),
+          payload.intent_entry ?? null,
+          payload.intent_sl ?? null,
+          payload.intent_tp ?? null,
+          payload.intent_volume ?? null,
+          payload.intent_note ?? null,
+          String(payload.execution_status || "PENDING").toUpperCase(),
+          payload.broker_trade_id ?? null,
+          payload.broker_order_id ?? null,
+          payload.entry_exec ?? null,
+          payload.sl_exec ?? null,
+          payload.tp_exec ?? null,
+          payload.opened_at ?? null,
+          payload.closed_at ?? null,
+          payload.pnl_realized ?? null,
+          payload.error_code ?? null,
+          payload.error_message ?? null,
+          JSON.stringify(payload.payload_json || {}),
+          now,
+          now,
+        );
+        if (Number(ins.changes || 0) < 1) return { ok: false, error: "trade already exists or insert failed" };
+        db.prepare(`
+          INSERT INTO trade_events (trade_id, event_type, event_time, idempotency_key, payload_json, metadata)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          tradeId,
+          String(payload.event_type || "BROKER_CREATE"),
+          String(payload.event_time || now),
+          payload.idempotency_key ? String(payload.idempotency_key) : null,
+          JSON.stringify(payload.payload_json || {}),
+          JSON.stringify({ account_id: aid }),
+        );
+        return { ok: true, trade_id: tradeId };
+      },
+      async brokerHeartbeatV2(accountId, payload = {}) {
+        const aid = String(accountId || "").trim();
+        if (!aid) return { ok: false, error: "account_id is required" };
+        const brokerId = String(payload.broker_id || "").trim() || `broker_${aid}`;
+        const now = mt5NowIso();
+        db.prepare(`
+          INSERT INTO brokers (broker_id, name, broker_type, is_active, last_seen_at, metadata, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(broker_id) DO UPDATE SET
+            name = excluded.name,
+            broker_type = excluded.broker_type,
+            is_active = excluded.is_active,
+            last_seen_at = excluded.last_seen_at,
+            metadata = excluded.metadata,
+            updated_at = excluded.updated_at
+        `).run(
+          brokerId,
+          String(payload.name || brokerId),
+          String(payload.broker_type || "mt5_ea"),
+          normalizeUserActive(payload.is_active, true) ? 1 : 0,
+          String(payload.now || now),
+          JSON.stringify(payload.metadata || {}),
+          now,
+          now,
+        );
+        db.prepare(`
+          UPDATE accounts
+          SET broker_id = COALESCE(NULLIF(broker_id, ''), ?),
+              updated_at = ?
+          WHERE account_id = ?
+        `).run(brokerId, now, aid);
+        return { ok: true, account_id: aid, broker_id: brokerId, last_seen_at: String(payload.now || now) };
       },
       async pullAndLockNextSignal() {
         const next = db.prepare(`
@@ -2613,6 +3131,103 @@ async function mt5InitBackend() {
     CREATE INDEX IF NOT EXISTS idx_user_api_keys_user_created
     ON user_api_keys(user_id, created_at)
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS brokers (
+      broker_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      broker_type TEXT NOT NULL CHECK (broker_type IN ('mt5_ea', 'api_bot', 'manual')),
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      last_seen_at TIMESTAMPTZ NULL,
+      metadata JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sources (
+      source_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL CHECK (kind IN ('tv', 'api', 'manual', 'bot')),
+      auth_mode TEXT NOT NULL CHECK (auth_mode IN ('token', 'api_key', 'signature', 'none')),
+      auth_secret_hash TEXT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      metadata JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS account_sources (
+      account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+      source_id TEXT NOT NULL REFERENCES sources(source_id) ON DELETE CASCADE,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      symbol_allowlist JSONB NULL,
+      strategy_allowlist JSONB NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (account_id, source_id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS trades (
+      trade_id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+      broker_id TEXT NULL,
+      signal_id TEXT NULL REFERENCES signals(signal_id) ON DELETE SET NULL,
+      source_id TEXT NULL REFERENCES sources(source_id) ON DELETE SET NULL,
+      origin_kind TEXT NOT NULL CHECK (origin_kind IN ('SIGNAL','BROKER')),
+      symbol TEXT NOT NULL,
+      side TEXT NOT NULL,
+      intent_entry FLOAT8 NULL,
+      intent_sl FLOAT8 NULL,
+      intent_tp FLOAT8 NULL,
+      intent_volume FLOAT8 NULL,
+      intent_note TEXT NULL,
+      dispatch_status TEXT NOT NULL DEFAULT 'NEW' CHECK (dispatch_status IN ('NEW','LEASED','CONSUMED')),
+      lease_token TEXT NULL,
+      lease_expires_at TIMESTAMPTZ NULL,
+      pulled_at TIMESTAMPTZ NULL,
+      execution_status TEXT NOT NULL DEFAULT 'PENDING' CHECK (execution_status IN ('PENDING','OPEN','CLOSED','REJECTED')),
+      close_reason TEXT NULL CHECK (close_reason IN ('TP','SL','MANUAL','CANCEL','EXPIRED','FAIL')),
+      broker_trade_id TEXT NULL,
+      broker_order_id TEXT NULL,
+      entry_exec FLOAT8 NULL,
+      sl_exec FLOAT8 NULL,
+      tp_exec FLOAT8 NULL,
+      opened_at TIMESTAMPTZ NULL,
+      closed_at TIMESTAMPTZ NULL,
+      pnl_realized FLOAT8 NULL,
+      error_code TEXT NULL,
+      error_message TEXT NULL,
+      metadata JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS trade_events (
+      event_id BIGSERIAL PRIMARY KEY,
+      trade_id TEXT NOT NULL REFERENCES trades(trade_id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      event_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      idempotency_key TEXT NULL,
+      payload_json JSONB,
+      metadata JSONB
+    )
+  `);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_trades_account_signal ON trades(account_id, signal_id) WHERE signal_id IS NOT NULL`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_trades_dispatch_queue ON trades(account_id, dispatch_status, created_at)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_trade_events_trade_time ON trade_events(trade_id, event_time)`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_trade_events_idem ON trade_events(trade_id, idempotency_key) WHERE idempotency_key IS NOT NULL`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_account_sources_source_active ON account_sources(source_id, is_active)`);
+
+  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS broker_id TEXT`);
+  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_hash TEXT`);
+  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_last4 TEXT`);
+  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_rotated_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS source_ids_cache JSONB`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_accounts_api_key_hash ON accounts(api_key_hash) WHERE api_key_hash IS NOT NULL`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts(user_id)`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_salt TEXT`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN`);
@@ -2803,6 +3418,460 @@ async function mt5InitBackend() {
         signal.ack_error,
       ]);
       return { inserted: (r.rowCount || 0) > 0 };
+    },
+    async upsertSourceV2(source) {
+      await pool.query(`
+        INSERT INTO sources (source_id, name, kind, auth_mode, auth_secret_hash, is_active, metadata, created_at, updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)
+        ON CONFLICT (source_id) DO UPDATE SET
+          name = EXCLUDED.name,
+          kind = EXCLUDED.kind,
+          auth_mode = EXCLUDED.auth_mode,
+          auth_secret_hash = EXCLUDED.auth_secret_hash,
+          is_active = EXCLUDED.is_active,
+          metadata = EXCLUDED.metadata,
+          updated_at = EXCLUDED.updated_at
+      `, [
+        String(source?.source_id || ""),
+        String(source?.name || ""),
+        String(source?.kind || "api"),
+        String(source?.auth_mode || "token"),
+        source?.auth_secret_hash ?? null,
+        normalizeUserActive(source?.is_active, true),
+        JSON.stringify(source?.metadata || {}),
+        mt5NowIso(),
+        mt5NowIso(),
+      ]);
+      return true;
+    },
+    async fanoutSignalTradeV2(payload = {}) {
+      const signalId = String(payload.signal_id || "").trim();
+      const sourceId = String(payload.source_id || "").trim();
+      const userId = String(payload.user_id || CFG.mt5DefaultUserId).trim();
+      if (!signalId || !sourceId || !userId) return { created: 0, account_ids: [] };
+
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const accounts = await client.query(`
+          SELECT DISTINCT a.account_id, a.broker_id
+          FROM accounts a
+          LEFT JOIN account_sources s
+            ON s.account_id = a.account_id
+           AND s.source_id = $1
+           AND s.is_active = TRUE
+          WHERE a.user_id = $2
+            AND (
+              s.account_id IS NOT NULL
+              OR NOT EXISTS (
+                SELECT 1 FROM account_sources sx
+                WHERE sx.account_id = a.account_id
+                  AND sx.is_active = TRUE
+              )
+            )
+          ORDER BY a.account_id ASC
+        `, [sourceId, userId]);
+
+        let created = 0;
+        const accountIds = [];
+        for (const row of accounts.rows || []) {
+          const accountId = String(row.account_id || "").trim();
+          if (!accountId) continue;
+          const tradeId = `trd_${signalId}_${accountId}`;
+          const ins = await client.query(`
+            INSERT INTO trades (
+              trade_id, account_id, broker_id, signal_id, source_id, origin_kind,
+              symbol, side, intent_entry, intent_sl, intent_tp, intent_volume, intent_note,
+              dispatch_status, execution_status, metadata, created_at, updated_at
+            ) VALUES (
+              $1,$2,$3,$4,$5,'SIGNAL',
+              $6,$7,$8,$9,$10,$11,$12,
+              'NEW','PENDING',$13::jsonb,$14,$15
+            )
+            ON CONFLICT (trade_id) DO NOTHING
+          `, [
+            tradeId,
+            accountId,
+            row.broker_id ?? null,
+            signalId,
+            sourceId,
+            String(payload.symbol || ""),
+            String(payload.side || "BUY"),
+            payload.intent_entry ?? null,
+            payload.intent_sl ?? null,
+            payload.intent_tp ?? null,
+            payload.intent_volume ?? null,
+            payload.intent_note ?? null,
+            JSON.stringify(payload.metadata || {}),
+            mt5NowIso(),
+            mt5NowIso(),
+          ]);
+          if ((ins.rowCount || 0) > 0) {
+            created += 1;
+            accountIds.push(accountId);
+          }
+        }
+        await client.query("COMMIT");
+        return { created, account_ids: accountIds };
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async findAccountByApiKeyHash(apiKeyHash) {
+      const hash = String(apiKeyHash || "").trim();
+      if (!hash) return null;
+      const res = await pool.query(`
+        SELECT account_id, user_id, broker_id, name, status, api_key_hash, api_key_last4
+        FROM accounts
+        WHERE api_key_hash = $1
+        LIMIT 1
+      `, [hash]);
+      return res.rows[0] || null;
+    },
+    async pullLeasedTradesV2(accountId, maxItems = 1, leaseSeconds = 30) {
+      const aid = String(accountId || "").trim();
+      const safeMax = Math.max(1, Math.min(100, Number(maxItems) || 1));
+      const leaseSec = Math.max(5, Math.min(300, Number(leaseSeconds) || 30));
+      if (!aid) return [];
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const sel = await client.query(`
+          SELECT trade_id, account_id, signal_id, source_id, symbol, side, intent_entry, intent_sl, intent_tp, intent_volume, intent_note, metadata
+          FROM trades
+          WHERE account_id = $1
+            AND (
+              dispatch_status = 'NEW'
+              OR (dispatch_status = 'LEASED' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW())
+            )
+          ORDER BY created_at ASC
+          LIMIT $2
+          FOR UPDATE SKIP LOCKED
+        `, [aid, safeMax]);
+        const out = [];
+        for (const row of sel.rows || []) {
+          const leaseToken = crypto.randomUUID();
+          const leaseExpiresAt = new Date(Date.now() + leaseSec * 1000).toISOString();
+          const upd = await client.query(`
+            UPDATE trades
+            SET dispatch_status = 'LEASED',
+                lease_token = $1,
+                lease_expires_at = $2,
+                pulled_at = $3,
+                updated_at = $3
+            WHERE trade_id = $4
+              AND account_id = $5
+              AND (
+                dispatch_status = 'NEW'
+                OR (dispatch_status = 'LEASED' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW())
+              )
+          `, [leaseToken, leaseExpiresAt, mt5NowIso(), row.trade_id, aid]);
+          if ((upd.rowCount || 0) > 0) {
+            out.push({
+              ...row,
+              lease_token: leaseToken,
+              lease_expires_at: leaseExpiresAt,
+              metadata: row.metadata || {},
+            });
+          }
+        }
+        await client.query("COMMIT");
+        return out;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async ackTradeV2(accountId, payload = {}) {
+      const aid = String(accountId || "").trim();
+      const tradeId = String(payload.trade_id || "").trim();
+      const leaseToken = String(payload.lease_token || "").trim();
+      if (!aid || !tradeId || !leaseToken) return { ok: false, error: "missing trade_id/lease_token/account_id" };
+      const now = mt5NowIso();
+      const executionStatus = String(payload.execution_status || "PENDING").trim().toUpperCase();
+      const closeReasonRaw = String(payload.close_reason || "").trim().toUpperCase();
+      const closeReason = closeReasonRaw ? closeReasonRaw : null;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const upd = await client.query(`
+          UPDATE trades
+          SET dispatch_status = 'CONSUMED',
+              execution_status = $1,
+              close_reason = $2,
+              broker_trade_id = COALESCE($3, broker_trade_id),
+              broker_order_id = COALESCE($4, broker_order_id),
+              entry_exec = COALESCE($5, entry_exec),
+              sl_exec = COALESCE($6, sl_exec),
+              tp_exec = COALESCE($7, tp_exec),
+              opened_at = COALESCE($8, opened_at),
+              closed_at = COALESCE($9, closed_at),
+              pnl_realized = COALESCE($10, pnl_realized),
+              error_code = COALESCE($11, error_code),
+              error_message = COALESCE($12, error_message),
+              updated_at = $13
+          WHERE trade_id = $14
+            AND account_id = $15
+            AND dispatch_status = 'LEASED'
+            AND lease_token = $16
+          RETURNING dispatch_status, execution_status
+        `, [
+          executionStatus,
+          closeReason,
+          payload.broker_trade_id ?? null,
+          payload.broker_order_id ?? null,
+          payload.entry_exec ?? null,
+          payload.sl_exec ?? null,
+          payload.tp_exec ?? null,
+          payload.opened_at ?? null,
+          payload.closed_at ?? null,
+          payload.pnl_realized ?? null,
+          payload.error_code ?? null,
+          payload.error_message ?? null,
+          now,
+          tradeId,
+          aid,
+          leaseToken,
+        ]);
+        if ((upd.rowCount || 0) < 1) {
+          await client.query("ROLLBACK");
+          return { ok: false, error: "trade not leased or invalid token" };
+        }
+        await client.query(`
+          INSERT INTO trade_events (trade_id, event_type, event_time, idempotency_key, payload_json, metadata)
+          VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+          ON CONFLICT DO NOTHING
+        `, [
+          tradeId,
+          String(payload.event_type || "ACK"),
+          String(payload.event_time || now),
+          payload.idempotency_key ? String(payload.idempotency_key) : null,
+          JSON.stringify(payload.payload_json || {}),
+          JSON.stringify({ account_id: aid }),
+        ]);
+        await client.query("COMMIT");
+        return { ok: true, dispatch_status: upd.rows[0].dispatch_status, execution_status: upd.rows[0].execution_status };
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async rotateAccountApiKeyV2(accountId) {
+      const aid = String(accountId || "").trim();
+      if (!aid) return null;
+      const apiKeyPlaintext = `ak_${crypto.randomBytes(24).toString("hex")}`;
+      const keyHash = hashApiKey(apiKeyPlaintext);
+      const now = mt5NowIso();
+      const res = await pool.query(`
+        UPDATE accounts
+        SET api_key_hash = $1,
+            api_key_last4 = $2,
+            api_key_rotated_at = $3,
+            updated_at = $3
+        WHERE account_id = $4
+        RETURNING account_id
+      `, [keyHash, apiKeyPlaintext.slice(-4), now, aid]);
+      if ((res.rowCount || 0) < 1) return null;
+      return { account_id: aid, api_key_plaintext: apiKeyPlaintext };
+    },
+    async brokerSyncV2(accountId, payload = {}) {
+      const aid = String(accountId || "").trim();
+      if (!aid) return { ok: false, error: "account_id is required" };
+      const resolveMissing = normalizeUserActive(payload?.resolve_missing, false);
+      const createOrphans = normalizeUserActive(payload?.create_orphans, false);
+      const now = mt5NowIso();
+      const positions = Array.isArray(payload?.positions) ? payload.positions : [];
+      const orders = Array.isArray(payload?.orders) ? payload.orders : [];
+      const snapshotItems = [...positions, ...orders];
+      const brokerTickets = new Set(snapshotItems.map((x) => mt5NormalizeBrokerTicket(x)).filter(Boolean));
+
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const openRes = await client.query(`
+          SELECT trade_id, broker_trade_id, symbol, side
+          FROM trades
+          WHERE account_id = $1
+            AND execution_status IN ('PENDING', 'OPEN')
+        `, [aid]);
+        const openRows = openRes.rows || [];
+        const knownTickets = new Set(openRows.map((r) => String(r.broker_trade_id || "").trim()).filter(Boolean));
+        const missingOnBroker = openRows.filter((r) => {
+          const t = String(r.broker_trade_id || "").trim();
+          return t && !brokerTickets.has(t);
+        });
+        const orphanTickets = [...brokerTickets].filter((t) => !knownTickets.has(t));
+
+        let closedBySync = 0;
+        if (resolveMissing && missingOnBroker.length > 0) {
+          for (const row of missingOnBroker) {
+            const upd = await client.query(`
+              UPDATE trades
+              SET execution_status = 'CLOSED',
+                  close_reason = 'FAIL',
+                  closed_at = $1,
+                  updated_at = $1
+              WHERE trade_id = $2
+                AND account_id = $3
+                AND execution_status IN ('PENDING','OPEN')
+            `, [now, row.trade_id, aid]);
+            if ((upd.rowCount || 0) > 0) {
+              closedBySync += 1;
+              await client.query(`
+                INSERT INTO trade_events (trade_id, event_type, event_time, payload_json, metadata)
+                VALUES ($1, 'SYNC_CLOSE_MISSING_ON_BROKER', $2, $3::jsonb, $4::jsonb)
+              `, [row.trade_id, now, JSON.stringify({ source: "broker_sync_v2" }), JSON.stringify({ account_id: aid })]);
+            }
+          }
+        }
+
+        let createdOrphans = 0;
+        if (createOrphans && orphanTickets.length > 0) {
+          for (const ticket of orphanTickets) {
+            const item = snapshotItems.find((x) => mt5NormalizeBrokerTicket(x) === ticket) || {};
+            const tradeId = `orphan_${aid}_${ticket}_${Date.now()}`;
+            const ins = await client.query(`
+              INSERT INTO trades (
+                trade_id, account_id, signal_id, source_id, origin_kind,
+                symbol, side, broker_trade_id, dispatch_status, execution_status,
+                metadata, created_at, updated_at
+              ) VALUES (
+                $1, $2, NULL, NULL, 'BROKER',
+                $3, $4, $5, 'CONSUMED', $6,
+                $7::jsonb, $8, $8
+              )
+              ON CONFLICT (trade_id) DO NOTHING
+            `, [
+              tradeId,
+              aid,
+              String(item.symbol || "UNKNOWN"),
+              mt5MapActionToSide(item.side || item.action || "BUY"),
+              ticket,
+              mt5NormalizeExecutionStatusV2(item.execution_status || "OPEN"),
+              JSON.stringify({ orphan_created_by_sync: true, raw: item }),
+              now,
+            ]);
+            if ((ins.rowCount || 0) > 0) createdOrphans += 1;
+          }
+        }
+
+        await client.query("COMMIT");
+        return {
+          ok: true,
+          snapshot_positions: positions.length,
+          snapshot_orders: orders.length,
+          known_open_trades: openRows.length,
+          missing_on_broker: missingOnBroker.length,
+          orphan_on_broker: orphanTickets.length,
+          closed_by_sync: closedBySync,
+          created_orphans: createdOrphans,
+        };
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async createBrokerTradeV2(accountId, payload = {}) {
+      const aid = String(accountId || "").trim();
+      if (!aid) return { ok: false, error: "account_id is required" };
+      const tradeId = String(payload.trade_id || "").trim() || `brk_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+      const now = mt5NowIso();
+      const res = await pool.query(`
+        INSERT INTO trades (
+          trade_id, account_id, broker_id, signal_id, source_id, origin_kind,
+          symbol, side, intent_entry, intent_sl, intent_tp, intent_volume, intent_note,
+          dispatch_status, execution_status, broker_trade_id, broker_order_id,
+          entry_exec, sl_exec, tp_exec, opened_at, closed_at, pnl_realized,
+          error_code, error_message, metadata, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, 'BROKER',
+          $6, $7, $8, $9, $10, $11, $12,
+          'CONSUMED', $13, $14, $15,
+          $16, $17, $18, $19, $20, $21,
+          $22, $23, $24::jsonb, $25, $25
+        )
+        ON CONFLICT (trade_id) DO NOTHING
+      `, [
+        tradeId,
+        aid,
+        payload.broker_id ?? null,
+        payload.signal_id ?? null,
+        payload.source_id ?? null,
+        String(payload.symbol || ""),
+        mt5MapActionToSide(payload.side || payload.action || "BUY"),
+        payload.intent_entry ?? null,
+        payload.intent_sl ?? null,
+        payload.intent_tp ?? null,
+        payload.intent_volume ?? null,
+        payload.intent_note ?? null,
+        String(payload.execution_status || "PENDING").toUpperCase(),
+        payload.broker_trade_id ?? null,
+        payload.broker_order_id ?? null,
+        payload.entry_exec ?? null,
+        payload.sl_exec ?? null,
+        payload.tp_exec ?? null,
+        payload.opened_at ?? null,
+        payload.closed_at ?? null,
+        payload.pnl_realized ?? null,
+        payload.error_code ?? null,
+        payload.error_message ?? null,
+        JSON.stringify(payload.payload_json || {}),
+        now,
+      ]);
+      if ((res.rowCount || 0) < 1) return { ok: false, error: "trade already exists or insert failed" };
+      await pool.query(`
+        INSERT INTO trade_events (trade_id, event_type, event_time, idempotency_key, payload_json, metadata)
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+      `, [
+        tradeId,
+        String(payload.event_type || "BROKER_CREATE"),
+        String(payload.event_time || now),
+        payload.idempotency_key ? String(payload.idempotency_key) : null,
+        JSON.stringify(payload.payload_json || {}),
+        JSON.stringify({ account_id: aid }),
+      ]);
+      return { ok: true, trade_id: tradeId };
+    },
+    async brokerHeartbeatV2(accountId, payload = {}) {
+      const aid = String(accountId || "").trim();
+      if (!aid) return { ok: false, error: "account_id is required" };
+      const brokerId = String(payload.broker_id || "").trim() || `broker_${aid}`;
+      const now = mt5NowIso();
+      await pool.query(`
+        INSERT INTO brokers (broker_id, name, broker_type, is_active, last_seen_at, metadata, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $7)
+        ON CONFLICT (broker_id) DO UPDATE SET
+          name = EXCLUDED.name,
+          broker_type = EXCLUDED.broker_type,
+          is_active = EXCLUDED.is_active,
+          last_seen_at = EXCLUDED.last_seen_at,
+          metadata = EXCLUDED.metadata,
+          updated_at = EXCLUDED.updated_at
+      `, [
+        brokerId,
+        String(payload.name || brokerId),
+        String(payload.broker_type || "mt5_ea"),
+        normalizeUserActive(payload.is_active, true),
+        String(payload.now || now),
+        JSON.stringify(payload.metadata || {}),
+        now,
+      ]);
+      await pool.query(`
+        UPDATE accounts
+        SET broker_id = COALESCE(NULLIF(broker_id, ''), $1),
+            updated_at = $2
+        WHERE account_id = $3
+      `, [brokerId, now, aid]);
+      return { ok: true, account_id: aid, broker_id: brokerId, last_seen_at: String(payload.now || now) };
     },
     async pullAndLockNextSignal() {
       const client = await pool.connect();
@@ -3398,6 +4467,48 @@ function mt5BuildNote(payload) {
   return noteParts.join(" | ");
 }
 
+function mt5SlugId(input, fallback = "default") {
+  const raw = String(input || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return raw || fallback;
+}
+
+function mt5MapActionToSide(action) {
+  const a = String(action || "").trim().toUpperCase();
+  if (a === "BUY" || a === "LONG") return "BUY";
+  if (a === "SELL" || a === "SHORT") return "SELL";
+  return a || "BUY";
+}
+
+function mt5NormalizeBrokerTicket(item = {}) {
+  const candidates = [
+    item.broker_trade_id,
+    item.brokerTradeId,
+    item.trade_id,
+    item.tradeId,
+    item.ticket,
+    item.position_id,
+    item.positionId,
+    item.order_id,
+    item.orderId,
+    item.id,
+  ];
+  for (const c of candidates) {
+    const v = String(c || "").trim();
+    if (v) return v;
+  }
+  return "";
+}
+
+function mt5NormalizeExecutionStatusV2(value) {
+  const s = String(value || "").trim().toUpperCase();
+  if (s === "PENDING" || s === "OPEN" || s === "CLOSED" || s === "REJECTED") return s;
+  return "OPEN";
+}
+
 function mt5TfToMinutes(tf) {
   if (!tf) return null;
   const s = String(tf).toLowerCase().trim();
@@ -3513,6 +4624,52 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
       provider: payload.provider || null,
       raw_payload: sanitizedPayload,
     });
+
+    if (CFG.mt5V2DualWriteEnabled) {
+      const sourceId = mt5SlugId(source, "tradingview");
+      try {
+        await mt5UpsertSourceV2({
+          source_id: sourceId,
+          name: source,
+          kind: sourceId.includes("tv") ? "tv" : "api",
+          auth_mode: "token",
+          is_active: true,
+          metadata: {
+            migrated_from: "legacy_signal_ingest",
+            signal_source: source,
+          },
+        });
+        const fanout = await mt5FanoutSignalTradeV2({
+          signal_id: signalId,
+          source_id: sourceId,
+          user_id: userId,
+          symbol,
+          side: mt5MapActionToSide(action),
+          intent_entry: Number.isFinite(plannedEntry) && plannedEntry > 0 ? plannedEntry : null,
+          intent_sl: payload.sl ?? null,
+          intent_tp: payload.tp ?? null,
+          intent_volume: volume ?? null,
+          intent_note: note || null,
+          metadata: {
+            event_type: eventType,
+            order_type: orderType,
+            signal_tf: signalTf || null,
+            chart_tf: chartTf || null,
+            provider: payload.provider || null,
+          },
+        });
+        await mt5AppendSignalEvent(signalId, "V2_FANOUT_CREATED", {
+          source_id: sourceId,
+          created_trades: fanout?.created || 0,
+          account_ids: fanout?.account_ids || [],
+        });
+      } catch (error) {
+        await mt5AppendSignalEvent(signalId, "V2_FANOUT_FAILED", {
+          source_id: sourceId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   return { signal_id: signalId, action, symbol, status: upsertResult?.inserted ? "NEW" : "DUPLICATE" };
@@ -3653,6 +4810,60 @@ async function mt5AppendSignalEvent(signalId, eventType, payload = {}) {
   const b = await mt5Backend();
   if (!b.appendSignalEvent) return;
   return b.appendSignalEvent(signalId, eventType, payload);
+}
+
+async function mt5UpsertSourceV2(source) {
+  const b = await mt5Backend();
+  if (!b.upsertSourceV2) return null;
+  return b.upsertSourceV2(source);
+}
+
+async function mt5FanoutSignalTradeV2(payload) {
+  const b = await mt5Backend();
+  if (!b.fanoutSignalTradeV2) return { created: 0, account_ids: [] };
+  return b.fanoutSignalTradeV2(payload);
+}
+
+async function mt5FindAccountByApiKeyHash(apiKeyHash) {
+  const b = await mt5Backend();
+  if (!b.findAccountByApiKeyHash) return null;
+  return b.findAccountByApiKeyHash(apiKeyHash);
+}
+
+async function mt5PullLeasedTradesV2(accountId, maxItems = 1, leaseSeconds = 30) {
+  const b = await mt5Backend();
+  if (!b.pullLeasedTradesV2) return [];
+  return b.pullLeasedTradesV2(accountId, maxItems, leaseSeconds);
+}
+
+async function mt5AckTradeV2(accountId, payload) {
+  const b = await mt5Backend();
+  if (!b.ackTradeV2) return { ok: false, error: "not supported" };
+  return b.ackTradeV2(accountId, payload);
+}
+
+async function mt5RotateAccountApiKeyV2(accountId) {
+  const b = await mt5Backend();
+  if (!b.rotateAccountApiKeyV2) return null;
+  return b.rotateAccountApiKeyV2(accountId);
+}
+
+async function mt5BrokerSyncV2(accountId, payload) {
+  const b = await mt5Backend();
+  if (!b.brokerSyncV2) return { ok: false, error: "not supported" };
+  return b.brokerSyncV2(accountId, payload);
+}
+
+async function mt5CreateBrokerTradeV2(accountId, payload) {
+  const b = await mt5Backend();
+  if (!b.createBrokerTradeV2) return { ok: false, error: "not supported" };
+  return b.createBrokerTradeV2(accountId, payload);
+}
+
+async function mt5BrokerHeartbeatV2(accountId, payload) {
+  const b = await mt5Backend();
+  if (!b.brokerHeartbeatV2) return { ok: false, error: "not supported" };
+  return b.brokerHeartbeatV2(accountId, payload);
 }
 
 async function mt5ListSignalEvents(signalId, limit = 200) {
@@ -4140,6 +5351,27 @@ function requireEaKey(req, res, urlObj, payload = null) {
   }
   json(res, 401, { ok: false, error: "invalid ea api key" });
   return false;
+}
+
+async function requireV2BrokerAccount(req, res, urlObj, payload = null) {
+  const { key } = resolveEaApiKey(req, payload, urlObj);
+  if (!key) {
+    json(res, 401, { ok: false, error: "missing api key" });
+    return null;
+  }
+  const account = await mt5FindAccountByApiKeyHash(hashApiKey(key));
+  if (account === null) {
+    const b = await mt5Backend();
+    if (!b.findAccountByApiKeyHash) {
+      json(res, 400, { ok: false, error: "v2 broker auth not supported by backend" });
+      return null;
+    }
+  }
+  if (!account) {
+    json(res, 401, { ok: false, error: "invalid account api key" });
+    return null;
+  }
+  return account;
 }
 
 function getTvTokenFromPath(pathname = "") {
@@ -5445,6 +6677,131 @@ const appHandler = async (req, res) => {
     } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
   }
 
+
+  if (req.method === "POST" && url.pathname === "/v2/broker/pull") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5V2BrokerApiEnabled) return json(res, 404, { ok: false, error: "v2 broker api disabled" });
+    try {
+      const payload = await readJson(req);
+      const account = await requireV2BrokerAccount(req, res, url, payload);
+      if (!account) return;
+      const maxItemsRaw = Number(payload?.max_items ?? payload?.maxItems ?? 1);
+      const maxItems = Math.max(1, Math.min(100, Number.isFinite(maxItemsRaw) ? maxItemsRaw : 1));
+      const leaseSeconds = Math.max(5, Math.min(300, Number.isFinite(CFG.mt5V2LeaseSeconds) ? CFG.mt5V2LeaseSeconds : 30));
+      const items = await mt5PullLeasedTradesV2(account.account_id, maxItems, leaseSeconds);
+      return json(res, 200, {
+        ok: true,
+        items: (items || []).map((t) => ({
+          trade_id: t.trade_id,
+          lease_token: t.lease_token,
+          lease_expires_at: t.lease_expires_at,
+          account_id: t.account_id,
+          signal_id: t.signal_id ?? null,
+          source_id: t.source_id ?? null,
+          symbol: t.symbol,
+          side: t.side,
+          intent_entry: t.intent_entry ?? null,
+          intent_sl: t.intent_sl ?? null,
+          intent_tp: t.intent_tp ?? null,
+          intent_volume: t.intent_volume ?? null,
+          intent_note: t.intent_note ?? null,
+          metadata: t.metadata && typeof t.metadata === "object" ? t.metadata : {},
+        })),
+      });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/broker/ack") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5V2BrokerApiEnabled) return json(res, 404, { ok: false, error: "v2 broker api disabled" });
+    try {
+      const payload = await readJson(req);
+      const account = await requireV2BrokerAccount(req, res, url, payload);
+      if (!account) return;
+      const tradeId = String(payload.trade_id || "").trim();
+      const leaseToken = String(payload.lease_token || "").trim();
+      if (!tradeId || !leaseToken) {
+        return json(res, 400, { ok: false, error: "trade_id and lease_token are required" });
+      }
+      const result = await mt5AckTradeV2(account.account_id, payload);
+      if (!result?.ok) return json(res, 409, { ok: false, error: result?.error || "ack failed" });
+      return json(res, 200, {
+        ok: true,
+        dispatch_status: result.dispatch_status,
+        execution_status: result.execution_status,
+      });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/broker/sync") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5V2BrokerApiEnabled) return json(res, 404, { ok: false, error: "v2 broker api disabled" });
+    try {
+      const payload = await readJson(req);
+      const account = await requireV2BrokerAccount(req, res, url, payload);
+      if (!account) return;
+      const result = await mt5BrokerSyncV2(account.account_id, payload || {});
+      const statusCode = result?.ok ? 200 : 400;
+      return json(res, statusCode, result);
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/broker/heartbeat") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5V2BrokerApiEnabled) return json(res, 404, { ok: false, error: "v2 broker api disabled" });
+    try {
+      const payload = await readJson(req);
+      const account = await requireV2BrokerAccount(req, res, url, payload);
+      if (!account) return;
+      const result = await mt5BrokerHeartbeatV2(account.account_id, payload || {});
+      const statusCode = result?.ok ? 200 : 400;
+      return json(res, statusCode, result);
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/broker/trades/create") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5V2BrokerApiEnabled) return json(res, 404, { ok: false, error: "v2 broker api disabled" });
+    try {
+      const payload = await readJson(req);
+      const account = await requireV2BrokerAccount(req, res, url, payload);
+      if (!account) return;
+      const result = await mt5CreateBrokerTradeV2(account.account_id, payload || {});
+      const statusCode = result?.ok ? 200 : 400;
+      return json(res, statusCode, result);
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && /^\/v2\/accounts\/[^/]+\/api-key\/rotate$/.test(url.pathname)) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    let payload = {};
+    try { payload = await readJson(req); } catch {}
+    if (!requireAdminKey(req, res, url, payload)) return;
+    try {
+      const m = url.pathname.match(/^\/v2\/accounts\/([^/]+)\/api-key\/rotate$/);
+      const accountId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
+      const rotated = await mt5RotateAccountApiKeyV2(accountId);
+      if (!rotated) return json(res, 404, { ok: false, error: "account not found or backend unsupported" });
+      return json(res, 200, {
+        ok: true,
+        account_id: rotated.account_id,
+        api_key_plaintext: rotated.api_key_plaintext,
+      });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
 
   if (req.method === "GET" && url.pathname === "/mt5/ea/pull") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });

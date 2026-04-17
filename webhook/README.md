@@ -265,6 +265,12 @@ Header auth alternative (recommended for non-TV clients):
 - `GET /mt5/csv?apiKey=...&limit=2000&status=&header=1` (same as `/csv`)
 - `GET /mt5/ui` (lightweight web monitor, admin protected)
 - `POST /mt5/prune` (admin API, optional body: `{"days":14}`)
+- `POST /v2/broker/pull` (v2, account API key auth, feature-flagged)
+- `POST /v2/broker/ack` (v2, lease-token ack, feature-flagged)
+- `POST /v2/broker/sync` (v2, reconcile account snapshot, feature-flagged)
+- `POST /v2/broker/heartbeat` (v2 broker liveness update, feature-flagged)
+- `POST /v2/broker/trades/create` (v2 broker-originated trade, feature-flagged)
+- `POST /v2/accounts/{account_id}/api-key/rotate` (v2, admin protected)
 
 Open UI:
 - `https://<your-domain>/mt5/ui?apiKey=<SIGNAL_API_KEY>`
@@ -283,6 +289,12 @@ EA key behavior:
 - Legacy fallback controls:
   - `MT5_AUTH_ALLOW_LEGACY_PAYLOAD_KEY=true|false` (default: `true`)
   - `MT5_AUTH_ALLOW_LEGACY_QUERY_KEY=true|false` (default: `true`)
+- Execution Hub v2 Phase-2 dual-write toggle:
+  - `MT5_V2_DUAL_WRITE_ENABLED=true|false` (default: `false`)
+  - when enabled, each new signal is fan-out copied into v2 `trades` for subscribed accounts.
+- Execution Hub v2 broker runtime toggles:
+  - `MT5_V2_BROKER_API_ENABLED=true|false` (default: `false`)
+  - `MT5_V2_LEASE_SECONDS=30` (lease ttl for `/v2/broker/pull`)
 
 MT5 storage options:
 - `MT5_STORAGE=sqlite` (default): uses `MT5_DB_PATH` like `./mt5-signals.db`
@@ -294,6 +306,13 @@ Postgres config example (`webhook/.env`):
 ```env
 MT5_STORAGE=postgres
 MT5_POSTGRES_URL=postgresql://mt5_user:<password>@127.0.0.1:5432/mt5_bridge
+```
+
+Execution Hub v2 backfill helper (postgres):
+
+```bash
+cd /Users/macmini/Trade/Bot/trading
+node scripts/mt5_v2_backfill.js
 ```
 
 MT5 Postgres schema (created automatically by `server.js`):
@@ -495,3 +514,49 @@ bash scripts/test_remote_api.sh
 Report files:
 - latest: `/Users/macmini/Trade/Bot/trading/test-results/remote-api-latest.log`
 - timestamped: `/Users/macmini/Trade/Bot/trading/test-results/remote-api-YYYYMMDD-HHMMSS.log`
+
+## Remote V2 Broker Smoke Test
+
+Use this after enabling:
+- `MT5_V2_DUAL_WRITE_ENABLED=true`
+- `MT5_V2_BROKER_API_ENABLED=true`
+
+Script:
+- `/Users/macmini/Trade/Bot/trading/scripts/test_remote_v2_broker.sh`
+
+Run:
+
+```bash
+cd /Users/macmini/Trade/Bot/trading
+API_KEY="<ACCOUNT_API_KEY>" \
+BASE_URL="https://trade.mozasolution.com/webhook" \
+bash scripts/test_remote_v2_broker.sh
+```
+
+Sync smoke test:
+
+```bash
+cd /Users/macmini/Trade/Bot/trading
+API_KEY="<ACCOUNT_API_KEY>" \
+BASE_URL="https://trade.mozasolution.com/webhook" \
+bash scripts/test_remote_v2_sync.sh
+```
+
+Rotate account api key (admin):
+
+```bash
+cd /Users/macmini/Trade/Bot/trading
+ADMIN_API_KEY="<SIGNAL_API_KEY>" \
+ACCOUNT_ID="<ACCOUNT_ID>" \
+BASE_URL="https://trade.mozasolution.com/webhook" \
+bash scripts/test_remote_v2_rotate.sh
+```
+
+Heartbeat + broker-originated trade create:
+
+```bash
+cd /Users/macmini/Trade/Bot/trading
+API_KEY="<ACCOUNT_API_KEY>" \
+BASE_URL="https://trade.mozasolution.com/webhook" \
+bash scripts/test_remote_v2_broker_full.sh
+```
