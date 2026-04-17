@@ -81,18 +81,15 @@ export default function App() {
           {canAccessSystemPages ? <NavLink to="/db" className={({ isActive }) => (isActive ? "active" : "")}>DB</NavLink> : null}
           {canAccessSystemPages ? <NavLink to="/users" className={({ isActive }) => (isActive ? "active" : "")}>Users</NavLink> : null}
           <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")}>My Account</NavLink>
-          <button onClick={handleLogout} style={{ marginLeft: 8 }}>Logout</button>
+          <button onClick={handleLogout} className="secondary-button" style={{ marginLeft: 8, padding: '4px 10px', fontSize: '11px' }}>Logout</button>
           <button 
              onClick={toggleTheme} 
+             className="secondary-button"
              style={{ 
-               background: 'transparent', 
-               border: '1px solid var(--border)', 
-               color: 'var(--text)', 
                padding: '4px 10px', 
-               borderRadius: '6px', 
                fontSize: '11px', 
-               cursor: 'pointer',
-               marginLeft: '20px'
+               marginLeft: '20px',
+               width: '80px'
              }}
           >
             {theme === "dark" ? "☀️ LIGHT" : "🌙 DARK"}

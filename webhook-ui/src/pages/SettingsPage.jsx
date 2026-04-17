@@ -133,7 +133,7 @@ export default function SettingsPage({ authUser }) {
             />
           </label>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button onClick={saveApiKey} style={{ width: "auto" }}>Save API Key</button>
+            <button className="primary-button" onClick={saveApiKey} style={{ width: "auto" }}>Save API Key</button>
           </div>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -168,7 +168,7 @@ export default function SettingsPage({ authUser }) {
           </label>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button onClick={resetPassword} style={{ width: "auto" }} disabled={pwdLoading}>
+            <button className="secondary-button" onClick={resetPassword} style={{ width: "auto" }} disabled={pwdLoading}>
               {pwdLoading ? "Updating..." : "Reset Password"}
             </button>
           </div>

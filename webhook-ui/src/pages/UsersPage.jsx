@@ -366,9 +366,9 @@ export default function UsersPage({ authUser }) {
       <div className="toolbar-panel">
         <div className="toolbar-group toolbar-pagination">
           <div className="pager-mini">
-            <button disabled={safePage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>PREV</button>
+            <button className="secondary-button" disabled={safePage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>PREV</button>
             <span className="minor-text">PAGE {safePage} / {pages}</span>
-            <button disabled={safePage >= pages} onClick={() => setPage((p) => Math.min(pages, p + 1))}>NEXT</button>
+            <button className="secondary-button" disabled={safePage >= pages} onClick={() => setPage((p) => Math.min(pages, p + 1))}>NEXT</button>
           </div>
           <select className="minor-text" style={{ padding: "0 4px", height: "22px" }} value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
             {PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n} / page</option>)}
@@ -387,11 +387,11 @@ export default function UsersPage({ authUser }) {
           <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)}>
             {BULK_ACTIONS.map((a) => <option key={a} value={a}>{a || "BULK ACTION..."}</option>)}
           </select>
-          <button type="button" onClick={onApplyBulkAction} disabled={saving || !bulkAction}>APPLY</button>
+          <button type="button" className="primary-button" onClick={onApplyBulkAction} disabled={saving || !bulkAction}>APPLY</button>
         </div>
 
         <div className="toolbar-group toolbar-create">
-          <button type="button" onClick={openCreateMode} disabled={saving}>CREATE</button>
+          <button type="button" className="primary-button" onClick={openCreateMode} disabled={saving}>CREATE</button>
         </div>
       </div>
 
@@ -517,56 +517,58 @@ export default function UsersPage({ authUser }) {
                   </div>
                   {accountAlert.text ? <div className={`form-message msg-${accountAlert.type || "error"}`}>{accountAlert.text}</div> : null}
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button type="button" onClick={onSaveAccount} disabled={saving} style={{ padding: '8px 16px' }}>{editingAccountId ? "UPDATE" : "CREATE"}</button>
-                  </div>
+                      <button type="button" className="primary-button" onClick={onSaveAccount} disabled={saving} style={{ padding: '8px 16px' }}>{editingAccountId ? "UPDATE" : "CREATE"}</button>
+                    </div>
 
-                  <div className="events-table-wrap" style={{ maxHeight: 220 }}>
-                    <table className="events-table">
-                      <thead>
-                        <tr>
-                          <th>ACCOUNT</th>
-                          <th>BALANCE</th>
-                          <th>STATUS</th>
-                          <th></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(detail?.accounts || []).map((a) => (
-                          <tr key={a.account_id}>
-                            <td>
-                              <div className="cell-wrap">
-                                <div className="cell-major">{a.name || a.account_id}</div>
-                                <div className="cell-minor">{a.account_id}</div>
-                              </div>
-                            </td>
-                            <td className="cell-minor">{a.balance === null || a.balance === undefined ? "-" : Number(a.balance).toLocaleString()}</td>
-                            <td className="cell-minor">{a.status || "-"}</td>
-                            <td>
-                              <button
-                                type="button"
-                                style={{ width: "auto", padding: "4px 10px" }}
-                                onClick={() => {
-                                  setEditingAccountId(String(a.account_id || ""));
-                                  setAccountForm({
-                                    account_id: String(a.account_id || ""),
-                                    name: String(a.name || ""),
-                                    balance: a.balance === null || a.balance === undefined ? "" : String(a.balance),
-                                    status: String(a.status || ""),
-                                  });
-                                }}
-                              >
-                                EDIT
-                              </button>
-                              <button
-                                type="button"
-                                style={{ width: "auto", padding: "4px 10px", marginLeft: 6, background: "#7f1d1d", color: "#fee2e2" }}
-                                onClick={() => onDeactivateAccount(a)}
-                              >
-                                DEACTIVATE
-                              </button>
-                            </td>
+                    <div className="events-table-wrap" style={{ maxHeight: 220 }}>
+                      <table className="events-table">
+                        <thead>
+                          <tr>
+                            <th>ACCOUNT</th>
+                            <th>BALANCE</th>
+                            <th>STATUS</th>
+                            <th style={{ textAlign: 'right' }}>ACTIONS</th>
                           </tr>
-                        ))}
+                        </thead>
+                        <tbody>
+                          {(detail?.accounts || []).map((a) => (
+                            <tr key={a.account_id}>
+                              <td>
+                                <div className="cell-wrap">
+                                  <div className="cell-major">{a.name || a.account_id}</div>
+                                  <div className="cell-minor">{a.account_id}</div>
+                                </div>
+                              </td>
+                              <td className="cell-minor">{a.balance === null || a.balance === undefined ? "-" : Number(a.balance).toLocaleString()}</td>
+                              <td className="cell-minor">{a.status || "-"}</td>
+                              <td style={{ textAlign: 'right' }}>
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  style={{ padding: "4px 10px" }}
+                                  onClick={() => {
+                                    setEditingAccountId(String(a.account_id || ""));
+                                    setAccountForm({
+                                      account_id: String(a.account_id || ""),
+                                      name: String(a.name || ""),
+                                      balance: a.balance === null || a.balance === undefined ? "" : String(a.balance),
+                                      status: String(a.status || ""),
+                                    });
+                                  }}
+                                >
+                                  EDIT
+                                </button>
+                                <button
+                                  type="button"
+                                  className="danger-button"
+                                  style={{ padding: "4px 10px", marginLeft: 6 }}
+                                  onClick={() => onDeactivateAccount(a)}
+                                >
+                                  DEACTIVATE
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
                         {(detail?.accounts || []).length === 0 ? (<tr><td colSpan={4} className="minor-text">No accounts yet.</td></tr>) : null}
                       </tbody>
                     </table>
@@ -583,7 +585,7 @@ export default function UsersPage({ authUser }) {
                       <input placeholder="Ex: TradingView Bridge" value={apiKeyLabel} onChange={(e) => { setApiKeyLabel(e.target.value); setApiKeyErrors((p) => ({ ...p, label: "" })); if (apiKeyAlert.type === "error") setApiKeyAlert(EMPTY_ALERT); }} />
                       {apiKeyErrors.label ? <div className="field-validation msg-error">{apiKeyErrors.label}</div> : null}
                     </label>
-                    <button type="button" onClick={onCreateApiKey} disabled={saving} style={{ padding: '8px 16px' }}>CREATE KEY</button>
+                    <button type="button" className="primary-button" onClick={onCreateApiKey} disabled={saving} style={{ padding: '8px 16px' }}>CREATE KEY</button>
                   </div>
                   {apiKeyAlert.text ? <div className={`form-message msg-${apiKeyAlert.type || "error"}`}>{apiKeyAlert.text}</div> : null}
                   <div className="events-table-wrap" style={{ maxHeight: 220 }}>
@@ -593,7 +595,7 @@ export default function UsersPage({ authUser }) {
                           <th>LABEL</th>
                           <th>KEY</th>
                           <th>STATUS</th>
-                          <th></th>
+                          <th style={{ textAlign: 'right' }}>ACTIONS</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -602,13 +604,14 @@ export default function UsersPage({ authUser }) {
                             <td className="cell-major">{k.label}</td>
                             <td className="cell-minor">{k.key_masked || "-"}</td>
                             <td className="cell-minor">{k.is_active ? "ACTIVE" : "INACTIVE"}</td>
-                            <td>
-                              <button type="button" style={{ width: "auto", padding: "4px 10px" }} onClick={() => onToggleApiKey(k)}>
+                            <td style={{ textAlign: 'right' }}>
+                              <button type="button" className="secondary-button" style={{ padding: "4px 10px" }} onClick={() => onToggleApiKey(k)}>
                                 {k.is_active ? "DISABLE" : "ENABLE"}
                               </button>
                               <button
                                 type="button"
-                                style={{ width: "auto", padding: "4px 10px", marginLeft: 6, background: "#7f1d1d", color: "#fee2e2" }}
+                                className="danger-button"
+                                style={{ padding: "4px 10px", marginLeft: 6 }}
                                 onClick={() => onDeleteApiKey(k)}
                               >
                                 DELETE

@@ -162,9 +162,9 @@ export default function TradesPage() {
             <strong>{total}</strong> RESULTS
             {pages > 1 && (
               <div className="pager-mini">
-                <button disabled={filter.page <= 1} onClick={() => setFilter(f => ({ ...f, page: f.page - 1 }))}>PREV</button>
+                <button className="secondary-button" disabled={filter.page <= 1} onClick={() => setFilter(f => ({ ...f, page: f.page - 1 }))}>PREV</button>
                 <span className="minor-text">PAGE {filter.page} / {pages}</span>
-                <button disabled={filter.page >= pages} onClick={() => setFilter(f => ({ ...f, page: f.page + 1 }))}>NEXT</button>
+                <button className="secondary-button" disabled={filter.page >= pages} onClick={() => setFilter(f => ({ ...f, page: f.page + 1 }))}>NEXT</button>
               </div>
             )}
             <select 
@@ -201,11 +201,11 @@ export default function TradesPage() {
           <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)} disabled={bulkBusy}>
             {BULK_ACTIONS.map(s => <option key={s} value={s}>{s || "BULK ACTION..."}</option>)}
           </select>
-          <button type="button" onClick={() => console.log("Bulk logic here")} disabled={bulkBusy || !bulkAction}>APPLY</button>
+          <button type="button" className="primary-button" onClick={() => console.log("Bulk logic here")} disabled={bulkBusy || !bulkAction}>APPLY</button>
         </div>
 
         <div className="toolbar-group toolbar-create">
-          <button type="button" onClick={() => { setCreateMode(true); setSelectedTrade(null); }}>CREATE</button>
+          <button type="button" className="primary-button" onClick={() => { setCreateMode(true); setSelectedTrade(null); }}>CREATE</button>
         </div>
       </div>
 

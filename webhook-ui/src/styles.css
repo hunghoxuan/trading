@@ -115,9 +115,39 @@ input, select, button {
   font-size: 13px; 
   outline: none; 
 }
-button { cursor: pointer; background: var(--accent); color: var(--text-inverse); font-weight: 800; transition: opacity 0.2s; }
+button { 
+  cursor: pointer; 
+  font-weight: 800; 
+  transition: opacity 0.2s, background 0.2s; 
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
 button:hover { opacity: 0.85; }
 button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.primary-button { 
+  background: var(--accent); 
+  color: var(--text-inverse); 
+  border: 1px solid var(--accent);
+}
+.secondary-button { 
+  background: transparent; 
+  color: var(--text); 
+  border: 1px solid var(--border); 
+}
+.secondary-button:hover {
+  background: var(--accent-soft);
+}
+.danger-button { 
+  background: transparent; 
+  color: #ef4444; 
+  border: 1px solid #ef4444; 
+}
+.danger-button:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
 
 /* Specific Components (Standardized Toolbars) */
 .toolbar-panel { 
@@ -135,10 +165,10 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .toolbar-right { display: flex; gap: 12px; align-items: center; margin-left: auto; }
 .toolbar-separator { width: 1px; height: 18px; background: var(--border); }
 .toolbar-group { display: flex; align-items: center; gap: 10px; }
-.toolbar-pagination { margin-right: 12px; }
-.toolbar-search-filter { margin-right: 12px; }
-.toolbar-bulk-action { margin-right: 12px; }
-.toolbar-create { margin-left: auto; }
+.toolbar-pagination { margin-right: 0; }
+.toolbar-search-filter { margin-left: auto; }
+.toolbar-bulk-action { margin-left: 0; }
+.toolbar-create { margin-left: 0; }
 
 .fadeIn {
   animation: fadeInFrame 0.18s ease-out;

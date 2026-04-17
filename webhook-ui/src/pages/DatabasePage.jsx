@@ -127,9 +127,9 @@ export default function DatabasePage() {
         <div className="toolbar-group toolbar-pagination">
           {pages > 1 && (
             <div className="pager-mini">
-              <button disabled={filter.page <= 1} onClick={() => handlePageChange(filter.page - 1)}>PREV</button>
+              <button className="secondary-button" disabled={filter.page <= 1} onClick={() => handlePageChange(filter.page - 1)}>PREV</button>
               <span className="minor-text">PAGE {filter.page} / {pages}</span>
-              <button disabled={filter.page >= pages} onClick={() => handlePageChange(filter.page + 1)}>NEXT</button>
+              <button className="secondary-button" disabled={filter.page >= pages} onClick={() => handlePageChange(filter.page + 1)}>NEXT</button>
             </div>
           )}
           <div className="minor-text" style={{ marginLeft: "10px" }}>TOTAL: {total}</div>
@@ -164,11 +164,11 @@ export default function DatabasePage() {
             <option value="export">DOWNLOAD CSV</option>
             <option value="delete">DELETE ALL</option>
           </select>
-          <button type="button" onClick={() => alert("Action triggered")} disabled={loading}>APPLY</button>
+          <button type="button" className="primary-button" onClick={() => alert("Action triggered")} disabled={loading}>APPLY</button>
         </div>
 
         <div className="toolbar-group toolbar-create">
-          <button type="button" onClick={() => { setCreateMode(true); setSelectedRow(null); }}>CREATE</button>
+          <button type="button" className="primary-button" onClick={() => { setCreateMode(true); setSelectedRow(null); }}>CREATE</button>
         </div>
       </div>
 

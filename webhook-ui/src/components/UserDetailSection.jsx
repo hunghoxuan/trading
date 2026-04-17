@@ -87,13 +87,14 @@ export default function UserDetailSection({
         {formMessage?.text ? <div className={`form-message msg-${formMessage.type || "error"}`}>{formMessage.text}</div> : null}
 
         <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" onClick={onPrimary} disabled={primaryDisabled}>{primaryLabel}</button>
+          <button type="button" className="primary-button" onClick={onPrimary} disabled={primaryDisabled}>{primaryLabel}</button>
           {secondaryLabel ? (
             <button
               type="button"
+              className={secondaryDanger ? "danger-button" : "secondary-button"}
               onClick={onSecondary}
               disabled={secondaryDisabled}
-              style={secondaryDanger ? { background: "#7f1d1d", color: "#fee2e2" } : undefined}
+              style={secondaryDanger ? undefined : undefined}
             >
               {secondaryLabel}
             </button>

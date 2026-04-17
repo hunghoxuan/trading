@@ -12,22 +12,24 @@ Every page MUST start with a wrapping `div` that enforces the institutional vert
 </div>
 ```
 
-### C. The Standard Toolbar (`toolbar-panel`)
-All data exploration pages (Trades, Logs, DB) MUST follow this functional grouping:
-
-1.  **Toolbar Left (`toolbar-left`)**: 
-    - **Header Label**: The `.kpi-label` identifying the component.
+1.  **Toolbar Left (`toolbar-pagination`)**: 
     - **Pagination**: The `.pager-mini` control group.
         - **Adaptive Visibility**: If `totalPages <= 1`, HIDE the navigation buttons (PREV/NEXT).
-        - **Persistent Data**: ALWAYS show the total record count (e.g., "Showing 10 of 18") or current page info.
-2.  **Toolbar Right (`toolbar-right`)**:
-    - **Search & Filters**: Keyword input + Contextual selects.
-    - **Separator**: A `.toolbar-separator` to distinguish filters from actions.
-    - **Bulk Actions**: A `.select` for action type + a `.button` (usually "OK" or "GO") to execute.
+        - **Persistent Data**: ALWAYS show the total record count (e.g., "Showing 18 RESULTS").
+2.  **Toolbar Right Alignment**:
+    - **Search & Filters (`toolbar-search-filter`)**: Keyword input + Contextual selects. This group MUST use `margin-left: auto` to align consistently to the right/end.
+    - **Bulk Actions (`toolbar-bulk-action`)**: Contextual actions.
+    - **Primary Actions (`toolbar-create`)**: The tail-end action button (e.g., CREATE).
 
 ---
 
 ## 🧩 3. Component Standards
+
+### A. Button Hierarchy
+Every interactive action MUST use one of the three established semantic tiers:
+- **Primary (`primary-button`)**: Used for Creative, Submission, or Strategic actions (e.g., CREATE, APPLY, SAVE). Solid background (`--accent`).
+- **Secondary (`secondary-button`)**: Used for Navigation or Auxiliary system actions (e.g., PREV/NEXT, LOGIN, LOGOUT, THEME TOGGLE). Transparent background, white/muted border.
+- **Danger (`danger-button`)**: Used for Destructive or Sensitive actions (e.g., DELETE, REMOVE, DEACTIVATE). Transparent background, red border.
 
 ### A. High-Density List (`events-table`)
 - **Sortable Headers**: Grid headers MUST be interactive, supporting both ascending and descending sorts. Remove legacy "Sort" combo boxes from the toolbar if header sorting is available.

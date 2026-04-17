@@ -106,9 +106,9 @@ export default function LogsPage() {
             <strong>{events.length}</strong> RESULTS
             {!(page === 0 && events.length < pageSize) && (
               <div className="pager-mini">
-                <button disabled={page === 0} onClick={() => setPage(p => p - 1)}>PREV</button>
+                <button className="secondary-button" disabled={page === 0} onClick={() => setPage(p => p - 1)}>PREV</button>
                 <span className="minor-text">PAGE {page + 1}</span>
-                <button disabled={events.length < pageSize} onClick={() => setPage(p => p + 1)}>NEXT</button>
+                <button className="secondary-button" disabled={events.length < pageSize} onClick={() => setPage(p => p + 1)}>NEXT</button>
               </div>
             )}
             <select 
@@ -139,11 +139,11 @@ export default function LogsPage() {
           <select value={bulkAction} onChange={e => setBulkAction(e.target.value)}>
             {BULK_ACTIONS.map(a => <option key={a} value={a}>{a || "BULK ACTION..."}</option>)}
           </select>
-          <button type="button" onClick={onBulkOk} disabled={loading || !bulkAction}>APPLY</button>
+          <button type="button" className="primary-button" onClick={onBulkOk} disabled={loading || !bulkAction}>APPLY</button>
         </div>
 
         <div className="toolbar-group toolbar-create">
-          <button type="button" onClick={() => { setCreateMode(true); setSelectedEvent(null); }}>CREATE</button>
+          <button type="button" className="primary-button" onClick={() => { setCreateMode(true); setSelectedEvent(null); }}>CREATE</button>
         </div>
       </div>
 
