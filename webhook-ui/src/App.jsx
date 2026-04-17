@@ -6,6 +6,7 @@ import TradeDetailPage from "./pages/TradeDetailPage";
 import LogsPage from "./pages/LogsPage";
 import DatabasePage from "./pages/DatabasePage";
 import SettingsPage from "./pages/SettingsPage";
+import UsersPage from "./pages/UsersPage";
 import { api } from "./api";
 import LoginPage from "./pages/LoginPage";
 
@@ -78,6 +79,7 @@ export default function App() {
           <NavLink to="/trades" className={({ isActive }) => (isActive ? "active" : "")}>Trades</NavLink>
           {canAccessSystemPages ? <NavLink to="/logs" className={({ isActive }) => (isActive ? "active" : "")}>Logs</NavLink> : null}
           {canAccessSystemPages ? <NavLink to="/db" className={({ isActive }) => (isActive ? "active" : "")}>DB</NavLink> : null}
+          {canAccessSystemPages ? <NavLink to="/users" className={({ isActive }) => (isActive ? "active" : "")}>Users</NavLink> : null}
           <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")}>Settings</NavLink>
           <button onClick={handleLogout} style={{ marginLeft: 8 }}>Logout</button>
           <button 
@@ -105,6 +107,7 @@ export default function App() {
           <Route path="/trades/:signalId" element={<TradeDetailPage />} />
           <Route path="/logs" element={canAccessSystemPages ? <LogsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/db" element={canAccessSystemPages ? <DatabasePage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/users" element={canAccessSystemPages ? <UsersPage authUser={authUser} /> : <Navigate to="/dashboard" replace />} />
           <Route path="/settings" element={<SettingsPage authUser={authUser} />} />
           <Route path="/login" element={<Navigate to="/dashboard" replace />} />
         </Routes>
