@@ -3,7 +3,16 @@ import { api } from "../api";
 
 const STATUS_OPTIONS = ["", "NEW", "LOCKED", "PLACED", "START", "FAIL", "TP", "SL", "CANCEL", "EXPIRED"];
 const BULK_ACTIONS = ["", "Download CSV", "Renew All", "Cancel All", "Delete All"];
-const RANGE_OPTIONS = ["", "today", "week", "month"];
+const RANGE_OPTIONS = [
+  { val: "all", lab: "All times" },
+  { val: "today", lab: "Today" },
+  { val: "yesterday", lab: "Yesterday" },
+  { val: "last_week", lab: "Last week" },
+  { val: "last_month", lab: "Last month" },
+  { val: "week", lab: "This Week" },
+  { val: "month", lab: "This Month" },
+  { val: "year", lab: "This Year" },
+];
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
 
 function fPrice(v1, v2) {
@@ -232,7 +241,7 @@ export default function TradesPage() {
             {advFilters.signal_tfs.map(s => <option key={s} value={s}>{formatTimeframe(s)}</option>)}
           </select>
           <select value={filter.range} onChange={(e) => setFilter(f => ({ ...f, range: e.target.value, page: 1 }))}>
-            {RANGE_OPTIONS.map(s => <option key={s} value={s}>{s ? s.toUpperCase() : "ALL RANGES"}</option>)}
+            {RANGE_OPTIONS.map(r => <option key={r.val} value={r.val}>{r.lab}</option>)}
           </select>
         </div>
 

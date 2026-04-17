@@ -10,7 +10,16 @@ function fDateTime(v) {
 }
 
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
-const BULK_ACTIONS = ["", "Delete All Log"];
+const RANGE_OPTIONS = [
+  { val: "all", lab: "All times" },
+  { val: "today", lab: "Today" },
+  { val: "yesterday", lab: "Yesterday" },
+  { val: "last_week", lab: "Last week" },
+  { val: "last_month", lab: "Last month" },
+  { val: "week", lab: "This Week" },
+  { val: "month", lab: "This Month" },
+  { val: "year", lab: "This Year" },
+];
 
 export default function LogsPage() {
   const [events, setEvents] = useState([]);
@@ -21,7 +30,7 @@ export default function LogsPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
   const [bulkAction, setBulkAction] = useState("");
-  const [filter, setFilter] = useState({ q: "", type: "", symbol: "" });
+  const [filter, setFilter] = useState({ q: "", type: "", symbol: "", range: "all" });
   const [createMode, setCreateMode] = useState(false);
   const [createMsg, setCreateMsg] = useState("");
   const [createForm, setCreateForm] = useState({
@@ -33,6 +42,7 @@ export default function LogsPage() {
     q: filter.q, 
     type: filter.type, 
     symbol: filter.symbol,
+    range: filter.range,
     limit: pageSize, 
     offset: page * pageSize 
   }), [filter, page, pageSize]);
@@ -128,6 +138,9 @@ export default function LogsPage() {
           <select value={filter.symbol} onChange={e => { setFilter(f => ({ ...f, symbol: e.target.value })); setPage(0); }}>
             <option value="">ALL SYMBOLS</option>
             {symbols.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select value={filter.range} onChange={e => { setFilter(f => ({ ...f, range: e.target.value })); setPage(0); }}>
+            {RANGE_OPTIONS.map(r => <option key={r.val} value={r.val}>{r.lab}</option>)}
           </select>
         </div>
 

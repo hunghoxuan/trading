@@ -3,8 +3,8 @@
 
 #include <Trade/Trade.mqh>
 
-input string InpServerBaseUrl = "http://signal.mozasolution.com";
-input string InpEaApiKey      = "cfa824ed707c39609234b98ed2366a988f7ba2a111d9ccb38123b50485f15a87";
+input string InpServerBaseUrl = "https://trade.mozasolution.com/webhook";
+input string InpEaApiKey      = "";
 input int    InpPollSeconds   = 2;
 input string InpSymbolSuffix  = "";   // Example: ".m" or "-pro"
 input long   InpMagic         = 20260411;
