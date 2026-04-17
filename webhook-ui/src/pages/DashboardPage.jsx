@@ -189,7 +189,7 @@ export default function DashboardPage() {
         </select>
       </div>
 
-      <div style={{ height: '32px' }} />
+
 
       <div className="period-box-grid" style={{ gridTemplateColumns: "repeat(5, 1fr)", gap: '16px' }}>
         {PERIOD_DISPLAY.map((conf) => {
