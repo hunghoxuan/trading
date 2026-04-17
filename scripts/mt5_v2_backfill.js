@@ -2,7 +2,27 @@
 
 const path = require("path");
 const crypto = require("crypto");
-require("dotenv").config({ path: path.resolve(__dirname, "../webhook/.env") });
+const fs = require("fs");
+
+function loadEnvFileFallback(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  const raw = fs.readFileSync(filePath, "utf8");
+  for (const line of String(raw || "").split(/\r?\n/)) {
+    if (!line || line.trim().startsWith("#")) continue;
+    const idx = line.indexOf("=");
+    if (idx <= 0) continue;
+    const key = line.slice(0, idx).trim();
+    const val = line.slice(idx + 1).trim();
+    if (!key || process.env[key] !== undefined) continue;
+    process.env[key] = val;
+  }
+}
+
+try {
+  require("dotenv").config({ path: path.resolve(__dirname, "../webhook/.env") });
+} catch {
+  loadEnvFileFallback(path.resolve(__dirname, "../webhook/.env"));
+}
 
 function slugId(input, fallback = "default") {
   const raw = String(input || "")
