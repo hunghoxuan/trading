@@ -161,12 +161,23 @@ if (CFG.signalApiKey) {
 }
 
 function json(res, statusCode, data) {
+  if (!res || res.destroyed || res.writableEnded) return false;
   const body = JSON.stringify(data);
-  res.writeHead(statusCode, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Content-Length": Buffer.byteLength(body),
-  });
-  res.end(body);
+  try {
+    if (!res.headersSent) {
+      res.writeHead(statusCode, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Content-Length": Buffer.byteLength(body),
+      });
+    }
+    if (!res.writableEnded && !res.destroyed) {
+      res.end(body);
+      return true;
+    }
+  } catch {
+    // Ignore write-after-end or socket-closed races on aborted/malformed requests.
+  }
+  return false;
 }
 
 const UI_SESSIONS = new Map();
@@ -7777,9 +7788,22 @@ async function start() {
     return out;
   }
 
+  function attachClientErrorHandler(server) {
+    server.on("clientError", (_err, socket) => {
+      if (!socket) return;
+      try {
+        if (socket.writable) socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+      } catch {
+        // ignore
+      }
+      try { socket.destroy(); } catch {}
+    });
+  }
+
   if (CFG.httpsEnabled) {
     const tlsOptions = loadTlsOptions();
     const httpsServer = https.createServer(tlsOptions, appHandler);
+    attachClientErrorHandler(httpsServer);
     await new Promise((resolve, reject) => {
       httpsServer.once("error", reject);
       httpsServer.listen(CFG.httpsPort, "0.0.0.0", resolve);
@@ -7794,6 +7818,7 @@ async function start() {
         res.writeHead(308, { Location: location });
         res.end();
       });
+      attachClientErrorHandler(httpRedirectServer);
       await new Promise((resolve, reject) => {
         httpRedirectServer.once("error", reject);
         httpRedirectServer.listen(CFG.port, "0.0.0.0", resolve);
@@ -7802,6 +7827,7 @@ async function start() {
     }
   } else {
     const httpServer = http.createServer(appHandler);
+    attachClientErrorHandler(httpServer);
     await new Promise((resolve, reject) => {
       httpServer.once("error", reject);
       httpServer.listen(CFG.port, "0.0.0.0", resolve);
