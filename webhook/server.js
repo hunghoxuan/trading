@@ -4591,6 +4591,19 @@ const appHandler = async (req, res) => {
     }
   }
 
+  if (req.method === "GET" && url.pathname === "/") {
+    return json(res, 200, {
+      ok: true,
+      service: "telegram-trading-bot",
+      version: SERVER_VERSION,
+      endpoints: {
+        health: "/health",
+        mt5Health: "/mt5/health",
+        signal: "/signal",
+      },
+    });
+  }
+
   if (req.method === "GET" && url.pathname === "/health") {
     return json(res, 200, {
       ok: true,
