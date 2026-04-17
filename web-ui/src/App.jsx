@@ -14,7 +14,7 @@ import AccountsV2Page from "./pages/AccountsV2Page";
 import BrokersPage from "./pages/BrokersPage";
 import SignalsPage from "./pages/SignalsPage";
 import SignalDetailPage from "./pages/SignalDetailPage";
-import TradeDetailPage from "./pages/TradeDetailPage";
+import V2TradeDetailPage from "./pages/V2TradeDetailPage";
 import { api } from "./api";
 import LoginPage from "./pages/LoginPage";
 
@@ -117,7 +117,7 @@ export default function App() {
           <Route path="/signals" element={<SignalsPage />} />
           <Route path="/signals/:signalId" element={<SignalDetailPage />} />
           <Route path="/trades" element={<TradesPage />} />
-          <Route path="/trades/:tradeId" element={<TradeDetailPage />} />
+          <Route path="/trades/:tradeId" element={<V2TradeDetailPage />} />
           <Route path="/logs" element={canAccessSystemPages ? <LogsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/db" element={canAccessSystemPages ? <DatabasePage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/users" element={canAccessSystemPages ? <UsersPage authUser={authUser} /> : <Navigate to="/dashboard" replace />} />
