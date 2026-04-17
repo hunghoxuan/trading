@@ -19,6 +19,9 @@ export default function SourcesPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(EMPTY_MSG);
   const [q, setQ] = useState("");
+  const [selectedSourceId, setSelectedSourceId] = useState("");
+  const [sourceEvents, setSourceEvents] = useState([]);
+  const [rotatedSecret, setRotatedSecret] = useState("");
 
   const [form, setForm] = useState({
     source_id: "",
@@ -44,7 +47,11 @@ export default function SourcesPage() {
     setLoading(true);
     try {
       const out = await api.v2Sources();
-      setRows(Array.isArray(out?.items) ? out.items : []);
+      const items = Array.isArray(out?.items) ? out.items : [];
+      setRows(items);
+      if (!selectedSourceId && items.length > 0) {
+        setSelectedSourceId(String(items[0].source_id || ""));
+      }
       setMsg(EMPTY_MSG);
     } catch (e) {
       setMsg({ type: "error", text: e?.message || "Failed to load sources" });
@@ -54,6 +61,25 @@ export default function SourcesPage() {
   }
 
   useEffect(() => { loadData(); }, []);
+
+  async function loadSourceEvents(sourceId) {
+    const sid = String(sourceId || "").trim();
+    if (!sid) {
+      setSourceEvents([]);
+      return;
+    }
+    try {
+      const out = await api.v2SourceEvents(sid, 50);
+      setSourceEvents(Array.isArray(out?.items) ? out.items : []);
+    } catch {
+      setSourceEvents([]);
+    }
+  }
+
+  useEffect(() => {
+    if (selectedSourceId) loadSourceEvents(selectedSourceId);
+    else setSourceEvents([]);
+  }, [selectedSourceId]);
 
   function resetForm() {
     setEditingId("");
@@ -126,6 +152,41 @@ export default function SourcesPage() {
       await loadData();
     } catch (e) {
       setMsg({ type: "error", text: e?.message || "Failed to update source" });
+    } finally {
+      setSaving(false);
+      window.setTimeout(() => setMsg(EMPTY_MSG), 2200);
+    }
+  }
+
+  async function onRotateSecret(row) {
+    if (!window.confirm(`Rotate auth secret for source ${row.source_id}?`)) return;
+    try {
+      setSaving(true);
+      const out = await api.v2RotateSourceSecret(row.source_id);
+      setRotatedSecret(String(out?.source_secret_plaintext || ""));
+      setSelectedSourceId(String(row.source_id || ""));
+      setMsg({ type: "warning", text: "Source secret rotated. Save this secret now." });
+      await loadData();
+      await loadSourceEvents(row.source_id);
+    } catch (e) {
+      setMsg({ type: "error", text: e?.message || "Failed to rotate source secret" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onRevokeSecret(row) {
+    if (!window.confirm(`Revoke auth secret for source ${row.source_id}?`)) return;
+    try {
+      setSaving(true);
+      await api.v2RevokeSourceSecret(row.source_id);
+      setRotatedSecret("");
+      setSelectedSourceId(String(row.source_id || ""));
+      setMsg({ type: "warning", text: "Source secret revoked." });
+      await loadData();
+      await loadSourceEvents(row.source_id);
+    } catch (e) {
+      setMsg({ type: "error", text: e?.message || "Failed to revoke source secret" });
     } finally {
       setSaving(false);
       window.setTimeout(() => setMsg(EMPTY_MSG), 2200);
@@ -225,7 +286,7 @@ export default function SourcesPage() {
               </thead>
               <tbody>
                 {filtered.map((row) => (
-                  <tr key={row.source_id}>
+                  <tr key={row.source_id} className={selectedSourceId === row.source_id ? "active" : ""}>
                     <td>{row.source_id}</td>
                     <td>{row.name || "-"}</td>
                     <td>{row.kind || "-"}</td>
@@ -237,6 +298,9 @@ export default function SourcesPage() {
                     </td>
                     <td style={{ display: "flex", gap: 8 }}>
                       <button className="secondary-button" onClick={() => onEdit(row)} disabled={saving}>EDIT</button>
+                      <button className="secondary-button" onClick={() => { setSelectedSourceId(String(row.source_id || "")); }} disabled={saving}>EVENTS</button>
+                      <button className="secondary-button" onClick={() => onRotateSecret(row)} disabled={saving}>ROTATE SECRET</button>
+                      <button className="danger-button" onClick={() => onRevokeSecret(row)} disabled={saving}>REVOKE SECRET</button>
                       <button className="secondary-button" onClick={() => onToggleActive(row)} disabled={saving}>
                         {row.is_active ? "DEACTIVATE" : "ACTIVATE"}
                       </button>
@@ -252,6 +316,43 @@ export default function SourcesPage() {
             </table>
           </div>
         ) : null}
+      </section>
+
+      <section className="panel">
+        <div className="panel-label">SOURCE AUTH & AUDIT</div>
+        {rotatedSecret ? (
+          <div className="form-message msg-warning" style={{ maxWidth: 1100 }}>
+            New source secret (shown once): <code>{rotatedSecret}</code>
+          </div>
+        ) : null}
+        <div className="minor-text" style={{ marginTop: 8 }}>
+          Selected source: <strong>{selectedSourceId || "-"}</strong>
+        </div>
+        <div style={{ overflowX: "auto", marginTop: 10 }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Event</th>
+                <th>Payload</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sourceEvents.map((ev) => (
+                <tr key={ev.event_id}>
+                  <td>{String(ev.event_time || "-")}</td>
+                  <td>{String(ev.event_type || "-")}</td>
+                  <td><code>{JSON.stringify(ev.payload_json || {})}</code></td>
+                </tr>
+              ))}
+              {sourceEvents.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="muted">No source events.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );

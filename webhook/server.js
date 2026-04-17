@@ -1803,6 +1803,17 @@ async function mt5InitBackend() {
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
+      CREATE TABLE IF NOT EXISTS source_events (
+        event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        event_time TEXT NOT NULL DEFAULT (datetime('now')),
+        payload_json TEXT,
+        metadata TEXT,
+        FOREIGN KEY (source_id) REFERENCES sources(source_id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_source_events_source_time
+        ON source_events(source_id, event_time);
       CREATE TABLE IF NOT EXISTS account_sources (
         account_id TEXT NOT NULL,
         source_id TEXT NOT NULL,
@@ -2487,6 +2498,79 @@ async function mt5InitBackend() {
           is_active: normalizeUserActive(r.is_active, true),
           metadata: r.metadata ? (() => { try { return JSON.parse(r.metadata); } catch { return {}; } })() : {},
         }));
+      },
+      async getSourceByIdV2(sourceId) {
+        const sid = String(sourceId || "").trim();
+        if (!sid) return null;
+        const r = db.prepare(`
+          SELECT source_id, name, kind, auth_mode, auth_secret_hash, is_active, metadata, created_at, updated_at
+          FROM sources
+          WHERE source_id = ?
+          LIMIT 1
+        `).get(sid);
+        if (!r) return null;
+        return {
+          ...r,
+          is_active: normalizeUserActive(r.is_active, true),
+          metadata: r.metadata ? (() => { try { return JSON.parse(r.metadata); } catch { return {}; } })() : {},
+        };
+      },
+      async appendSourceEventV2(sourceId, eventType, payload = {}, metadata = {}) {
+        db.prepare(`
+          INSERT INTO source_events (source_id, event_type, event_time, payload_json, metadata)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(
+          String(sourceId || ""),
+          String(eventType || ""),
+          mt5NowIso(),
+          JSON.stringify(payload || {}),
+          JSON.stringify(metadata || {}),
+        );
+      },
+      async listSourceEventsV2(sourceId, limit = 100) {
+        const sid = String(sourceId || "").trim();
+        const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 100));
+        if (!sid) return [];
+        const rows = db.prepare(`
+          SELECT event_id, source_id, event_type, event_time, payload_json, metadata
+          FROM source_events
+          WHERE source_id = ?
+          ORDER BY event_time DESC
+          LIMIT ?
+        `).all(sid, safeLimit);
+        return (rows || []).map((r) => ({
+          ...r,
+          payload_json: r.payload_json ? (() => { try { return JSON.parse(r.payload_json); } catch { return {}; } })() : {},
+          metadata: r.metadata ? (() => { try { return JSON.parse(r.metadata); } catch { return {}; } })() : {},
+        }));
+      },
+      async rotateSourceSecretV2(sourceId) {
+        const sid = String(sourceId || "").trim();
+        if (!sid) return null;
+        const src = await this.getSourceByIdV2(sid);
+        if (!src) return null;
+        const secret = `ss_${crypto.randomBytes(24).toString("hex")}`;
+        const secretHash = hashApiKey(secret);
+        const now = mt5NowIso();
+        db.prepare(`
+          UPDATE sources
+          SET auth_secret_hash = ?, updated_at = ?
+          WHERE source_id = ?
+        `).run(secretHash, now, sid);
+        await this.appendSourceEventV2(sid, "SOURCE_SECRET_ROTATED", { auth_mode: src.auth_mode }, { actor: "admin" });
+        return { source_id: sid, source_secret_plaintext: secret };
+      },
+      async revokeSourceSecretV2(sourceId) {
+        const sid = String(sourceId || "").trim();
+        if (!sid) return { ok: false, error: "source_id is required" };
+        const upd = db.prepare(`
+          UPDATE sources
+          SET auth_secret_hash = NULL, updated_at = ?
+          WHERE source_id = ?
+        `).run(mt5NowIso(), sid);
+        if (Number(upd.changes || 0) < 1) return { ok: false, error: "source not found" };
+        await this.appendSourceEventV2(sid, "SOURCE_SECRET_REVOKED", {}, { actor: "admin" });
+        return { ok: true };
       },
       async getAccountSubscriptionsV2(accountId) {
         const aid = String(accountId || "").trim();
@@ -3236,6 +3320,17 @@ async function mt5InitBackend() {
     )
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS source_events (
+      event_id BIGSERIAL PRIMARY KEY,
+      source_id TEXT NOT NULL REFERENCES sources(source_id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      event_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      payload_json JSONB,
+      metadata JSONB
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_source_events_source_time ON source_events(source_id, event_time)`);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS account_sources (
       account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
       source_id TEXT NOT NULL REFERENCES sources(source_id) ON DELETE CASCADE,
@@ -3969,6 +4064,69 @@ async function mt5InitBackend() {
         LIMIT 500
       `);
       return res.rows || [];
+    },
+    async getSourceByIdV2(sourceId) {
+      const sid = String(sourceId || "").trim();
+      if (!sid) return null;
+      const res = await pool.query(`
+        SELECT source_id, name, kind, auth_mode, auth_secret_hash, is_active, metadata, created_at, updated_at
+        FROM sources
+        WHERE source_id = $1
+        LIMIT 1
+      `, [sid]);
+      return res.rows[0] || null;
+    },
+    async appendSourceEventV2(sourceId, eventType, payload = {}, metadata = {}) {
+      await pool.query(`
+        INSERT INTO source_events (source_id, event_type, event_time, payload_json, metadata)
+        VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)
+      `, [
+        String(sourceId || ""),
+        String(eventType || ""),
+        mt5NowIso(),
+        JSON.stringify(payload || {}),
+        JSON.stringify(metadata || {}),
+      ]);
+    },
+    async listSourceEventsV2(sourceId, limit = 100) {
+      const sid = String(sourceId || "").trim();
+      const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 100));
+      if (!sid) return [];
+      const res = await pool.query(`
+        SELECT event_id, source_id, event_type, event_time, payload_json, metadata
+        FROM source_events
+        WHERE source_id = $1
+        ORDER BY event_time DESC
+        LIMIT $2
+      `, [sid, safeLimit]);
+      return res.rows || [];
+    },
+    async rotateSourceSecretV2(sourceId) {
+      const sid = String(sourceId || "").trim();
+      if (!sid) return null;
+      const src = await this.getSourceByIdV2(sid);
+      if (!src) return null;
+      const secret = `ss_${crypto.randomBytes(24).toString("hex")}`;
+      const secretHash = hashApiKey(secret);
+      await pool.query(`
+        UPDATE sources
+        SET auth_secret_hash = $1, updated_at = $2
+        WHERE source_id = $3
+      `, [secretHash, mt5NowIso(), sid]);
+      await this.appendSourceEventV2(sid, "SOURCE_SECRET_ROTATED", { auth_mode: src.auth_mode }, { actor: "admin" });
+      return { source_id: sid, source_secret_plaintext: secret };
+    },
+    async revokeSourceSecretV2(sourceId) {
+      const sid = String(sourceId || "").trim();
+      if (!sid) return { ok: false, error: "source_id is required" };
+      const res = await pool.query(`
+        UPDATE sources
+        SET auth_secret_hash = NULL, updated_at = $1
+        WHERE source_id = $2
+      `, [mt5NowIso(), sid]);
+      if ((res.rowCount || 0) < 1) return { ok: false, error: "source not found" };
+      await this.appendSourceEventV2(sid, "SOURCE_SECRET_REVOKED", {}, { actor: "admin" });
+      return { ok: true };
     },
     async getAccountSubscriptionsV2(accountId) {
       const aid = String(accountId || "").trim();
@@ -5030,6 +5188,30 @@ async function mt5ListSourcesV2() {
   const b = await mt5Backend();
   if (!b.listSourcesV2) return [];
   return b.listSourcesV2();
+}
+
+async function mt5GetSourceByIdV2(sourceId) {
+  const b = await mt5Backend();
+  if (!b.getSourceByIdV2) return null;
+  return b.getSourceByIdV2(sourceId);
+}
+
+async function mt5ListSourceEventsV2(sourceId, limit = 100) {
+  const b = await mt5Backend();
+  if (!b.listSourceEventsV2) return [];
+  return b.listSourceEventsV2(sourceId, limit);
+}
+
+async function mt5RotateSourceSecretV2(sourceId) {
+  const b = await mt5Backend();
+  if (!b.rotateSourceSecretV2) return null;
+  return b.rotateSourceSecretV2(sourceId);
+}
+
+async function mt5RevokeSourceSecretV2(sourceId) {
+  const b = await mt5Backend();
+  if (!b.revokeSourceSecretV2) return { ok: false, error: "not supported" };
+  return b.revokeSourceSecretV2(sourceId);
 }
 
 async function mt5GetAccountSubscriptionsV2(accountId) {
@@ -6931,6 +7113,56 @@ const appHandler = async (req, res) => {
       const rows = await mt5ListSourcesV2();
       const updated = (rows || []).find((r) => String(r.source_id || "") === sourceId) || null;
       return json(res, 200, { ok: true, item: updated, items: rows });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "GET" && /^\/v2\/sources\/[^/]+\/events$/.test(url.pathname)) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const m = url.pathname.match(/^\/v2\/sources\/([^/]+)\/events$/);
+      const sourceId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!sourceId) return json(res, 400, { ok: false, error: "source_id is required" });
+      const limitRaw = Number(url.searchParams.get("limit") || 100);
+      const limit = Math.max(1, Math.min(1000, Number.isFinite(limitRaw) ? limitRaw : 100));
+      const rows = await mt5ListSourceEventsV2(sourceId, limit);
+      return json(res, 200, { ok: true, source_id: sourceId, items: rows });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && /^\/v2\/sources\/[^/]+\/auth-secret\/rotate$/.test(url.pathname)) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    let payload = {};
+    try { payload = await readJson(req); } catch {}
+    if (!requireAdminKey(req, res, url, payload)) return;
+    try {
+      const m = url.pathname.match(/^\/v2\/sources\/([^/]+)\/auth-secret\/rotate$/);
+      const sourceId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!sourceId) return json(res, 400, { ok: false, error: "source_id is required" });
+      const out = await mt5RotateSourceSecretV2(sourceId);
+      if (!out) return json(res, 404, { ok: false, error: "source not found or backend unsupported" });
+      return json(res, 200, { ok: true, source_id: out.source_id, source_secret_plaintext: out.source_secret_plaintext });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && /^\/v2\/sources\/[^/]+\/auth-secret\/revoke$/.test(url.pathname)) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    let payload = {};
+    try { payload = await readJson(req); } catch {}
+    if (!requireAdminKey(req, res, url, payload)) return;
+    try {
+      const m = url.pathname.match(/^\/v2\/sources\/([^/]+)\/auth-secret\/revoke$/);
+      const sourceId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!sourceId) return json(res, 400, { ok: false, error: "source_id is required" });
+      const out = await mt5RevokeSourceSecretV2(sourceId);
+      if (!out?.ok) return json(res, 400, { ok: false, error: out?.error || "failed to revoke source secret" });
+      return json(res, 200, { ok: true, source_id: sourceId });
     } catch (error) {
       return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
