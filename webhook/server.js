@@ -3909,7 +3909,14 @@ function mt5ComputeTradeMetrics(rows) {
   const trades = all.filter((r) => mt5IsTradeStatus(r.status));
   const wins = trades.filter((r) => mt5CanonicalStoredStatus(r.status) === "TP").length;
   const losses = trades.filter((r) => mt5CanonicalStoredStatus(r.status) === "SL").length;
-  const winBase = wins + losses; // strict TP/(TP+SL)
+  
+  // Strict TP/SL trades for KPI accuracy
+  const tpSlTrades = trades.filter(r => {
+    const s = mt5CanonicalStoredStatus(r.status);
+    return s === "TP" || s === "SL";
+  });
+
+  const winBase = wins + losses; 
   
   let totalPnl = 0;
   let buyPnl = 0;
@@ -3930,14 +3937,14 @@ function mt5ComputeTradeMetrics(rows) {
     }
   }
 
-  const totalRr = trades.reduce((acc, r) => {
+  const totalRr = tpSlTrades.reduce((acc, r) => {
     const rr = mt5ComputeRMultiple(r);
     return Number.isFinite(rr) ? acc + rr : acc;
   }, 0);
   
   return {
     total_signals: all.length,
-    total_trades: trades.length,
+    total_trades: tpSlTrades.length,
     wins,
     losses,
     win_rate: winBase > 0 ? (wins / winBase) * 100 : 0,
@@ -4614,6 +4621,8 @@ const server = http.createServer(async (req, res) => {
           total_trades: metrics.total_trades,
           total_wins: metrics.wins,
           total_losses: metrics.losses,
+          win_sum_pnl: metrics.win_sum_pnl,
+          lose_sum_pnl: metrics.lose_sum_pnl,
         };
       }
 

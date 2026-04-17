@@ -189,18 +189,7 @@ export default function DashboardPage() {
         </select>
       </div>
 
-      <div className="kpi-grid" style={{ gridTemplateColumns: "1fr" }}>
-        <article className="kpi-card" style={{ maxWidth: '400px' }}>
-          <div className="panel-label">Total PnL</div>
-          <div className="period-big-line">
-            <span className={`kpi-value ${moneyClass(m.total_pnl)}`}>{asMoneySigned(m.total_pnl || 0)}</span>
-          </div>
-          <div className="minor-text" style={{ marginTop: '8px' }}>
-            Win: <span className={moneyClass(m.win_sum_pnl)}>{asMoneySigned(m.win_sum_pnl || 0)}</span> | 
-            Lose: <span className={moneyClass(m.lose_sum_pnl)}>{asMoneySigned(m.lose_sum_pnl || 0)}</span>
-          </div>
-        </article>
-      </div>
+      <div style={{ height: '32px' }} />
 
       <div className="period-box-grid" style={{ gridTemplateColumns: "repeat(5, 1fr)", gap: '16px' }}>
         {PERIOD_DISPLAY.map((conf) => {
@@ -217,8 +206,12 @@ export default function DashboardPage() {
                   {asMoneySigned(v.total_pnl || 0)}
                 </span>
               </div>
-              <div className="minor-text" style={{ marginTop: '8px', fontSize: '11px', whiteSpace: 'nowrap' }}>
-                Trades: {v.total_trades || 0} | Win: {v.total_wins} | Lose: {v.total_losses} | WR: {asPct(winrate)} | RR: {asRR(v.total_rr || 0)}
+              <div className="minor-text" style={{ marginTop: '8px', fontSize: '10px', whiteSpace: 'nowrap', opacity: 0.9 }}>
+                T: {v.total_trades || 0} | 
+                W: {v.total_wins} <span className="money-pos">{asMoneySigned(v.win_sum_pnl || 0)}</span> | 
+                L: {v.total_losses} <span className="money-neg">{asMoneySigned(v.lose_sum_pnl || 0)}</span> | 
+                WR: {asPct(winrate)} | 
+                RR: {asRR(v.total_rr || 0)}
               </div>
             </article>
           );
