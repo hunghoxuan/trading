@@ -10,6 +10,7 @@ function fDateTime(v) {
 }
 
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
+const BULK_ACTIONS = ["", "Delete All Log"];
 const RANGE_OPTIONS = [
   { val: "all", lab: "All times" },
   { val: "today", lab: "Today" },

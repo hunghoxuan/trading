@@ -177,6 +177,35 @@ export default function TradesPage() {
     }
   }
 
+  async function onBulkOk() {
+    if (!bulkAction) return;
+    const ids = Array.from(selectedIds);
+    try {
+      setBulkBusy(true);
+      if (bulkAction === "Download CSV") {
+        const { blob, filename } = await api.downloadBacktestCsv(query);
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+      } else if (bulkAction === "Renew All") {
+         if (window.confirm("Renew all filtered trades?")) await api.renewTrades(query);
+      } else if (bulkAction === "Cancel All") {
+         if (window.confirm("Cancel all filtered trades?")) await api.cancelTrades(query);
+      } else if (bulkAction === "Delete All") {
+         if (window.confirm("CRITICAL: Delete all filtered trades?")) await api.deleteTrades(query);
+      }
+      setSelectedIds(new Set());
+      await loadTrades();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBulkBusy(false);
+      setBulkAction("");
+    }
+  }
+
   useEffect(() => {
     if (selectedTrade) loadTradeDetail(selectedTrade.signal_id);
     else setTradeDetails(null);
