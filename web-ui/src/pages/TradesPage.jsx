@@ -45,8 +45,8 @@ export default function TradesPage() {
   async function loadMeta() {
     try {
       const [accs, srcs] = await Promise.all([api.v2Accounts(), api.v2Sources()]);
-      setAccounts(accs || []);
-      setSources(srcs || []);
+      setAccounts(accs?.items || []);
+      setSources(srcs?.items || []);
     } catch (e) { console.error(e); }
   }
 

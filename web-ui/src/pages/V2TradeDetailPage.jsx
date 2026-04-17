@@ -30,7 +30,7 @@ export default function TradeDetailPage() {
       try {
         setLoading(true);
         const evs = await api.v2TradeEvents(tradeId);
-        setEvents(evs || []);
+        setEvents(evs?.items || []);
         const data = await api.v2Trades({ q: tradeId });
         if (data.items?.length > 0) {
           setTrade(data.items[0]);
