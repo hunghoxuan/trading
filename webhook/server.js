@@ -2593,6 +2593,37 @@ async function mt5InitBackend() {
         const item = await this.getAccountByIdV2(aid);
         return { ok: true, item };
       },
+      async archiveAccountV2(accountId) {
+        const aid = String(accountId || "").trim();
+        if (!aid) return { ok: false, error: "account_id is required" };
+        const prev = await this.getAccountByIdV2(aid);
+        if (!prev) return { ok: false, error: "account not found" };
+        const row = db.prepare(`
+          SELECT COUNT(*) AS cnt
+          FROM trades
+          WHERE account_id = ?
+            AND (execution_status IN ('PENDING', 'OPEN') OR dispatch_status IN ('NEW', 'LEASED'))
+        `).get(aid);
+        const blocking = Number(row?.cnt || 0);
+        if (blocking > 0) {
+          return { ok: false, error: "account has open or pending trades", blocking_open_trades: blocking };
+        }
+        const now = mt5NowIso();
+        db.prepare(`
+          UPDATE accounts
+          SET status = 'ARCHIVED',
+              updated_at = ?
+          WHERE account_id = ?
+        `).run(now, aid);
+        db.prepare(`
+          UPDATE account_sources
+          SET is_active = 0,
+              updated_at = ?
+          WHERE account_id = ?
+        `).run(now, aid);
+        const item = await this.getAccountByIdV2(aid);
+        return { ok: true, item, blocking_open_trades: 0 };
+      },
       async listSourcesV2() {
         const rows = db.prepare(`
           SELECT source_id, name, kind, auth_mode, is_active, metadata, created_at, updated_at
@@ -4319,6 +4350,37 @@ async function mt5InitBackend() {
       const item = await this.getAccountByIdV2(aid);
       return { ok: true, item };
     },
+    async archiveAccountV2(accountId) {
+      const aid = String(accountId || "").trim();
+      if (!aid) return { ok: false, error: "account_id is required" };
+      const prev = await this.getAccountByIdV2(aid);
+      if (!prev) return { ok: false, error: "account not found" };
+      const blockingRes = await pool.query(`
+        SELECT COUNT(*)::int AS cnt
+        FROM trades
+        WHERE account_id = $1
+          AND (execution_status IN ('PENDING', 'OPEN') OR dispatch_status IN ('NEW', 'LEASED'))
+      `, [aid]);
+      const blocking = Number(blockingRes.rows?.[0]?.cnt || 0);
+      if (blocking > 0) {
+        return { ok: false, error: "account has open or pending trades", blocking_open_trades: blocking };
+      }
+      const now = mt5NowIso();
+      await pool.query(`
+        UPDATE accounts
+        SET status = 'ARCHIVED',
+            updated_at = $1
+        WHERE account_id = $2
+      `, [now, aid]);
+      await pool.query(`
+        UPDATE account_sources
+        SET is_active = FALSE,
+            updated_at = $1
+        WHERE account_id = $2
+      `, [now, aid]);
+      const item = await this.getAccountByIdV2(aid);
+      return { ok: true, item, blocking_open_trades: 0 };
+    },
     async listSourcesV2() {
       const res = await pool.query(`
         SELECT source_id, name, kind, auth_mode, is_active, metadata, created_at, updated_at
@@ -5522,6 +5584,12 @@ async function mt5UpdateAccountV2(accountId, patch = {}) {
   const b = await mt5Backend();
   if (!b.updateAccountV2) return { ok: false, error: "not supported" };
   return b.updateAccountV2(accountId, patch);
+}
+
+async function mt5ArchiveAccountV2(accountId) {
+  const b = await mt5Backend();
+  if (!b.archiveAccountV2) return { ok: false, error: "not supported" };
+  return b.archiveAccountV2(accountId);
 }
 
 async function mt5ListSourcesV2() {
@@ -7442,6 +7510,29 @@ const appHandler = async (req, res) => {
       if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
       const out = await mt5UpdateAccountV2(accountId, payload || {});
       if (!out?.ok) return json(res, 400, { ok: false, error: out?.error || "failed to update account" });
+      const rows = await mt5ListAccountsV2();
+      return json(res, 200, { ok: true, item: out.item || null, items: rows });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "DELETE" && /^\/v2\/accounts\/[^/]+$/.test(url.pathname)) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const m = url.pathname.match(/^\/v2\/accounts\/([^/]+)$/);
+      const accountId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
+      const out = await mt5ArchiveAccountV2(accountId);
+      if (!out?.ok) {
+        const statusCode = out?.blocking_open_trades ? 409 : 400;
+        return json(res, statusCode, {
+          ok: false,
+          error: out?.error || "failed to archive account",
+          blocking_open_trades: Number(out?.blocking_open_trades || 0),
+        });
+      }
       const rows = await mt5ListAccountsV2();
       return json(res, 200, { ok: true, item: out.item || null, items: rows });
     } catch (error) {

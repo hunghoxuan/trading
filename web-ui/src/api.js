@@ -352,6 +352,7 @@ export const api = {
   v2Accounts: () => get("/v2/accounts"),
   v2CreateAccount: (payload = {}) => post("/v2/accounts", payload),
   v2UpdateAccount: (accountId, payload = {}) => put(`/v2/accounts/${encodeURIComponent(accountId)}`, payload),
+  v2ArchiveAccount: (accountId) => del(`/v2/accounts/${encodeURIComponent(accountId)}`),
   v2Sources: () => get("/v2/sources"),
   v2Trades: (params = {}) => {
     const q = new URLSearchParams();

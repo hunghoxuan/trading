@@ -179,6 +179,25 @@ export default function AccountsV2Page() {
     }
   }
 
+  async function onArchiveAccount(row) {
+    if (!window.confirm(`Archive account ${row.account_id}? This will disable subscriptions.`)) return;
+    try {
+      setSaving(true);
+      await api.v2ArchiveAccount(row.account_id);
+      setMsg({ type: "success", text: "Account archived." });
+      setCreatedKey("");
+      setRotatedKey("");
+      await loadData();
+      if (editingId && editingId === row.account_id) resetForm();
+    } catch (e) {
+      const raw = String(e?.message || "Failed to archive account");
+      setMsg({ type: "error", text: raw });
+    } finally {
+      setSaving(false);
+      window.setTimeout(() => setMsg(EMPTY_MSG), 2500);
+    }
+  }
+
   return (
     <div className="stack-layout fadeIn">
       <h2 className="page-title">Accounts V2</h2>
@@ -283,6 +302,9 @@ export default function AccountsV2Page() {
                       <button className="secondary-button" onClick={() => onRotateApiKey(row)} disabled={saving}>ROTATE KEY</button>
                       <button className="secondary-button" onClick={() => onToggleStatus(row)} disabled={saving}>
                         {String(row.status || "").toUpperCase() === "ACTIVE" ? "DEACTIVATE" : "ACTIVATE"}
+                      </button>
+                      <button className="danger-button" onClick={() => onArchiveAccount(row)} disabled={saving || String(row.status || "").toUpperCase() === "ARCHIVED"}>
+                        ARCHIVE
                       </button>
                     </td>
                   </tr>
