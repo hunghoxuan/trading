@@ -1110,7 +1110,7 @@ normalize_side_for_webhook(string direction) =>
     str.upper(direction) == "BUY" ? "BUY" : "SELL"
 
 // Builds TradingView webhook JSON payload for one newly created trade signal.
-export build_trade_webhook_payload(string strategyName, string symbolName, string direction, string sourceTf, float price, float sl, float tp, string note, string apiKey, string status = "PENDING", string tradeId = "", string provider = "ctrader", float rrValue = na, string modelType = "", float riskUsd = na, float riskPct = na, int barTime = na, string reasonText = "", string chartTf = "") =>
+export build_trade_webhook_payload(string strategyName, string symbolName, string direction, string sourceTf, float price, float sl, float tp, string note, string status = "PENDING", string tradeId = "", string provider = "ctrader", float rrValue = na, string modelType = "", float riskUsd = na, float riskPct = na, int barTime = na, string reasonText = "", string chartTf = "") =>
     string safeStrategy = json_escape_for_webhook(strategyName)
     string safeSymbol = json_escape_for_webhook(symbolName)
     string safeSide = normalize_side_for_webhook(direction)
@@ -1144,17 +1144,15 @@ export build_trade_webhook_payload(string strategyName, string symbolName, strin
     msg += ",\"sl\":" + str.tostring(sl)
     msg += ",\"tp\":" + str.tostring(tp)
     msg += ",\"note\":\"" + safeNote + "\""
-    if str.length(apiKey) > 0
-        msg += ",\"apiKey\":\"" + json_escape_for_webhook(apiKey) + "\""
     msg += "}"
     msg
 
 // Emits one webhook-ready alert() call for each newly created trade entry.
-export emit_trade_webhook_new_trade(bool enabled, bool realtimeOnly, string strategyName, string symbolName, string direction, string sourceTf, float price, float sl, float tp, string note, string apiKey, string tradeId = "", string provider = "ctrader", string status = "PENDING", float rrValue = na, string modelType = "", float riskUsd = na, float riskPct = na, int barTime = na, string reasonText = "", string chartTf = "") =>
+export emit_trade_webhook_new_trade(bool enabled, bool realtimeOnly, string strategyName, string symbolName, string direction, string sourceTf, float price, float sl, float tp, string note, string tradeId = "", string provider = "ctrader", string status = "PENDING", float rrValue = na, string modelType = "", float riskUsd = na, float riskPct = na, int barTime = na, string reasonText = "", string chartTf = "") =>
     if enabled
         bool canEmit = (not realtimeOnly) or barstate.isrealtime
         if canEmit
-            string payload = build_trade_webhook_payload(strategyName, symbolName, direction, sourceTf, price, sl, tp, note, apiKey, status, tradeId, provider, rrValue, modelType, riskUsd, riskPct, barTime, reasonText, chartTf)
+            string payload = build_trade_webhook_payload(strategyName, symbolName, direction, sourceTf, price, sl, tp, note, status, tradeId, provider, rrValue, modelType, riskUsd, riskPct, barTime, reasonText, chartTf)
             alert(payload, alert.freq_all)
     bool(na)
 

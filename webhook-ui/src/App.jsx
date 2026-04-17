@@ -14,6 +14,7 @@ export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem("ui_theme") || "dark");
   const [authLoading, setAuthLoading] = useState(true);
   const [authUser, setAuthUser] = useState(null);
+  const canAccessSystemPages = String(authUser?.role || "").toLowerCase() === "system";
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -75,8 +76,8 @@ export default function App() {
         <nav>
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? "active" : "")}>Dashboard</NavLink>
           <NavLink to="/trades" className={({ isActive }) => (isActive ? "active" : "")}>Trades</NavLink>
-          <NavLink to="/logs" className={({ isActive }) => (isActive ? "active" : "")}>Logs</NavLink>
-          <NavLink to="/db" className={({ isActive }) => (isActive ? "active" : "")}>DB</NavLink>
+          {canAccessSystemPages ? <NavLink to="/logs" className={({ isActive }) => (isActive ? "active" : "")}>Logs</NavLink> : null}
+          {canAccessSystemPages ? <NavLink to="/db" className={({ isActive }) => (isActive ? "active" : "")}>DB</NavLink> : null}
           <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")}>Settings</NavLink>
           <button onClick={handleLogout} style={{ marginLeft: 8 }}>Logout</button>
           <button 
@@ -102,8 +103,8 @@ export default function App() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/trades" element={<TradesPage />} />
           <Route path="/trades/:signalId" element={<TradeDetailPage />} />
-          <Route path="/logs" element={<LogsPage />} />
-          <Route path="/db" element={<DatabasePage />} />
+          <Route path="/logs" element={canAccessSystemPages ? <LogsPage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/db" element={canAccessSystemPages ? <DatabasePage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/settings" element={<SettingsPage authUser={authUser} />} />
           <Route path="/login" element={<Navigate to="/dashboard" replace />} />
         </Routes>

@@ -488,7 +488,6 @@ tradeRiskValue = input.float(1.0, "1R", minval = 0.01, maxval = 100.0, step = 0.
 tradeRiskMode  = input.string("%", "", options = ["%", "$"], inline = "tc1", group = GROUP_TRADES_CONFIG)
 tradeSpreadTicks = input.float(0.0, "Spread", minval = 0.0, step = 0.5, inline = "tc1", group = GROUP_TRADES_CONFIG)
 webhookEnabled = input.bool(true, "Webhook", inline = "wh0", group = GROUP_TRADES_CONFIG)
-webhookApiKey = input.string("cfa824ed707c39609234b98ed2366a988f7ba2a111d9ccb38123b50485f15a87", "API key", inline = "wh1", group = GROUP_TRADES_CONFIG)
 tradeShowPending = input.bool(true, "Pending", inline = "tc2b", group = GROUP_TRADES_CONFIG)
 tradeShowStart = input.bool(true, "Start -> Active", inline = "tc2b", group = GROUP_TRADES_CONFIG)
 tradeShowTp = input.bool(false, "TP", inline = "tc2b", group = GROUP_TRADES_CONFIG)
@@ -967,7 +966,7 @@ process_data_add_entry(string type, string direction, string reason, float level
                     if not na(e)
                         CORE_track_trade_entry(trades, tradeOrderIds, e, orderId, shouldTrackTrades)
                         string webhookNote = tradeType + " | " + reason
-                        KitCore.emit_trade_webhook_new_trade(webhookEnabled, true, "Hung-MSS", syminfo.ticker, direction, sourceTf, entry, stoploss, takeprofit, webhookNote, webhookApiKey, orderId, "ctrader", "PENDING", rrUsed, tradeType, tradeRiskAmountUsd, na, time, reason, timeframe.period)
+                        KitCore.emit_trade_webhook_new_trade(webhookEnabled, true, "Hung-MSS", syminfo.ticker, direction, sourceTf, entry, stoploss, takeprofit, webhookNote, orderId, "ctrader", "PENDING", rrUsed, tradeType, tradeRiskAmountUsd, na, time, reason, timeframe.period)
                         if tradeRiskMode == "%"
                             KitCore.prop_register_trade(propDayState, tradeRiskValue)
                         if strategyOrdersEnabled

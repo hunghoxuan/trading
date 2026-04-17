@@ -1,4 +1,0 @@
-[start] 20260413-074912
-BASE_URL=http://139.59.211.192
-VPS=root@139.59.211.192:/opt/trading
-[1/3] Cleaning old test rows (tvtest_*) from remote Postgres...

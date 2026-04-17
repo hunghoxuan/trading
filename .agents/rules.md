@@ -40,6 +40,7 @@ After **every** completed task or phase, end your response with exactly this for
 1. **Production Database**: Always prioritize **Postgres** logic. The local `.env` may show SQLite, but the VPS uses a remote Postgres instance.
 2. **Environment Verification**: Before making database changes, ALWAYS check the `https://signal.mozasolution.com/mt5/health` endpoint to verify the active storage engine.
 3. **MQL5 Synchronization**: Use `OnTradeTransaction` for trade acknowledgements to ensure one-to-one mapping between broker tickets and signal IDs.
+4. **UI Design Standard**: All Webhook-UI modifications MUST strictly adhere to the `UI_DESIGN_SPEC.md` rules for design tokens, layout splits, and component naming to ensure architectural and visual consistency. v45.
 
 ## 3. Pine Script Coding Standards
 - **Naming:** 

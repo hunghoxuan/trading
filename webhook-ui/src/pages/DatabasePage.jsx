@@ -97,7 +97,7 @@ export default function DatabasePage() {
   }, [rows]);
 
   return (
-    <div className="page-container fadeIn">
+    <div className="stack-layout fadeIn">
       <div className="toolbar-panel">
         <div className="toolbar-left">
           <div className="kpi-label">DATABASE EXPLORER</div>

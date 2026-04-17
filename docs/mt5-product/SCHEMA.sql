@@ -4,9 +4,11 @@ CREATE TABLE IF NOT EXISTS users (
   user_id TEXT PRIMARY KEY,
   user_name TEXT,
   email TEXT,
+  password_salt TEXT,
   password_hash TEXT,
-  balance_start DOUBLE PRECISION NOT NULL DEFAULT 0,
+  role TEXT NOT NULL DEFAULT 'User',
   metadata JSONB,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

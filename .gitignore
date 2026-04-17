@@ -1,3 +1,6 @@
 webhook/.env
 
 .local/
+
+.test-results/
+tradingview/.backup/

@@ -147,6 +147,7 @@ function json(res, statusCode, data) {
 }
 
 const UI_SESSIONS = new Map();
+const UI_ROLE_SYSTEM = "System";
 
 function nowUnixSec() {
   return Math.floor(Date.now() / 1000);
@@ -154,6 +155,25 @@ function nowUnixSec() {
 
 function normalizeEmail(emailRaw) {
   return String(emailRaw || "").trim().toLowerCase();
+}
+
+function normalizeUserRole(roleRaw) {
+  const role = String(roleRaw || "").trim().toLowerCase();
+  if (role === "system") return "System";
+  if (role === "admin") return "Admin";
+  if (role === "user") return "User";
+  if (role === "guest") return "Guest";
+  return "User";
+}
+
+function isSystemRole(roleRaw) {
+  return normalizeUserRole(roleRaw) === UI_ROLE_SYSTEM;
+}
+
+function fallbackUserNameFromEmail(emailRaw) {
+  const email = normalizeEmail(emailRaw);
+  if (!email) return "System";
+  return String(email.split("@")[0] || "System");
 }
 
 function makeSaltHex() {
@@ -177,8 +197,11 @@ function timingSafeEqHex(aHex, bHex) {
 
 function uiDefaultAuthState(emailOverride = "") {
   const salt = makeSaltHex();
+  const email = normalizeEmail(emailOverride || CFG.uiBootstrapEmail);
   return {
-    email: normalizeEmail(emailOverride || CFG.uiBootstrapEmail),
+    email,
+    user_name: fallbackUserNameFromEmail(email),
+    role: UI_ROLE_SYSTEM,
     password_salt: salt,
     password_hash: hashPassword(CFG.uiBootstrapPassword, salt),
     updated_at: new Date().toISOString(),
@@ -197,6 +220,8 @@ function parseLegacyUiAuthStateFromFile() {
     if (!email || !passwordSalt || !passwordHash) return null;
     return {
       email,
+      user_name: fallbackUserNameFromEmail(email),
+      role: UI_ROLE_SYSTEM,
       password_salt: passwordSalt,
       password_hash: passwordHash,
       updated_at: parsed.updated_at || new Date().toISOString(),
@@ -214,7 +239,10 @@ async function uiReadAuthStateByEmail(emailRaw) {
   const row = await b.getUiAuthUser(email);
   if (!row) return null;
   return {
+    user_id: String(row.user_id || CFG.mt5DefaultUserId),
     email: normalizeEmail(row.email),
+    user_name: String(row.user_name || ""),
+    role: normalizeUserRole(row.role || UI_ROLE_SYSTEM),
     password_salt: String(row.password_salt || ""),
     password_hash: String(row.password_hash || ""),
     updated_at: String(row.updated_at || ""),
@@ -225,7 +253,10 @@ async function uiWriteAuthState(nextState) {
   const b = await mt5Backend();
   if (!b.upsertUiAuthUser) throw new Error("UI auth storage is not supported by the current backend");
   await b.upsertUiAuthUser({
+    user_id: String(nextState.user_id || CFG.mt5DefaultUserId),
     email: normalizeEmail(nextState.email),
+    user_name: String(nextState.user_name || fallbackUserNameFromEmail(nextState.email)),
+    role: normalizeUserRole(nextState.role || UI_ROLE_SYSTEM),
     password_salt: String(nextState.password_salt || ""),
     password_hash: String(nextState.password_hash || ""),
     updated_at: String(nextState.updated_at || new Date().toISOString()),
@@ -239,6 +270,9 @@ async function uiEnsureAuthBootstrap() {
 
   const legacy = parseLegacyUiAuthStateFromFile();
   const seed = legacy || uiDefaultAuthState(targetEmail);
+  seed.user_id = String(seed.user_id || CFG.mt5DefaultUserId);
+  seed.user_name = String(seed.user_name || fallbackUserNameFromEmail(seed.email));
+  seed.role = normalizeUserRole(seed.role || UI_ROLE_SYSTEM);
   await uiWriteAuthState(seed);
   return seed;
 }
@@ -271,11 +305,18 @@ function clearUiSessionCookie(res) {
   res.setHeader("Set-Cookie", "tvb_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
 }
 
-function createUiSession(email) {
+function createUiSession(user) {
   const ttl = Math.max(300, Number.isFinite(CFG.uiSessionTtlSeconds) ? CFG.uiSessionTtlSeconds : 60 * 60 * 24 * 7);
   const token = crypto.randomBytes(32).toString("hex");
+  const email = normalizeEmail(user?.email || "");
+  const userId = String(user?.user_id || CFG.mt5DefaultUserId);
+  const userName = String(user?.user_name || fallbackUserNameFromEmail(email));
+  const role = normalizeUserRole(user?.role || UI_ROLE_SYSTEM);
   UI_SESSIONS.set(token, {
-    email: normalizeEmail(email),
+    email,
+    user_id: userId,
+    user_name: userName,
+    role,
     created_at: nowUnixSec(),
     expires_at: nowUnixSec() + ttl,
   });
@@ -283,26 +324,48 @@ function createUiSession(email) {
 }
 
 function getUiSessionFromReq(req) {
-  if (!CFG.uiAuthEnabled) return { ok: true, email: CFG.uiBootstrapEmail, token: "" };
+  if (!CFG.uiAuthEnabled) {
+    return {
+      ok: true,
+      token: "",
+      email: normalizeEmail(CFG.uiBootstrapEmail),
+      user_id: CFG.mt5DefaultUserId,
+      user_name: fallbackUserNameFromEmail(CFG.uiBootstrapEmail),
+      role: UI_ROLE_SYSTEM,
+    };
+  }
   const cookies = parseCookies(req);
   const token = String(cookies.tvb_session || "");
-  if (!token) return { ok: false, email: "", token: "" };
+  if (!token) return { ok: false, email: "", token: "", user_id: "", user_name: "", role: "" };
   const sess = UI_SESSIONS.get(token);
-  if (!sess) return { ok: false, email: "", token };
+  if (!sess) return { ok: false, email: "", token, user_id: "", user_name: "", role: "" };
   if (Number(sess.expires_at || 0) <= nowUnixSec()) {
     UI_SESSIONS.delete(token);
-    return { ok: false, email: "", token };
+    return { ok: false, email: "", token, user_id: "", user_name: "", role: "" };
   }
-  return { ok: true, email: normalizeEmail(sess.email), token };
+  return {
+    ok: true,
+    token,
+    email: normalizeEmail(sess.email),
+    user_id: String(sess.user_id || CFG.mt5DefaultUserId),
+    user_name: String(sess.user_name || fallbackUserNameFromEmail(sess.email)),
+    role: normalizeUserRole(sess.role || UI_ROLE_SYSTEM),
+  };
 }
 
-async function uiAuthVerify(emailRaw, passwordRaw) {
+async function uiAuthGetVerifiedUser(emailRaw, passwordRaw) {
   const email = normalizeEmail(emailRaw);
   const state = await uiReadAuthStateByEmail(email);
-  if (!state) return false;
-  if (!email || email !== normalizeEmail(state.email)) return false;
+  if (!state) return null;
+  if (!email || email !== normalizeEmail(state.email)) return null;
   const actualHash = hashPassword(String(passwordRaw || ""), state.password_salt);
-  return timingSafeEqHex(actualHash, state.password_hash);
+  if (!timingSafeEqHex(actualHash, state.password_hash)) return null;
+  return {
+    user_id: String(state.user_id || CFG.mt5DefaultUserId),
+    user_name: String(state.user_name || fallbackUserNameFromEmail(state.email)),
+    email: normalizeEmail(state.email),
+    role: normalizeUserRole(state.role || UI_ROLE_SYSTEM),
+  };
 }
 
 async function uiAuthChangePassword(emailRaw, currentPassword, newPassword) {
@@ -313,7 +376,10 @@ async function uiAuthChangePassword(emailRaw, currentPassword, newPassword) {
   if (String(newPassword || "").length < 8) return { ok: false, error: "New password must be at least 8 characters" };
   const nextSalt = makeSaltHex();
   const next = {
+    user_id: String(state.user_id || CFG.mt5DefaultUserId),
     email: state.email,
+    user_name: String(state.user_name || fallbackUserNameFromEmail(state.email)),
+    role: normalizeUserRole(state.role || UI_ROLE_SYSTEM),
     password_salt: nextSalt,
     password_hash: hashPassword(String(newPassword || ""), nextSalt),
     updated_at: new Date().toISOString(),
@@ -780,8 +846,37 @@ function mt5NormalizeStorage(storageRaw) {
 
 function mt5EnsureJsonDbFile() {
   if (!fs.existsSync(CFG.mt5DbPath)) {
-    fs.writeFileSync(CFG.mt5DbPath, JSON.stringify({ signals: [], signal_events: [] }, null, 2));
+    fs.writeFileSync(CFG.mt5DbPath, JSON.stringify({ users: [], signals: [], signal_events: [] }, null, 2));
   }
+}
+
+function mt5EnsureJsonDefaultUser(db) {
+  if (!Array.isArray(db.users)) db.users = [];
+  const defaultUserId = String(CFG.mt5DefaultUserId || "default");
+  const now = mt5NowIso();
+  let defaultUser = db.users.find((u) => String(u.user_id || "") === defaultUserId);
+  if (!defaultUser) {
+    defaultUser = {
+      user_id: defaultUserId,
+      user_name: "System",
+      email: "",
+      role: UI_ROLE_SYSTEM,
+      password_salt: "",
+      password_hash: "",
+      updated_at: now,
+      created_at: now,
+    };
+    db.users.push(defaultUser);
+  } else {
+    defaultUser.user_name = String(defaultUser.user_name || "System");
+    defaultUser.email = normalizeEmail(defaultUser.email);
+    defaultUser.role = normalizeUserRole(defaultUser.role || UI_ROLE_SYSTEM);
+    defaultUser.password_salt = String(defaultUser.password_salt || "");
+    defaultUser.password_hash = String(defaultUser.password_hash || "");
+    defaultUser.updated_at = String(defaultUser.updated_at || now);
+    defaultUser.created_at = String(defaultUser.created_at || now);
+  }
+  return defaultUser;
 }
 
 function mt5ReadJsonDb() {
@@ -790,6 +885,20 @@ function mt5ReadJsonDb() {
   if (!Array.isArray(db.signals)) db.signals = [];
   if (!Array.isArray(db.signal_events)) db.signal_events = [];
   if (!Array.isArray(db.ui_auth_users)) db.ui_auth_users = [];
+  const defaultUser = mt5EnsureJsonDefaultUser(db);
+  if ((!defaultUser.password_hash || !defaultUser.password_salt || !defaultUser.email) && db.ui_auth_users.length > 0) {
+    const legacyEmail = normalizeEmail(CFG.uiBootstrapEmail);
+    const legacy = db.ui_auth_users.find((u) => normalizeEmail(u.email) === legacyEmail) || db.ui_auth_users[0];
+    if (legacy) {
+      const legacyMail = normalizeEmail(legacy.email || legacyEmail);
+      defaultUser.user_name = String(defaultUser.user_name || fallbackUserNameFromEmail(legacyMail));
+      defaultUser.email = legacyMail;
+      defaultUser.role = UI_ROLE_SYSTEM;
+      defaultUser.password_salt = String(legacy.password_salt || "");
+      defaultUser.password_hash = String(legacy.password_hash || "");
+      defaultUser.updated_at = String(legacy.updated_at || mt5NowIso());
+    }
+  }
   return db;
 }
 
@@ -1025,21 +1134,29 @@ async function mt5InitBackend() {
         const db = mt5ReadJsonDb();
         const target = normalizeEmail(email);
         if (!target) return null;
-        return db.ui_auth_users.find((u) => normalizeEmail(u.email) === target) || null;
+        const found = (db.users || []).find((u) => normalizeEmail(u.email) === target) || null;
+        if (!found) return null;
+        return {
+          user_id: String(found.user_id || CFG.mt5DefaultUserId),
+          user_name: String(found.user_name || ""),
+          email: normalizeEmail(found.email),
+          role: normalizeUserRole(found.role || UI_ROLE_SYSTEM),
+          password_salt: String(found.password_salt || ""),
+          password_hash: String(found.password_hash || ""),
+          updated_at: String(found.updated_at || ""),
+        };
       },
       async upsertUiAuthUser(user) {
         const db = mt5ReadJsonDb();
         const target = normalizeEmail(user?.email);
         if (!target) throw new Error("email is required");
-        const idx = db.ui_auth_users.findIndex((u) => normalizeEmail(u.email) === target);
-        const row = {
-          email: target,
-          password_salt: String(user?.password_salt || ""),
-          password_hash: String(user?.password_hash || ""),
-          updated_at: String(user?.updated_at || new Date().toISOString()),
-        };
-        if (idx >= 0) db.ui_auth_users[idx] = row;
-        else db.ui_auth_users.push(row);
+        const defaultUser = mt5EnsureJsonDefaultUser(db);
+        defaultUser.user_name = String(user?.user_name || defaultUser.user_name || fallbackUserNameFromEmail(target));
+        defaultUser.email = target;
+        defaultUser.role = normalizeUserRole(user?.role || defaultUser.role || UI_ROLE_SYSTEM);
+        defaultUser.password_salt = String(user?.password_salt || "");
+        defaultUser.password_hash = String(user?.password_hash || "");
+        defaultUser.updated_at = String(user?.updated_at || new Date().toISOString());
         mt5WriteJsonDb(db);
         return { ok: true };
       },
@@ -1064,8 +1181,10 @@ async function mt5InitBackend() {
         user_id TEXT PRIMARY KEY,
         user_name TEXT,
         email TEXT,
+        password_salt TEXT,
         password_hash TEXT,
-        balance_start REAL NOT NULL DEFAULT 0,
+        role TEXT NOT NULL DEFAULT 'User',
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE TABLE IF NOT EXISTS accounts (
@@ -1119,12 +1238,6 @@ async function mt5InitBackend() {
         payload_json TEXT,
         FOREIGN KEY (signal_id) REFERENCES signals(signal_id) ON DELETE CASCADE
       );
-      CREATE TABLE IF NOT EXISTS ui_auth_users (
-        email TEXT PRIMARY KEY,
-        password_salt TEXT NOT NULL,
-        password_hash TEXT NOT NULL,
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
       CREATE INDEX IF NOT EXISTS idx_signal_events_signal_time
         ON signal_events(signal_id, event_time);
     `);
@@ -1135,6 +1248,13 @@ async function mt5InitBackend() {
 
     ["source_tf", "chart_tf", "entry_model"].forEach(col => {
       try { db.exec(`ALTER TABLE signals ADD COLUMN ${col} TEXT`); } catch(e) {}
+    });
+    ["password_salt", "role", "updated_at"].forEach(col => {
+      try {
+        if (col === "role") db.exec(`ALTER TABLE users ADD COLUMN ${col} TEXT NOT NULL DEFAULT 'User'`);
+        else if (col === "updated_at") db.exec(`ALTER TABLE users ADD COLUMN ${col} TEXT NOT NULL DEFAULT (datetime('now'))`);
+        else db.exec(`ALTER TABLE users ADD COLUMN ${col} TEXT`);
+      } catch (e) {}
     });
 
     // Broker execution telemetry columns (added 2026-04-15).
@@ -1160,9 +1280,45 @@ async function mt5InitBackend() {
     }
 
     db.prepare(`
-      INSERT OR IGNORE INTO users (user_id, user_name, email, balance_start, created_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(CFG.mt5DefaultUserId, "Default User", "", 0, mt5NowIso());
+      INSERT OR IGNORE INTO users (user_id, user_name, email, role, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(CFG.mt5DefaultUserId, "System", "", UI_ROLE_SYSTEM, mt5NowIso(), mt5NowIso());
+    db.prepare(`
+      UPDATE users
+      SET role = ?, updated_at = COALESCE(updated_at, ?)
+      WHERE user_id = ?
+    `).run(UI_ROLE_SYSTEM, mt5NowIso(), CFG.mt5DefaultUserId);
+    try {
+      const legacy = db.prepare(`
+        SELECT email, password_salt, password_hash, updated_at
+        FROM ui_auth_users
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `).get();
+      if (legacy && legacy.email && legacy.password_salt && legacy.password_hash) {
+        const migratedEmail = normalizeEmail(legacy.email);
+        db.prepare(`
+          UPDATE users
+          SET user_name = COALESCE(NULLIF(user_name, ''), ?),
+              email = ?,
+              password_salt = ?,
+              password_hash = ?,
+              role = ?,
+              updated_at = ?
+          WHERE user_id = ?
+        `).run(
+          fallbackUserNameFromEmail(migratedEmail),
+          migratedEmail,
+          String(legacy.password_salt || ""),
+          String(legacy.password_hash || ""),
+          UI_ROLE_SYSTEM,
+          String(legacy.updated_at || mt5NowIso()),
+          CFG.mt5DefaultUserId,
+        );
+      }
+    } catch (e) {
+      // Legacy table may not exist; ignore.
+    }
 
     const count = db.prepare("SELECT COUNT(*) AS n FROM signals").get().n;
     if (count === 0) {
@@ -1624,9 +1780,9 @@ async function mt5InitBackend() {
         const target = normalizeEmail(email);
         if (!target) return null;
         return db.prepare(`
-          SELECT email, password_salt, password_hash, updated_at
-          FROM ui_auth_users
-          WHERE email = ?
+          SELECT user_id, user_name, email, role, password_salt, password_hash, updated_at
+          FROM users
+          WHERE lower(email) = ?
           LIMIT 1
         `).get(target) || null;
       },
@@ -1634,17 +1790,24 @@ async function mt5InitBackend() {
         const target = normalizeEmail(user?.email);
         if (!target) throw new Error("email is required");
         db.prepare(`
-          INSERT INTO ui_auth_users (email, password_salt, password_hash, updated_at)
-          VALUES (?, ?, ?, ?)
-          ON CONFLICT(email) DO UPDATE SET
+          INSERT INTO users (user_id, user_name, email, role, password_salt, password_hash, updated_at, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(user_id) DO UPDATE SET
+            user_name = excluded.user_name,
+            email = excluded.email,
+            role = excluded.role,
             password_salt = excluded.password_salt,
             password_hash = excluded.password_hash,
             updated_at = excluded.updated_at
         `).run(
+          CFG.mt5DefaultUserId,
+          String(user?.user_name || fallbackUserNameFromEmail(target)),
           target,
+          normalizeUserRole(user?.role || UI_ROLE_SYSTEM),
           String(user?.password_salt || ""),
           String(user?.password_hash || ""),
           String(user?.updated_at || new Date().toISOString()),
+          mt5NowIso(),
         );
         return { ok: true };
       }
@@ -1677,8 +1840,10 @@ async function mt5InitBackend() {
       user_id TEXT PRIMARY KEY,
       user_name TEXT,
       email TEXT,
+      password_salt TEXT,
       password_hash TEXT,
-      balance_start DOUBLE PRECISION NOT NULL DEFAULT 0,
+      role TEXT NOT NULL DEFAULT 'User',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
@@ -1763,16 +1928,16 @@ async function mt5InitBackend() {
     )
   `);
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS ui_auth_users (
-      email TEXT PRIMARY KEY,
-      password_salt TEXT NOT NULL,
-      password_hash TEXT NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_signal_events_signal_time
     ON signal_events(signal_id, event_time)
+  `);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_salt TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ`);
+  await pool.query(`
+    UPDATE users
+    SET role = COALESCE(NULLIF(role, ''), 'User'),
+        updated_at = COALESCE(updated_at, NOW())
   `);
   // Ensure "SYSTEM_SYNC_PUSH" dummy signal exists for global logging.
   await pool.query(`
@@ -1789,10 +1954,31 @@ async function mt5InitBackend() {
   }
 
   await pool.query(`
-    INSERT INTO users (user_id, user_name, email, balance_start, created_at)
-    VALUES ($1, $2, $3, $4, $5)
-    ON CONFLICT (user_id) DO NOTHING
-  `, [CFG.mt5DefaultUserId, "Default User", "", 0, mt5NowIso()]);
+    INSERT INTO users (user_id, user_name, email, role, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6)
+    ON CONFLICT (user_id) DO UPDATE SET
+      role = EXCLUDED.role,
+      updated_at = EXCLUDED.updated_at
+  `, [CFG.mt5DefaultUserId, "System", "", UI_ROLE_SYSTEM, mt5NowIso(), mt5NowIso()]);
+  await pool.query(`
+    WITH legacy AS (
+      SELECT email, password_salt, password_hash, updated_at
+      FROM ui_auth_users
+      ORDER BY updated_at DESC
+      LIMIT 1
+    )
+    UPDATE users u
+    SET user_name = COALESCE(NULLIF(u.user_name, ''), split_part(legacy.email, '@', 1)),
+        email = lower(legacy.email),
+        password_salt = legacy.password_salt,
+        password_hash = legacy.password_hash,
+        role = $2,
+        updated_at = COALESCE(legacy.updated_at, NOW())
+    FROM legacy
+    WHERE u.user_id = $1
+  `, [CFG.mt5DefaultUserId, UI_ROLE_SYSTEM]).catch(() => {
+    // Legacy table may not exist; safe to ignore.
+  });
 
   // Backward-compatible migration from legacy table mt5_signals -> signals.
   await pool.query(`
@@ -2265,9 +2451,9 @@ async function mt5InitBackend() {
       const target = normalizeEmail(email);
       if (!target) return null;
       const res = await pool.query(`
-        SELECT email, password_salt, password_hash, updated_at
-        FROM ui_auth_users
-        WHERE email = $1
+        SELECT user_id, user_name, email, role, password_salt, password_hash, updated_at
+        FROM users
+        WHERE lower(email) = $1
         LIMIT 1
       `, [target]);
       return res.rows[0] || null;
@@ -2276,14 +2462,20 @@ async function mt5InitBackend() {
       const target = normalizeEmail(user?.email);
       if (!target) throw new Error("email is required");
       await pool.query(`
-        INSERT INTO ui_auth_users (email, password_salt, password_hash, updated_at)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (email) DO UPDATE SET
+        INSERT INTO users (user_id, user_name, email, role, password_salt, password_hash, updated_at, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        ON CONFLICT (user_id) DO UPDATE SET
+          user_name = EXCLUDED.user_name,
+          email = EXCLUDED.email,
+          role = EXCLUDED.role,
           password_salt = EXCLUDED.password_salt,
           password_hash = EXCLUDED.password_hash,
           updated_at = EXCLUDED.updated_at
       `, [
+        CFG.mt5DefaultUserId,
+        String(user?.user_name || fallbackUserNameFromEmail(target)),
         target,
+        normalizeUserRole(user?.role || UI_ROLE_SYSTEM),
         String(user?.password_salt || ""),
         String(user?.password_hash || ""),
         String(user?.updated_at || new Date().toISOString()),
@@ -3126,6 +3318,19 @@ function requireAdminKey(req, res, urlObj, payload = null) {
   return false;
 }
 
+function requireSystemRoleForUi(req, res) {
+  const uiSess = getUiSessionFromReq(req);
+  if (!uiSess.ok) {
+    json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    return false;
+  }
+  if (!isSystemRole(uiSess.role)) {
+    json(res, 403, { ok: false, error: "FORBIDDEN_SYSTEM_ROLE_REQUIRED" });
+    return false;
+  }
+  return true;
+}
+
 function mt5DashboardHtml() {
   return `<!doctype html>
 <html>
@@ -3272,7 +3477,15 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/auth/me") {
     const sess = getUiSessionFromReq(req);
     if (!sess.ok) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
-    return json(res, 200, { ok: true, user: { email: sess.email } });
+    return json(res, 200, {
+      ok: true,
+      user: {
+        user_id: sess.user_id,
+        user_name: sess.user_name,
+        email: sess.email,
+        role: sess.role,
+      },
+    });
   }
 
   if (req.method === "POST" && url.pathname === "/auth/login") {
@@ -3281,10 +3494,11 @@ const server = http.createServer(async (req, res) => {
       const email = normalizeEmail(payload.email);
       const password = String(payload.password || "");
       if (!email || !password) return json(res, 400, { ok: false, error: "Email and password are required" });
-      if (!(await uiAuthVerify(email, password))) return json(res, 401, { ok: false, error: "Invalid email or password" });
-      const token = createUiSession(email);
+      const authUser = await uiAuthGetVerifiedUser(email, password);
+      if (!authUser) return json(res, 401, { ok: false, error: "Invalid email or password" });
+      const token = createUiSession(authUser);
       setUiSessionCookie(res, token);
-      return json(res, 200, { ok: true, user: { email } });
+      return json(res, 200, { ok: true, user: authUser });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });
@@ -3615,7 +3829,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/mt5/db/tables") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!requireAdminKey(req, res, url)) return;
+    if (!requireSystemRoleForUi(req, res)) return;
     try {
       const b = await mt5Backend();
       if (!b.listTables) return json(res, 400, { ok: false, error: "Not supported by this backend" });
@@ -3628,7 +3842,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/mt5/db/rows") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!requireAdminKey(req, res, url)) return;
+    if (!requireSystemRoleForUi(req, res)) return;
     try {
       const b = await mt5Backend();
       if (!b.listTableRows) return json(res, 400, { ok: false, error: "Not supported by this backend" });
@@ -3808,7 +4022,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/mt5/api/events") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!requireAdminKey(req, res, url)) return;
+    if (!requireSystemRoleForUi(req, res)) return;
     try {
       const { rows: signals } = await mt5GetFilteredTrades(url, null, 10000);
       const sids = new Set(signals.map(s => String(s.signal_id)));
@@ -3845,7 +4059,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/mt5/api/events/delete") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!requireAdminKey(req, res, url)) return;
+    if (!requireSystemRoleForUi(req, res)) return;
     try {
       const resVal = await mt5DeleteAllEvents();
       return json(res, 200, { ok: true, deleted: resVal.deleted });

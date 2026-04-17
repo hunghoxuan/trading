@@ -45,51 +45,53 @@ export default function SettingsPage() {
   }
 
   return (
-    <section className="panel stack-layout settings-page">
-      <h2>Settings</h2>
-      <label>
-        <div className="muted small">API Key</div>
-        <input
-          type="password"
-          placeholder="Enter API key"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-        />
-      </label>
-      <label>
-        <div className="muted small">Current Password</div>
-        <input
-          type="password"
-          placeholder="Current password"
-          value={currentPassword}
-          onChange={(e) => setCurrentPassword(e.target.value)}
-        />
-      </label>
-      <label>
-        <div className="muted small">New Password</div>
-        <input
-          type="password"
-          placeholder="At least 8 characters"
-          value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-        />
-      </label>
-      <label>
-        <div className="muted small">Confirm New Password</div>
-        <input
-          type="password"
-          placeholder="Re-enter new password"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-        />
-      </label>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button onClick={save} style={{ width: "auto" }}>Save API Key</button>
-        <button onClick={resetPassword} style={{ width: "auto" }} disabled={pwdLoading}>
-          {pwdLoading ? "Updating..." : "Reset Password"}
-        </button>
-        {msg ? <span className="muted small">{msg}</span> : null}
-      </div>
-    </section>
+    <div className="stack-layout fadeIn">
+      <section className="panel settings-page" style={{ maxWidth: '600px' }}>
+        <h2>Settings</h2>
+        <label>
+          <div className="muted small">API Key</div>
+          <input
+            type="password"
+            placeholder="Enter API key"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+          />
+        </label>
+        <label>
+          <div className="muted small">Current Password</div>
+          <input
+            type="password"
+            placeholder="Current password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+          />
+        </label>
+        <label>
+          <div className="muted small">New Password</div>
+          <input
+            type="password"
+            placeholder="At least 8 characters"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+          />
+        </label>
+        <label>
+          <div className="muted small">Confirm New Password</div>
+          <input
+            type="password"
+            placeholder="Re-enter new password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+          />
+        </label>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button onClick={save} style={{ width: "auto" }}>Save API Key</button>
+          <button onClick={resetPassword} style={{ width: "auto" }} disabled={pwdLoading}>
+            {pwdLoading ? "Updating..." : "Reset Password"}
+          </button>
+          {msg ? <span className="muted small">{msg}</span> : null}
+        </div>
+      </section>
+    </div>
   );
 }
