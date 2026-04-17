@@ -1104,7 +1104,19 @@ json_escape_for_webhook(string raw) =>
 format_tf_for_webhook(string tfRaw) =>
     string raw = na(tfRaw) or tfRaw == "" ? timeframe.period : tfRaw
     float asNum = str.tonumber(raw)
-    not na(asNum) ? (str.tostring(int(math.round(asNum))) + "m") : str.lower(raw)
+    string out = str.lower(raw)
+    if not na(asNum)
+        out := asNum == 60 ? "1h" :
+          asNum == 120 ? "2h" :
+          asNum == 180 ? "3h" :
+          asNum == 240 ? "4h" :
+          asNum == 360 ? "6h" :
+          asNum == 480 ? "8h" :
+          asNum == 720 ? "12h" :
+          asNum == 1440 ? "1d" :
+          asNum == 10080 ? "1w" :
+          asNum == 43200 ? "1M" : (str.tostring(int(math.round(asNum))) + "m")
+    out
 
 normalize_side_for_webhook(string direction) =>
     str.upper(direction) == "BUY" ? "BUY" : "SELL"
@@ -1114,32 +1126,29 @@ export build_trade_webhook_payload(string strategyName, string symbolName, strin
     string safeStrategy = json_escape_for_webhook(strategyName)
     string safeSymbol = json_escape_for_webhook(symbolName)
     string safeSide = normalize_side_for_webhook(direction)
-    string safeTf = json_escape_for_webhook(format_tf_for_webhook(na(chartTf) or chartTf == "" ? timeframe.period : chartTf))
+    string safeSignalTf = json_escape_for_webhook(format_tf_for_webhook(sourceTf))
+    string safeChartTf = json_escape_for_webhook(format_tf_for_webhook(na(chartTf) or chartTf == "" ? timeframe.period : chartTf))
     string safeNote = json_escape_for_webhook(note)
     string safeStatus = json_escape_for_webhook(status)
     string safeTradeId = json_escape_for_webhook(tradeId)
     string safeProvider = json_escape_for_webhook(str.lower(provider))
-    string safeSourceTf = json_escape_for_webhook(sourceTf)
-    string safeChartTf = json_escape_for_webhook(format_tf_for_webhook(na(chartTf) or chartTf == "" ? sourceTf : chartTf))
     string safeModelType = json_escape_for_webhook(modelType)
     string safeReason = json_escape_for_webhook(reasonText)
     float riskPctFinal = not na(riskPct) ? riskPct : (price > 0 ? math.abs(price - sl) / price * 100.0 : na)
     string msg = "{"
-    msg += "\"strategy\":\"" + safeStrategy + "\""
+    msg += "\"source\":\"TV." + safeStrategy + "\""
     msg += ",\"symbol\":\"" + safeSymbol + "\""
     msg += ",\"side\":\"" + safeSide + "\""
-    msg += ",\"timeframe\":\"" + safeTf + "\""
-    msg += ",\"status\":\"" + safeStatus + "\""
+    msg += ",\"signal_tf\":\"" + safeSignalTf + "\""
     msg += ",\"id\":\"" + safeTradeId + "\""
     msg += ",\"provider\":\"" + safeProvider + "\""
-    msg += ",\"sourceTf\":\"" + safeSourceTf + "\""
-    msg += ",\"chartTf\":\"" + safeChartTf + "\""
-    msg += ",\"model\":\"" + safeModelType + "\""
+    msg += ",\"chart_tf\":\"" + safeChartTf + "\""
+    msg += ",\"entry_model\":\"" + safeModelType + "\""
     msg += ",\"reason\":\"" + safeReason + "\""
     msg += ",\"barTime\":" + (na(barTime) ? "null" : str.tostring(barTime))
     msg += ",\"rr\":" + (na(rrValue) ? "null" : str.tostring(rrValue))
-    msg += ",\"riskUsd\":" + (na(riskUsd) ? "null" : str.tostring(riskUsd))
-    msg += ",\"riskPct\":" + (na(riskPctFinal) ? "null" : str.tostring(riskPctFinal))
+    msg += ",\"risk_money\":" + (na(riskUsd) ? "null" : str.tostring(riskUsd))
+    msg += ",\"risk_pct\":" + (na(riskPctFinal) ? "null" : str.tostring(riskPctFinal))
     msg += ",\"price\":" + str.tostring(price)
     msg += ",\"sl\":" + str.tostring(sl)
     msg += ",\"tp\":" + str.tostring(tp)

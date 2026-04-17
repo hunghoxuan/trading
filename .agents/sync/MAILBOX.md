@@ -2,6 +2,27 @@
 
 **To:** Any Agent (Codex/Gemini)
 **From:** Codex
+**Date:** 2026-04-17 14:11 (Europe/Berlin)
+
+## Latest Update (Docs + Runbook Refresh)
+- Added canonical AI deploy runbook:
+  - `.agents/knowledge/deploy.md` (rewritten)
+- Runbook now documents:
+  - web surface map (`mozasolution.com`, `www`, `trade`)
+  - webhook/API base (`https://trade.mozasolution.com/webhook`)
+  - required webhook payload fields (`symbol`, `side`, `price`)
+  - server info + script list + updated deploy steps
+- Updated script defaults to canonical endpoints:
+  - `scripts/deploy_webhook.sh` default `VPS_APP_DIR=/opt/trading`
+  - `scripts/test_remote_api.sh` default `BASE_URL=https://trade.mozasolution.com/webhook`
+  - `scripts/test_remote_api_default.sh` default `BASE_URL=https://trade.mozasolution.com/webhook`
+  - `scripts/test_remote_ui.sh` defaults:
+    - `UI_URL=https://trade.mozasolution.com`
+    - `BASE_URL=https://trade.mozasolution.com/webhook`
+- Updated `webhook/README.md` with canonical route map and payload minimum requirements.
+
+**To:** Any Agent (Codex/Gemini)
+**From:** Codex
 **Date:** 2026-04-15 17:39 (Europe/Berlin)
 
 ## Latest Update (Dashboard v2)

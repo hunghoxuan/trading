@@ -8,8 +8,8 @@ REPORT_DIR="${ROOT_DIR}/test-results"
 mkdir -p "${REPORT_DIR}"
 
 API_KEY="${API_KEY:-$(sed -n 's/^SIGNAL_API_KEY=//p' "${ENV_FILE}" | head -n 1)}"
-BASE_URL="${BASE_URL:-http://139.59.211.192}"
-UI_URL="${UI_URL:-http://139.59.211.192/ui}"
+BASE_URL="${BASE_URL:-https://trade.mozasolution.com/webhook}"
+UI_URL="${UI_URL:-https://trade.mozasolution.com}"
 
 if [[ -z "${API_KEY}" ]]; then
   echo "[ui-test] API_KEY is required (or SIGNAL_API_KEY in webhook/.env)"

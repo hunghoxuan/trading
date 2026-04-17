@@ -911,10 +911,12 @@ get_data_model_key_for_type(string shortNameOrType) =>
      (k == "SW" or k == "SWEEP" or k == "SWP" or k == "X") ? "SWEEP" : k
 
 get_data_trade_type_for_source_rr(string baseType, string sourceTf, float rrVal) =>
-    [tf1Local, tf2Local] = KitCore.get_htf_pair()
-    string tfResolved = na(sourceTf) or sourceTf == "" ? timeframe.period : sourceTf
-    string tfSuffix = tfResolved == timeframe.period ? KitUI.get_friendly_tf(timeframe.period) : tfResolved == tf1Local ? KitUI.get_friendly_tf(tf1Local) : tfResolved == tf2Local ? KitUI.get_friendly_tf(tf2Local) : KitUI.get_friendly_tf(tfResolved)
-    baseType + "." + tfSuffix + "." + str.tostring(rrVal)
+    string fullName = baseType == "MSS" or baseType == "MS" ? "Market Structure Shift" :
+                      baseType == "BOS" or baseType == "BO" ? "Break of Structure" :
+                      baseType == "SW" or baseType == "SWEEP" or baseType == "SWP" ? "Sweep" :
+                      baseType == "SWM" or baseType == "SWEEP_MSS" ? "Sweep MSS" :
+                      baseType == "SWF" or baseType == "SWEEP_FVG" ? "Sweep FVG" : "Model"
+    baseType + " - " + fullName
 
 process_data_add_entry(string type, string direction, string reason, float levelTop, float levelBtm, float qualityPct, int scoreVal, string sourceTf) =>
     bool isBuy = direction == "Buy"
@@ -965,7 +967,7 @@ process_data_add_entry(string type, string direction, string reason, float level
                     float orderQty = not na(e) ? CORE_get_trade_order_qty(entry, stoploss, tradeRiskAmountUsd) : float(na)
                     if not na(e)
                         CORE_track_trade_entry(trades, tradeOrderIds, e, orderId, shouldTrackTrades)
-                        string webhookNote = tradeType + " | " + reason
+                        string webhookNote = reason
                         KitCore.emit_trade_webhook_new_trade(webhookEnabled, true, "Hung-MSS", syminfo.ticker, direction, sourceTf, entry, stoploss, takeprofit, webhookNote, orderId, "ctrader", "PENDING", rrUsed, tradeType, tradeRiskAmountUsd, na, time, reason, timeframe.period)
                         if tradeRiskMode == "%"
                             KitCore.prop_register_trade(propDayState, tradeRiskValue)

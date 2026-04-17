@@ -8,6 +8,24 @@ It can:
 - execute cTrader (when `CTRADER_MODE` is set)
 - queue MT5 trade for EA pull (when `MT5_ENABLED=true`)
 
+## Canonical production routes (2026-04-17)
+
+- Landing:
+  - `https://mozasolution.com`
+  - `https://www.mozasolution.com`
+- Trading UI:
+  - `https://trade.mozasolution.com`
+- Webhook/API root:
+  - `https://trade.mozasolution.com/webhook`
+- Health:
+  - `https://trade.mozasolution.com/webhook/health`
+  - `https://trade.mozasolution.com/webhook/mt5/health`
+
+Webhook payload minimum requirements (`POST /signal` or `POST /mt5/tv/webhook`):
+- `symbol` (string)
+- `side` (`BUY` or `SELL`)
+- `price` (number > 0)
+
 ## Config model (simplified)
 
 Removed redundant global switches:
@@ -83,7 +101,7 @@ Config via env vars (advanced):
 BRANCH=main \
 PUSH_FIRST=1 \
 VPS_HOST=root@139.59.211.192 \
-VPS_APP_DIR=/root/trading \
+VPS_APP_DIR=/opt/trading \
 SERVICE_MODE=pm2 \
 SERVICE_NAME=webhook \
 HEALTH_PORT=80 \
@@ -103,7 +121,7 @@ git push origin main
 
 # VPS
 ssh root@139.59.211.192
-cd /root/trading
+cd /opt/trading
 git pull --ff-only origin main
 node --check webhook/server.js
 pm2 restart webhook
@@ -115,7 +133,7 @@ Rollback commands:
 
 ```bash
 ssh root@139.59.211.192
-cd /root/trading
+cd /opt/trading
 git log --oneline -n 5
 git checkout <PREVIOUS_COMMIT> -- webhook/server.js webhook/README.md
 node --check webhook/server.js
@@ -135,7 +153,7 @@ Required GitHub repository secrets:
 - `VPS_HOST` (example: `139.59.211.192`)
 - `VPS_USER` (example: `root`)
 - `VPS_SSH_KEY` (private key content)
-- `VPS_APP_DIR` (example: `/root/trading`)
+- `VPS_APP_DIR` (example: `/opt/trading`)
 - Optional: `VPS_PORT` (defaults to `22`)
 - Optional: `VPS_HEALTH_PORT` (defaults to `80`)
 
@@ -148,8 +166,8 @@ Step-by-step (for non-technical users):
 6. Choose `branch=main`, `service_mode=pm2`, `service_name=webhook`.
 7. Click `Run workflow` and wait for green check.
 8. Verify:
-   - `https://signal.mozasolution.com/health`
-   - `https://signal.mozasolution.com/mt5/health`
+   - `https://trade.mozasolution.com/webhook/health`
+   - `https://trade.mozasolution.com/webhook/mt5/health`
 
 ## MT5 CSV Sync Automation (macOS)
 
@@ -211,8 +229,8 @@ launchctl load ~/Library/LaunchAgents/com.local.mt5csvsync.plist
 ## TradingView webhook
 
 URL:
-- Preferred: `https://signal.mozasolution.com/signal/<TV_WEBHOOK_TOKEN>`
-- Backward-compatible: `https://signal.mozasolution.com/signal`
+- Preferred: `https://trade.mozasolution.com/webhook/signal/<TV_WEBHOOK_TOKEN>`
+- Backward-compatible: `https://trade.mozasolution.com/webhook/signal`
 
 Body example:
 
@@ -357,7 +375,7 @@ React UI app (Dashboard + Trades + Trade detail):
 ```bash
 cd /Users/macmini/Trade/Bot/trading/web-ui
 npm install
-VITE_API_BASE=https://signal.mozasolution.com npm run dev
+VITE_API_BASE=https://trade.mozasolution.com/webhook npm run dev
 ```
 
 Production build:
@@ -444,8 +462,8 @@ bash scripts/test_remote_ui.sh
 ```
 
 What it validates:
-- `/ui/dashboard` renders dashboard content (not stuck on loading/error)
-- `/ui/trades` renders trade list page (not stuck on loading/error)
+- `/dashboard` renders dashboard content (not stuck on loading/error)
+- `/trades` renders trade list page (not stuck on loading/error)
 - API key and API base are injected from local `webhook/.env` and remote URL defaults
 
 Reports:
@@ -470,7 +488,7 @@ Run from repo root:
 ```bash
 cd /Users/macmini/Trade/Bot/trading
 API_KEY="$(sed -n 's/^SIGNAL_API_KEY=//p' webhook/.env | head -n 1)" \
-BASE_URL="http://139.59.211.192" \
+BASE_URL="https://trade.mozasolution.com/webhook" \
 bash scripts/test_remote_api.sh
 ```
 

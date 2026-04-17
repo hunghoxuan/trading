@@ -1,256 +1,171 @@
-# Deploy Runbook (Git + VPS + MT5)
+# Deploy Runbook (Canonical - 2026-04-17)
 
-Last updated: 2026-04-14  
 Project root: `/Users/macmini/Trade/Bot/trading`
 
-This is a strict, copy-paste runbook for your stack:
-- webhook API (`webhook/server.js`)
-- webhook UI (`webhook-ui`)
-- MT5 EA (`mql5/TVBridgeEA.mq5`)
-- MT5 backtest CSV sync (`scripts/mt5_csv_sync.sh`)
+This is the source of truth for AI handoff on web surfaces, webhook/API routes, server info, and deployment.
 
----
+## 1) Web Surface Map
 
-## 0) One-time prerequisites
+- Landing page:
+  - `https://mozasolution.com`
+  - `https://www.mozasolution.com`
+  - Served from local folder: `/Users/macmini/Trade/Bot/trading/web`
+- Trading UI:
+  - `https://trade.mozasolution.com`
+  - SPA routes example:
+    - `https://trade.mozasolution.com/dashboard`
+    - `https://trade.mozasolution.com/trades`
+  - Built from: `/Users/macmini/Trade/Bot/trading/web-ui`
+- Webhook/API root:
+  - `https://trade.mozasolution.com/webhook`
+  - Health:
+    - `https://trade.mozasolution.com/webhook/health`
+    - `https://trade.mozasolution.com/webhook/mt5/health`
 
-## 0.1 Local tools
-```bash
-git --version
-node -v
-npm -v
-ssh -V
+## 2) Webhook/API List (Required Payload Included)
+
+Base URL (canonical):
+- `https://trade.mozasolution.com/webhook`
+
+Main endpoints:
+- `POST /signal` (general webhook)
+- `POST /signal/<token>` (tokenized general webhook)
+- `POST /mt5/tv/webhook` (MT5 TV bridge webhook)
+- `POST /mt5/tv/webhook/<token>` (tokenized MT5 TV bridge webhook)
+- `GET /mt5/ea/pull?account=<account_id>`
+- `POST /mt5/ea/ack`
+- `POST /mt5/ea/heartbeat`
+- `GET /csv?apiKey=<SIGNAL_API_KEY>&limit=5000`
+- `GET /mt5/trades/search?page=1&pageSize=20`
+
+Authentication:
+- Prefer header: `x-api-key: <SIGNAL_API_KEY>`
+- TradingView token path is supported (`/signal/<token>`, `/mt5/tv/webhook/<token>`)
+
+Required payload for webhook create signal (`POST /signal` or `POST /mt5/tv/webhook`):
+- `symbol` (string, example `BTCUSDT`)
+- `side` (string: `BUY` or `SELL`)
+- `price` (number > 0)
+
+Recommended payload fields:
+- `strategy` (string)
+- `timeframe` (string)
+- `sl` (number)
+- `tp` (number)
+- `note` (string)
+- `quantity` or `volume` (number)
+- `user_id` (string)
+- `entry_model` (string)
+
+Example payload:
+```json
+{
+  "strategy": "Hung-SMC",
+  "symbol": "BTCUSDT",
+  "side": "BUY",
+  "timeframe": "1m",
+  "price": 68123.5,
+  "sl": 67650,
+  "tp": 68950,
+  "note": "MSS + SMC",
+  "user_id": "default"
+}
 ```
 
-## 0.2 VPS basics
-- VPS: `root@139.59.211.192`
-- App dir on VPS: `/opt/trading` (or `/root/trading` if you changed it)
-- Process manager: `pm2` (default in current scripts/workflow)
+Required payload for EA ack (`POST /mt5/ea/ack`):
+- `signal_id` (string)
+- `status` (one of `OK`, `FAIL`, `START`, `TP`, `SL`, `CANCEL`, `EXPIRED`)
 
-Check:
-```bash
-ssh root@139.59.211.192
-pm2 ls
-exit
-```
+Recommended EA ack fields:
+- `ticket` (broker ticket)
+- `message` / `note`
+- `error`
 
-## 0.3 GitHub Actions secrets (public repo safe)
-In GitHub repo: `Settings -> Secrets and variables -> Actions` add:
-- `VPS_HOST` = `139.59.211.192`
-- `VPS_USER` = `root`
-- `VPS_SSH_KEY` = your private key text (full multiline key)
-- `VPS_APP_DIR` = `/opt/trading` (or your real deploy folder)
-- `VPS_PORT` = `22`
-- `VPS_HEALTH_PORT` = `80` (optional, defaults to 80)
+Required payload for EA heartbeat (`POST /mt5/ea/heartbeat`):
+- `account_id` (string)
 
----
+Recommended heartbeat fields:
+- `balance`, `equity`, `free_margin`, `broker`, `terminal`, `metadata`
 
-## 1) Daily local workflow (code -> commit -> push)
+## 3) Server Info (Needed Info + Scripts)
 
-From local project:
+VPS:
+- Host: `root@139.59.211.192`
+- App dir: `/opt/trading`
+- Process manager: `pm2`
+- Main process: `webhook` (single process now serves landing + web-ui + API)
+
+TLS:
+- Node native HTTPS from `webhook/server.js`
+- Certificate path (server env):
+  - `/etc/letsencrypt/live/mozasolution.com/fullchain.pem`
+  - `/etc/letsencrypt/live/mozasolution.com/privkey.pem`
+- SANs include:
+  - `mozasolution.com`
+  - `www.mozasolution.com`
+  - `trade.mozasolution.com`
+
+Key files:
+- API server: `/Users/macmini/Trade/Bot/trading/webhook/server.js`
+- Landing: `/Users/macmini/Trade/Bot/trading/web/index.html`
+- Web UI: `/Users/macmini/Trade/Bot/trading/web-ui`
+- Deploy script: `/Users/macmini/Trade/Bot/trading/scripts/deploy_webhook.sh`
+
+Useful scripts:
+- Deploy:
+  - `bash scripts/deploy_webhook.sh`
+- Remote API test:
+  - `bash scripts/test_remote_api.sh`
+  - `bash scripts/test_remote_api_default.sh`
+- Remote UI test:
+  - `bash scripts/test_remote_ui.sh`
+- Full local stack smoke:
+  - `bash scripts/test_local_stack.sh`
+
+## 4) Deploy Guide (Updated)
+
+Local deploy (recommended):
 ```bash
 cd /Users/macmini/Trade/Bot/trading
-git status
+bash scripts/deploy_webhook.sh
 ```
 
-Stage + commit + push:
-```bash
-git add .
-git commit -m "feat: your change summary"
-git push origin main
-```
-
----
-
-## 2) Deploy webhook to VPS (recommended manual command)
-
-Use the repo script:
-```bash
-cd /Users/macmini/Trade/Bot/trading
-PUSH_FIRST=1 VPS_APP_DIR=/opt/trading bash scripts/deploy_webhook.sh
-```
-
-If you already pushed and only want VPS pull+restart:
+If branch is already pushed:
 ```bash
 cd /Users/macmini/Trade/Bot/trading
 PUSH_FIRST=0 VPS_APP_DIR=/opt/trading bash scripts/deploy_webhook.sh
 ```
 
-If your VPS path is `/root/trading` instead:
+What deploy script does:
+1. SSH to VPS and `git pull` in `/opt/trading`
+2. `node --check webhook/server.js`
+3. Install webhook deps
+4. Build `web-ui`
+5. Restart `pm2 webhook`
+6. Run health checks against localhost
+
+Post-deploy verification:
 ```bash
-cd /Users/macmini/Trade/Bot/trading
-PUSH_FIRST=0 VPS_APP_DIR=/root/trading bash scripts/deploy_webhook.sh
+ssh root@139.59.211.192 'pm2 ls'
+ssh root@139.59.211.192 'curl -sS https://mozasolution.com | head -n 20'
+ssh root@139.59.211.192 'curl -sS https://trade.mozasolution.com/webhook/health'
+ssh root@139.59.211.192 'curl -sS https://trade.mozasolution.com/webhook/mt5/health'
 ```
 
----
+GitHub Actions:
+- Workflow: `/Users/macmini/Trade/Bot/trading/.github/workflows/deploy-webhook.yml`
+- Auto triggers on `main` changes in:
+  - `webhook/**`
+  - `web-ui/**`
+  - `web/**`
+  - `scripts/deploy_webhook.sh`
 
-## 3) Alternative deploy via GitHub Actions
+## 5) What Changed vs Old Docs
 
-Workflow file: `.github/workflows/deploy-webhook.yml`
-
-How to run manually:
-1. Open GitHub repo -> `Actions`
-2. Select `Deploy Webhook`
-3. `Run workflow`
-4. Inputs:
-   - `branch`: `main`
-   - `service_mode`: `pm2`
-   - `service_name`: `webhook`
-
-Auto deploy also triggers on push to `main` when files under `webhook/**` change.
-
----
-
-## 4) VPS verification after deploy
-
-SSH to VPS:
-```bash
-ssh root@139.59.211.192
-cd /opt/trading
-pm2 ls
-pm2 logs webhook --lines 80 --nostream
-curl -fsS http://127.0.0.1:80/health
-curl -fsS http://127.0.0.1:80/mt5/health
-exit
-```
-
-Public checks from local:
-```bash
-curl -sS http://139.59.211.192/health
-curl -sS http://139.59.211.192/mt5/health
-curl -sS http://139.59.211.192/ui/dashboard | head
-```
-
----
-
-## 5) Run integration tests against remote server
-
-Main full stack check:
-```bash
-cd /Users/macmini/Trade/Bot/trading
-bash scripts/test_server.sh
-```
-
-Other useful checks:
-```bash
-cd /Users/macmini/Trade/Bot/trading
-bash scripts/test_remote_api_default.sh
-bash scripts/test_remote_ui.sh
-bash scripts/test_webhook_push_random.sh
-```
-
----
-
-## 6) MT5 CSV sync (backtest file update)
-
-Manual sync:
-```bash
-cd /Users/macmini/Trade/Bot/trading
-chmod +x scripts/mt5_csv_sync.sh
-bash scripts/mt5_csv_sync.sh
-```
-
-This script writes CSV to both:
-1. `/Users/macmini/Trade/Bot/trading/scripts/tvbridge_signals.csv`
-2. MT5 Common Files path under Wine:
-   `/Users/macmini/Library/Application Support/net.metaquotes.wine.metatrader5/drive_c/users/crossover/AppData/Roaming/MetaQuotes/Terminal/Common/Files/tvbridge_signals.csv`
-
-Install auto sync every 5 min (launchd):
-```bash
-cd /Users/macmini/Trade/Bot/trading
-chmod +x scripts/install_mt5_csv_sync_launchd.sh
-/Users/macmini/Trade/Bot/trading/scripts/install_mt5_csv_sync_launchd.sh
-```
-
-Check launchd job:
-```bash
-launchctl print gui/$(id -u)/com.local.mt5csvsync | sed -n '1,80p'
-```
-
----
-
-## 7) MT5 EA deploy/update steps (manual in MetaEditor/MT5)
-
-## 7.1 Compile EA
-1. Open MetaEditor.
-2. Open `TVBridgeEA.mq5`.
-3. Press `F7` (Compile).
-4. Ensure `0 errors` in Toolbox.
-
-## 7.2 Attach / reattach EA
-1. MT5 -> open chart (any symbol/timeframe).
-2. Navigator -> Expert Advisors -> drag `TVBridgeEA` to chart.
-3. In EA Inputs set:
-   - `InpServerBaseUrl = http://signal.mozasolution.com`
-   - `InpEaApiKey = <your key>`
-   - `InpPollSeconds = 2` (or your desired)
-   - `InpIgnoreUnknownSymbol = true`
-   - `InpIgnoreDuplicateId = true`
-4. Common tab:
-   - Allow algo trading.
-   - Allow WebRequest URL if needed.
-5. Top toolbar `Algo Trading` must be green.
-
-## 7.3 Backtest mode
-1. Strategy Tester -> `Single test` (not Optimization).
-2. EA input: `InpReplayFromFile = true`
-3. CSV file in MT5 Common/Files.
-4. For old historical signals: set `InpIgnoreOlderSec = 0`.
-
----
-
-## 8) Endpoint map (current)
-
-TradingView/webhook push (recommended):
-- `http://signal.mozasolution.com/mt5/tv/webhook`
-
-Legacy compatible:
-- `http://signal.mozasolution.com/signal`
-
-EA pull:
-- `http://signal.mozasolution.com/mt5/ea/pull`
-
-EA ack/update:
-- `http://signal.mozasolution.com/mt5/ea/ack`
-
-Backtest CSV:
-- `http://signal.mozasolution.com/csv?apiKey=<API_KEY>&limit=5000`
-
-UI:
-- `http://signal.mozasolution.com/ui/dashboard`
-- `http://139.59.211.192/ui/dashboard` (direct IP)
-
----
-
-## 9) Fast rollback
-
-On VPS:
-```bash
-ssh root@139.59.211.192
-cd /opt/trading
-git log --oneline -n 5
-git reset --hard <previous_commit_sha>
-pm2 restart webhook
-curl -fsS http://127.0.0.1:80/health
-exit
-```
-
----
-
-## 10) Common issues and quick fix
-
-1. `retcode=10027 auto trading disabled by client`
-- Turn on MT5 toolbar `Algo Trading`.
-- Ensure EA is attached and allowed to trade.
-- Re-login trading account (not investor/read-only).
-
-2. `retcode=10016 invalid stops`
-- Increase EA stop buffer (`InpStopBufferPts`).
-- Broker stop/freeze levels too tight for requested SL/TP.
-
-3. `retcode=10014 invalid volume`
-- Symbol volume min/step mismatch (EA now normalizes volume).
-
-4. UI timeout in browser but not in others
-- Check DNS/HTTPS-upgrade behavior in that browser.
-- Test direct IP: `http://139.59.211.192/ui/dashboard`.
-
+- Old `webhook-ui` is renamed to `web-ui`.
+- Old API domain references like `signal.mozasolution.com` are deprecated in runbooks.
+- Canonical production API is now:
+  - `https://trade.mozasolution.com/webhook`
+- Landing moved to apex/www:
+  - `https://mozasolution.com`
+  - `https://www.mozasolution.com`

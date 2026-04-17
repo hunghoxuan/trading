@@ -10,7 +10,7 @@ if [[ ! -f "${ENV_FILE}" ]]; then
 fi
 
 API_KEY="${API_KEY:-$(sed -n 's/^SIGNAL_API_KEY=//p' "${ENV_FILE}" | head -n 1)}"
-BASE_URL="${BASE_URL:-http://139.59.211.192}"
+BASE_URL="${BASE_URL:-https://trade.mozasolution.com/webhook}"
 ACCOUNT="${ACCOUNT:-remote-test}"
 
 if [[ -z "${API_KEY}" ]]; then

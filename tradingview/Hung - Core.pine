@@ -611,7 +611,19 @@ get_data_first_rr_for_strategy_key(string key, float fallback) =>
     array.size(rrArr) > 0 ? array.get(rrArr, 0) : fallback
 
 get_data_trade_type_for_source_rr(string baseType, string sourceTf, float rrVal) =>
-    baseType + "." + KitUI.get_friendly_tf(na(sourceTf) or sourceTf == "" ? timeframe.period : sourceTf) + "." + str.tostring(rrVal)
+    string fullName = baseType == "VEM" ? "VWAP+EMA [1m]" :
+                      baseType == "EMS" ? "EMA+Stoch [5m]" :
+                      baseType == "BBS" ? "BB Squeeze [15m-1h]" :
+                      baseType == "ICH" ? "Ichimoku+MACD [4h]" :
+                      baseType == "FIB" ? "Fib [1D]" :
+                      baseType == "SMD" ? "SMA+Div [1W]" :
+                      baseType == "GDC" ? "Golden/Death [1D-1W]" :
+                      baseType == "CPB" ? "Candle Pattern" :
+                      baseType == "SWP" ? "Sweep" :
+                      baseType == "TPG" ? "TPG RSI" :
+                      baseType == "ADX" ? "ADX+EMA" :
+                      baseType == "STK" ? "MA+RSI+VWAP Bias" : "Model"
+    baseType + " - " + fullName
 
 process_data_init_strategy_defs() =>
     array.clear(strategyDefs)
@@ -1443,7 +1455,7 @@ process_data_add_trade(int stratId, KitSMC.Event sig, float zoneTop, float zoneB
             if shouldTrackTrades
                 array.push(tradeModelIds, stratId)
             CORE_track_trade_entry(trades, tradeOrderIds, e, orderId, shouldTrackTrades)
-            string webhookNote = tradeType + " | " + sig.reason
+            string webhookNote = sig.reason
             KitCore.emit_trade_webhook_new_trade(webhookEnabled, true, "Hung-Core", syminfo.ticker, sig.direction, sourceTf, entry, stoploss, takeprofit, webhookNote, orderId, "ctrader", "PENDING", rrUsed, tradeType, tradeRiskAmountUsd, tradeRiskMode == "%" ? tradeRiskValue : na, time, sig.reason, timeframe.period)
             if tradeRiskMode == "%"
                 KitCore.prop_register_trade(propDayState, tradeRiskValue)

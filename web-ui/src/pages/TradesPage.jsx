@@ -256,7 +256,7 @@ export default function TradesPage() {
                     />
                   </th>
                   <th>SYMBOL</th>
-                  <th>LEVELS</th>
+                  <th>POSITION</th>
                   <th>AUDIT</th>
                   <th>STATUS</th>
                 </tr>
@@ -290,8 +290,7 @@ export default function TradesPage() {
                       <td>
                         <div className="cell-wrap">
                           <div className="cell-major"><span className={sideCls}>{t.action?.toUpperCase()}</span> {t.symbol}</div>
-                          <div className="cell-minor" style={{ fontWeight: 700, color: 'var(--primary)' }}>{t.source || 'TV.Unknown'}</div>
-                          <div className="cell-minor">{t.signal_id} {t.ack_ticket ? `| #${t.ack_ticket}` : ''}</div>
+                          <div className="cell-minor">{t.source || 'signal'} | {t.signal_id.slice(-8)} {t.ack_ticket ? `| #${t.ack_ticket}` : ''}</div>
                         </div>
                       </td>
                       <td>
@@ -299,8 +298,9 @@ export default function TradesPage() {
                           <div className="cell-major">
                             {fPrice(t.entry_price_exec, t.entry_price)} → {fPrice(t.tp_exec, t.tp)} / {fPrice(t.sl_exec, t.sl)}
                           </div>
-                          <div className="cell-minor">{t.entry_model || '-'}</div>
-                          <div className="cell-minor">{t.signal_tf || t.chart_tf || '-'} | {t.volume || '0'} lots</div>
+                          <div className="cell-minor">
+                            {t.chart_tf || 'n/a'} | {t.signal_tf || 'n/a'} | {t.rr_planned || '0'} rr | {t.volume || '0'} lots
+                          </div>
                         </div>
                       </td>
                       <td>

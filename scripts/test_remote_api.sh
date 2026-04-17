@@ -5,14 +5,14 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPORT_DIR="${ROOT_DIR}/test-results"
 mkdir -p "${REPORT_DIR}"
 
-BASE_URL="${BASE_URL:-http://139.59.211.192}"
+BASE_URL="${BASE_URL:-https://trade.mozasolution.com/webhook}"
 API_KEY="${API_KEY:-}"
 ACCOUNT="${ACCOUNT:-remote-test}"
 
 if [[ -z "${API_KEY}" ]]; then
   echo "[test] API_KEY is required"
   echo "[test] Example:"
-  echo "API_KEY=\"\$(sed -n 's/^SIGNAL_API_KEY=//p' webhook/.env | head -n 1)\" BASE_URL=\"http://139.59.211.192\" bash scripts/test_remote_api.sh"
+  echo "API_KEY=\"\$(sed -n 's/^SIGNAL_API_KEY=//p' webhook/.env | head -n 1)\" BASE_URL=\"https://trade.mozasolution.com/webhook\" bash scripts/test_remote_api.sh"
   exit 1
 fi
 

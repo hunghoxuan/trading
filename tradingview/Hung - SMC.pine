@@ -1150,7 +1150,16 @@ get_data_trade_type_for_source(string baseType, string sourceTf) =>
     baseType + "." + get_data_trade_tf_suffix(sourceTf)
 
 get_data_trade_type_for_source_rr(string baseType, string sourceTf, float rrVal) =>
-    get_data_trade_type_for_source(baseType, sourceTf) + "." + str.tostring(rrVal)
+    string fullName = baseType == "OB" ? "Order Block" :
+                      baseType == "FVG" ? "Fair Value Gap" :
+                      baseType == "SD" ? "Supply/Demand" :
+                      baseType == "BB" ? "Breaker Block" :
+                      baseType == "IFVG" ? "Inversion FVG" :
+                      baseType == "RJ" or baseType == "REJECTION" ? "Rejection" :
+                      baseType == "SW" or baseType == "SWEEP" ? "Sweep" :
+                      baseType == "BO" or baseType == "BOS" ? "Break of Structure" :
+                      baseType == "MSS" or baseType == "MS" ? "Market Structure Shift" : "Model"
+    baseType + " - " + fullName
 
 get_data_source_tf_rank(string sourceTf) =>
     [tf1Local, tf2Local] = KitCore.get_htf_pair()
@@ -1225,7 +1234,7 @@ process_data_add_entry(string type, string direction, string reason, float level
                         float orderQty = not na(e) ? CORE_get_trade_order_qty(entry, stoploss, tradeRiskAmountUsd) : float(na)
                         if not na(e)
                             CORE_track_trade_entry(trades, tradeOrderIds, e, orderId, shouldTrackTrades)
-                            string webhookNote = tradeType + " | " + reason
+                            string webhookNote = reason
                             KitCore.emit_trade_webhook_new_trade(webhookEnabled, true, "Hung-SMC", syminfo.ticker, direction, sourceTf, entry, stoploss, takeprofit, webhookNote, orderId, "ctrader", "PENDING", rrUsed, tradeType, tradeRiskAmountUsd, tradeRiskMode == "%" ? tradeRiskValue : na, time, reason, timeframe.period)
                             if tradeRiskMode == "%"
                                 KitCore.prop_register_trade(propDayState, tradeRiskValue)

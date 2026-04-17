@@ -4,7 +4,7 @@ set -euo pipefail
 # Local + VPS deploy helper for webhook server.
 # Usage examples:
 #   bash scripts/deploy_webhook.sh
-#   PUSH_FIRST=0 VPS_APP_DIR=/root/trading/webhook SERVICE_MODE=systemd SERVICE_NAME=webhook \
+#   PUSH_FIRST=0 VPS_APP_DIR=/opt/trading SERVICE_MODE=systemd SERVICE_NAME=webhook \
 #     bash scripts/deploy_webhook.sh
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,7 +12,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BRANCH="${BRANCH:-main}"
 PUSH_FIRST="${PUSH_FIRST:-1}"
 VPS_HOST="${VPS_HOST:-root@139.59.211.192}"
-VPS_APP_DIR="${VPS_APP_DIR:-/root/trading}"
+VPS_APP_DIR="${VPS_APP_DIR:-/opt/trading}"
 SERVICE_MODE="${SERVICE_MODE:-pm2}"      # pm2|systemd
 SERVICE_NAME="${SERVICE_NAME:-webhook}"  # pm2 process name or systemd unit name
 HEALTH_PORT="${HEALTH_PORT:-80}"
