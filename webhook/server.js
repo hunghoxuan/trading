@@ -4591,7 +4591,7 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "GET" && url.pathname === "/") {
+  if (["GET", "HEAD"].includes(req.method) && url.pathname === "/") {
     return json(res, 200, {
       ok: true,
       service: "telegram-trading-bot",
