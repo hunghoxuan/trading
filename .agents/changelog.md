@@ -3,6 +3,7 @@
 *(A strict append-only log of what was completed, with dates, module, and author)*
 
 ## 2026-04-17
+- [x] [22:46] [webhook + web-ui] [Author: Codex] Task: Added guarded account archive flow (`DELETE /v2/accounts/{id}`) with open/pending trade protection and `ARCHIVE` action in Accounts V2 UI. Live smoke verified: archive success on empty account and blocked response with `blocking_open_trades` on active account.
 - [x] [22:42] [webhook + web-ui] [Author: Codex] Task: Execution Hub V2 account management completed. Added `/v2/accounts` POST + `/v2/accounts/{id}` PUT, `Accounts V2` admin page (create/edit/status toggle/rotate key), and deployed live bundle `index-12fYXWHN.js` with production smoke verification.
 - [x] [22:42] [webhook] [Author: Codex] Task: Fixed nullable account balance regression in v2 account update flow (omitted balance no longer coerces `null -> 0`). Verified via live API create/update regression smoke.
 - [x] [22:18] [webhook + web-ui] [Author: Codex] Task: Execution Hub V2 source security lifecycle completed. Added source auth-secret rotate/revoke APIs, `source_events` audit table/API, and Sources UI controls/audit viewer. Deployed live (`index-BKaMxoxM.js`) and verified with `/webhook/v2/sources/{id}/auth-secret/*` + `/webhook/v2/sources/{id}/events`.

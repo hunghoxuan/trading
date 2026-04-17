@@ -23,6 +23,7 @@ Achieve 100% synchronization reliability between MT5 and VPS to eliminate "Ghost
     - [x] Add `/v2/trades` + `/v2/trades/{id}/events` and web-ui `Execution V2` inspection page.
     - [x] Add `/v2/accounts` POST + `/v2/accounts/{id}` PUT and web-ui `Accounts V2` management page.
     - [x] Fix nullable balance regression on account updates (preserve `null` when balance is omitted).
+    - [x] Add guarded account archive flow: `DELETE /v2/accounts/{id}` blocks when open/pending trades exist; add `ARCHIVE` action in `Accounts V2` UI.
 
 ## Up Next
 - [ ] [2026-04-15 12:25] [Infra/Deployment] Task: SSL/TLS and HTTPS Enforcement.
