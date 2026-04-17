@@ -2553,12 +2553,17 @@ async function mt5InitBackend() {
         if (!aid) return { ok: false, error: "account_id is required" };
         const prev = await this.getAccountByIdV2(aid);
         if (!prev) return { ok: false, error: "account not found" };
+        const toNullableNumber = (v) => {
+          if (v === null || v === undefined || String(v).trim() === "") return null;
+          const n = Number(v);
+          return Number.isFinite(n) ? n : null;
+        };
         const next = {
           user_id: patch?.user_id === undefined ? prev.user_id : String(patch.user_id || "").trim(),
           name: patch?.name === undefined ? prev.name : String(patch.name || "").trim(),
           balance: patch?.balance === undefined
-            ? (Number.isFinite(Number(prev.balance)) ? Number(prev.balance) : null)
-            : (Number.isFinite(Number(patch.balance)) ? Number(patch.balance) : null),
+            ? toNullableNumber(prev.balance)
+            : toNullableNumber(patch.balance),
           status: patch?.status === undefined ? prev.status : String(patch.status || "").trim(),
           broker_id: patch?.broker_id === undefined ? (prev.broker_id || null) : (patch.broker_id ? String(patch.broker_id) : null),
           metadata: patch?.metadata && typeof patch.metadata === "object" ? patch.metadata : prev.metadata,
@@ -4274,12 +4279,17 @@ async function mt5InitBackend() {
       if (!aid) return { ok: false, error: "account_id is required" };
       const prev = await this.getAccountByIdV2(aid);
       if (!prev) return { ok: false, error: "account not found" };
+      const toNullableNumber = (v) => {
+        if (v === null || v === undefined || String(v).trim() === "") return null;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      };
       const next = {
         user_id: patch?.user_id === undefined ? String(prev.user_id || "") : String(patch.user_id || "").trim(),
         name: patch?.name === undefined ? String(prev.name || "") : String(patch.name || "").trim(),
         balance: patch?.balance === undefined
-          ? (Number.isFinite(Number(prev.balance)) ? Number(prev.balance) : null)
-          : (Number.isFinite(Number(patch.balance)) ? Number(patch.balance) : null),
+          ? toNullableNumber(prev.balance)
+          : toNullableNumber(patch.balance),
         status: patch?.status === undefined ? String(prev.status || "") : String(patch.status || "").trim(),
         broker_id: patch?.broker_id === undefined ? (prev.broker_id || null) : (patch.broker_id ? String(patch.broker_id) : null),
         metadata: patch?.metadata && typeof patch.metadata === "object" ? patch.metadata : (prev.metadata || {}),
