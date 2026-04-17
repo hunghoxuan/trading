@@ -2,6 +2,7 @@
 
 const crypto = require("crypto");
 const http = require("http");
+const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const { URL, URLSearchParams } = require("url");
@@ -83,6 +84,12 @@ const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.17-46
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
+  httpsEnabled: asBool(process.env.HTTPS_ENABLED, false),
+  httpsPort: asNum(process.env.HTTPS_PORT, 443),
+  httpsKeyPath: envStr(process.env.HTTPS_KEY_PATH),
+  httpsCertPath: envStr(process.env.HTTPS_CERT_PATH),
+  httpsCaPath: envStr(process.env.HTTPS_CA_PATH),
+  httpsRedirectHttp: asBool(process.env.HTTPS_REDIRECT_HTTP, true),
   signalApiKey: envStr(process.env.SIGNAL_API_KEY),
 
   telegramBotToken: envStr(process.env.TELEGRAM_BOT_TOKEN),
@@ -4208,8 +4215,9 @@ async function executeMt5(signal) {
   };
 }
 
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+const appHandler = async (req, res) => {
+  const proto = req?.socket?.encrypted ? "https" : "http";
+  const url = new URL(req.url, `${proto}://${req.headers.host || "localhost"}`);
 
   if (tryServeUi(url, req, res)) {
     return;
@@ -5469,7 +5477,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   return json(res, 404, { ok: false, error: "Not found" });
-});
+};
 
 async function start() {
   if (CFG.uiAuthEnabled) {
@@ -5508,10 +5516,59 @@ async function start() {
     console.log("MT5 bridge enabled=false");
   }
 
-  server.listen(CFG.port, () => {
+  function loadTlsOptions() {
+    if (!CFG.httpsEnabled) return null;
+    if (!CFG.httpsKeyPath || !CFG.httpsCertPath) {
+      throw new Error("HTTPS_ENABLED=true requires HTTPS_KEY_PATH and HTTPS_CERT_PATH");
+    }
+    const keyPath = path.resolve(__dirname, CFG.httpsKeyPath);
+    const certPath = path.resolve(__dirname, CFG.httpsCertPath);
+    if (!fs.existsSync(keyPath)) throw new Error(`HTTPS key file not found: ${keyPath}`);
+    if (!fs.existsSync(certPath)) throw new Error(`HTTPS cert file not found: ${certPath}`);
+    const out = {
+      key: fs.readFileSync(keyPath, "utf8"),
+      cert: fs.readFileSync(certPath, "utf8"),
+    };
+    if (CFG.httpsCaPath) {
+      const caPath = path.resolve(__dirname, CFG.httpsCaPath);
+      if (!fs.existsSync(caPath)) throw new Error(`HTTPS CA file not found: ${caPath}`);
+      out.ca = fs.readFileSync(caPath, "utf8");
+    }
+    return out;
+  }
+
+  if (CFG.httpsEnabled) {
+    const tlsOptions = loadTlsOptions();
+    const httpsServer = https.createServer(tlsOptions, appHandler);
+    await new Promise((resolve, reject) => {
+      httpsServer.once("error", reject);
+      httpsServer.listen(CFG.httpsPort, "0.0.0.0", resolve);
+    });
+    console.log(`telegram-trading-bot listening on https://0.0.0.0:${CFG.httpsPort}`);
+
+    if (CFG.httpsRedirectHttp) {
+      const httpRedirectServer = http.createServer((req, res) => {
+        const hostHeader = String(req.headers.host || "localhost").replace(/:\d+$/, "");
+        const targetHost = CFG.httpsPort === 443 ? hostHeader : `${hostHeader}:${CFG.httpsPort}`;
+        const location = `https://${targetHost}${req.url || "/"}`;
+        res.writeHead(308, { Location: location });
+        res.end();
+      });
+      await new Promise((resolve, reject) => {
+        httpRedirectServer.once("error", reject);
+        httpRedirectServer.listen(CFG.port, "0.0.0.0", resolve);
+      });
+      console.log(`HTTP redirect enabled on http://0.0.0.0:${CFG.port} -> https://0.0.0.0:${CFG.httpsPort}`);
+    }
+  } else {
+    const httpServer = http.createServer(appHandler);
+    await new Promise((resolve, reject) => {
+      httpServer.once("error", reject);
+      httpServer.listen(CFG.port, "0.0.0.0", resolve);
+    });
     console.log(`telegram-trading-bot listening on http://0.0.0.0:${CFG.port}`);
-    console.log(`Binance mode=${CFG.binanceMode || "off"}, cTrader mode=${CFG.ctraderMode || "off"}`);
-  });
+  }
+  console.log(`Binance mode=${CFG.binanceMode || "off"}, cTrader mode=${CFG.ctraderMode || "off"}`);
 }
 
 start().catch((err) => {

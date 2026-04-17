@@ -36,6 +36,22 @@ Health check:
 curl http://localhost:80/health
 ```
 
+HTTPS (native TLS in Node):
+
+```bash
+# webhook/.env
+HTTPS_ENABLED=true
+HTTPS_PORT=443
+HTTPS_KEY_PATH=./ssl/privkey.pem
+HTTPS_CERT_PATH=./ssl/fullchain.pem
+HTTPS_CA_PATH=./ssl/chain.pem      # optional
+HTTPS_REDIRECT_HTTP=true           # keep PORT open and redirect to HTTPS
+```
+
+Notes:
+- When `HTTPS_ENABLED=true`, server terminates TLS directly.
+- If `HTTPS_REDIRECT_HTTP=true`, requests on `PORT` get `308` redirect to `HTTPS_PORT`.
+
 ## Deployment Automation
 
 ### Option A: Local deploy script (recommended)
