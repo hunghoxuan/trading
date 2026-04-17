@@ -54,7 +54,7 @@ export default function UsersPage({ authUser }) {
 
   const [createUserForm, setCreateUserForm] = useState({ user_name: "", email: "", role: "User", password: "" });
   const [profileForm, setProfileForm] = useState({ user_name: "", email: "", role: "User", is_active: true, password: "" });
-  const [accountForm, setAccountForm] = useState({ account_id: "", name: "", balance: "", status: "" });
+  const [accountForm, setAccountForm] = useState({ name: "", balance: "", status: "" });
   const [editingAccountId, setEditingAccountId] = useState("");
   const [apiKeyLabel, setApiKeyLabel] = useState("");
 
@@ -115,7 +115,7 @@ export default function UsersPage({ authUser }) {
         password: "",
       });
       setEditingAccountId("");
-      setAccountForm({ account_id: "", name: "", balance: "", status: "" });
+      setAccountForm({ name: "", balance: "", status: "" });
       setPageAlert(EMPTY_ALERT);
     } catch (e) {
       setPageAlert({ type: "error", text: e?.message || "Failed to load user detail" });
@@ -246,13 +246,11 @@ export default function UsersPage({ authUser }) {
   async function onSaveAccount() {
     if (!selectedUser) return;
     const payload = {
-      account_id: String(accountForm.account_id || "").trim(),
       name: String(accountForm.name || "").trim(),
       balance: accountForm.balance === "" ? null : Number(accountForm.balance),
       status: String(accountForm.status || "").trim(),
     };
     const nextErrors = {};
-    if (!payload.account_id) nextErrors.account_id = "Account ID is required.";
     if (!payload.name) nextErrors.name = "Account name is required.";
     if (accountForm.balance !== "" && Number.isNaN(Number(accountForm.balance))) nextErrors.balance = "Balance must be a valid number.";
     if (Object.keys(nextErrors).length) {
@@ -273,7 +271,7 @@ export default function UsersPage({ authUser }) {
         setAccountAlert({ type: "success", text: "Account created." });
       }
       setEditingAccountId("");
-      setAccountForm({ account_id: "", name: "", balance: "", status: "" });
+      setAccountForm({ name: "", balance: "", status: "" });
       await loadDetail(selectedUser.user_id);
     } catch (e) {
       setAccountAlert({ type: "error", text: e?.message || "Failed to save account" });
@@ -495,11 +493,10 @@ export default function UsersPage({ authUser }) {
                 <div className="panel-label">ACCOUNT MANAGEMENT</div>
                 <div className="stack-layout" style={{ gap: 10 }}>
                   <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1.1fr 1fr 1fr 1fr" }}>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div className="minor-text">Account ID</div>
-                      <input placeholder="Ex: 52836789" value={accountForm.account_id} onChange={(e) => { setAccountForm((p) => ({ ...p, account_id: e.target.value })); setAccountErrors((p) => ({ ...p, account_id: "" })); if (accountAlert.type === "error") setAccountAlert(EMPTY_ALERT); }} />
-                      {accountErrors.account_id ? <div className="field-validation msg-error">{accountErrors.account_id}</div> : null}
-                    </label>
+                    <div className="cell-wrap" style={{ justifyContent: "center" }}>
+                      <div className="minor-text">User ID</div>
+                      <div className="cell-major">{selectedUser?.user_id || "-"}</div>
+                    </div>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       <div className="minor-text">Name</div>
                       <input placeholder="Friendly Name" value={accountForm.name} onChange={(e) => { setAccountForm((p) => ({ ...p, name: e.target.value })); setAccountErrors((p) => ({ ...p, name: "" })); if (accountAlert.type === "error") setAccountAlert(EMPTY_ALERT); }} />
@@ -514,6 +511,10 @@ export default function UsersPage({ authUser }) {
                       <div className="minor-text">Status</div>
                       <input placeholder="ACTIVE" value={accountForm.status} onChange={(e) => setAccountForm((p) => ({ ...p, status: e.target.value }))} />
                     </label>
+                  </div>
+                  <div className="cell-wrap" style={{ marginTop: "-4px" }}>
+                    <div className="minor-text">Account ID</div>
+                    <div className="cell-major">{editingAccountId || "AUTO-GENERATED ON CREATE"}</div>
                   </div>
                   {accountAlert.text ? <div className={`form-message msg-${accountAlert.type || "error"}`}>{accountAlert.text}</div> : null}
                   <div style={{ display: "flex", gap: 8 }}>
@@ -547,9 +548,8 @@ export default function UsersPage({ authUser }) {
                                   className="secondary-button"
                                   style={{ padding: "4px 10px" }}
                                   onClick={() => {
-                                    setEditingAccountId(String(a.account_id || ""));
-                                    setAccountForm({
-                                      account_id: String(a.account_id || ""),
+                                  setEditingAccountId(String(a.account_id || ""));
+                                  setAccountForm({
                                       name: String(a.name || ""),
                                       balance: a.balance === null || a.balance === undefined ? "" : String(a.balance),
                                       status: String(a.status || ""),
