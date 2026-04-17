@@ -244,6 +244,46 @@ async function put(path, body = {}) {
   return data;
 }
 
+async function del(path) {
+  const API_KEY = runtimeApiKey();
+  const base = runtimeApiBase();
+  const primaryUrl = buildUrl(base, path);
+  const fallbackUrl = buildUrl(window.location.origin, path);
+
+  async function doFetch(url) {
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(() => ctrl.abort(), 12000);
+    try {
+      return await fetch(url, {
+        method: "DELETE",
+        signal: ctrl.signal,
+        credentials: "include",
+        headers: API_KEY ? { "x-api-key": API_KEY } : {},
+      });
+    } catch (err) {
+      if (err?.name === "AbortError") throw new Error("Request timeout (12s). Check API URL and server status.");
+      throw err;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  let res;
+  try {
+    res = await doFetch(primaryUrl);
+  } catch (primaryError) {
+    if (primaryUrl !== fallbackUrl) {
+      try { res = await doFetch(fallbackUrl); } catch { throw primaryError; }
+    } else {
+      throw primaryError;
+    }
+  }
+  let data;
+  try { data = await res.json(); } catch { throw new Error(`Server returned non-JSON response (${res.status})`); }
+  if (!res.ok || !data.ok) throw new Error(data.error || `Request failed: ${res.status}`);
+  return data;
+}
+
 async function downloadCsv(path, params = {}) {
   const API_KEY = runtimeApiKey();
   const base = runtimeApiBase();
@@ -298,6 +338,17 @@ export const api = {
   authMe: () => get("/auth/me"),
   authProfile: () => get("/auth/profile"),
   updateAuthProfile: (user_name, email) => put("/auth/profile", { user_name, email }),
+  listUsers: () => get("/auth/users"),
+  createUser: (payload = {}) => post("/auth/users", payload),
+  updateUser: (userId, payload = {}) => put(`/auth/users/${encodeURIComponent(userId)}`, payload),
+  deactivateUser: (userId) => post(`/auth/users/${encodeURIComponent(userId)}/deactivate`, {}),
+  userDetail: (userId) => get(`/auth/users/${encodeURIComponent(userId)}/detail`),
+  createUserAccount: (userId, payload = {}) => post(`/auth/users/${encodeURIComponent(userId)}/accounts`, payload),
+  updateUserAccount: (userId, accountId, payload = {}) => put(`/auth/users/${encodeURIComponent(userId)}/accounts/${encodeURIComponent(accountId)}`, payload),
+  deleteUserAccount: (userId, accountId) => del(`/auth/users/${encodeURIComponent(userId)}/accounts/${encodeURIComponent(accountId)}`),
+  createUserApiKey: (userId, payload = {}) => post(`/auth/users/${encodeURIComponent(userId)}/api-keys`, payload),
+  updateUserApiKey: (userId, keyId, payload = {}) => put(`/auth/users/${encodeURIComponent(userId)}/api-keys/${encodeURIComponent(keyId)}`, payload),
+  deleteUserApiKey: (userId, keyId) => del(`/auth/users/${encodeURIComponent(userId)}/api-keys/${encodeURIComponent(keyId)}`),
   login: (email, password) => post("/auth/login", { email, password }),
   logout: () => post("/auth/logout", {}),
   changePassword: (currentPassword, newPassword) => post("/auth/password", { currentPassword, newPassword }),

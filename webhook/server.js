@@ -67,7 +67,7 @@ function envStr(value, fallback = "") {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.16-45");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.17-46");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -166,8 +166,65 @@ function normalizeUserRole(roleRaw) {
   return "User";
 }
 
+function normalizeUserActive(activeRaw, fallback = true) {
+  if (typeof activeRaw === "boolean") return activeRaw;
+  if (activeRaw === 1 || activeRaw === "1" || String(activeRaw || "").toLowerCase() === "true") return true;
+  if (activeRaw === 0 || activeRaw === "0" || String(activeRaw || "").toLowerCase() === "false") return false;
+  return Boolean(fallback);
+}
+
 function isSystemRole(roleRaw) {
   return normalizeUserRole(roleRaw) === UI_ROLE_SYSTEM;
+}
+
+function isValidEmail(emailRaw) {
+  const email = normalizeEmail(emailRaw);
+  return Boolean(email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email));
+}
+
+function uiPublicUserView(user) {
+  return {
+    user_id: String(user?.user_id || ""),
+    user_name: String(user?.user_name || ""),
+    email: normalizeEmail(user?.email),
+    role: normalizeUserRole(user?.role),
+    is_active: normalizeUserActive(user?.is_active, true),
+    updated_at: String(user?.updated_at || ""),
+    created_at: String(user?.created_at || ""),
+  };
+}
+
+function maskApiKey(raw) {
+  const val = String(raw || "");
+  if (!val) return "";
+  if (val.length <= 8) return `${val.slice(0, 2)}***${val.slice(-1)}`;
+  return `${val.slice(0, 4)}...${val.slice(-4)}`;
+}
+
+function uiPublicApiKeyView(row) {
+  const keyValue = String(row?.key_value || row?.api_key || "");
+  return {
+    key_id: String(row?.key_id || ""),
+    label: String(row?.label || ""),
+    key_masked: maskApiKey(keyValue),
+    is_active: normalizeUserActive(row?.is_active, true),
+    created_at: String(row?.created_at || ""),
+    updated_at: String(row?.updated_at || ""),
+    last_used_at: String(row?.last_used_at || ""),
+  };
+}
+
+function uiPublicAccountView(row) {
+  return {
+    account_id: String(row?.account_id || ""),
+    user_id: String(row?.user_id || ""),
+    name: String(row?.name || ""),
+    balance: row?.balance === null || row?.balance === undefined ? null : Number(row.balance),
+    status: String(row?.status || ""),
+    metadata: row?.metadata && typeof row.metadata === "object" ? row.metadata : (row?.metadata ? row.metadata : null),
+    created_at: String(row?.created_at || ""),
+    updated_at: String(row?.updated_at || ""),
+  };
 }
 
 function fallbackUserNameFromEmail(emailRaw) {
@@ -202,9 +259,11 @@ function uiDefaultAuthState(emailOverride = "") {
     email,
     user_name: fallbackUserNameFromEmail(email),
     role: UI_ROLE_SYSTEM,
+    is_active: true,
     password_salt: salt,
     password_hash: hashPassword(CFG.uiBootstrapPassword, salt),
     updated_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
   };
 }
 
@@ -222,9 +281,11 @@ function parseLegacyUiAuthStateFromFile() {
       email,
       user_name: fallbackUserNameFromEmail(email),
       role: UI_ROLE_SYSTEM,
+      is_active: true,
       password_salt: passwordSalt,
       password_hash: passwordHash,
       updated_at: parsed.updated_at || new Date().toISOString(),
+      created_at: parsed.created_at || parsed.updated_at || new Date().toISOString(),
     };
   } catch {
     return null;
@@ -243,9 +304,11 @@ async function uiReadAuthStateByEmail(emailRaw) {
     email: normalizeEmail(row.email),
     user_name: String(row.user_name || ""),
     role: normalizeUserRole(row.role || UI_ROLE_SYSTEM),
+    is_active: normalizeUserActive(row.is_active, true),
     password_salt: String(row.password_salt || ""),
     password_hash: String(row.password_hash || ""),
     updated_at: String(row.updated_at || ""),
+    created_at: String(row.created_at || ""),
   };
 }
 
@@ -261,9 +324,11 @@ async function uiReadAuthStateByUserId(userIdRaw) {
     email: normalizeEmail(row.email),
     user_name: String(row.user_name || ""),
     role: normalizeUserRole(row.role || UI_ROLE_SYSTEM),
+    is_active: normalizeUserActive(row.is_active, true),
     password_salt: String(row.password_salt || ""),
     password_hash: String(row.password_hash || ""),
     updated_at: String(row.updated_at || ""),
+    created_at: String(row.created_at || ""),
   };
 }
 
@@ -275,9 +340,11 @@ async function uiWriteAuthState(nextState) {
     email: normalizeEmail(nextState.email),
     user_name: String(nextState.user_name || fallbackUserNameFromEmail(nextState.email)),
     role: normalizeUserRole(nextState.role || UI_ROLE_SYSTEM),
+    is_active: normalizeUserActive(nextState.is_active, true),
     password_salt: String(nextState.password_salt || ""),
     password_hash: String(nextState.password_hash || ""),
     updated_at: String(nextState.updated_at || new Date().toISOString()),
+    created_at: String(nextState.created_at || mt5NowIso()),
   });
 }
 
@@ -287,7 +354,7 @@ async function uiAuthUpdateProfile(sess, patch = {}) {
   const nextName = String((patch.user_name ?? patch.userName ?? state.user_name ?? "")).trim();
   const nextEmail = normalizeEmail(patch.email ?? state.email);
   if (!nextName) return { ok: false, error: "Username is required" };
-  if (!nextEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(nextEmail)) return { ok: false, error: "Valid email is required" };
+  if (!isValidEmail(nextEmail)) return { ok: false, error: "Valid email is required" };
 
   const duplicate = await uiReadAuthStateByEmail(nextEmail);
   if (duplicate && String(duplicate.user_id || "") !== String(state.user_id || "")) {
@@ -299,20 +366,177 @@ async function uiAuthUpdateProfile(sess, patch = {}) {
     user_name: nextName,
     email: nextEmail,
     role: normalizeUserRole(state.role || UI_ROLE_SYSTEM),
+    is_active: normalizeUserActive(state.is_active, true),
     password_salt: String(state.password_salt || ""),
     password_hash: String(state.password_hash || ""),
     updated_at: new Date().toISOString(),
+    created_at: String(state.created_at || mt5NowIso()),
   };
   await uiWriteAuthState(next);
+  return { ok: true, user: uiPublicUserView(next) };
+}
+
+async function uiListUsers() {
+  const b = await mt5Backend();
+  if (!b.listUiUsers) throw new Error("User listing is not supported by the current backend");
+  const rows = await b.listUiUsers();
+  return (Array.isArray(rows) ? rows : []).map(uiPublicUserView);
+}
+
+async function uiCreateUser(payload = {}) {
+  const userName = String(payload.user_name ?? payload.userName ?? "").trim();
+  const email = normalizeEmail(payload.email);
+  const role = normalizeUserRole(payload.role || "User");
+  const password = String(payload.password || "");
+  if (!userName) return { ok: false, error: "Username is required" };
+  if (!isValidEmail(email)) return { ok: false, error: "Valid email is required" };
+  if (password.length < 8) return { ok: false, error: "Password must be at least 8 characters" };
+  const duplicate = await uiReadAuthStateByEmail(email);
+  if (duplicate) return { ok: false, error: "Email is already used by another user" };
+  const userId = String(payload.user_id || crypto.randomUUID()).trim();
+  const salt = makeSaltHex();
+  const now = mt5NowIso();
+  await uiWriteAuthState({
+    user_id: userId,
+    user_name: userName,
+    email,
+    role,
+    is_active: true,
+    password_salt: salt,
+    password_hash: hashPassword(password, salt),
+    updated_at: now,
+    created_at: now,
+  });
   return {
     ok: true,
-    user: {
-      user_id: next.user_id,
-      user_name: next.user_name,
-      email: next.email,
-      role: next.role,
-    },
+    user: uiPublicUserView({ user_id: userId, user_name: userName, email, role, is_active: true, updated_at: now, created_at: now }),
   };
+}
+
+async function uiUpdateUserById(userIdRaw, payload = {}) {
+  const userId = String(userIdRaw || "").trim();
+  if (!userId) return { ok: false, error: "user_id is required" };
+  const current = await uiReadAuthStateByUserId(userId);
+  if (!current) return { ok: false, error: "User not found" };
+  const nextName = String((payload.user_name ?? payload.userName ?? current.user_name ?? "")).trim();
+  const nextEmail = normalizeEmail(payload.email ?? current.email);
+  const nextRole = normalizeUserRole(payload.role ?? current.role);
+  const nextActive = normalizeUserActive(payload.is_active ?? payload.isActive ?? current.is_active, true);
+  if (!nextName) return { ok: false, error: "Username is required" };
+  if (!isValidEmail(nextEmail)) return { ok: false, error: "Valid email is required" };
+  const duplicate = await uiReadAuthStateByEmail(nextEmail);
+  if (duplicate && String(duplicate.user_id || "") !== userId) {
+    return { ok: false, error: "Email is already used by another user" };
+  }
+  const isDefaultUser = userId === String(CFG.mt5DefaultUserId);
+  const password = payload.password === undefined ? "" : String(payload.password || "");
+  if (payload.password !== undefined && password && password.length < 8) {
+    return { ok: false, error: "Password must be at least 8 characters" };
+  }
+  const salt = payload.password ? makeSaltHex() : String(current.password_salt || "");
+  const hash = payload.password ? hashPassword(password, salt) : String(current.password_hash || "");
+  const next = {
+    user_id: userId,
+    user_name: nextName,
+    email: nextEmail,
+    role: isDefaultUser ? UI_ROLE_SYSTEM : nextRole,
+    is_active: isDefaultUser ? true : nextActive,
+    password_salt: salt,
+    password_hash: hash,
+    updated_at: mt5NowIso(),
+    created_at: String(current.created_at || mt5NowIso()),
+  };
+  await uiWriteAuthState(next);
+  return { ok: true, user: uiPublicUserView(next) };
+}
+
+async function uiGetUserDetail(userIdRaw) {
+  const userId = String(userIdRaw || "").trim();
+  if (!userId) return { ok: false, error: "user_id is required" };
+  const user = await uiReadAuthStateByUserId(userId);
+  if (!user) return { ok: false, error: "User not found" };
+  const b = await mt5Backend();
+  const accounts = b.listUserAccounts ? await b.listUserAccounts(userId) : [];
+  const apiKeys = b.listUserApiKeys ? await b.listUserApiKeys(userId) : [];
+  return {
+    ok: true,
+    user: uiPublicUserView(user),
+    accounts: (accounts || []).map(uiPublicAccountView),
+    api_keys: (apiKeys || []).map(uiPublicApiKeyView),
+  };
+}
+
+async function uiUpsertUserAccount(userIdRaw, payload = {}) {
+  const userId = String(userIdRaw || "").trim();
+  if (!userId) return { ok: false, error: "user_id is required" };
+  const user = await uiReadAuthStateByUserId(userId);
+  if (!user) return { ok: false, error: "User not found" };
+  const accountId = String(payload.account_id || payload.accountId || crypto.randomUUID()).trim();
+  const name = String(payload.name || "").trim();
+  if (!accountId) return { ok: false, error: "account_id is required" };
+  if (!name) return { ok: false, error: "Account name is required" };
+  const b = await mt5Backend();
+  if (!b.upsertUserAccount) return { ok: false, error: "Account management is not supported by this backend" };
+  const row = await b.upsertUserAccount(userId, {
+    account_id: accountId,
+    name,
+    balance: payload.balance === null || payload.balance === undefined || payload.balance === "" ? null : Number(payload.balance),
+    status: String(payload.status || ""),
+    metadata: payload.metadata && typeof payload.metadata === "object" ? payload.metadata : null,
+  });
+  return { ok: true, account: uiPublicAccountView(row || { account_id: accountId, user_id: userId, name }) };
+}
+
+async function uiDeleteUserAccount(userIdRaw, accountIdRaw) {
+  const userId = String(userIdRaw || "").trim();
+  const accountId = String(accountIdRaw || "").trim();
+  if (!userId || !accountId) return { ok: false, error: "user_id and account_id are required" };
+  const b = await mt5Backend();
+  if (!b.deleteUserAccount) return { ok: false, error: "Account management is not supported by this backend" };
+  await b.deleteUserAccount(userId, accountId);
+  return { ok: true };
+}
+
+async function uiCreateUserApiKey(userIdRaw, payload = {}) {
+  const userId = String(userIdRaw || "").trim();
+  if (!userId) return { ok: false, error: "user_id is required" };
+  const user = await uiReadAuthStateByUserId(userId);
+  if (!user) return { ok: false, error: "User not found" };
+  const label = String(payload.label || "").trim();
+  if (!label) return { ok: false, error: "Key label is required" };
+  const b = await mt5Backend();
+  if (!b.createUserApiKey) return { ok: false, error: "API key management is not supported by this backend" };
+  const keyValue = `tk_${crypto.randomBytes(24).toString("hex")}`;
+  const created = await b.createUserApiKey(userId, { label, key_value: keyValue, is_active: true });
+  return {
+    ok: true,
+    api_key: uiPublicApiKeyView(created || { key_id: "", label, key_value: keyValue, is_active: true }),
+    key_value: keyValue,
+  };
+}
+
+async function uiUpdateUserApiKey(userIdRaw, keyIdRaw, payload = {}) {
+  const userId = String(userIdRaw || "").trim();
+  const keyId = String(keyIdRaw || "").trim();
+  if (!userId || !keyId) return { ok: false, error: "user_id and key_id are required" };
+  const b = await mt5Backend();
+  if (!b.updateUserApiKey) return { ok: false, error: "API key management is not supported by this backend" };
+  const row = await b.updateUserApiKey(userId, keyId, {
+    label: payload.label === undefined ? undefined : String(payload.label || "").trim(),
+    is_active: payload.is_active === undefined ? undefined : normalizeUserActive(payload.is_active, true),
+  });
+  if (!row) return { ok: false, error: "API key not found" };
+  return { ok: true, api_key: uiPublicApiKeyView(row) };
+}
+
+async function uiDeleteUserApiKey(userIdRaw, keyIdRaw) {
+  const userId = String(userIdRaw || "").trim();
+  const keyId = String(keyIdRaw || "").trim();
+  if (!userId || !keyId) return { ok: false, error: "user_id and key_id are required" };
+  const b = await mt5Backend();
+  if (!b.deleteUserApiKey) return { ok: false, error: "API key management is not supported by this backend" };
+  await b.deleteUserApiKey(userId, keyId);
+  return { ok: true };
 }
 
 async function uiEnsureAuthBootstrap() {
@@ -325,6 +549,8 @@ async function uiEnsureAuthBootstrap() {
   seed.user_id = String(seed.user_id || CFG.mt5DefaultUserId);
   seed.user_name = String(seed.user_name || fallbackUserNameFromEmail(seed.email));
   seed.role = normalizeUserRole(seed.role || UI_ROLE_SYSTEM);
+  seed.is_active = normalizeUserActive(seed.is_active, true);
+  seed.created_at = String(seed.created_at || seed.updated_at || mt5NowIso());
   await uiWriteAuthState(seed);
   return seed;
 }
@@ -364,11 +590,13 @@ function createUiSession(user) {
   const userId = String(user?.user_id || CFG.mt5DefaultUserId);
   const userName = String(user?.user_name || fallbackUserNameFromEmail(email));
   const role = normalizeUserRole(user?.role || UI_ROLE_SYSTEM);
+  const isActive = normalizeUserActive(user?.is_active, true);
   UI_SESSIONS.set(token, {
     email,
     user_id: userId,
     user_name: userName,
     role,
+    is_active: isActive,
     created_at: nowUnixSec(),
     expires_at: nowUnixSec() + ttl,
   });
@@ -384,16 +612,21 @@ function getUiSessionFromReq(req) {
       user_id: CFG.mt5DefaultUserId,
       user_name: fallbackUserNameFromEmail(CFG.uiBootstrapEmail),
       role: UI_ROLE_SYSTEM,
+      is_active: true,
     };
   }
   const cookies = parseCookies(req);
   const token = String(cookies.tvb_session || "");
-  if (!token) return { ok: false, email: "", token: "", user_id: "", user_name: "", role: "" };
+  if (!token) return { ok: false, email: "", token: "", user_id: "", user_name: "", role: "", is_active: false };
   const sess = UI_SESSIONS.get(token);
-  if (!sess) return { ok: false, email: "", token, user_id: "", user_name: "", role: "" };
+  if (!sess) return { ok: false, email: "", token, user_id: "", user_name: "", role: "", is_active: false };
   if (Number(sess.expires_at || 0) <= nowUnixSec()) {
     UI_SESSIONS.delete(token);
-    return { ok: false, email: "", token, user_id: "", user_name: "", role: "" };
+    return { ok: false, email: "", token, user_id: "", user_name: "", role: "", is_active: false };
+  }
+  if (!normalizeUserActive(sess.is_active, true)) {
+    UI_SESSIONS.delete(token);
+    return { ok: false, email: "", token, user_id: "", user_name: "", role: "", is_active: false };
   }
   return {
     ok: true,
@@ -402,6 +635,7 @@ function getUiSessionFromReq(req) {
     user_id: String(sess.user_id || CFG.mt5DefaultUserId),
     user_name: String(sess.user_name || fallbackUserNameFromEmail(sess.email)),
     role: normalizeUserRole(sess.role || UI_ROLE_SYSTEM),
+    is_active: true,
   };
 }
 
@@ -409,6 +643,7 @@ async function uiAuthGetVerifiedUser(emailRaw, passwordRaw) {
   const email = normalizeEmail(emailRaw);
   const state = await uiReadAuthStateByEmail(email);
   if (!state) return null;
+  if (!normalizeUserActive(state.is_active, true)) return null;
   if (!email || email !== normalizeEmail(state.email)) return null;
   const actualHash = hashPassword(String(passwordRaw || ""), state.password_salt);
   if (!timingSafeEqHex(actualHash, state.password_hash)) return null;
@@ -417,6 +652,7 @@ async function uiAuthGetVerifiedUser(emailRaw, passwordRaw) {
     user_name: String(state.user_name || fallbackUserNameFromEmail(state.email)),
     email: normalizeEmail(state.email),
     role: normalizeUserRole(state.role || UI_ROLE_SYSTEM),
+    is_active: normalizeUserActive(state.is_active, true),
   };
 }
 
@@ -432,9 +668,11 @@ async function uiAuthChangePassword(emailRaw, currentPassword, newPassword) {
     email: state.email,
     user_name: String(state.user_name || fallbackUserNameFromEmail(state.email)),
     role: normalizeUserRole(state.role || UI_ROLE_SYSTEM),
+    is_active: normalizeUserActive(state.is_active, true),
     password_salt: nextSalt,
     password_hash: hashPassword(String(newPassword || ""), nextSalt),
     updated_at: new Date().toISOString(),
+    created_at: String(state.created_at || mt5NowIso()),
   };
   await uiWriteAuthState(next);
   return { ok: true };
@@ -898,7 +1136,7 @@ function mt5NormalizeStorage(storageRaw) {
 
 function mt5EnsureJsonDbFile() {
   if (!fs.existsSync(CFG.mt5DbPath)) {
-    fs.writeFileSync(CFG.mt5DbPath, JSON.stringify({ users: [], signals: [], signal_events: [] }, null, 2));
+    fs.writeFileSync(CFG.mt5DbPath, JSON.stringify({ users: [], accounts: [], user_api_keys: [], signals: [], signal_events: [] }, null, 2));
   }
 }
 
@@ -913,6 +1151,7 @@ function mt5EnsureJsonDefaultUser(db) {
       user_name: "System",
       email: "",
       role: UI_ROLE_SYSTEM,
+      is_active: true,
       password_salt: "",
       password_hash: "",
       updated_at: now,
@@ -923,6 +1162,7 @@ function mt5EnsureJsonDefaultUser(db) {
     defaultUser.user_name = String(defaultUser.user_name || "System");
     defaultUser.email = normalizeEmail(defaultUser.email);
     defaultUser.role = normalizeUserRole(defaultUser.role || UI_ROLE_SYSTEM);
+    defaultUser.is_active = normalizeUserActive(defaultUser.is_active, true);
     defaultUser.password_salt = String(defaultUser.password_salt || "");
     defaultUser.password_hash = String(defaultUser.password_hash || "");
     defaultUser.updated_at = String(defaultUser.updated_at || now);
@@ -934,6 +1174,9 @@ function mt5EnsureJsonDefaultUser(db) {
 function mt5ReadJsonDb() {
   mt5EnsureJsonDbFile();
   const db = JSON.parse(fs.readFileSync(CFG.mt5DbPath, "utf8"));
+  if (!Array.isArray(db.users)) db.users = [];
+  if (!Array.isArray(db.accounts)) db.accounts = [];
+  if (!Array.isArray(db.user_api_keys)) db.user_api_keys = [];
   if (!Array.isArray(db.signals)) db.signals = [];
   if (!Array.isArray(db.signal_events)) db.signal_events = [];
   if (!Array.isArray(db.ui_auth_users)) db.ui_auth_users = [];
@@ -946,6 +1189,7 @@ function mt5ReadJsonDb() {
       defaultUser.user_name = String(defaultUser.user_name || fallbackUserNameFromEmail(legacyMail));
       defaultUser.email = legacyMail;
       defaultUser.role = UI_ROLE_SYSTEM;
+      defaultUser.is_active = true;
       defaultUser.password_salt = String(legacy.password_salt || "");
       defaultUser.password_hash = String(legacy.password_hash || "");
       defaultUser.updated_at = String(legacy.updated_at || mt5NowIso());
@@ -1193,9 +1437,11 @@ async function mt5InitBackend() {
           user_name: String(found.user_name || ""),
           email: normalizeEmail(found.email),
           role: normalizeUserRole(found.role || UI_ROLE_SYSTEM),
+          is_active: normalizeUserActive(found.is_active, true),
           password_salt: String(found.password_salt || ""),
           password_hash: String(found.password_hash || ""),
           updated_at: String(found.updated_at || ""),
+          created_at: String(found.created_at || ""),
         };
       },
       async getUiAuthUserById(userId) {
@@ -1209,10 +1455,26 @@ async function mt5InitBackend() {
           user_name: String(found.user_name || ""),
           email: normalizeEmail(found.email),
           role: normalizeUserRole(found.role || UI_ROLE_SYSTEM),
+          is_active: normalizeUserActive(found.is_active, true),
           password_salt: String(found.password_salt || ""),
           password_hash: String(found.password_hash || ""),
           updated_at: String(found.updated_at || ""),
+          created_at: String(found.created_at || ""),
         };
+      },
+      async listUiUsers() {
+        const db = mt5ReadJsonDb();
+        return (db.users || [])
+          .map((u) => ({
+            user_id: String(u.user_id || ""),
+            user_name: String(u.user_name || ""),
+            email: normalizeEmail(u.email),
+            role: normalizeUserRole(u.role || "User"),
+            is_active: normalizeUserActive(u.is_active, true),
+            updated_at: String(u.updated_at || ""),
+            created_at: String(u.created_at || ""),
+          }))
+          .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
       },
       async upsertUiAuthUser(user) {
         const db = mt5ReadJsonDb();
@@ -1226,6 +1488,7 @@ async function mt5InitBackend() {
             user_name: "",
             email: "",
             role: "User",
+            is_active: true,
             password_salt: "",
             password_hash: "",
             updated_at: mt5NowIso(),
@@ -1236,11 +1499,98 @@ async function mt5InitBackend() {
         targetUser.user_name = String(user?.user_name || targetUser.user_name || fallbackUserNameFromEmail(target));
         targetUser.email = target;
         targetUser.role = normalizeUserRole(user?.role || targetUser.role || UI_ROLE_SYSTEM);
+        targetUser.is_active = normalizeUserActive(user?.is_active, targetUser.is_active);
         targetUser.password_salt = String(user?.password_salt || "");
         targetUser.password_hash = String(user?.password_hash || "");
         targetUser.updated_at = String(user?.updated_at || new Date().toISOString());
+        targetUser.created_at = String(user?.created_at || targetUser.created_at || mt5NowIso());
         mt5WriteJsonDb(db);
         return { ok: true };
+      },
+      async listUserAccounts(userId) {
+        const db = mt5ReadJsonDb();
+        const target = String(userId || "").trim();
+        return (db.accounts || [])
+          .filter((a) => String(a.user_id || "") === target)
+          .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))
+          .map((a) => ({ ...a }));
+      },
+      async upsertUserAccount(userId, account) {
+        const db = mt5ReadJsonDb();
+        const targetUser = String(userId || "").trim();
+        const accountId = String(account?.account_id || "").trim();
+        const now = mt5NowIso();
+        const idx = (db.accounts || []).findIndex((a) => String(a.account_id || "") === accountId && String(a.user_id || "") === targetUser);
+        const row = {
+          account_id: accountId,
+          user_id: targetUser,
+          name: String(account?.name || ""),
+          balance: account?.balance === null || account?.balance === undefined || Number.isNaN(Number(account.balance)) ? null : Number(account.balance),
+          status: String(account?.status || ""),
+          metadata: account?.metadata && typeof account.metadata === "object" ? account.metadata : null,
+          created_at: idx >= 0 ? String(db.accounts[idx].created_at || now) : now,
+          updated_at: now,
+        };
+        if (idx >= 0) db.accounts[idx] = row;
+        else db.accounts.push(row);
+        mt5WriteJsonDb(db);
+        return row;
+      },
+      async deleteUserAccount(userId, accountId) {
+        const db = mt5ReadJsonDb();
+        const targetUser = String(userId || "").trim();
+        const targetAccount = String(accountId || "").trim();
+        db.accounts = (db.accounts || []).filter((a) => !(String(a.user_id || "") === targetUser && String(a.account_id || "") === targetAccount));
+        mt5WriteJsonDb(db);
+      },
+      async listUserApiKeys(userId) {
+        const db = mt5ReadJsonDb();
+        const target = String(userId || "").trim();
+        return (db.user_api_keys || [])
+          .filter((k) => String(k.user_id || "") === target)
+          .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))
+          .map((k) => ({ ...k }));
+      },
+      async createUserApiKey(userId, key) {
+        const db = mt5ReadJsonDb();
+        const now = mt5NowIso();
+        const row = {
+          key_id: String(crypto.randomUUID()),
+          user_id: String(userId || ""),
+          label: String(key?.label || ""),
+          key_value: String(key?.key_value || ""),
+          is_active: normalizeUserActive(key?.is_active, true),
+          last_used_at: "",
+          created_at: now,
+          updated_at: now,
+        };
+        db.user_api_keys.push(row);
+        mt5WriteJsonDb(db);
+        return row;
+      },
+      async updateUserApiKey(userId, keyId, patch = {}) {
+        const db = mt5ReadJsonDb();
+        const targetUser = String(userId || "").trim();
+        const targetKey = String(keyId || "").trim();
+        const idx = (db.user_api_keys || []).findIndex((k) => String(k.user_id || "") === targetUser && String(k.key_id || "") === targetKey);
+        if (idx < 0) return null;
+        const prev = db.user_api_keys[idx];
+        const next = {
+          ...prev,
+          label: patch.label === undefined ? String(prev.label || "") : String(patch.label || ""),
+          is_active: patch.is_active === undefined ? normalizeUserActive(prev.is_active, true) : normalizeUserActive(patch.is_active, true),
+          updated_at: mt5NowIso(),
+        };
+        db.user_api_keys[idx] = next;
+        mt5WriteJsonDb(db);
+        return next;
+      },
+      async deleteUserApiKey(userId, keyId) {
+        const db = mt5ReadJsonDb();
+        const targetUser = String(userId || "").trim();
+        const targetKey = String(keyId || "").trim();
+        db.user_api_keys = (db.user_api_keys || []).filter((k) => !(String(k.user_id || "") === targetUser && String(k.key_id || "") === targetKey));
+        mt5WriteJsonDb(db);
       },
     };
     return MT5_BACKEND;
@@ -1266,6 +1616,7 @@ async function mt5InitBackend() {
         password_salt TEXT,
         password_hash TEXT,
         role TEXT NOT NULL DEFAULT 'User',
+        is_active INTEGER NOT NULL DEFAULT 1,
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
@@ -1320,8 +1671,21 @@ async function mt5InitBackend() {
         payload_json TEXT,
         FOREIGN KEY (signal_id) REFERENCES signals(signal_id) ON DELETE CASCADE
       );
+      CREATE TABLE IF NOT EXISTS user_api_keys (
+        key_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        key_value TEXT NOT NULL UNIQUE,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        last_used_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+      );
       CREATE INDEX IF NOT EXISTS idx_signal_events_signal_time
         ON signal_events(signal_id, event_time);
+      CREATE INDEX IF NOT EXISTS idx_user_api_keys_user_created
+        ON user_api_keys(user_id, created_at);
     `);
 
     ["users", "accounts", "signals", "signal_events"].forEach(tbl => {
@@ -1331,10 +1695,11 @@ async function mt5InitBackend() {
     ["source_tf", "chart_tf", "entry_model"].forEach(col => {
       try { db.exec(`ALTER TABLE signals ADD COLUMN ${col} TEXT`); } catch(e) {}
     });
-    ["password_salt", "role", "updated_at"].forEach(col => {
+    ["password_salt", "role", "updated_at", "is_active"].forEach(col => {
       try {
         if (col === "role") db.exec(`ALTER TABLE users ADD COLUMN ${col} TEXT NOT NULL DEFAULT 'User'`);
         else if (col === "updated_at") db.exec(`ALTER TABLE users ADD COLUMN ${col} TEXT NOT NULL DEFAULT (datetime('now'))`);
+        else if (col === "is_active") db.exec(`ALTER TABLE users ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 1`);
         else db.exec(`ALTER TABLE users ADD COLUMN ${col} TEXT`);
       } catch (e) {}
     });
@@ -1862,7 +2227,7 @@ async function mt5InitBackend() {
         const target = normalizeEmail(email);
         if (!target) return null;
         return db.prepare(`
-          SELECT user_id, user_name, email, role, password_salt, password_hash, updated_at
+          SELECT user_id, user_name, email, role, is_active, password_salt, password_hash, updated_at, created_at
           FROM users
           WHERE lower(email) = ?
           LIMIT 1
@@ -1872,23 +2237,31 @@ async function mt5InitBackend() {
         const target = String(userId || "").trim();
         if (!target) return null;
         return db.prepare(`
-          SELECT user_id, user_name, email, role, password_salt, password_hash, updated_at
+          SELECT user_id, user_name, email, role, is_active, password_salt, password_hash, updated_at, created_at
           FROM users
           WHERE user_id = ?
           LIMIT 1
         `).get(target) || null;
+      },
+      async listUiUsers() {
+        return db.prepare(`
+          SELECT user_id, user_name, email, role, is_active, updated_at, created_at
+          FROM users
+          ORDER BY created_at ASC, user_id ASC
+        `).all();
       },
       async upsertUiAuthUser(user) {
         const target = normalizeEmail(user?.email);
         if (!target) throw new Error("email is required");
         const userId = String(user?.user_id || CFG.mt5DefaultUserId);
         db.prepare(`
-          INSERT INTO users (user_id, user_name, email, role, password_salt, password_hash, updated_at, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO users (user_id, user_name, email, role, is_active, password_salt, password_hash, updated_at, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(user_id) DO UPDATE SET
             user_name = excluded.user_name,
             email = excluded.email,
             role = excluded.role,
+            is_active = excluded.is_active,
             password_salt = excluded.password_salt,
             password_hash = excluded.password_hash,
             updated_at = excluded.updated_at
@@ -1897,12 +2270,112 @@ async function mt5InitBackend() {
           String(user?.user_name || fallbackUserNameFromEmail(target)),
           target,
           normalizeUserRole(user?.role || UI_ROLE_SYSTEM),
+          normalizeUserActive(user?.is_active, true) ? 1 : 0,
           String(user?.password_salt || ""),
           String(user?.password_hash || ""),
           String(user?.updated_at || new Date().toISOString()),
-          mt5NowIso(),
+          String(user?.created_at || mt5NowIso()),
         );
         return { ok: true };
+      },
+      async listUserAccounts(userId) {
+        const target = String(userId || "").trim();
+        return db.prepare(`
+          SELECT account_id, user_id, name, balance, status, metadata, created_at, updated_at
+          FROM accounts
+          WHERE user_id = ?
+          ORDER BY created_at ASC, account_id ASC
+        `).all(target).map((r) => ({
+          ...r,
+          metadata: r.metadata ? (() => { try { return JSON.parse(String(r.metadata)); } catch { return null; } })() : null,
+        }));
+      },
+      async upsertUserAccount(userId, account) {
+        const targetUser = String(userId || "").trim();
+        const accountId = String(account?.account_id || "").trim();
+        const now = mt5NowIso();
+        db.prepare(`
+          INSERT INTO accounts (account_id, user_id, name, balance, status, metadata, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(account_id) DO UPDATE SET
+            user_id = excluded.user_id,
+            name = excluded.name,
+            balance = excluded.balance,
+            status = excluded.status,
+            metadata = excluded.metadata,
+            updated_at = excluded.updated_at
+        `).run(
+          accountId,
+          targetUser,
+          String(account?.name || ""),
+          account?.balance === null || account?.balance === undefined || Number.isNaN(Number(account.balance)) ? null : Number(account.balance),
+          String(account?.status || ""),
+          account?.metadata && typeof account.metadata === "object" ? JSON.stringify(account.metadata) : null,
+          now,
+          now,
+        );
+        return db.prepare(`
+          SELECT account_id, user_id, name, balance, status, metadata, created_at, updated_at
+          FROM accounts
+          WHERE account_id = ? AND user_id = ?
+          LIMIT 1
+        `).get(accountId, targetUser);
+      },
+      async deleteUserAccount(userId, accountId) {
+        db.prepare(`DELETE FROM accounts WHERE user_id = ? AND account_id = ?`).run(String(userId || ""), String(accountId || ""));
+      },
+      async listUserApiKeys(userId) {
+        return db.prepare(`
+          SELECT key_id, user_id, label, key_value, is_active, last_used_at, created_at, updated_at
+          FROM user_api_keys
+          WHERE user_id = ?
+          ORDER BY created_at ASC, key_id ASC
+        `).all(String(userId || ""));
+      },
+      async createUserApiKey(userId, key) {
+        const now = mt5NowIso();
+        const row = {
+          key_id: String(crypto.randomUUID()),
+          user_id: String(userId || ""),
+          label: String(key?.label || ""),
+          key_value: String(key?.key_value || ""),
+          is_active: normalizeUserActive(key?.is_active, true) ? 1 : 0,
+          last_used_at: null,
+          created_at: now,
+          updated_at: now,
+        };
+        db.prepare(`
+          INSERT INTO user_api_keys (key_id, user_id, label, key_value, is_active, last_used_at, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(row.key_id, row.user_id, row.label, row.key_value, row.is_active, row.last_used_at, row.created_at, row.updated_at);
+        return row;
+      },
+      async updateUserApiKey(userId, keyId, patch = {}) {
+        const targetUser = String(userId || "");
+        const targetKey = String(keyId || "");
+        const current = db.prepare(`
+          SELECT key_id, user_id, label, key_value, is_active, last_used_at, created_at, updated_at
+          FROM user_api_keys
+          WHERE user_id = ? AND key_id = ?
+          LIMIT 1
+        `).get(targetUser, targetKey);
+        if (!current) return null;
+        const nextLabel = patch.label === undefined ? String(current.label || "") : String(patch.label || "");
+        const nextActive = patch.is_active === undefined ? normalizeUserActive(current.is_active, true) : normalizeUserActive(patch.is_active, true);
+        db.prepare(`
+          UPDATE user_api_keys
+          SET label = ?, is_active = ?, updated_at = ?
+          WHERE user_id = ? AND key_id = ?
+        `).run(nextLabel, nextActive ? 1 : 0, mt5NowIso(), targetUser, targetKey);
+        return db.prepare(`
+          SELECT key_id, user_id, label, key_value, is_active, last_used_at, created_at, updated_at
+          FROM user_api_keys
+          WHERE user_id = ? AND key_id = ?
+          LIMIT 1
+        `).get(targetUser, targetKey);
+      },
+      async deleteUserApiKey(userId, keyId) {
+        db.prepare(`DELETE FROM user_api_keys WHERE user_id = ? AND key_id = ?`).run(String(userId || ""), String(keyId || ""));
       }
     };
     return MT5_BACKEND;
@@ -1936,6 +2409,7 @@ async function mt5InitBackend() {
       password_salt TEXT,
       password_hash TEXT,
       role TEXT NOT NULL DEFAULT 'User',
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -2021,15 +2495,33 @@ async function mt5InitBackend() {
     )
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_api_keys (
+      key_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      label TEXT NOT NULL,
+      key_value TEXT NOT NULL UNIQUE,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      last_used_at TIMESTAMPTZ NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_signal_events_signal_time
     ON signal_events(signal_id, event_time)
   `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_user_api_keys_user_created
+    ON user_api_keys(user_id, created_at)
+  `);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_salt TEXT`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ`);
   await pool.query(`
     UPDATE users
     SET role = COALESCE(NULLIF(role, ''), 'User'),
+        is_active = COALESCE(is_active, TRUE),
         updated_at = COALESCE(updated_at, NOW())
   `);
   // Ensure "SYSTEM_SYNC_PUSH" dummy signal exists for global logging.
@@ -2544,7 +3036,7 @@ async function mt5InitBackend() {
       const target = normalizeEmail(email);
       if (!target) return null;
       const res = await pool.query(`
-        SELECT user_id, user_name, email, role, password_salt, password_hash, updated_at
+        SELECT user_id, user_name, email, role, is_active, password_salt, password_hash, updated_at, created_at
         FROM users
         WHERE lower(email) = $1
         LIMIT 1
@@ -2555,24 +3047,33 @@ async function mt5InitBackend() {
       const target = String(userId || "").trim();
       if (!target) return null;
       const res = await pool.query(`
-        SELECT user_id, user_name, email, role, password_salt, password_hash, updated_at
+        SELECT user_id, user_name, email, role, is_active, password_salt, password_hash, updated_at, created_at
         FROM users
         WHERE user_id = $1
         LIMIT 1
       `, [target]);
       return res.rows[0] || null;
     },
+    async listUiUsers() {
+      const res = await pool.query(`
+        SELECT user_id, user_name, email, role, is_active, updated_at, created_at
+        FROM users
+        ORDER BY created_at ASC, user_id ASC
+      `);
+      return res.rows || [];
+    },
     async upsertUiAuthUser(user) {
       const target = normalizeEmail(user?.email);
       if (!target) throw new Error("email is required");
       const userId = String(user?.user_id || CFG.mt5DefaultUserId);
       await pool.query(`
-        INSERT INTO users (user_id, user_name, email, role, password_salt, password_hash, updated_at, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        INSERT INTO users (user_id, user_name, email, role, is_active, password_salt, password_hash, updated_at, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (user_id) DO UPDATE SET
           user_name = EXCLUDED.user_name,
           email = EXCLUDED.email,
           role = EXCLUDED.role,
+          is_active = EXCLUDED.is_active,
           password_salt = EXCLUDED.password_salt,
           password_hash = EXCLUDED.password_hash,
           updated_at = EXCLUDED.updated_at
@@ -2581,11 +3082,100 @@ async function mt5InitBackend() {
         String(user?.user_name || fallbackUserNameFromEmail(target)),
         target,
         normalizeUserRole(user?.role || UI_ROLE_SYSTEM),
+        normalizeUserActive(user?.is_active, true),
         String(user?.password_salt || ""),
         String(user?.password_hash || ""),
         String(user?.updated_at || new Date().toISOString()),
+        String(user?.created_at || mt5NowIso()),
       ]);
       return { ok: true };
+    },
+    async listUserAccounts(userId) {
+      const res = await pool.query(`
+        SELECT account_id, user_id, name, balance, status, metadata, created_at, updated_at
+        FROM accounts
+        WHERE user_id = $1
+        ORDER BY created_at ASC, account_id ASC
+      `, [String(userId || "")]);
+      return res.rows || [];
+    },
+    async upsertUserAccount(userId, account) {
+      const targetUser = String(userId || "");
+      const accountId = String(account?.account_id || "");
+      const now = mt5NowIso();
+      const res = await pool.query(`
+        INSERT INTO accounts (account_id, user_id, name, balance, status, metadata, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+        ON CONFLICT (account_id) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
+          name = EXCLUDED.name,
+          balance = EXCLUDED.balance,
+          status = EXCLUDED.status,
+          metadata = EXCLUDED.metadata,
+          updated_at = EXCLUDED.updated_at
+        RETURNING account_id, user_id, name, balance, status, metadata, created_at, updated_at
+      `, [
+        accountId,
+        targetUser,
+        String(account?.name || ""),
+        account?.balance === null || account?.balance === undefined || Number.isNaN(Number(account.balance)) ? null : Number(account.balance),
+        String(account?.status || ""),
+        account?.metadata && typeof account.metadata === "object" ? JSON.stringify(account.metadata) : null,
+        now,
+        now,
+      ]);
+      return res.rows[0] || null;
+    },
+    async deleteUserAccount(userId, accountId) {
+      await pool.query(`DELETE FROM accounts WHERE user_id = $1 AND account_id = $2`, [String(userId || ""), String(accountId || "")]);
+    },
+    async listUserApiKeys(userId) {
+      const res = await pool.query(`
+        SELECT key_id, user_id, label, key_value, is_active, last_used_at, created_at, updated_at
+        FROM user_api_keys
+        WHERE user_id = $1
+        ORDER BY created_at ASC, key_id ASC
+      `, [String(userId || "")]);
+      return res.rows || [];
+    },
+    async createUserApiKey(userId, key) {
+      const now = mt5NowIso();
+      const row = {
+        key_id: String(crypto.randomUUID()),
+        user_id: String(userId || ""),
+        label: String(key?.label || ""),
+        key_value: String(key?.key_value || ""),
+        is_active: normalizeUserActive(key?.is_active, true),
+        created_at: now,
+        updated_at: now,
+      };
+      const res = await pool.query(`
+        INSERT INTO user_api_keys (key_id, user_id, label, key_value, is_active, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING key_id, user_id, label, key_value, is_active, last_used_at, created_at, updated_at
+      `, [row.key_id, row.user_id, row.label, row.key_value, row.is_active, row.created_at, row.updated_at]);
+      return res.rows[0] || row;
+    },
+    async updateUserApiKey(userId, keyId, patch = {}) {
+      const current = await pool.query(`
+        SELECT key_id, user_id, label, key_value, is_active, last_used_at, created_at, updated_at
+        FROM user_api_keys
+        WHERE user_id = $1 AND key_id = $2
+        LIMIT 1
+      `, [String(userId || ""), String(keyId || "")]);
+      if (!current.rows[0]) return null;
+      const nextLabel = patch.label === undefined ? String(current.rows[0].label || "") : String(patch.label || "");
+      const nextActive = patch.is_active === undefined ? normalizeUserActive(current.rows[0].is_active, true) : normalizeUserActive(patch.is_active, true);
+      const res = await pool.query(`
+        UPDATE user_api_keys
+        SET label = $1, is_active = $2, updated_at = $3
+        WHERE user_id = $4 AND key_id = $5
+        RETURNING key_id, user_id, label, key_value, is_active, last_used_at, created_at, updated_at
+      `, [nextLabel, nextActive, mt5NowIso(), String(userId || ""), String(keyId || "")]);
+      return res.rows[0] || null;
+    },
+    async deleteUserApiKey(userId, keyId) {
+      await pool.query(`DELETE FROM user_api_keys WHERE user_id = $1 AND key_id = $2`, [String(userId || ""), String(keyId || "")]);
     },
     async renewSignalsByIds(signalIds) {
       const ids = Array.isArray(signalIds)
@@ -3589,6 +4179,7 @@ const server = http.createServer(async (req, res) => {
         user_name: sess.user_name,
         email: sess.email,
         role: sess.role,
+        is_active: normalizeUserActive(sess.is_active, true),
       },
     });
   }
@@ -3605,6 +4196,7 @@ const server = http.createServer(async (req, res) => {
         user_name: state.user_name,
         email: state.email,
         role: state.role,
+        is_active: normalizeUserActive(state.is_active, true),
       },
     });
   }
@@ -3624,7 +4216,182 @@ const server = http.createServer(async (req, res) => {
           user_name: out.user.user_name,
           role: out.user.role,
           user_id: out.user.user_id,
+          is_active: normalizeUserActive(out.user.is_active, true),
         });
+      }
+      return json(res, 200, { ok: true, user: out.user });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/auth/users") {
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const users = await uiListUsers();
+      return json(res, 200, { ok: true, users });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/auth/users") {
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const payload = await readJson(req);
+      const out = await uiCreateUser(payload || {});
+      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to create user" });
+      return json(res, 200, { ok: true, user: out.user });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "GET" && /^\/auth\/users\/[^/]+\/detail$/.test(url.pathname)) {
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const userId = decodeURIComponent(url.pathname.slice("/auth/users/".length, -"/detail".length));
+      const out = await uiGetUserDetail(userId);
+      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to load user detail" });
+      return json(res, 200, out);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "POST" && /^\/auth\/users\/[^/]+\/accounts$/.test(url.pathname)) {
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const userId = decodeURIComponent(url.pathname.slice("/auth/users/".length, -"/accounts".length));
+      const payload = await readJson(req);
+      const out = await uiUpsertUserAccount(userId, payload || {});
+      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to save account" });
+      return json(res, 200, out);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "PUT" && /^\/auth\/users\/[^/]+\/accounts\/[^/]+$/.test(url.pathname)) {
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const parts = url.pathname.split("/").filter(Boolean);
+      const userId = decodeURIComponent(parts[2] || "");
+      const accountId = decodeURIComponent(parts[4] || "");
+      const payload = await readJson(req);
+      const out = await uiUpsertUserAccount(userId, { ...(payload || {}), account_id: accountId });
+      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to update account" });
+      return json(res, 200, out);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "DELETE" && /^\/auth\/users\/[^/]+\/accounts\/[^/]+$/.test(url.pathname)) {
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const parts = url.pathname.split("/").filter(Boolean);
+      const userId = decodeURIComponent(parts[2] || "");
+      const accountId = decodeURIComponent(parts[4] || "");
+      const out = await uiDeleteUserAccount(userId, accountId);
+      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to delete account" });
+      return json(res, 200, out);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "POST" && /^\/auth\/users\/[^/]+\/api-keys$/.test(url.pathname)) {
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const userId = decodeURIComponent(url.pathname.slice("/auth/users/".length, -"/api-keys".length));
+      const payload = await readJson(req);
+      const out = await uiCreateUserApiKey(userId, payload || {});
+      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to create API key" });
+      return json(res, 200, out);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "PUT" && /^\/auth\/users\/[^/]+\/api-keys\/[^/]+$/.test(url.pathname)) {
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const parts = url.pathname.split("/").filter(Boolean);
+      const userId = decodeURIComponent(parts[2] || "");
+      const keyId = decodeURIComponent(parts[4] || "");
+      const payload = await readJson(req);
+      const out = await uiUpdateUserApiKey(userId, keyId, payload || {});
+      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to update API key" });
+      return json(res, 200, out);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "DELETE" && /^\/auth\/users\/[^/]+\/api-keys\/[^/]+$/.test(url.pathname)) {
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const parts = url.pathname.split("/").filter(Boolean);
+      const userId = decodeURIComponent(parts[2] || "");
+      const keyId = decodeURIComponent(parts[4] || "");
+      const out = await uiDeleteUserApiKey(userId, keyId);
+      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to delete API key" });
+      return json(res, 200, out);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "PUT" && /^\/auth\/users\/[^/]+$/.test(url.pathname)) {
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const userId = decodeURIComponent(url.pathname.slice("/auth/users/".length));
+      if (!userId) return json(res, 400, { ok: false, error: "user_id is required" });
+      const payload = await readJson(req);
+      const out = await uiUpdateUserById(userId, payload || {});
+      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to update user" });
+      for (const [token, session] of UI_SESSIONS.entries()) {
+        if (String(session?.user_id || "") !== String(userId)) continue;
+        if (!normalizeUserActive(out.user?.is_active, true)) {
+          UI_SESSIONS.delete(token);
+          continue;
+        }
+        UI_SESSIONS.set(token, {
+          ...session,
+          user_name: out.user.user_name,
+          email: out.user.email,
+          role: out.user.role,
+          is_active: normalizeUserActive(out.user.is_active, true),
+        });
+      }
+      return json(res, 200, { ok: true, user: out.user });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "POST" && /^\/auth\/users\/[^/]+\/deactivate$/.test(url.pathname)) {
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const base = url.pathname.slice("/auth/users/".length, -"/deactivate".length);
+      const userId = decodeURIComponent(base.replace(/\/+$/, ""));
+      if (!userId) return json(res, 400, { ok: false, error: "user_id is required" });
+      const out = await uiUpdateUserById(userId, { is_active: false, role: "Guest" });
+      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to deactivate user" });
+      for (const [token, session] of UI_SESSIONS.entries()) {
+        if (String(session?.user_id || "") === String(userId)) UI_SESSIONS.delete(token);
       }
       return json(res, 200, { ok: true, user: out.user });
     } catch (error) {

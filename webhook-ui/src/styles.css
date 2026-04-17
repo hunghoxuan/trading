@@ -126,6 +126,18 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 }
 .toolbar-left { display: flex; align-items: center; gap: 12px; }
 .toolbar-right { display: flex; gap: 12px; align-items: center; margin-left: auto; }
+.toolbar-separator { width: 1px; height: 18px; background: var(--border); }
+
+.fadeIn {
+  animation: fadeInFrame 0.18s ease-out;
+}
+
+@keyframes fadeInFrame {
+  from { opacity: 0.82; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.cell-wrap { display: flex; flex-direction: column; gap: 2px; }
 
 .logs-layout-split { display: flex; gap: 12px; flex: 1; min-height: 0; }
 .logs-list-pane { flex: 0 0 66%; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
