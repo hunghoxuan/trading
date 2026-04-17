@@ -10,6 +10,7 @@ import UsersPage from "./pages/UsersPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
 import SourcesPage from "./pages/SourcesPage";
 import ExecutionV2Page from "./pages/ExecutionV2Page";
+import AccountsV2Page from "./pages/AccountsV2Page";
 import { api } from "./api";
 import LoginPage from "./pages/LoginPage";
 
@@ -83,6 +84,7 @@ export default function App() {
           {canAccessSystemPages ? <NavLink to="/logs" className={({ isActive }) => (isActive ? "active" : "")}>Logs</NavLink> : null}
           {canAccessSystemPages ? <NavLink to="/db" className={({ isActive }) => (isActive ? "active" : "")}>DB</NavLink> : null}
           {canAccessSystemPages ? <NavLink to="/users" className={({ isActive }) => (isActive ? "active" : "")}>Users</NavLink> : null}
+          {canAccessSystemPages ? <NavLink to="/accounts-v2" className={({ isActive }) => (isActive ? "active" : "")}>Accounts V2</NavLink> : null}
           {canAccessSystemPages ? <NavLink to="/sources" className={({ isActive }) => (isActive ? "active" : "")}>Sources</NavLink> : null}
           {canAccessSystemPages ? <NavLink to="/subscriptions" className={({ isActive }) => (isActive ? "active" : "")}>Subscriptions</NavLink> : null}
           {canAccessSystemPages ? <NavLink to="/execution-v2" className={({ isActive }) => (isActive ? "active" : "")}>Execution V2</NavLink> : null}
@@ -111,6 +113,7 @@ export default function App() {
           <Route path="/logs" element={canAccessSystemPages ? <LogsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/db" element={canAccessSystemPages ? <DatabasePage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/users" element={canAccessSystemPages ? <UsersPage authUser={authUser} /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/accounts-v2" element={canAccessSystemPages ? <AccountsV2Page /> : <Navigate to="/dashboard" replace />} />
           <Route path="/sources" element={canAccessSystemPages ? <SourcesPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/subscriptions" element={canAccessSystemPages ? <SubscriptionsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/execution-v2" element={canAccessSystemPages ? <ExecutionV2Page /> : <Navigate to="/dashboard" replace />} />

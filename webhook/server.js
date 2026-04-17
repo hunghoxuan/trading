@@ -2490,12 +2490,103 @@ async function mt5InitBackend() {
       },
       async listAccountsV2() {
         const rows = db.prepare(`
-          SELECT account_id, user_id, name, status, broker_id, api_key_last4, api_key_rotated_at, created_at, updated_at
+          SELECT account_id, user_id, name, balance, status, broker_id, api_key_last4, api_key_rotated_at, metadata, created_at, updated_at
           FROM accounts
           ORDER BY updated_at DESC
           LIMIT 500
         `).all();
-        return (rows || []).map((r) => ({ ...r }));
+        return (rows || []).map((r) => ({
+          ...r,
+          metadata: r.metadata ? (() => { try { return JSON.parse(r.metadata); } catch { return {}; } })() : {},
+        }));
+      },
+      async getAccountByIdV2(accountId) {
+        const aid = String(accountId || "").trim();
+        if (!aid) return null;
+        const row = db.prepare(`
+          SELECT account_id, user_id, name, balance, status, broker_id, api_key_last4, api_key_rotated_at, metadata, created_at, updated_at
+          FROM accounts
+          WHERE account_id = ?
+          LIMIT 1
+        `).get(aid);
+        if (!row) return null;
+        return {
+          ...row,
+          metadata: row.metadata ? (() => { try { return JSON.parse(row.metadata); } catch { return {}; } })() : {},
+        };
+      },
+      async createAccountV2(payload = {}) {
+        const accountId = String(payload?.account_id || "").trim();
+        const userId = String(payload?.user_id || CFG.mt5DefaultUserId).trim();
+        const name = String(payload?.name || "").trim();
+        if (!accountId) return { ok: false, error: "account_id is required" };
+        if (!userId) return { ok: false, error: "user_id is required" };
+        const exists = db.prepare(`SELECT account_id FROM accounts WHERE account_id = ? LIMIT 1`).get(accountId);
+        if (exists) return { ok: false, error: "account already exists" };
+        const apiKeyPlaintext = `ak_${crypto.randomBytes(24).toString("hex")}`;
+        const now = mt5NowIso();
+        db.prepare(`
+          INSERT INTO accounts (
+            account_id, user_id, name, balance, status, broker_id,
+            api_key_hash, api_key_last4, api_key_rotated_at,
+            metadata, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          accountId,
+          userId,
+          name || accountId,
+          Number.isFinite(Number(payload?.balance)) ? Number(payload.balance) : null,
+          String(payload?.status || "ACTIVE"),
+          payload?.broker_id ? String(payload.broker_id) : null,
+          hashApiKey(apiKeyPlaintext),
+          apiKeyPlaintext.slice(-4),
+          now,
+          JSON.stringify(payload?.metadata && typeof payload.metadata === "object" ? payload.metadata : {}),
+          now,
+          now,
+        );
+        const item = await this.getAccountByIdV2(accountId);
+        return { ok: true, item, api_key_plaintext: apiKeyPlaintext };
+      },
+      async updateAccountV2(accountId, patch = {}) {
+        const aid = String(accountId || "").trim();
+        if (!aid) return { ok: false, error: "account_id is required" };
+        const prev = await this.getAccountByIdV2(aid);
+        if (!prev) return { ok: false, error: "account not found" };
+        const next = {
+          user_id: patch?.user_id === undefined ? prev.user_id : String(patch.user_id || "").trim(),
+          name: patch?.name === undefined ? prev.name : String(patch.name || "").trim(),
+          balance: patch?.balance === undefined
+            ? (Number.isFinite(Number(prev.balance)) ? Number(prev.balance) : null)
+            : (Number.isFinite(Number(patch.balance)) ? Number(patch.balance) : null),
+          status: patch?.status === undefined ? prev.status : String(patch.status || "").trim(),
+          broker_id: patch?.broker_id === undefined ? (prev.broker_id || null) : (patch.broker_id ? String(patch.broker_id) : null),
+          metadata: patch?.metadata && typeof patch.metadata === "object" ? patch.metadata : prev.metadata,
+        };
+        if (!next.user_id) return { ok: false, error: "user_id is required" };
+        const now = mt5NowIso();
+        db.prepare(`
+          UPDATE accounts
+          SET user_id = ?,
+              name = ?,
+              balance = ?,
+              status = ?,
+              broker_id = ?,
+              metadata = ?,
+              updated_at = ?
+          WHERE account_id = ?
+        `).run(
+          next.user_id,
+          next.name || aid,
+          next.balance,
+          next.status || "ACTIVE",
+          next.broker_id,
+          JSON.stringify(next.metadata || {}),
+          now,
+          aid,
+        );
+        const item = await this.getAccountByIdV2(aid);
+        return { ok: true, item };
       },
       async listSourcesV2() {
         const rows = db.prepare(`
@@ -4124,12 +4215,99 @@ async function mt5InitBackend() {
     },
     async listAccountsV2() {
       const res = await pool.query(`
-        SELECT account_id, user_id, name, status, broker_id, api_key_last4, api_key_rotated_at, created_at, updated_at
+        SELECT account_id, user_id, name, balance, status, broker_id, api_key_last4, api_key_rotated_at, metadata, created_at, updated_at
         FROM accounts
         ORDER BY updated_at DESC
         LIMIT 500
       `);
       return res.rows || [];
+    },
+    async getAccountByIdV2(accountId) {
+      const aid = String(accountId || "").trim();
+      if (!aid) return null;
+      const res = await pool.query(`
+        SELECT account_id, user_id, name, balance, status, broker_id, api_key_last4, api_key_rotated_at, metadata, created_at, updated_at
+        FROM accounts
+        WHERE account_id = $1
+        LIMIT 1
+      `, [aid]);
+      return res.rows[0] || null;
+    },
+    async createAccountV2(payload = {}) {
+      const accountId = String(payload?.account_id || "").trim();
+      const userId = String(payload?.user_id || CFG.mt5DefaultUserId).trim();
+      const name = String(payload?.name || "").trim();
+      if (!accountId) return { ok: false, error: "account_id is required" };
+      if (!userId) return { ok: false, error: "user_id is required" };
+      const exists = await pool.query(`SELECT account_id FROM accounts WHERE account_id = $1 LIMIT 1`, [accountId]);
+      if ((exists.rowCount || 0) > 0) return { ok: false, error: "account already exists" };
+      const apiKeyPlaintext = `ak_${crypto.randomBytes(24).toString("hex")}`;
+      const now = mt5NowIso();
+      await pool.query(`
+        INSERT INTO accounts (
+          account_id, user_id, name, balance, status, broker_id,
+          api_key_hash, api_key_last4, api_key_rotated_at,
+          metadata, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6,
+          $7, $8, $9,
+          $10::jsonb, $11, $11
+        )
+      `, [
+        accountId,
+        userId,
+        name || accountId,
+        Number.isFinite(Number(payload?.balance)) ? Number(payload.balance) : null,
+        String(payload?.status || "ACTIVE"),
+        payload?.broker_id ? String(payload.broker_id) : null,
+        hashApiKey(apiKeyPlaintext),
+        apiKeyPlaintext.slice(-4),
+        now,
+        JSON.stringify(payload?.metadata && typeof payload.metadata === "object" ? payload.metadata : {}),
+        now,
+      ]);
+      const item = await this.getAccountByIdV2(accountId);
+      return { ok: true, item, api_key_plaintext: apiKeyPlaintext };
+    },
+    async updateAccountV2(accountId, patch = {}) {
+      const aid = String(accountId || "").trim();
+      if (!aid) return { ok: false, error: "account_id is required" };
+      const prev = await this.getAccountByIdV2(aid);
+      if (!prev) return { ok: false, error: "account not found" };
+      const next = {
+        user_id: patch?.user_id === undefined ? String(prev.user_id || "") : String(patch.user_id || "").trim(),
+        name: patch?.name === undefined ? String(prev.name || "") : String(patch.name || "").trim(),
+        balance: patch?.balance === undefined
+          ? (Number.isFinite(Number(prev.balance)) ? Number(prev.balance) : null)
+          : (Number.isFinite(Number(patch.balance)) ? Number(patch.balance) : null),
+        status: patch?.status === undefined ? String(prev.status || "") : String(patch.status || "").trim(),
+        broker_id: patch?.broker_id === undefined ? (prev.broker_id || null) : (patch.broker_id ? String(patch.broker_id) : null),
+        metadata: patch?.metadata && typeof patch.metadata === "object" ? patch.metadata : (prev.metadata || {}),
+      };
+      if (!next.user_id) return { ok: false, error: "user_id is required" };
+      const now = mt5NowIso();
+      await pool.query(`
+        UPDATE accounts
+        SET user_id = $1,
+            name = $2,
+            balance = $3,
+            status = $4,
+            broker_id = $5,
+            metadata = $6::jsonb,
+            updated_at = $7
+        WHERE account_id = $8
+      `, [
+        next.user_id,
+        next.name || aid,
+        next.balance,
+        next.status || "ACTIVE",
+        next.broker_id,
+        JSON.stringify(next.metadata || {}),
+        now,
+        aid,
+      ]);
+      const item = await this.getAccountByIdV2(aid);
+      return { ok: true, item };
     },
     async listSourcesV2() {
       const res = await pool.query(`
@@ -5322,6 +5500,18 @@ async function mt5ListAccountsV2() {
   const b = await mt5Backend();
   if (!b.listAccountsV2) return [];
   return b.listAccountsV2();
+}
+
+async function mt5CreateAccountV2(payload = {}) {
+  const b = await mt5Backend();
+  if (!b.createAccountV2) return { ok: false, error: "not supported" };
+  return b.createAccountV2(payload);
+}
+
+async function mt5UpdateAccountV2(accountId, patch = {}) {
+  const b = await mt5Backend();
+  if (!b.updateAccountV2) return { ok: false, error: "not supported" };
+  return b.updateAccountV2(accountId, patch);
 }
 
 async function mt5ListSourcesV2() {
@@ -7196,6 +7386,54 @@ const appHandler = async (req, res) => {
     try {
       const rows = await mt5ListAccountsV2();
       return json(res, 200, { ok: true, items: rows });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/accounts") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    let payload = {};
+    try { payload = await readJson(req); } catch {}
+    if (!requireAdminKey(req, res, url, payload)) return;
+    try {
+      const accountId = String(payload?.account_id || "").trim();
+      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
+      const out = await mt5CreateAccountV2({
+        account_id: accountId,
+        user_id: String(payload?.user_id || CFG.mt5DefaultUserId),
+        name: String(payload?.name || accountId),
+        balance: payload?.balance,
+        status: String(payload?.status || "ACTIVE"),
+        broker_id: payload?.broker_id ?? null,
+        metadata: payload?.metadata && typeof payload.metadata === "object" ? payload.metadata : {},
+      });
+      if (!out?.ok) return json(res, 400, { ok: false, error: out?.error || "failed to create account" });
+      const rows = await mt5ListAccountsV2();
+      return json(res, 200, {
+        ok: true,
+        item: out.item || null,
+        api_key_plaintext: out.api_key_plaintext || null,
+        items: rows,
+      });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "PUT" && /^\/v2\/accounts\/[^/]+$/.test(url.pathname)) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    let payload = {};
+    try { payload = await readJson(req); } catch {}
+    if (!requireAdminKey(req, res, url, payload)) return;
+    try {
+      const m = url.pathname.match(/^\/v2\/accounts\/([^/]+)$/);
+      const accountId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
+      const out = await mt5UpdateAccountV2(accountId, payload || {});
+      if (!out?.ok) return json(res, 400, { ok: false, error: out?.error || "failed to update account" });
+      const rows = await mt5ListAccountsV2();
+      return json(res, 200, { ok: true, item: out.item || null, items: rows });
     } catch (error) {
       return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }

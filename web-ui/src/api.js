@@ -350,6 +350,8 @@ export const api = {
   updateUserApiKey: (userId, keyId, payload = {}) => put(`/auth/users/${encodeURIComponent(userId)}/api-keys/${encodeURIComponent(keyId)}`, payload),
   deleteUserApiKey: (userId, keyId) => del(`/auth/users/${encodeURIComponent(userId)}/api-keys/${encodeURIComponent(keyId)}`),
   v2Accounts: () => get("/v2/accounts"),
+  v2CreateAccount: (payload = {}) => post("/v2/accounts", payload),
+  v2UpdateAccount: (accountId, payload = {}) => put(`/v2/accounts/${encodeURIComponent(accountId)}`, payload),
   v2Sources: () => get("/v2/sources"),
   v2Trades: (params = {}) => {
     const q = new URLSearchParams();
