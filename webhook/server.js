@@ -6878,6 +6878,64 @@ const appHandler = async (req, res) => {
     }
   }
 
+  if (req.method === "POST" && url.pathname === "/v2/sources") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    let payload = {};
+    try { payload = await readJson(req); } catch {}
+    if (!requireAdminKey(req, res, url, payload)) return;
+    try {
+      const name = String(payload?.name || "").trim();
+      if (!name) return json(res, 400, { ok: false, error: "name is required" });
+      const sourceId = String(payload?.source_id || "").trim() || mt5SlugId(name, "source");
+      await mt5UpsertSourceV2({
+        source_id: sourceId,
+        name,
+        kind: String(payload?.kind || "api"),
+        auth_mode: String(payload?.auth_mode || "token"),
+        auth_secret_hash: payload?.auth_secret_hash ?? null,
+        is_active: normalizeUserActive(payload?.is_active, true),
+        metadata: payload?.metadata && typeof payload.metadata === "object" ? payload.metadata : {},
+      });
+      const rows = await mt5ListSourcesV2();
+      const created = (rows || []).find((r) => String(r.source_id || "") === sourceId) || null;
+      return json(res, 200, { ok: true, item: created, items: rows });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "PUT" && /^\/v2\/sources\/[^/]+$/.test(url.pathname)) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    let payload = {};
+    try { payload = await readJson(req); } catch {}
+    if (!requireAdminKey(req, res, url, payload)) return;
+    try {
+      const m = url.pathname.match(/^\/v2\/sources\/([^/]+)$/);
+      const sourceId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!sourceId) return json(res, 400, { ok: false, error: "source_id is required" });
+      const rowsBefore = await mt5ListSourcesV2();
+      const prev = (rowsBefore || []).find((r) => String(r.source_id || "") === sourceId);
+      if (!prev) return json(res, 404, { ok: false, error: "source not found" });
+
+      await mt5UpsertSourceV2({
+        source_id: sourceId,
+        name: String(payload?.name ?? prev.name ?? sourceId),
+        kind: String(payload?.kind ?? prev.kind ?? "api"),
+        auth_mode: String(payload?.auth_mode ?? prev.auth_mode ?? "token"),
+        auth_secret_hash: payload?.auth_secret_hash ?? prev.auth_secret_hash ?? null,
+        is_active: payload?.is_active === undefined ? normalizeUserActive(prev.is_active, true) : normalizeUserActive(payload?.is_active, true),
+        metadata: payload?.metadata && typeof payload.metadata === "object"
+          ? payload.metadata
+          : (prev?.metadata && typeof prev.metadata === "object" ? prev.metadata : {}),
+      });
+      const rows = await mt5ListSourcesV2();
+      const updated = (rows || []).find((r) => String(r.source_id || "") === sourceId) || null;
+      return json(res, 200, { ok: true, item: updated, items: rows });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   if (req.method === "GET" && /^\/v2\/accounts\/[^/]+\/subscriptions$/.test(url.pathname)) {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;

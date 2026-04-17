@@ -351,6 +351,8 @@ export const api = {
   deleteUserApiKey: (userId, keyId) => del(`/auth/users/${encodeURIComponent(userId)}/api-keys/${encodeURIComponent(keyId)}`),
   v2Accounts: () => get("/v2/accounts"),
   v2Sources: () => get("/v2/sources"),
+  v2CreateSource: (payload = {}) => post("/v2/sources", payload),
+  v2UpdateSource: (sourceId, payload = {}) => put(`/v2/sources/${encodeURIComponent(sourceId)}`, payload),
   v2GetSubscriptions: (accountId) => get(`/v2/accounts/${encodeURIComponent(accountId)}/subscriptions`),
   v2PutSubscriptions: (accountId, items = []) => put(`/v2/accounts/${encodeURIComponent(accountId)}/subscriptions`, { items }),
   v2RotateAccountApiKey: (accountId) => post(`/v2/accounts/${encodeURIComponent(accountId)}/api-key/rotate`, {}),
