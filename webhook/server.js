@@ -249,6 +249,24 @@ async function uiReadAuthStateByEmail(emailRaw) {
   };
 }
 
+async function uiReadAuthStateByUserId(userIdRaw) {
+  const userId = String(userIdRaw || "").trim();
+  if (!userId) return null;
+  const b = await mt5Backend();
+  if (!b.getUiAuthUserById) return null;
+  const row = await b.getUiAuthUserById(userId);
+  if (!row) return null;
+  return {
+    user_id: String(row.user_id || CFG.mt5DefaultUserId),
+    email: normalizeEmail(row.email),
+    user_name: String(row.user_name || ""),
+    role: normalizeUserRole(row.role || UI_ROLE_SYSTEM),
+    password_salt: String(row.password_salt || ""),
+    password_hash: String(row.password_hash || ""),
+    updated_at: String(row.updated_at || ""),
+  };
+}
+
 async function uiWriteAuthState(nextState) {
   const b = await mt5Backend();
   if (!b.upsertUiAuthUser) throw new Error("UI auth storage is not supported by the current backend");
@@ -261,6 +279,40 @@ async function uiWriteAuthState(nextState) {
     password_hash: String(nextState.password_hash || ""),
     updated_at: String(nextState.updated_at || new Date().toISOString()),
   });
+}
+
+async function uiAuthUpdateProfile(sess, patch = {}) {
+  const state = await uiReadAuthStateByUserId(sess.user_id) || await uiReadAuthStateByEmail(sess.email);
+  if (!state) return { ok: false, error: "User not found" };
+  const nextName = String((patch.user_name ?? patch.userName ?? state.user_name ?? "")).trim();
+  const nextEmail = normalizeEmail(patch.email ?? state.email);
+  if (!nextName) return { ok: false, error: "Username is required" };
+  if (!nextEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(nextEmail)) return { ok: false, error: "Valid email is required" };
+
+  const duplicate = await uiReadAuthStateByEmail(nextEmail);
+  if (duplicate && String(duplicate.user_id || "") !== String(state.user_id || "")) {
+    return { ok: false, error: "Email is already used by another user" };
+  }
+
+  const next = {
+    user_id: String(state.user_id || CFG.mt5DefaultUserId),
+    user_name: nextName,
+    email: nextEmail,
+    role: normalizeUserRole(state.role || UI_ROLE_SYSTEM),
+    password_salt: String(state.password_salt || ""),
+    password_hash: String(state.password_hash || ""),
+    updated_at: new Date().toISOString(),
+  };
+  await uiWriteAuthState(next);
+  return {
+    ok: true,
+    user: {
+      user_id: next.user_id,
+      user_name: next.user_name,
+      email: next.email,
+      role: next.role,
+    },
+  };
 }
 
 async function uiEnsureAuthBootstrap() {
@@ -1146,17 +1198,47 @@ async function mt5InitBackend() {
           updated_at: String(found.updated_at || ""),
         };
       },
+      async getUiAuthUserById(userId) {
+        const db = mt5ReadJsonDb();
+        const target = String(userId || "").trim();
+        if (!target) return null;
+        const found = (db.users || []).find((u) => String(u.user_id || "") === target) || null;
+        if (!found) return null;
+        return {
+          user_id: String(found.user_id || CFG.mt5DefaultUserId),
+          user_name: String(found.user_name || ""),
+          email: normalizeEmail(found.email),
+          role: normalizeUserRole(found.role || UI_ROLE_SYSTEM),
+          password_salt: String(found.password_salt || ""),
+          password_hash: String(found.password_hash || ""),
+          updated_at: String(found.updated_at || ""),
+        };
+      },
       async upsertUiAuthUser(user) {
         const db = mt5ReadJsonDb();
         const target = normalizeEmail(user?.email);
         if (!target) throw new Error("email is required");
-        const defaultUser = mt5EnsureJsonDefaultUser(db);
-        defaultUser.user_name = String(user?.user_name || defaultUser.user_name || fallbackUserNameFromEmail(target));
-        defaultUser.email = target;
-        defaultUser.role = normalizeUserRole(user?.role || defaultUser.role || UI_ROLE_SYSTEM);
-        defaultUser.password_salt = String(user?.password_salt || "");
-        defaultUser.password_hash = String(user?.password_hash || "");
-        defaultUser.updated_at = String(user?.updated_at || new Date().toISOString());
+        const userId = String(user?.user_id || CFG.mt5DefaultUserId);
+        let targetUser = (db.users || []).find((u) => String(u.user_id || "") === userId);
+        if (!targetUser) {
+          targetUser = {
+            user_id: userId,
+            user_name: "",
+            email: "",
+            role: "User",
+            password_salt: "",
+            password_hash: "",
+            updated_at: mt5NowIso(),
+            created_at: mt5NowIso(),
+          };
+          db.users.push(targetUser);
+        }
+        targetUser.user_name = String(user?.user_name || targetUser.user_name || fallbackUserNameFromEmail(target));
+        targetUser.email = target;
+        targetUser.role = normalizeUserRole(user?.role || targetUser.role || UI_ROLE_SYSTEM);
+        targetUser.password_salt = String(user?.password_salt || "");
+        targetUser.password_hash = String(user?.password_hash || "");
+        targetUser.updated_at = String(user?.updated_at || new Date().toISOString());
         mt5WriteJsonDb(db);
         return { ok: true };
       },
@@ -1786,9 +1868,20 @@ async function mt5InitBackend() {
           LIMIT 1
         `).get(target) || null;
       },
+      async getUiAuthUserById(userId) {
+        const target = String(userId || "").trim();
+        if (!target) return null;
+        return db.prepare(`
+          SELECT user_id, user_name, email, role, password_salt, password_hash, updated_at
+          FROM users
+          WHERE user_id = ?
+          LIMIT 1
+        `).get(target) || null;
+      },
       async upsertUiAuthUser(user) {
         const target = normalizeEmail(user?.email);
         if (!target) throw new Error("email is required");
+        const userId = String(user?.user_id || CFG.mt5DefaultUserId);
         db.prepare(`
           INSERT INTO users (user_id, user_name, email, role, password_salt, password_hash, updated_at, created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -1800,7 +1893,7 @@ async function mt5InitBackend() {
             password_hash = excluded.password_hash,
             updated_at = excluded.updated_at
         `).run(
-          CFG.mt5DefaultUserId,
+          userId,
           String(user?.user_name || fallbackUserNameFromEmail(target)),
           target,
           normalizeUserRole(user?.role || UI_ROLE_SYSTEM),
@@ -2458,9 +2551,21 @@ async function mt5InitBackend() {
       `, [target]);
       return res.rows[0] || null;
     },
+    async getUiAuthUserById(userId) {
+      const target = String(userId || "").trim();
+      if (!target) return null;
+      const res = await pool.query(`
+        SELECT user_id, user_name, email, role, password_salt, password_hash, updated_at
+        FROM users
+        WHERE user_id = $1
+        LIMIT 1
+      `, [target]);
+      return res.rows[0] || null;
+    },
     async upsertUiAuthUser(user) {
       const target = normalizeEmail(user?.email);
       if (!target) throw new Error("email is required");
+      const userId = String(user?.user_id || CFG.mt5DefaultUserId);
       await pool.query(`
         INSERT INTO users (user_id, user_name, email, role, password_salt, password_hash, updated_at, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
@@ -2472,7 +2577,7 @@ async function mt5InitBackend() {
           password_hash = EXCLUDED.password_hash,
           updated_at = EXCLUDED.updated_at
       `, [
-        CFG.mt5DefaultUserId,
+        userId,
         String(user?.user_name || fallbackUserNameFromEmail(target)),
         target,
         normalizeUserRole(user?.role || UI_ROLE_SYSTEM),
@@ -3486,6 +3591,46 @@ const server = http.createServer(async (req, res) => {
         role: sess.role,
       },
     });
+  }
+
+  if (req.method === "GET" && url.pathname === "/auth/profile") {
+    const sess = getUiSessionFromReq(req);
+    if (!sess.ok) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const state = await uiReadAuthStateByUserId(sess.user_id) || await uiReadAuthStateByEmail(sess.email);
+    if (!state) return json(res, 404, { ok: false, error: "User not found" });
+    return json(res, 200, {
+      ok: true,
+      user: {
+        user_id: state.user_id,
+        user_name: state.user_name,
+        email: state.email,
+        role: state.role,
+      },
+    });
+  }
+
+  if (req.method === "PUT" && url.pathname === "/auth/profile") {
+    const sess = getUiSessionFromReq(req);
+    if (!sess.ok) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      const payload = await readJson(req);
+      const out = await uiAuthUpdateProfile(sess, payload || {});
+      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to update profile" });
+      if (sess.token && UI_SESSIONS.has(sess.token)) {
+        const cur = UI_SESSIONS.get(sess.token) || {};
+        UI_SESSIONS.set(sess.token, {
+          ...cur,
+          email: out.user.email,
+          user_name: out.user.user_name,
+          role: out.user.role,
+          user_id: out.user.user_id,
+        });
+      }
+      return json(res, 200, { ok: true, user: out.user });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
   }
 
   if (req.method === "POST" && url.pathname === "/auth/login") {

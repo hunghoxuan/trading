@@ -187,6 +187,63 @@ async function post(path, body = {}) {
   return data;
 }
 
+async function put(path, body = {}) {
+  const API_KEY = runtimeApiKey();
+  const base = runtimeApiBase();
+  const primaryUrl = buildUrl(base, path);
+  const fallbackUrl = buildUrl(window.location.origin, path);
+
+  async function doFetch(url) {
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(() => ctrl.abort(), 12000);
+    try {
+      return await fetch(url, {
+        method: "PUT",
+        signal: ctrl.signal,
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(API_KEY ? { "x-api-key": API_KEY } : {}),
+        },
+        body: JSON.stringify(body || {}),
+      });
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        throw new Error("Request timeout (12s). Check API URL and server status.");
+      }
+      throw err;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  let res;
+  try {
+    res = await doFetch(primaryUrl);
+  } catch (primaryError) {
+    if (primaryUrl !== fallbackUrl) {
+      try {
+        res = await doFetch(fallbackUrl);
+      } catch {
+        throw primaryError;
+      }
+    } else {
+      throw primaryError;
+    }
+  }
+
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(`Server returned non-JSON response (${res.status})`);
+  }
+  if (!res.ok || !data.ok) {
+    throw new Error(data.error || `Request failed: ${res.status}`);
+  }
+  return data;
+}
+
 async function downloadCsv(path, params = {}) {
   const API_KEY = runtimeApiKey();
   const base = runtimeApiBase();
@@ -239,6 +296,8 @@ async function downloadCsv(path, params = {}) {
 
 export const api = {
   authMe: () => get("/auth/me"),
+  authProfile: () => get("/auth/profile"),
+  updateAuthProfile: (user_name, email) => put("/auth/profile", { user_name, email }),
   login: (email, password) => post("/auth/login", { email, password }),
   logout: () => post("/auth/logout", {}),
   changePassword: (currentPassword, newPassword) => post("/auth/password", { currentPassword, newPassword }),

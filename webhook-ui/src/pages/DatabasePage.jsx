@@ -89,9 +89,12 @@ export default function DatabasePage() {
     if (!rows.length) return [];
     // Prioritize institutional fields
     const priority = ['signal_id', 'created_at', 'symbol', 'action', 'status', 'event_type', 'type', 'tick_time', 'user_id', 'account_id'];
-    const blacklist = ['raw_json', 'metadata', 'extra_meta', 'details', 'log_payload', 'payload'];
+    const blacklist = ['raw_json', 'metadata', 'extra_meta', 'details', 'log_payload', 'payload', 'password_hash', 'pwd_hash', 'password', 'token', 'api_key', 'admin_key'];
     
-    const keys = Object.keys(rows[0]).filter(k => !blacklist.includes(k.toLowerCase()));
+    const keys = Object.keys(rows[0]).filter(k => {
+      const low = k.toLowerCase();
+      return !blacklist.some(b => low.includes(b));
+    });
     
     return [...new Set([...priority.filter(p => keys.includes(p)), ...keys])].slice(0, 10);
   }, [rows]);
@@ -187,7 +190,13 @@ export default function DatabasePage() {
                  <h2 style={{ margin: 0 }}>ROW DETAILS</h2>
               </div>
               <div className="detail-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
-                {Object.entries(selectedRow).map(([k, v]) => (
+                {Object.entries(selectedRow)
+                  .filter(([k]) => {
+                    const low = k.toLowerCase();
+                    const sensitive = ['password', 'hash', 'token', 'key'];
+                    return !sensitive.some(s => low.includes(s));
+                  })
+                  .map(([k, v]) => (
                   <div key={k} style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
                     <div className="minor-text" style={{ textTransform: 'uppercase', marginBottom: '2px', color: 'var(--text-secondary)' }}>{k.replace(/_/g, " ")}</div>
                     <div className="minor-text" style={{ color: 'var(--text)', wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
