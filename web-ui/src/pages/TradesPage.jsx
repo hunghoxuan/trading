@@ -349,7 +349,6 @@ export default function TradesPage() {
               </tbody>
             </table>
           </div>
-          </div>
         </div>
 
         <div className="logs-detail-pane">
