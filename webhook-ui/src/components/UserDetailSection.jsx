@@ -17,6 +17,8 @@ export default function UserDetailSection({
   onSecondary,
   secondaryDisabled = false,
   secondaryDanger = false,
+  fieldErrors = {},
+  formMessage = null,
   footer = null,
 }) {
   return (
@@ -30,6 +32,7 @@ export default function UserDetailSection({
             onChange={(e) => setForm((p) => ({ ...p, user_name: e.target.value }))} 
             style={{ width: '100%', maxWidth: '400px' }}
           />
+          {fieldErrors.user_name ? <div className="field-validation msg-error">{fieldErrors.user_name}</div> : null}
         </label>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -39,6 +42,7 @@ export default function UserDetailSection({
             onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} 
             style={{ width: '100%', maxWidth: '400px' }}
           />
+          {fieldErrors.email ? <div className="field-validation msg-error">{fieldErrors.email}</div> : null}
         </label>
 
         {showRole ? (
@@ -64,6 +68,7 @@ export default function UserDetailSection({
             placeholder="Leave empty to keep current"
             style={{ width: '100%', maxWidth: '400px' }}
           />
+          {fieldErrors.password ? <div className="field-validation msg-error">{fieldErrors.password}</div> : null}
         </label>
 
         {showActive ? (
@@ -78,6 +83,8 @@ export default function UserDetailSection({
             <span className="minor-text">Active Account</span>
           </label>
         ) : null}
+
+        {formMessage?.text ? <div className={`form-message msg-${formMessage.type || "error"}`}>{formMessage.text}</div> : null}
 
         <div style={{ display: "flex", gap: 8 }}>
           <button type="button" onClick={onPrimary} disabled={primaryDisabled}>{primaryLabel}</button>

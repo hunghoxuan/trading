@@ -52,6 +52,9 @@ After **every** completed task or phase, end your response with exactly this for
 2. **Environment Verification**: Before making database changes, ALWAYS check the `https://signal.mozasolution.com/mt5/health` endpoint to verify the active storage engine.
 3. **MQL5 Synchronization**: Use `OnTradeTransaction` for trade acknowledgements to ensure one-to-one mapping between broker tickets and signal IDs.
 4. **UI Design Standard**: All Webhook-UI modifications MUST strictly adhere to the `UI_DESIGN_SPEC.md` rules for design tokens, layout splits, and component naming to ensure architectural and visual consistency. v45.
+   - **Form Messaging Rule**: Error message = red, warning = yellow, success = green.
+   - **Validation Placement Rule**: Field validation message must appear directly below its input.
+   - **Form Error Placement Rule**: Form-level error message must appear immediately above the form action button row.
 
 ## 3. Pine Script Coding Standards
 - **Naming:** 

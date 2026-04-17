@@ -28,14 +28,22 @@ function fDate(v) {
 }
 
 export default function UsersPage({ authUser }) {
+  const EMPTY_ALERT = { type: "", text: "" };
   const [users, setUsers] = useState([]);
   const [detail, setDetail] = useState(null);
   const [selectedUserId, setSelectedUserId] = useState("");
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [msg, setMsg] = useState("");
+  const [pageAlert, setPageAlert] = useState(EMPTY_ALERT);
+  const [createUserAlert, setCreateUserAlert] = useState(EMPTY_ALERT);
+  const [profileAlert, setProfileAlert] = useState(EMPTY_ALERT);
+  const [accountAlert, setAccountAlert] = useState(EMPTY_ALERT);
+  const [apiKeyAlert, setApiKeyAlert] = useState(EMPTY_ALERT);
+  const [createUserErrors, setCreateUserErrors] = useState({});
+  const [profileErrors, setProfileErrors] = useState({});
+  const [accountErrors, setAccountErrors] = useState({});
+  const [apiKeyErrors, setApiKeyErrors] = useState({});
 
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
@@ -81,9 +89,9 @@ export default function UsersPage({ authUser }) {
       if (!selectedUserId && rows.length > 0) {
         setSelectedUserId(String(rows[0].user_id || ""));
       }
-      setError("");
+      setPageAlert(EMPTY_ALERT);
     } catch (e) {
-      setError(e?.message || "Failed to load users");
+      setPageAlert({ type: "error", text: e?.message || "Failed to load users" });
     } finally {
       setLoadingUsers(false);
     }
@@ -108,9 +116,9 @@ export default function UsersPage({ authUser }) {
       });
       setEditingAccountId("");
       setAccountForm({ account_id: "", name: "", balance: "", status: "" });
-      setError("");
+      setPageAlert(EMPTY_ALERT);
     } catch (e) {
-      setError(e?.message || "Failed to load user detail");
+      setPageAlert({ type: "error", text: e?.message || "Failed to load user detail" });
     } finally {
       setLoadingDetail(false);
     }
@@ -129,7 +137,9 @@ export default function UsersPage({ authUser }) {
     setSelectedUserId("");
     setDetail(null);
     setCreateUserForm({ user_name: "", email: "", role: "User", password: "" });
-    setError("");
+    setPageAlert(EMPTY_ALERT);
+    setCreateUserErrors({});
+    setCreateUserAlert(EMPTY_ALERT);
   }
 
   function openViewMode(userId) {
@@ -144,22 +154,29 @@ export default function UsersPage({ authUser }) {
       role: String(createUserForm.role || "User"),
       password: String(createUserForm.password || ""),
     };
-    if (!payload.user_name || !payload.email || !payload.password) {
-      setError("Username, email and password are required.");
+    const nextErrors = {};
+    if (!payload.user_name) nextErrors.user_name = "Username is required.";
+    if (!payload.email) nextErrors.email = "Email is required.";
+    if (!payload.password) nextErrors.password = "Password is required.";
+    if (Object.keys(nextErrors).length) {
+      setCreateUserErrors(nextErrors);
+      setCreateUserAlert({ type: "error", text: "Please fix validation errors." });
       return;
     }
     try {
       setSaving(true);
+      setCreateUserErrors({});
+      setCreateUserAlert(EMPTY_ALERT);
       const out = await api.createUser(payload);
       const createdUserId = String(out?.user?.user_id || "");
-      setMsg("User created.");
+      setCreateUserAlert({ type: "success", text: "User created." });
       await loadUsers();
       if (createdUserId) openViewMode(createdUserId);
     } catch (e) {
-      setError(e?.message || "Failed to create user");
+      setCreateUserAlert({ type: "error", text: e?.message || "Failed to create user" });
     } finally {
       setSaving(false);
-      window.setTimeout(() => setMsg(""), 1800);
+      window.setTimeout(() => setCreateUserAlert(EMPTY_ALERT), 1800);
     }
   }
 
@@ -172,17 +189,28 @@ export default function UsersPage({ authUser }) {
       is_active: Boolean(profileForm.is_active),
     };
     if (profileForm.password) payload.password = String(profileForm.password || "");
+    const nextErrors = {};
+    if (!payload.user_name) nextErrors.user_name = "Username is required.";
+    if (!payload.email) nextErrors.email = "Email is required.";
+    if (payload.password && payload.password.length < 8) nextErrors.password = "Password must be at least 8 characters.";
+    if (Object.keys(nextErrors).length) {
+      setProfileErrors(nextErrors);
+      setProfileAlert({ type: "error", text: "Please fix validation errors." });
+      return;
+    }
     try {
       setSaving(true);
+      setProfileErrors({});
+      setProfileAlert(EMPTY_ALERT);
       await api.updateUser(selectedUser.user_id, payload);
-      setMsg("User profile updated.");
+      setProfileAlert({ type: "success", text: "User profile updated." });
       await loadUsers();
       await loadDetail(selectedUser.user_id);
     } catch (e) {
-      setError(e?.message || "Failed to update user profile");
+      setProfileAlert({ type: "error", text: e?.message || "Failed to update user profile" });
     } finally {
       setSaving(false);
-      window.setTimeout(() => setMsg(""), 1800);
+      window.setTimeout(() => setProfileAlert(EMPTY_ALERT), 1800);
     }
   }
 
@@ -192,21 +220,21 @@ export default function UsersPage({ authUser }) {
     try {
       setSaving(true);
       await api.deactivateUser(selectedUser.user_id);
-      setMsg("User deactivated.");
+      setProfileAlert({ type: "warning", text: "User deactivated." });
       await loadUsers();
       await loadDetail(selectedUser.user_id);
     } catch (e) {
-      setError(e?.message || "Failed to deactivate user");
+      setProfileAlert({ type: "error", text: e?.message || "Failed to deactivate user" });
     } finally {
       setSaving(false);
-      window.setTimeout(() => setMsg(""), 1800);
+      window.setTimeout(() => setProfileAlert(EMPTY_ALERT), 1800);
     }
   }
 
   async function onApplyBulkAction() {
     if (!bulkAction) return;
     if (!selectedUser) {
-      setError("Select a user first.");
+      setPageAlert({ type: "warning", text: "Select a user first." });
       return;
     }
     if (bulkAction === "Deactivate Selected User") {
@@ -223,28 +251,35 @@ export default function UsersPage({ authUser }) {
       balance: accountForm.balance === "" ? null : Number(accountForm.balance),
       status: String(accountForm.status || "").trim(),
     };
-    if (!payload.account_id || !payload.name) {
-      setError("Account ID and account name are required.");
+    const nextErrors = {};
+    if (!payload.account_id) nextErrors.account_id = "Account ID is required.";
+    if (!payload.name) nextErrors.name = "Account name is required.";
+    if (accountForm.balance !== "" && Number.isNaN(Number(accountForm.balance))) nextErrors.balance = "Balance must be a valid number.";
+    if (Object.keys(nextErrors).length) {
+      setAccountErrors(nextErrors);
+      setAccountAlert({ type: "error", text: "Please fix validation errors." });
       return;
     }
 
     try {
       setSaving(true);
+      setAccountErrors({});
+      setAccountAlert(EMPTY_ALERT);
       if (editingAccountId) {
         await api.updateUserAccount(selectedUser.user_id, editingAccountId, payload);
-        setMsg("Account updated.");
+        setAccountAlert({ type: "success", text: "Account updated." });
       } else {
         await api.createUserAccount(selectedUser.user_id, payload);
-        setMsg("Account created.");
+        setAccountAlert({ type: "success", text: "Account created." });
       }
       setEditingAccountId("");
       setAccountForm({ account_id: "", name: "", balance: "", status: "" });
       await loadDetail(selectedUser.user_id);
     } catch (e) {
-      setError(e?.message || "Failed to save account");
+      setAccountAlert({ type: "error", text: e?.message || "Failed to save account" });
     } finally {
       setSaving(false);
-      window.setTimeout(() => setMsg(""), 1800);
+      window.setTimeout(() => setAccountAlert(EMPTY_ALERT), 1800);
     }
   }
 
@@ -258,13 +293,13 @@ export default function UsersPage({ authUser }) {
         balance: account.balance === null || account.balance === undefined ? null : Number(account.balance),
         status: "INACTIVE",
       });
-      setMsg("Account deactivated.");
+      setAccountAlert({ type: "warning", text: "Account deactivated." });
       await loadDetail(selectedUser.user_id);
     } catch (e) {
-      setError(e?.message || "Failed to deactivate account");
+      setAccountAlert({ type: "error", text: e?.message || "Failed to deactivate account" });
     } finally {
       setSaving(false);
-      window.setTimeout(() => setMsg(""), 1800);
+      window.setTimeout(() => setAccountAlert(EMPTY_ALERT), 1800);
     }
   }
 
@@ -272,21 +307,24 @@ export default function UsersPage({ authUser }) {
     if (!selectedUser) return;
     const label = String(apiKeyLabel || "").trim();
     if (!label) {
-      setError("API key label is required.");
+      setApiKeyErrors({ label: "API key label is required." });
+      setApiKeyAlert({ type: "error", text: "Please fix validation errors." });
       return;
     }
     try {
       setSaving(true);
+      setApiKeyErrors({});
+      setApiKeyAlert(EMPTY_ALERT);
       const out = await api.createUserApiKey(selectedUser.user_id, { label });
       setApiKeyLabel("");
       const masked = out?.api_key?.key_masked || "";
-      setMsg(masked ? `API key created (${masked}).` : "API key created.");
+      setApiKeyAlert({ type: "success", text: masked ? `API key created (${masked}).` : "API key created." });
       await loadDetail(selectedUser.user_id);
     } catch (e) {
-      setError(e?.message || "Failed to create API key");
+      setApiKeyAlert({ type: "error", text: e?.message || "Failed to create API key" });
     } finally {
       setSaving(false);
-      window.setTimeout(() => setMsg(""), 2200);
+      window.setTimeout(() => setApiKeyAlert(EMPTY_ALERT), 2200);
     }
   }
 
@@ -295,13 +333,13 @@ export default function UsersPage({ authUser }) {
     try {
       setSaving(true);
       await api.updateUserApiKey(selectedUser.user_id, row.key_id, { is_active: !row.is_active });
-      setMsg("API key updated.");
+      setApiKeyAlert({ type: "success", text: "API key updated." });
       await loadDetail(selectedUser.user_id);
     } catch (e) {
-      setError(e?.message || "Failed to update API key");
+      setApiKeyAlert({ type: "error", text: e?.message || "Failed to update API key" });
     } finally {
       setSaving(false);
-      window.setTimeout(() => setMsg(""), 1800);
+      window.setTimeout(() => setApiKeyAlert(EMPTY_ALERT), 1800);
     }
   }
 
@@ -311,13 +349,13 @@ export default function UsersPage({ authUser }) {
     try {
       setSaving(true);
       await api.deleteUserApiKey(selectedUser.user_id, row.key_id);
-      setMsg("API key deleted.");
+      setApiKeyAlert({ type: "warning", text: "API key deleted." });
       await loadDetail(selectedUser.user_id);
     } catch (e) {
-      setError(e?.message || "Failed to delete API key");
+      setApiKeyAlert({ type: "error", text: e?.message || "Failed to delete API key" });
     } finally {
       setSaving(false);
-      window.setTimeout(() => setMsg(""), 1800);
+      window.setTimeout(() => setApiKeyAlert(EMPTY_ALERT), 1800);
     }
   }
 
@@ -359,8 +397,7 @@ export default function UsersPage({ authUser }) {
 
       <div className="logs-layout-split">
         <div className="logs-list-pane">
-          {error ? <div className="error">{error}</div> : null}
-          {msg ? <div className="loading" style={{ padding: 10 }}>{msg}</div> : null}
+          {pageAlert.text ? <div className={`form-message msg-${pageAlert.type || "error"}`} style={{ padding: 10 }}>{pageAlert.text}</div> : null}
           <div className="events-table-wrap">
             <table className="events-table">
               <thead>
@@ -402,13 +439,19 @@ export default function UsersPage({ authUser }) {
               <UserDetailSection
                 title="CREATE USER"
                 form={createUserForm}
-                setForm={setCreateUserForm}
+                setForm={(updater) => {
+                  setCreateUserForm((prev) => (typeof updater === "function" ? updater(prev) : updater));
+                  setCreateUserErrors({});
+                  if (createUserAlert.type === "error") setCreateUserAlert(EMPTY_ALERT);
+                }}
                 roleOptions={ROLE_OPTIONS}
                 showActive={false}
                 passwordLabel="Password"
                 primaryLabel="CREATE USER"
                 onPrimary={onCreateUser}
                 primaryDisabled={saving}
+                fieldErrors={createUserErrors}
+                formMessage={createUserAlert}
                 secondaryLabel="CANCEL"
                 onSecondary={() => {
                   if (users.length > 0) {
@@ -429,13 +472,19 @@ export default function UsersPage({ authUser }) {
               <UserDetailSection
                 title="USER DETAIL"
                 form={profileForm}
-                setForm={setProfileForm}
+                setForm={(updater) => {
+                  setProfileForm((prev) => (typeof updater === "function" ? updater(prev) : updater));
+                  setProfileErrors({});
+                  if (profileAlert.type === "error") setProfileAlert(EMPTY_ALERT);
+                }}
                 roleOptions={ROLE_OPTIONS}
                 disableRole={isDefaultUser}
                 disableActive={isDefaultUser || isSelf}
                 primaryLabel="SAVE USER"
                 onPrimary={onSaveProfile}
                 primaryDisabled={saving}
+                fieldErrors={profileErrors}
+                formMessage={profileAlert}
                 secondaryLabel="DEACTIVATE"
                 onSecondary={onDeactivateUser}
                 secondaryDisabled={saving || isDefaultUser || isSelf || !selectedUser.is_active}
@@ -445,23 +494,29 @@ export default function UsersPage({ authUser }) {
               <div className="panel" style={{ margin: 0 }}>
                 <div className="panel-label">ACCOUNT MANAGEMENT</div>
                 <div className="stack-layout" style={{ gap: 10 }}>
-                  <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1.1fr 1fr 1fr 1fr auto", alignItems: 'flex-end' }}>
+                  <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1.1fr 1fr 1fr 1fr" }}>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       <div className="minor-text">Account ID</div>
-                      <input placeholder="Ex: 52836789" value={accountForm.account_id} onChange={(e) => setAccountForm((p) => ({ ...p, account_id: e.target.value }))} />
+                      <input placeholder="Ex: 52836789" value={accountForm.account_id} onChange={(e) => { setAccountForm((p) => ({ ...p, account_id: e.target.value })); setAccountErrors((p) => ({ ...p, account_id: "" })); if (accountAlert.type === "error") setAccountAlert(EMPTY_ALERT); }} />
+                      {accountErrors.account_id ? <div className="field-validation msg-error">{accountErrors.account_id}</div> : null}
                     </label>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       <div className="minor-text">Name</div>
-                      <input placeholder="Friendly Name" value={accountForm.name} onChange={(e) => setAccountForm((p) => ({ ...p, name: e.target.value }))} />
+                      <input placeholder="Friendly Name" value={accountForm.name} onChange={(e) => { setAccountForm((p) => ({ ...p, name: e.target.value })); setAccountErrors((p) => ({ ...p, name: "" })); if (accountAlert.type === "error") setAccountAlert(EMPTY_ALERT); }} />
+                      {accountErrors.name ? <div className="field-validation msg-error">{accountErrors.name}</div> : null}
                     </label>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       <div className="minor-text">Balance</div>
-                      <input placeholder="0.00" value={accountForm.balance} onChange={(e) => setAccountForm((p) => ({ ...p, balance: e.target.value }))} />
+                      <input placeholder="0.00" value={accountForm.balance} onChange={(e) => { setAccountForm((p) => ({ ...p, balance: e.target.value })); setAccountErrors((p) => ({ ...p, balance: "" })); if (accountAlert.type === "error") setAccountAlert(EMPTY_ALERT); }} />
+                      {accountErrors.balance ? <div className="field-validation msg-error">{accountErrors.balance}</div> : null}
                     </label>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       <div className="minor-text">Status</div>
                       <input placeholder="ACTIVE" value={accountForm.status} onChange={(e) => setAccountForm((p) => ({ ...p, status: e.target.value }))} />
                     </label>
+                  </div>
+                  {accountAlert.text ? <div className={`form-message msg-${accountAlert.type || "error"}`}>{accountAlert.text}</div> : null}
+                  <div style={{ display: "flex", gap: 8 }}>
                     <button type="button" onClick={onSaveAccount} disabled={saving} style={{ padding: '8px 16px' }}>{editingAccountId ? "UPDATE" : "CREATE"}</button>
                   </div>
 
@@ -525,10 +580,12 @@ export default function UsersPage({ authUser }) {
                   <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr auto", alignItems: 'flex-end' }}>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       <div className="minor-text">Key Label</div>
-                      <input placeholder="Ex: TradingView Bridge" value={apiKeyLabel} onChange={(e) => setApiKeyLabel(e.target.value)} />
+                      <input placeholder="Ex: TradingView Bridge" value={apiKeyLabel} onChange={(e) => { setApiKeyLabel(e.target.value); setApiKeyErrors((p) => ({ ...p, label: "" })); if (apiKeyAlert.type === "error") setApiKeyAlert(EMPTY_ALERT); }} />
+                      {apiKeyErrors.label ? <div className="field-validation msg-error">{apiKeyErrors.label}</div> : null}
                     </label>
                     <button type="button" onClick={onCreateApiKey} disabled={saving} style={{ padding: '8px 16px' }}>CREATE KEY</button>
                   </div>
+                  {apiKeyAlert.text ? <div className={`form-message msg-${apiKeyAlert.type || "error"}`}>{apiKeyAlert.text}</div> : null}
                   <div className="events-table-wrap" style={{ maxHeight: 220 }}>
                     <table className="events-table">
                       <thead>
