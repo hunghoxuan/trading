@@ -20,7 +20,6 @@ export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem("ui_theme") || "dark");
   const [authLoading, setAuthLoading] = useState(true);
   const [authUser, setAuthUser] = useState(null);
-  const [systemMenuOpen, setSystemMenuOpen] = useState(false);
   const location = useLocation();
   const canAccessSystemPages = String(authUser?.role || "").toLowerCase() === "system";
   const systemMenuActive = useMemo(() => {
@@ -98,26 +97,20 @@ export default function App() {
           
           <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")}>Settings</NavLink>
           {canAccessSystemPages && (
-            <div
-              className="nav-dropdown"
-              onMouseLeave={() => setSystemMenuOpen(false)}
-            >
+            <div className="nav-dropdown">
               <button
                 type="button"
                 className={`secondary-button nav-dropdown-trigger ${systemMenuActive ? "active" : ""}`}
-                onClick={() => setSystemMenuOpen((v) => !v)}
               >
                 System
               </button>
-              {systemMenuOpen ? (
-                <div className="nav-dropdown-menu">
-                  <NavLink to="/accounts-v2" onClick={() => setSystemMenuOpen(false)}>Accounts</NavLink>
-                  <NavLink to="/sources" onClick={() => setSystemMenuOpen(false)}>Sources</NavLink>
-                  <NavLink to="/logs" onClick={() => setSystemMenuOpen(false)}>Logs</NavLink>
-                  <NavLink to="/db" onClick={() => setSystemMenuOpen(false)}>DB</NavLink>
-                  <NavLink to="/users" onClick={() => setSystemMenuOpen(false)}>Users</NavLink>
-                </div>
-              ) : null}
+              <div className="nav-dropdown-menu">
+                <NavLink to="/accounts-v2">Accounts</NavLink>
+                <NavLink to="/sources">Sources</NavLink>
+                <NavLink to="/logs">Logs</NavLink>
+                <NavLink to="/db">DB</NavLink>
+                <NavLink to="/users">Users</NavLink>
+              </div>
             </div>
           )}
           <button onClick={handleLogout} className="secondary-button" style={{ marginLeft: 8, padding: '4px 10px', fontSize: '11px' }}>Logout</button>

@@ -61,6 +61,11 @@ body {
   font-size: 12px;
   min-width: 78px;
 }
+.nav-dropdown:hover .nav-dropdown-trigger,
+.nav-dropdown:focus-within .nav-dropdown-trigger {
+  color: var(--text);
+  border-color: var(--accent);
+}
 .nav-dropdown-trigger.active {
   color: var(--text);
   border-color: var(--accent);
@@ -68,7 +73,7 @@ body {
 }
 .nav-dropdown-menu {
   position: absolute;
-  top: calc(100% + 8px);
+  top: 100%;
   right: 0;
   min-width: 180px;
   background: var(--surface);
@@ -80,6 +85,16 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.nav-dropdown:hover .nav-dropdown-menu,
+.nav-dropdown:focus-within .nav-dropdown-menu {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 .nav-dropdown-menu a {
   text-decoration: none;
