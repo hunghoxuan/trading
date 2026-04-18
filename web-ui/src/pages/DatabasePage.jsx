@@ -111,7 +111,7 @@ export default function DatabasePage() {
   const tableHeaders = useMemo(() => {
     if (!rows.length) return [];
     // Prioritize institutional fields
-    const priority = ['signal_id', 'created_at', 'symbol', 'action', 'status', 'event_type', 'type', 'tick_time', 'user_id', 'account_id'];
+    const priority = ['signal_id', 'trade_id', 'created_at', 'symbol', 'side', 'status', 'object_id', 'object_table', 'user_id', 'account_id'];
     const blacklist = ['raw_json', 'metadata', 'extra_meta', 'details', 'log_payload', 'payload', 'password_hash', 'pwd_hash', 'password', 'token', 'api_key', 'admin_key'];
     
     const keys = Object.keys(rows[0]).filter(k => {
@@ -236,7 +236,7 @@ export default function DatabasePage() {
               <div className="panel-label">DB ROW FORM ({selectedTable})</div>
               <div className="stack-layout" style={{ gap: 10 }}>
                 <div className="minor-text">
-                  Supported tables: <code>signals</code>, <code>signal_events</code>, <code>users</code>, <code>accounts</code>, <code>user_api_keys</code>.
+                  Supported tables: <code>users</code>, <code>accounts</code>, <code>signals</code>, <code>trades</code>, <code>logs</code>.
                 </div>
                 <label>
                   <div className="muted small">Row JSON</div>

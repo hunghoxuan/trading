@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.17-48");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.18-01");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -150,6 +150,26 @@ if (CFG.signalApiKey) {
   if (CFG.mt5TvWebhookTokens.size === 0) {
     CFG.mt5TvWebhookTokens = new Set([CFG.signalApiKey]);
   }
+}
+
+function mt5GenerateId(prefix = "ID") {
+  // Use timestamp for rough ordering + random suffix for uniqueness
+  const now = Date.now();
+  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `${prefix}_${now}_${rand}`;
+}
+
+function mt5NormalizeSymbol(s) {
+  const val = typeof s === 'string' ? s : (s?.symbol || s?.s || "");
+  return String(val).toUpperCase().replace(/[\/\-\_\.]/g, "").trim();
+}
+
+async function mt5Log(objectId, objectTable, metadata = {}, userId = null) {
+  const b = await mt5Backend();
+  if (b.log) return await b.log(objectId, objectTable, metadata, userId);
+  // Fallback for non-postgres or bootstrapping
+  const now = mt5NowIso();
+  console.log(`[LOG][${objectTable}][${objectId}] user=${userId} metadata=${JSON.stringify(metadata)}`);
 }
 
 function json(res, statusCode, data) {
@@ -1292,184 +1312,54 @@ async function mt5InitBackend() {
   pool.on('error', (err) => {
     console.error('[Postgres Pool Error]', err);
   });
+
+  // NEW UNIFIED SCHEMA (v2.1)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       user_id TEXT PRIMARY KEY,
-      user_name TEXT,
-      email TEXT,
-      password_salt TEXT,
-      password_hash TEXT,
-      role TEXT NOT NULL DEFAULT 'User',
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await pool.query(`
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'user',
+      metadata JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS accounts (
       account_id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-      name TEXT,
-      balance DOUBLE PRECISION,
-      status TEXT,
       metadata JSONB,
+      status TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await pool.query(`
+    );
+
     CREATE TABLE IF NOT EXISTS signals (
       signal_id TEXT PRIMARY KEY,
       created_at TIMESTAMPTZ NOT NULL,
-      user_id TEXT NOT NULL DEFAULT 'default',
+      user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
       source TEXT,
-      action TEXT NOT NULL,
+      source_id TEXT,
       symbol TEXT NOT NULL,
-      volume DOUBLE PRECISION NOT NULL,
+      side TEXT NOT NULL,
       sl DOUBLE PRECISION NULL,
       tp DOUBLE PRECISION NULL,
       signal_tf TEXT NULL,
       chart_tf TEXT NULL,
       rr_planned DOUBLE PRECISION NULL,
-      risk_money_planned DOUBLE PRECISION NULL,
-      pnl_money_realized DOUBLE PRECISION NULL,
-      entry_price_exec DOUBLE PRECISION NULL,
-      sl_exec DOUBLE PRECISION NULL,
-      tp_exec DOUBLE PRECISION NULL,
       note TEXT,
       raw_json JSONB,
-      status TEXT NOT NULL,
-      locked_at TIMESTAMPTZ NULL,
-      ack_at TIMESTAMPTZ NULL,
-      opened_at TIMESTAMPTZ NULL,
-      closed_at TIMESTAMPTZ NULL,
-      ack_status TEXT NULL,
-      ack_ticket TEXT NULL,
-      ack_error TEXT NULL,
-      CONSTRAINT fk_signals_user FOREIGN KEY (user_id) REFERENCES users(user_id)
-    )
-  `);
-  await pool.query(`
-    DO $$ 
-    BEGIN 
-      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='signals' AND column_name='source_tf') THEN
-        UPDATE signals SET signal_tf = source_tf WHERE signal_tf IS NULL;
-        ALTER TABLE signals DROP COLUMN source_tf;
-      END IF;
-    END $$;
-  `);
-  await pool.query(`
-    ALTER TABLE signals
-    ADD COLUMN IF NOT EXISTS signal_tf TEXT
-  `);
-  await pool.query(`
-    ALTER TABLE signals
-    ADD COLUMN IF NOT EXISTS chart_tf TEXT
-  `);
-  await pool.query(`
-    ALTER TABLE signals
-    ADD COLUMN IF NOT EXISTS entry_model TEXT
-  `);
-  // Broker execution telemetry columns (added 2026-04-15).
-  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS sl_pips FLOAT8`);
-  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS tp_pips FLOAT8`);
-  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS pip_value_per_lot FLOAT8`);
-  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS risk_money_actual FLOAT8`);
-  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS reward_money_planned FLOAT8`);
+      status TEXT NOT NULL DEFAULT 'NEW'
+    );
 
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_signals_status_created
-    ON signals(status, created_at)
-  `);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_signals_user_created
-    ON signals(user_id, created_at)
-  `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS signal_events (
-      id BIGSERIAL PRIMARY KEY,
-      signal_id TEXT NOT NULL REFERENCES signals(signal_id) ON DELETE CASCADE,
-      event_type TEXT NOT NULL,
-      event_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      payload_json JSONB
-    )
-  `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS user_api_keys (
-      key_id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-      label TEXT NOT NULL,
-      key_value TEXT NOT NULL UNIQUE,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      last_used_at TIMESTAMPTZ NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_signal_events_signal_time
-    ON signal_events(signal_id, event_time)
-  `);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_user_api_keys_user_created
-    ON user_api_keys(user_id, created_at)
-  `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS brokers (
-      broker_id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      broker_type TEXT NOT NULL CHECK (broker_type IN ('mt5_ea', 'api_bot', 'manual')),
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      last_seen_at TIMESTAMPTZ NULL,
-      metadata JSONB,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS sources (
-      source_id TEXT PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      kind TEXT NOT NULL CHECK (kind IN ('tv', 'api', 'manual', 'bot')),
-      auth_mode TEXT NOT NULL CHECK (auth_mode IN ('token', 'api_key', 'signature', 'none')),
-      auth_secret_hash TEXT NULL,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      metadata JSONB,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS source_events (
-      event_id BIGSERIAL PRIMARY KEY,
-      source_id TEXT NOT NULL REFERENCES sources(source_id) ON DELETE CASCADE,
-      event_type TEXT NOT NULL,
-      event_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      payload_json JSONB,
-      metadata JSONB
-    )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_source_events_source_time ON source_events(source_id, event_time)`);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS account_sources (
-      account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-      source_id TEXT NOT NULL REFERENCES sources(source_id) ON DELETE CASCADE,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      symbol_allowlist JSONB NULL,
-      strategy_allowlist JSONB NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (account_id, source_id)
-    )
-  `);
-  await pool.query(`
     CREATE TABLE IF NOT EXISTS trades (
       trade_id TEXT PRIMARY KEY,
       account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
       broker_id TEXT NULL,
       signal_id TEXT NULL REFERENCES signals(signal_id) ON DELETE SET NULL,
-      source_id TEXT NULL REFERENCES sources(source_id) ON DELETE SET NULL,
-      origin_kind TEXT NOT NULL CHECK (origin_kind IN ('SIGNAL','BROKER')),
+      source_id TEXT NULL,
+      origin_kind TEXT NOT NULL,
       symbol TEXT NOT NULL,
       side TEXT NOT NULL,
       intent_entry FLOAT8 NULL,
@@ -1477,12 +1367,11 @@ async function mt5InitBackend() {
       intent_tp FLOAT8 NULL,
       intent_volume FLOAT8 NULL,
       intent_note TEXT NULL,
-      dispatch_status TEXT NOT NULL DEFAULT 'NEW' CHECK (dispatch_status IN ('NEW','LEASED','CONSUMED')),
       lease_token TEXT NULL,
       lease_expires_at TIMESTAMPTZ NULL,
-      pulled_at TIMESTAMPTZ NULL,
-      execution_status TEXT NOT NULL DEFAULT 'PENDING' CHECK (execution_status IN ('PENDING','OPEN','CLOSED','REJECTED')),
-      close_reason TEXT NULL CHECK (close_reason IN ('TP','SL','MANUAL','CANCEL','EXPIRED','FAIL')),
+      dispatch_status TEXT NOT NULL DEFAULT 'NEW',
+      execution_status TEXT NOT NULL DEFAULT 'PENDING',
+      close_reason TEXT NULL,
       broker_trade_id TEXT NULL,
       broker_order_id TEXT NULL,
       entry_exec FLOAT8 NULL,
@@ -1493,61 +1382,57 @@ async function mt5InitBackend() {
       pnl_realized FLOAT8 NULL,
       error_code TEXT NULL,
       error_message TEXT NULL,
-      metadata JSONB,
+      metadata JSONB NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS trade_events (
-      event_id BIGSERIAL PRIMARY KEY,
-      trade_id TEXT NOT NULL REFERENCES trades(trade_id) ON DELETE CASCADE,
-      event_type TEXT NOT NULL,
-      event_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      idempotency_key TEXT NULL,
-      payload_json JSONB,
-      metadata JSONB
-    )
-  `);
-  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_trades_account_signal ON trades(account_id, signal_id) WHERE signal_id IS NOT NULL`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_trades_dispatch_queue ON trades(account_id, dispatch_status, created_at)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_trade_events_trade_time ON trade_events(trade_id, event_time)`);
-  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_trade_events_idem ON trade_events(trade_id, idempotency_key) WHERE idempotency_key IS NOT NULL`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_account_sources_source_active ON account_sources(source_id, is_active)`);
+    );
 
-  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS broker_id TEXT`);
-  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_hash TEXT`);
-  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_last4 TEXT`);
-  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_rotated_at TIMESTAMPTZ`);
-  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS source_ids_cache JSONB`);
-  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_accounts_api_key_hash ON accounts(api_key_hash) WHERE api_key_hash IS NOT NULL`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts(user_id)`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_salt TEXT`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ`);
-  await pool.query(`
-    UPDATE users
-    SET role = COALESCE(NULLIF(role, ''), 'User'),
-        is_active = COALESCE(is_active, TRUE),
-        updated_at = COALESCE(updated_at, NOW())
+    CREATE TABLE IF NOT EXISTS logs (
+      log_id SERIAL PRIMARY KEY,
+      object_id TEXT NULL,
+      object_table TEXT NULL,
+      metadata JSONB,
+      user_id TEXT REFERENCES users(user_id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
-  // Ensure "SYSTEM_SYNC_PUSH" dummy signal exists for global logging.
-  await pool.query(`
-    INSERT INTO signals (signal_id, symbol, action, volume, status, created_at, user_id, note)
-    VALUES ('SYSTEM_SYNC_PUSH', 'SYNC_PUSH', 'SYSTEM', 0, 'PLACED', $1, $2, 'Global Sync Log Partition')
-    ON CONFLICT (signal_id) DO NOTHING
-  `, [mt5NowIso(), CFG.mt5DefaultUserId]);
-
-  // Migration: OK -> PLACED
-  await pool.query(`UPDATE signals SET status = 'PLACED' WHERE status = 'OK'`);
-
-  for (const tbl of ["users", "accounts", "signals", "signal_events"]) {
-    await pool.query(`ALTER TABLE ${tbl} ADD COLUMN IF NOT EXISTS metadata JSONB`);
+  
+  // Migration: Merge legacy events into unified logs and drop old tables
+  try {
+    await pool.query(`
+      INSERT INTO logs (object_id, object_table, metadata, created_at)
+      SELECT signal_id, 'signals', payload_json || jsonb_build_object('legacy_event_type', event_type), event_time
+      FROM signal_events
+    `).catch(() => {});
+    await pool.query(`
+      INSERT INTO logs (object_id, object_table, metadata, created_at)
+      SELECT trade_id, 'trades', payload_json || jsonb_build_object('legacy_event_type', event_type), event_time
+      FROM trade_events
+    `).catch(() => {});
+  } catch (e) {
+    // Legacy tables might already be gone
   }
 
+  const legacyTables = ['signal_events', 'trade_events', 'source_events', 'mt5_signals', 'account_sources', 'ui_auth_users'];
+  for (const t of legacyTables) {
+    await pool.query(`DROP TABLE IF EXISTS ${t} CASCADE`).catch(() => {});
+  }
+
+  // Migration: Strip legacy columns from signals/trades that Postgres persists despite IF NOT EXISTS definitions
+  const legacySigCols = [
+    'risk_money_planned', 'pnl_money_realized', 'entry_price_exec', 'sl_exec', 'tp_exec', 
+    'sl_pips', 'tp_pips', 'pip_value_per_lot', 'risk_money_actual', 
+    'reward_money_planned', 'reward_money_actual', 'ack_status', 'ack_ticket', 'ack_error',
+    'locked_at', 'ack_at', 'opened_at', 'closed_at'
+  ];
+  for (const col of legacySigCols) {
+    await pool.query(`ALTER TABLE signals DROP COLUMN IF EXISTS ${col}`).catch(() => {});
+  }
+
+  // Ensure default user
+  const now = mt5NowIso();
   await pool.query(`
-    INSERT INTO users (user_id, user_name, email, role, created_at, updated_at)
+    INSERT INTO users (user_id, email, password_hash, role, created_at, updated_at)
     VALUES ($1, $2, $3, $4, $5, $6)
     ON CONFLICT (user_id) DO UPDATE SET
       role = EXCLUDED.role,
@@ -1578,1197 +1463,181 @@ async function mt5InitBackend() {
   MT5_BACKEND = {
     storage: "postgres",
     info: { url: CFG.mt5PostgresUrl.replace(/:[^:@/]+@/, ":***@") },
+    async log(objectId, objectTable, metadata = {}, userId = null) {
+      await pool.query(`
+        INSERT INTO logs (object_id, object_table, metadata, user_id, created_at)
+        VALUES ($1, $2, $3, $4, NOW())
+      `, [objectId, objectTable, JSON.stringify(metadata), userId]);
+    },
     async upsertSignal(signal) {
       const r = await pool.query(`
         INSERT INTO signals (
-          signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
-          signal_tf, chart_tf,
-          rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
-          note, entry_model, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,$22,$23,$24,$25,$26,$27,$28)
+          signal_id, created_at, user_id, source, source_id, symbol, side, sl, tp,
+          signal_tf, chart_tf, rr_planned, note, raw_json, status
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15)
         ON CONFLICT (signal_id) DO NOTHING
         RETURNING signal_id
       `, [
-        signal.signal_id,
-        signal.created_at,
-        signal.user_id || CFG.mt5DefaultUserId,
-        signal.source,
-        signal.action,
-        signal.symbol,
-        signal.volume,
-        signal.sl,
-        signal.tp,
-        signal.signal_tf ?? signal.raw_json?.sourceTf ?? signal.raw_json?.timeframe ?? null,
-        signal.chart_tf ?? signal.raw_json?.chartTf ?? null,
-        signal.rr_planned ?? null,
-        signal.risk_money_planned ?? null,
-        signal.pnl_money_realized ?? null,
-        signal.entry_price_exec ?? null,
-        signal.sl_exec ?? null,
-        signal.tp_exec ?? null,
-        signal.note,
-        signal.entry_model ?? null,
-        JSON.stringify(signal.raw_json || {}),
-        signal.status,
-        signal.locked_at,
-        signal.ack_at,
-        signal.opened_at,
-        signal.closed_at,
-        signal.ack_status,
-        signal.ack_ticket,
-        signal.ack_error,
+        signal.signal_id, signal.created_at, signal.user_id, signal.source, signal.source_id,
+        signal.symbol, signal.side, signal.sl, signal.tp, signal.signal_tf, signal.chart_tf,
+        signal.rr_planned, signal.note, JSON.stringify(signal.raw_json || {}), signal.status || 'NEW'
       ]);
       return { inserted: (r.rowCount || 0) > 0 };
-    },
-    async upsertSourceV2(source) {
-      await pool.query(`
-        INSERT INTO sources (source_id, name, kind, auth_mode, auth_secret_hash, is_active, metadata, created_at, updated_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)
-        ON CONFLICT (source_id) DO UPDATE SET
-          name = EXCLUDED.name,
-          kind = EXCLUDED.kind,
-          auth_mode = EXCLUDED.auth_mode,
-          auth_secret_hash = EXCLUDED.auth_secret_hash,
-          is_active = EXCLUDED.is_active,
-          metadata = EXCLUDED.metadata,
-          updated_at = EXCLUDED.updated_at
-      `, [
-        String(source?.source_id || ""),
-        String(source?.name || ""),
-        String(source?.kind || "api"),
-        String(source?.auth_mode || "token"),
-        source?.auth_secret_hash ?? null,
-        normalizeUserActive(source?.is_active, true),
-        JSON.stringify(source?.metadata || {}),
-        mt5NowIso(),
-        mt5NowIso(),
-      ]);
-      return true;
     },
     async fanoutSignalTradeV2(payload = {}) {
       const signalId = String(payload.signal_id || "").trim();
       const sourceId = String(payload.source_id || "").trim();
       const userId = String(payload.user_id || CFG.mt5DefaultUserId).trim();
       if (!signalId || !sourceId || !userId) return { created: 0, account_ids: [] };
-
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const accounts = await client.query(`
-          SELECT DISTINCT a.account_id, a.broker_id
-          FROM accounts a
-          LEFT JOIN account_sources s
-            ON s.account_id = a.account_id
-           AND s.source_id = $1
-           AND s.is_active = TRUE
-          WHERE a.user_id = $2
-            AND (
-              s.account_id IS NOT NULL
-              OR NOT EXISTS (
-                SELECT 1 FROM account_sources sx
-                WHERE sx.account_id = a.account_id
-                  AND sx.is_active = TRUE
-              )
-            )
-          ORDER BY a.account_id ASC
-        `, [sourceId, userId]);
-
-        let created = 0;
-        const accountIds = [];
+        const accounts = await client.query(`SELECT account_id, broker_id FROM accounts WHERE user_id = $1 AND status != 'ARCHIVED'`, [userId]);
+        let created = 0; const accountIds = [];
         for (const row of accounts.rows || []) {
-          const accountId = String(row.account_id || "").trim();
-          if (!accountId) continue;
-          const tradeId = `trd_${signalId}_${accountId}`;
+          const aid = row.account_id;
+          const tradeId = mt5GenerateId("TRD");
           const ins = await client.query(`
             INSERT INTO trades (
-              trade_id, account_id, broker_id, signal_id, source_id, origin_kind,
+              trade_id, account_id, user_id, broker_id, signal_id, source_id, origin_kind,
               symbol, side, intent_entry, intent_sl, intent_tp, intent_volume, intent_note,
-              dispatch_status, execution_status, metadata, created_at, updated_at
-            ) VALUES (
-              $1,$2,$3,$4,$5,'SIGNAL',
-              $6,$7,$8,$9,$10,$11,$12,
-              'NEW','PENDING',$13::jsonb,$14,$15
-            )
-            ON CONFLICT (trade_id) DO NOTHING
+              dispatch_status, execution_status, created_at, updated_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,'SIGNAL',$7,$8,$9,$10,$11,$12,$13,'NEW','PENDING',$14,$14)
           `, [
-            tradeId,
-            accountId,
-            row.broker_id ?? null,
-            signalId,
-            sourceId,
-            String(payload.symbol || ""),
-            String(payload.side || "BUY"),
-            payload.intent_entry ?? null,
-            payload.intent_sl ?? null,
-            payload.intent_tp ?? null,
-            payload.intent_volume ?? null,
-            payload.intent_note ?? null,
-            JSON.stringify(payload.metadata || {}),
-            mt5NowIso(),
-            mt5NowIso(),
+            tradeId, aid, userId, row.broker_id, signalId, sourceId,
+            payload.symbol, payload.side, payload.intent_entry, payload.intent_sl,
+            payload.intent_tp, payload.intent_volume, payload.intent_note, mt5NowIso()
           ]);
           if ((ins.rowCount || 0) > 0) {
-            created += 1;
-            accountIds.push(accountId);
+            created++; accountIds.push(aid);
+            await client.query(`INSERT INTO logs (object_id, object_table, metadata, user_id) VALUES ($1,'trades',$2,$3)`, 
+              [tradeId, JSON.stringify({ event: 'SIGNAL_FANOUT', signal_id: signalId }), userId]);
           }
         }
         await client.query("COMMIT");
         return { created, account_ids: accountIds };
-      } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-      } finally {
-        client.release();
-      }
-    },
-    async findAccountByApiKeyHash(apiKeyHash) {
-      const hash = String(apiKeyHash || "").trim();
-      if (!hash) return null;
-      const res = await pool.query(`
-        SELECT account_id, user_id, broker_id, name, status, api_key_hash, api_key_last4
-        FROM accounts
-        WHERE api_key_hash = $1
-        LIMIT 1
-      `, [hash]);
-      return res.rows[0] || null;
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
     },
     async pullLeasedTradesV2(accountId, maxItems = 1, leaseSeconds = 30) {
       const aid = String(accountId || "").trim();
-      const safeMax = Math.max(1, Math.min(100, Number(maxItems) || 1));
       const leaseSec = Math.max(5, Math.min(300, Number(leaseSeconds) || 30));
       if (!aid) return [];
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
         const sel = await client.query(`
-          SELECT trade_id, account_id, signal_id, source_id, symbol, side, intent_entry, intent_sl, intent_tp, intent_volume, intent_note, metadata
-          FROM trades
-          WHERE account_id = $1
-            AND (
-              dispatch_status = 'NEW'
-              OR (dispatch_status = 'LEASED' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW())
-            )
-          ORDER BY created_at ASC
-          LIMIT $2
-          FOR UPDATE SKIP LOCKED
-        `, [aid, safeMax]);
+          SELECT * FROM trades
+          WHERE account_id = $1 AND (dispatch_status = 'NEW' OR (dispatch_status = 'LEASED' AND lease_expires_at < NOW()))
+          ORDER BY created_at ASC LIMIT $2 FOR UPDATE SKIP LOCKED
+        `, [aid, Math.max(1, Math.min(100, Number(maxItems) || 1))]);
         const out = [];
         for (const row of sel.rows || []) {
           const leaseToken = crypto.randomUUID();
           const leaseExpiresAt = new Date(Date.now() + leaseSec * 1000).toISOString();
-          const upd = await client.query(`
-            UPDATE trades
-            SET dispatch_status = 'LEASED',
-                lease_token = $1,
-                lease_expires_at = $2,
-                pulled_at = $3,
-                updated_at = $3
-            WHERE trade_id = $4
-              AND account_id = $5
-              AND (
-                dispatch_status = 'NEW'
-                OR (dispatch_status = 'LEASED' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW())
-              )
-          `, [leaseToken, leaseExpiresAt, mt5NowIso(), row.trade_id, aid]);
-          if ((upd.rowCount || 0) > 0) {
-            out.push({
-              ...row,
-              lease_token: leaseToken,
-              lease_expires_at: leaseExpiresAt,
-              metadata: row.metadata || {},
-            });
-          }
+          await client.query(`UPDATE trades SET dispatch_status = 'LEASED', lease_token = $1, lease_expires_at = $2, updated_at = NOW() WHERE trade_id = $3`, [leaseToken, leaseExpiresAt, row.trade_id]);
+          out.push({ ...row, lease_token: leaseToken, lease_expires_at: leaseExpiresAt });
         }
-        await client.query("COMMIT");
-        return out;
-      } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-      } finally {
-        client.release();
-      }
+        await client.query("COMMIT"); return out;
+      } catch (e) { await client.query("ROLLBACK"); throw e; } finally { client.release(); }
     },
     async ackTradeV2(accountId, payload = {}) {
-      const aid = String(accountId || "").trim();
-      const tradeId = String(payload.trade_id || "").trim();
-      const leaseToken = String(payload.lease_token || "").trim();
-      if (!aid || !tradeId || !leaseToken) return { ok: false, error: "missing trade_id/lease_token/account_id" };
-      const now = mt5NowIso();
-      const executionStatus = String(payload.execution_status || "PENDING").trim().toUpperCase();
-      const closeReasonRaw = String(payload.close_reason || "").trim().toUpperCase();
-      const closeReason = closeReasonRaw ? closeReasonRaw : null;
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        const upd = await client.query(`
-          UPDATE trades
-          SET dispatch_status = 'CONSUMED',
-              execution_status = $1,
-              close_reason = $2,
-              broker_trade_id = COALESCE($3, broker_trade_id),
-              broker_order_id = COALESCE($4, broker_order_id),
-              entry_exec = COALESCE($5, entry_exec),
-              sl_exec = COALESCE($6, sl_exec),
-              tp_exec = COALESCE($7, tp_exec),
-              opened_at = COALESCE($8, opened_at),
-              closed_at = COALESCE($9, closed_at),
-              pnl_realized = COALESCE($10, pnl_realized),
-              error_code = COALESCE($11, error_code),
-              error_message = COALESCE($12, error_message),
-              updated_at = $13
-          WHERE trade_id = $14
-            AND account_id = $15
-            AND dispatch_status = 'LEASED'
-            AND lease_token = $16
-          RETURNING dispatch_status, execution_status
-        `, [
-          executionStatus,
-          closeReason,
-          payload.broker_trade_id ?? null,
-          payload.broker_order_id ?? null,
-          payload.entry_exec ?? null,
-          payload.sl_exec ?? null,
-          payload.tp_exec ?? null,
-          payload.opened_at ?? null,
-          payload.closed_at ?? null,
-          payload.pnl_realized ?? null,
-          payload.error_code ?? null,
-          payload.error_message ?? null,
-          now,
-          tradeId,
-          aid,
-          leaseToken,
-        ]);
-        if ((upd.rowCount || 0) < 1) {
-          await client.query("ROLLBACK");
-          return { ok: false, error: "trade not leased or invalid token" };
-        }
-        await client.query(`
-          INSERT INTO trade_events (trade_id, event_type, event_time, idempotency_key, payload_json, metadata)
-          VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
-          ON CONFLICT DO NOTHING
-        `, [
-          tradeId,
-          String(payload.event_type || "ACK"),
-          String(payload.event_time || now),
-          payload.idempotency_key ? String(payload.idempotency_key) : null,
-          JSON.stringify(payload.payload_json || {}),
-          JSON.stringify({ account_id: aid }),
-        ]);
-        await client.query("COMMIT");
-        return { ok: true, dispatch_status: upd.rows[0].dispatch_status, execution_status: upd.rows[0].execution_status };
-      } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-      } finally {
-        client.release();
-      }
-    },
-    async rotateAccountApiKeyV2(accountId) {
-      const aid = String(accountId || "").trim();
-      if (!aid) return null;
-      const apiKeyPlaintext = `ak_${crypto.randomBytes(24).toString("hex")}`;
-      const keyHash = hashApiKey(apiKeyPlaintext);
-      const now = mt5NowIso();
-      const res = await pool.query(`
-        UPDATE accounts
-        SET api_key_hash = $1,
-            api_key_last4 = $2,
-            api_key_rotated_at = $3,
-            updated_at = $3
-        WHERE account_id = $4
-        RETURNING account_id
-      `, [keyHash, apiKeyPlaintext.slice(-4), now, aid]);
-      if ((res.rowCount || 0) < 1) return null;
-      return { account_id: aid, api_key_plaintext: apiKeyPlaintext };
+       const now = mt5NowIso();
+       const res = await pool.query(`
+         UPDATE trades
+         SET execution_status = $1, broker_trade_id = $2, entry_exec = $3, pnl_realized = $4,
+             closed_at = CASE WHEN $1 = 'CLOSED' THEN $5 ELSE closed_at END, updated_at = $5
+         WHERE trade_id = $6 AND account_id = $7 RETURNING user_id
+       `, [payload.execution_status, payload.broker_trade_id, payload.entry_exec, payload.pnl_realized, now, payload.trade_id, accountId]);
+       if (res.rowCount > 0) {
+         await this.log(payload.trade_id, 'trades', { event: 'ACK', status: payload.execution_status, pnl: payload.pnl_realized }, res.rows[0].user_id);
+       }
+       return { ok: res.rowCount > 0 };
     },
     async brokerSyncV2(accountId, payload = {}) {
       const aid = String(accountId || "").trim();
-      if (!aid) return { ok: false, error: "account_id is required" };
-      const resolveMissing = normalizeUserActive(payload?.resolve_missing, false);
-      const createOrphans = normalizeUserActive(payload?.create_orphans, false);
-      const now = mt5NowIso();
-      const positions = Array.isArray(payload?.positions) ? payload.positions : [];
-      const orders = Array.isArray(payload?.orders) ? payload.orders : [];
-      const snapshotItems = [...positions, ...orders];
-      const brokerTickets = new Set(snapshotItems.map((x) => mt5NormalizeBrokerTicket(x)).filter(Boolean));
-
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        const openRes = await client.query(`
-          SELECT trade_id, broker_trade_id, symbol, side
-          FROM trades
-          WHERE account_id = $1
-            AND execution_status IN ('PENDING', 'OPEN')
-        `, [aid]);
-        const openRows = openRes.rows || [];
-        const knownTickets = new Set(openRows.map((r) => String(r.broker_trade_id || "").trim()).filter(Boolean));
-        const missingOnBroker = openRows.filter((r) => {
-          const t = String(r.broker_trade_id || "").trim();
-          return t && !brokerTickets.has(t);
-        });
-        const orphanTickets = [...brokerTickets].filter((t) => !knownTickets.has(t));
-
-        let closedBySync = 0;
-        if (resolveMissing && missingOnBroker.length > 0) {
-          for (const row of missingOnBroker) {
-            const upd = await client.query(`
-              UPDATE trades
-              SET execution_status = 'CLOSED',
-                  close_reason = 'FAIL',
-                  closed_at = $1,
-                  updated_at = $1
-              WHERE trade_id = $2
-                AND account_id = $3
-                AND execution_status IN ('PENDING','OPEN')
-            `, [now, row.trade_id, aid]);
-            if ((upd.rowCount || 0) > 0) {
-              closedBySync += 1;
-              await client.query(`
-                INSERT INTO trade_events (trade_id, event_type, event_time, payload_json, metadata)
-                VALUES ($1, 'SYNC_CLOSE_MISSING_ON_BROKER', $2, $3::jsonb, $4::jsonb)
-              `, [row.trade_id, now, JSON.stringify({ source: "broker_sync_v2" }), JSON.stringify({ account_id: aid })]);
-            }
-          }
-        }
-
-        let createdOrphans = 0;
-        if (createOrphans && orphanTickets.length > 0) {
-          for (const ticket of orphanTickets) {
-            const item = snapshotItems.find((x) => mt5NormalizeBrokerTicket(x) === ticket) || {};
-            const tradeId = `orphan_${aid}_${ticket}_${Date.now()}`;
-            const ins = await client.query(`
-              INSERT INTO trades (
-                trade_id, account_id, signal_id, source_id, origin_kind,
-                symbol, side, broker_trade_id, dispatch_status, execution_status,
-                metadata, created_at, updated_at
-              ) VALUES (
-                $1, $2, NULL, NULL, 'BROKER',
-                $3, $4, $5, 'CONSUMED', $6,
-                $7::jsonb, $8, $8
-              )
-              ON CONFLICT (trade_id) DO NOTHING
-            `, [
-              tradeId,
-              aid,
-              String(item.symbol || "UNKNOWN"),
-              mt5MapActionToSide(item.side || item.action || "BUY"),
-              ticket,
-              mt5NormalizeExecutionStatusV2(item.execution_status || "OPEN"),
-              JSON.stringify({ orphan_created_by_sync: true, raw: item }),
-              now,
-            ]);
-            if ((ins.rowCount || 0) > 0) createdOrphans += 1;
-          }
-        }
-
-        await client.query("COMMIT");
-        return {
-          ok: true,
-          snapshot_positions: positions.length,
-          snapshot_orders: orders.length,
-          known_open_trades: openRows.length,
-          missing_on_broker: missingOnBroker.length,
-          orphan_on_broker: orphanTickets.length,
-          closed_by_sync: closedBySync,
-          created_orphans: createdOrphans,
-        };
-      } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-      } finally {
-        client.release();
-      }
-    },
-    async createBrokerTradeV2(accountId, payload = {}) {
-      const aid = String(accountId || "").trim();
-      if (!aid) return { ok: false, error: "account_id is required" };
-      const tradeId = String(payload.trade_id || "").trim() || `brk_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
-      const now = mt5NowIso();
-      const res = await pool.query(`
-        INSERT INTO trades (
-          trade_id, account_id, broker_id, signal_id, source_id, origin_kind,
-          symbol, side, intent_entry, intent_sl, intent_tp, intent_volume, intent_note,
-          dispatch_status, execution_status, broker_trade_id, broker_order_id,
-          entry_exec, sl_exec, tp_exec, opened_at, closed_at, pnl_realized,
-          error_code, error_message, metadata, created_at, updated_at
-        ) VALUES (
-          $1, $2, $3, $4, $5, 'BROKER',
-          $6, $7, $8, $9, $10, $11, $12,
-          'CONSUMED', $13, $14, $15,
-          $16, $17, $18, $19, $20, $21,
-          $22, $23, $24::jsonb, $25, $25
-        )
-        ON CONFLICT (trade_id) DO NOTHING
-      `, [
-        tradeId,
-        aid,
-        payload.broker_id ?? null,
-        payload.signal_id ?? null,
-        payload.source_id ?? null,
-        String(payload.symbol || ""),
-        mt5MapActionToSide(payload.side || payload.action || "BUY"),
-        payload.intent_entry ?? null,
-        payload.intent_sl ?? null,
-        payload.intent_tp ?? null,
-        payload.intent_volume ?? null,
-        payload.intent_note ?? null,
-        String(payload.execution_status || "PENDING").toUpperCase(),
-        payload.broker_trade_id ?? null,
-        payload.broker_order_id ?? null,
-        payload.entry_exec ?? null,
-        payload.sl_exec ?? null,
-        payload.tp_exec ?? null,
-        payload.opened_at ?? null,
-        payload.closed_at ?? null,
-        payload.pnl_realized ?? null,
-        payload.error_code ?? null,
-        payload.error_message ?? null,
-        JSON.stringify(payload.payload_json || {}),
-        now,
-      ]);
-      if ((res.rowCount || 0) < 1) return { ok: false, error: "trade already exists or insert failed" };
-      await pool.query(`
-        INSERT INTO trade_events (trade_id, event_type, event_time, idempotency_key, payload_json, metadata)
-        VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
-      `, [
-        tradeId,
-        String(payload.event_type || "BROKER_CREATE"),
-        String(payload.event_time || now),
-        payload.idempotency_key ? String(payload.idempotency_key) : null,
-        JSON.stringify(payload.payload_json || {}),
-        JSON.stringify({ account_id: aid }),
-      ]);
-      return { ok: true, trade_id: tradeId };
+      const acc = await pool.query(`SELECT user_id FROM accounts WHERE account_id = $1`, [aid]);
+      const uid = acc.rows[0]?.user_id || CFG.mt5DefaultUserId;
+      await this.log(aid, 'accounts', { event: 'SYNC', data: payload }, uid);
+      return { ok: true };
     },
     async brokerHeartbeatV2(accountId, payload = {}) {
       const aid = String(accountId || "").trim();
-      if (!aid) return { ok: false, error: "account_id is required" };
-      const brokerId = String(payload.broker_id || "").trim() || `broker_${aid}`;
       const now = mt5NowIso();
-      await pool.query(`
-        INSERT INTO brokers (broker_id, name, broker_type, is_active, last_seen_at, metadata, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $7)
-        ON CONFLICT (broker_id) DO UPDATE SET
-          name = EXCLUDED.name,
-          broker_type = EXCLUDED.broker_type,
-          is_active = EXCLUDED.is_active,
-          last_seen_at = EXCLUDED.last_seen_at,
-          metadata = EXCLUDED.metadata,
-          updated_at = EXCLUDED.updated_at
-      `, [
-        brokerId,
-        String(payload.name || brokerId),
-        String(payload.broker_type || "mt5_ea"),
-        normalizeUserActive(payload.is_active, true),
-        String(payload.now || now),
-        JSON.stringify(payload.metadata || {}),
-        now,
-      ]);
-      await pool.query(`
-        UPDATE accounts
-        SET broker_id = COALESCE(NULLIF(broker_id, ''), $1),
-            updated_at = $2
-        WHERE account_id = $3
-      `, [brokerId, now, aid]);
-      return { ok: true, account_id: aid, broker_id: brokerId, last_seen_at: String(payload.now || now) };
-    },
-    async listAccountsV2(userId = null) {
-      const clauses = [];
-      const params = [];
-      if (userId) {
-        params.push(String(userId).trim());
-        clauses.push(`user_id = $${params.length}`);
-      }
-      const whereSql = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-      
-      const res = await pool.query(`
-        SELECT account_id, user_id, name, balance, status, broker_id, api_key_last4, api_key_rotated_at, metadata, created_at, updated_at
-        FROM accounts
-        ${whereSql}
-        ORDER BY updated_at DESC
-        LIMIT 500
-      `, params);
-      return res.rows || [];
-    },
-    async getAccountByIdV2(accountId) {
-      const aid = String(accountId || "").trim();
-      if (!aid) return null;
-      const res = await pool.query(`
-        SELECT account_id, user_id, name, balance, status, broker_id, api_key_last4, api_key_rotated_at, metadata, created_at, updated_at
-        FROM accounts
-        WHERE account_id = $1
-        LIMIT 1
-      `, [aid]);
-      return res.rows[0] || null;
-    },
-    async createAccountV2(payload = {}) {
-      const accountId = String(payload?.account_id || "").trim();
-      const userId = String(payload?.user_id || CFG.mt5DefaultUserId).trim();
-      const name = String(payload?.name || "").trim();
-      if (!accountId) return { ok: false, error: "account_id is required" };
-      if (!userId) return { ok: false, error: "user_id is required" };
-      const exists = await pool.query(`SELECT account_id FROM accounts WHERE account_id = $1 LIMIT 1`, [accountId]);
-      if ((exists.rowCount || 0) > 0) return { ok: false, error: "account already exists" };
-      const apiKeyPlaintext = `ak_${crypto.randomBytes(24).toString("hex")}`;
-      const now = mt5NowIso();
-      await pool.query(`
-        INSERT INTO accounts (
-          account_id, user_id, name, balance, status, broker_id,
-          api_key_hash, api_key_last4, api_key_rotated_at,
-          metadata, created_at, updated_at
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6,
-          $7, $8, $9,
-          $10::jsonb, $11, $11
-        )
-      `, [
-        accountId,
-        userId,
-        name || accountId,
-        Number.isFinite(Number(payload?.balance)) ? Number(payload.balance) : null,
-        String(payload?.status || "ACTIVE"),
-        payload?.broker_id ? String(payload.broker_id) : null,
-        hashApiKey(apiKeyPlaintext),
-        apiKeyPlaintext.slice(-4),
-        now,
-        JSON.stringify(payload?.metadata && typeof payload.metadata === "object" ? payload.metadata : {}),
-        now,
-      ]);
-      const item = await this.getAccountByIdV2(accountId);
-      return { ok: true, item, api_key_plaintext: apiKeyPlaintext };
-    },
-    async updateAccountV2(accountId, patch = {}) {
-      const aid = String(accountId || "").trim();
-      if (!aid) return { ok: false, error: "account_id is required" };
-      const prev = await this.getAccountByIdV2(aid);
-      if (!prev) return { ok: false, error: "account not found" };
-      const toNullableNumber = (v) => {
-        if (v === null || v === undefined || String(v).trim() === "") return null;
-        const n = Number(v);
-        return Number.isFinite(n) ? n : null;
-      };
-      const next = {
-        user_id: patch?.user_id === undefined ? String(prev.user_id || "") : String(patch.user_id || "").trim(),
-        name: patch?.name === undefined ? String(prev.name || "") : String(patch.name || "").trim(),
-        balance: patch?.balance === undefined
-          ? toNullableNumber(prev.balance)
-          : toNullableNumber(patch.balance),
-        status: patch?.status === undefined ? String(prev.status || "") : String(patch.status || "").trim(),
-        broker_id: patch?.broker_id === undefined ? (prev.broker_id || null) : (patch.broker_id ? String(patch.broker_id) : null),
-        metadata: patch?.metadata && typeof patch.metadata === "object" ? patch.metadata : (prev.metadata || {}),
-      };
-      if (!next.user_id) return { ok: false, error: "user_id is required" };
-      const now = mt5NowIso();
-      await pool.query(`
-        UPDATE accounts
-        SET user_id = $1,
-            name = $2,
-            balance = $3,
-            status = $4,
-            broker_id = $5,
-            metadata = $6::jsonb,
-            updated_at = $7
-        WHERE account_id = $8
-      `, [
-        next.user_id,
-        next.name || aid,
-        next.balance,
-        next.status || "ACTIVE",
-        next.broker_id,
-        JSON.stringify(next.metadata || {}),
-        now,
-        aid,
-      ]);
-      const item = await this.getAccountByIdV2(aid);
-      return { ok: true, item };
-    },
-    async archiveAccountV2(accountId) {
-      const aid = String(accountId || "").trim();
-      if (!aid) return { ok: false, error: "account_id is required" };
-      const prev = await this.getAccountByIdV2(aid);
-      if (!prev) return { ok: false, error: "account not found" };
-      const blockingRes = await pool.query(`
-        SELECT COUNT(*)::int AS cnt
-        FROM trades
-        WHERE account_id = $1
-          AND (execution_status IN ('PENDING', 'OPEN') OR dispatch_status IN ('NEW', 'LEASED'))
-      `, [aid]);
-      const blocking = Number(blockingRes.rows?.[0]?.cnt || 0);
-      if (blocking > 0) {
-        return { ok: false, error: "account has open or pending trades", blocking_open_trades: blocking };
-      }
-      const now = mt5NowIso();
-      await pool.query(`
-        UPDATE accounts
-        SET status = 'ARCHIVED',
-            updated_at = $1
-        WHERE account_id = $2
-      `, [now, aid]);
-      await pool.query(`
-        UPDATE account_sources
-        SET is_active = FALSE,
-            updated_at = $1
-        WHERE account_id = $2
-      `, [now, aid]);
-      const item = await this.getAccountByIdV2(aid);
-      return { ok: true, item, blocking_open_trades: 0 };
-    },
-    async listBrokersV2() {
-      const res = await pool.query(`
-        SELECT broker_id, name, broker_type, is_active, last_seen_at, metadata, created_at, updated_at
-        FROM brokers
-        ORDER BY last_seen_at DESC NULLS LAST
-        LIMIT 500
-      `);
-      return res.rows || [];
-    },
-    async listBrokerAccountsV2(brokerId) {
-      const res = await pool.query(`
-        SELECT account_id, name, balance, status, updated_at
-        FROM accounts
-        WHERE broker_id = $1
-        ORDER BY updated_at DESC
-      `, [String(brokerId)]);
-      return res.rows || [];
-    },
-    async listSourcesV2() {
-      const res = await pool.query(`
-        SELECT source_id, name, kind, auth_mode, is_active, metadata, created_at, updated_at
-        FROM sources
-        ORDER BY source_id ASC
-        LIMIT 500
-      `);
-      return res.rows || [];
-    },
-    async getSourceByIdV2(sourceId) {
-      const sid = String(sourceId || "").trim();
-      if (!sid) return null;
-      const res = await pool.query(`
-        SELECT source_id, name, kind, auth_mode, auth_secret_hash, is_active, metadata, created_at, updated_at
-        FROM sources
-        WHERE source_id = $1
-        LIMIT 1
-      `, [sid]);
-      return res.rows[0] || null;
-    },
-    async appendSourceEventV2(sourceId, eventType, payload = {}, metadata = {}) {
-      await pool.query(`
-        INSERT INTO source_events (source_id, event_type, event_time, payload_json, metadata)
-        VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)
-      `, [
-        String(sourceId || ""),
-        String(eventType || ""),
-        mt5NowIso(),
-        JSON.stringify(payload || {}),
-        JSON.stringify(metadata || {}),
-      ]);
-    },
-    async listSourceEventsV2(sourceId, limit = 100) {
-      const sid = String(sourceId || "").trim();
-      const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 100));
-      if (!sid) return [];
-      const res = await pool.query(`
-        SELECT event_id, source_id, event_type, event_time, payload_json, metadata
-        FROM source_events
-        WHERE source_id = $1
-        ORDER BY event_time DESC
-        LIMIT $2
-      `, [sid, safeLimit]);
-      return res.rows || [];
-    },
-    async listTradesV2(filters = {}, page = 1, pageSize = 50) {
-      const safePage = Math.max(1, Number(page) || 1);
-      const safePageSize = Math.max(1, Math.min(200, Number(pageSize) || 50));
-      const offset = (safePage - 1) * safePageSize;
-      const clauses = [];
-      const params = [];
-      function addClause(sql, value) {
-        if (value === undefined || value === null || String(value).trim() === "") return;
-        params.push(String(value).trim());
-        clauses.push(sql.replace("?", `$${params.length}`));
-      }
-      addClause("t.account_id = ?", filters.account_id);
-      addClause("t.source_id = ?", filters.source_id);
-      addClause("t.dispatch_status = ?", filters.dispatch_status);
-      addClause("t.execution_status = ?", filters.execution_status);
-      addClause("t.origin_kind = ?", filters.origin_kind);
-      addClause("t.symbol = ?", filters.symbol);
-      addClause("t.side = ?", filters.side);
-      const q = String(filters.q || "").trim();
-      if (q) {
-        params.push(`%${q}%`);
-        const idx = params.length;
-        clauses.push(`(t.trade_id ILIKE $${idx} OR t.signal_id ILIKE $${idx} OR t.broker_trade_id ILIKE $${idx})`);
-      }
-      const joinClause = filters.user_id ? "JOIN accounts a ON t.account_id = a.account_id" : "";
-      if (filters.user_id) {
-        params.push(String(filters.user_id).trim());
-        clauses.push(`a.user_id = $${params.length}`);
-      }
-      
-      const whereSql = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-      const countRes = await pool.query(`
-        SELECT COUNT(*)::int AS total
-        FROM trades t
-        ${joinClause}
-        ${whereSql}
-      `, params);
-      const total = Number(countRes.rows?.[0]?.total || 0);
-      const limitIdx = params.length + 1;
-      const offsetIdx = params.length + 2;
-      const rowsRes = await pool.query(`
-        SELECT t.trade_id, t.account_id, t.broker_id, t.signal_id, t.source_id, t.origin_kind,
-               t.symbol, t.side, t.dispatch_status, t.execution_status, t.close_reason,
-               t.broker_trade_id, t.broker_order_id, t.intent_entry, t.intent_sl, t.intent_tp, t.intent_volume,
-               t.entry_exec, t.sl_exec, t.tp_exec, t.opened_at, t.closed_at, t.pnl_realized,
-               t.error_code, t.error_message, t.created_at, t.updated_at, t.metadata,
-               a.user_id
-        FROM trades t
-        ${joinClause || "LEFT JOIN accounts a ON t.account_id = a.account_id"}
-        ${whereSql}
-        ORDER BY created_at DESC
-        LIMIT $${limitIdx}
-        OFFSET $${offsetIdx}
-      `, [...params, safePageSize, offset]);
-      return {
-        items: rowsRes.rows || [],
-        total,
-        page: safePage,
-        page_size: safePageSize,
-      };
-    },
-    async listTradeEventsV2(tradeId, limit = 200) {
-      const tid = String(tradeId || "").trim();
-      const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 200));
-      if (!tid) return [];
-      const res = await pool.query(`
-        SELECT event_id, trade_id, event_type, event_time, idempotency_key, payload_json, metadata
-        FROM trade_events
-        WHERE trade_id = $1
-        ORDER BY event_time DESC
-        LIMIT $2
-      `, [tid, safeLimit]);
-      return res.rows || [];
-    },
-    async rotateSourceSecretV2(sourceId) {
-      const sid = String(sourceId || "").trim();
-      if (!sid) return null;
-      const src = await this.getSourceByIdV2(sid);
-      if (!src) return null;
-      const secret = `ss_${crypto.randomBytes(24).toString("hex")}`;
-      const secretHash = hashApiKey(secret);
-      await pool.query(`
-        UPDATE sources
-        SET auth_secret_hash = $1, updated_at = $2
-        WHERE source_id = $3
-      `, [secretHash, mt5NowIso(), sid]);
-      await this.appendSourceEventV2(sid, "SOURCE_SECRET_ROTATED", { auth_mode: src.auth_mode }, { actor: "admin" });
-      return { source_id: sid, source_secret_plaintext: secret };
-    },
-    async revokeSourceSecretV2(sourceId) {
-      const sid = String(sourceId || "").trim();
-      if (!sid) return { ok: false, error: "source_id is required" };
-      const res = await pool.query(`
-        UPDATE sources
-        SET auth_secret_hash = NULL, updated_at = $1
-        WHERE source_id = $2
-      `, [mt5NowIso(), sid]);
-      if ((res.rowCount || 0) < 1) return { ok: false, error: "source not found" };
-      await this.appendSourceEventV2(sid, "SOURCE_SECRET_REVOKED", {}, { actor: "admin" });
+      const acc = await pool.query(`SELECT user_id FROM accounts WHERE account_id = $1`, [aid]);
+      const uid = acc.rows[0]?.user_id || CFG.mt5DefaultUserId;
+      await pool.query(`UPDATE accounts SET updated_at = $1 WHERE account_id = $2`, [now, aid]);
+      await this.log(aid, 'accounts', { event: 'HEARTBEAT', payload }, uid);
       return { ok: true };
     },
-    async getAccountSubscriptionsV2(accountId) {
-      const aid = String(accountId || "").trim();
-      if (!aid) return [];
-      const res = await pool.query(`
-        SELECT s.account_id, s.source_id, s.is_active, s.symbol_allowlist, s.strategy_allowlist, s.created_at, s.updated_at,
-               src.name AS source_name, src.kind AS source_kind
-        FROM account_sources s
-        LEFT JOIN sources src ON src.source_id = s.source_id
-        WHERE s.account_id = $1
-        ORDER BY s.source_id ASC
-      `, [aid]);
-      return res.rows || [];
-    },
-    async replaceAccountSubscriptionsV2(accountId, items = []) {
-      const aid = String(accountId || "").trim();
-      if (!aid) return { ok: false, error: "account_id is required" };
-      const normalizedItems = Array.isArray(items) ? items : [];
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        await client.query(`DELETE FROM account_sources WHERE account_id = $1`, [aid]);
-        for (const item of normalizedItems) {
-          const sourceId = String(item?.source_id || "").trim();
-          if (!sourceId) continue;
-          const src = await client.query(`SELECT source_id FROM sources WHERE source_id = $1 LIMIT 1`, [sourceId]);
-          if ((src.rowCount || 0) < 1) {
-            await client.query("ROLLBACK");
-            return { ok: false, error: `unknown source_id: ${sourceId}` };
-          }
-          await client.query(`
-            INSERT INTO account_sources (
-              account_id, source_id, is_active, symbol_allowlist, strategy_allowlist, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $6)
-            ON CONFLICT (account_id, source_id)
-            DO UPDATE SET
-              is_active = EXCLUDED.is_active,
-              symbol_allowlist = EXCLUDED.symbol_allowlist,
-              strategy_allowlist = EXCLUDED.strategy_allowlist,
-              updated_at = EXCLUDED.updated_at
-          `, [
-            aid,
-            sourceId,
-            normalizeUserActive(item?.is_active, true),
-            item?.symbol_allowlist ? JSON.stringify(item.symbol_allowlist) : null,
-            item?.strategy_allowlist ? JSON.stringify(item.strategy_allowlist) : null,
-            mt5NowIso(),
-          ]);
-        }
-        await client.query("COMMIT");
-        return { ok: true };
-      } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-      } finally {
-        client.release();
-      }
-    },
-    async pullAndLockNextSignal() {
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        const sel = await client.query(`
-          SELECT signal_id, created_at, action, symbol, volume, sl, tp, note, entry_price_exec, raw_json
-          FROM signals
-          WHERE status = 'NEW' OR (status = 'LOCKED' AND locked_at < NOW() - INTERVAL '5 minutes')
-          ORDER BY created_at ASC
-          LIMIT 1
-          FOR UPDATE SKIP LOCKED
-        `);
-        if (!sel.rows.length) {
-          await client.query("COMMIT");
-          return null;
-        }
-        const next = sel.rows[0];
-        await client.query(`
-          UPDATE signals
-          SET status = 'LOCKED', locked_at = $1
-          WHERE signal_id = $2 AND (status = 'NEW' OR (status = 'LOCKED' AND locked_at < NOW() - INTERVAL '5 minutes'))
-        `, [mt5NowIso(), next.signal_id]);
-        await client.query("COMMIT");
-        return mt5MapDbRow(next);
-      } catch (err) {
-        await client.query("ROLLBACK");
-        throw err;
-      } finally {
-        client.release();
-      }
-    },
-    async pullAndLockSignalById(signalId) {
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        const sel = await client.query(`
-          SELECT signal_id, created_at, action, symbol, volume, sl, tp, note, entry_price_exec, raw_json
-          FROM signals
-          WHERE signal_id = $1 AND (status = 'NEW' OR (status = 'LOCKED' AND locked_at < NOW() - INTERVAL '5 minutes'))
-          LIMIT 1
-          FOR UPDATE SKIP LOCKED
-        `, [signalId]);
-        if (!sel.rows.length) {
-          await client.query("COMMIT");
-          return null;
-        }
-        const next = sel.rows[0];
-        await client.query(`
-          UPDATE signals
-          SET status = 'LOCKED', locked_at = $1
-          WHERE signal_id = $2 AND (status = 'NEW' OR (status = 'LOCKED' AND locked_at < NOW() - INTERVAL '5 minutes'))
-        `, [mt5NowIso(), signalId]);
-        await client.query("COMMIT");
-        return mt5MapDbRow(next);
-      } finally {
-        client.release();
-      }
-    },
-    async listActiveSignals() {
-      const res = await pool.query(`
-        SELECT signal_id, created_at, user_id, action, symbol, volume, sl, tp, status,
-               ack_ticket, ack_status, pnl_money_realized, entry_price_exec, sl_exec, tp_exec
-        FROM signals
-        WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'START') AND signal_id NOT LIKE 'SYSTEM_%'
-        ORDER BY created_at ASC
-      `);
-      return res.rows.map((r) => ({
-        ...r,
-        raw_json: r.raw_json || {},
-      }));
-    },
-    async bulkAckSignals(updates) {
-      if (!Array.isArray(updates) || !updates.length) return { updated: 0 };
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        let count = 0;
-        const now = mt5NowIso();
-        for (const u of updates) {
-          const internalStatus = mt5StatusToInternal(u.status);
-          const ackStatus = mt5CanonicalStoredStatus(u.status);
-          const res = await client.query(`
-            UPDATE signals
-            SET status = $1,
-                ack_at = $2,
-                ack_status = $3,
-                ack_ticket = COALESCE($4, ack_ticket),
-                pnl_money_realized = COALESCE($5, pnl_money_realized),
-                closed_at = CASE WHEN ($6 IN ('TP','SL','FAIL','CANCEL','EXPIRED')) THEN $7 ELSE closed_at END
-            WHERE signal_id = $8
-          `, [
-            internalStatus,
-            now,
-            ackStatus,
-            u.ticket ?? null,
-            u.pnl ?? null,
-            internalStatus,
-            now,
-            u.signal_id
-          ]);
-          count += res.rowCount || 0;
-        }
-        await client.query("COMMIT");
-        return { updated: count };
-      } catch (err) {
-        await client.query("ROLLBACK");
-        throw err;
-      } finally {
-        client.release();
-      }
-    },
-    async findSignalById(signalId) {
-      const res = await pool.query(`
-        SELECT signal_id
-        FROM signals
-        WHERE signal_id = $1
-        LIMIT 1
-      `, [signalId]);
-      return res.rows[0] || null;
-    },
-    async ackSignal(signalId, status, ticket, error, extra = {}) {
-      const retryable = mt5IsRetryableConnectivityFail(status, error);
-      const internalStatus = retryable ? "NEW" : mt5StatusToInternal(status);
-      const ackStatus = mt5CanonicalStoredStatus(status);
-      const now = mt5NowIso();
-      const res = await pool.query(`
-        UPDATE signals
-        SET status = $1, ack_at = $2, ack_status = $3, ack_ticket = $4, ack_error = $5,
-            pnl_money_realized = COALESCE($6, pnl_money_realized),
-            entry_price_exec = COALESCE($7, entry_price_exec),
-            sl_exec = COALESCE($8, sl_exec),
-            tp_exec = COALESCE($9, tp_exec),
-            locked_at = CASE WHEN $11 THEN NULL ELSE locked_at END,
-            opened_at = CASE WHEN ($1 = 'PLACED' OR $1 = 'START') AND opened_at IS NULL THEN $2 ELSE opened_at END,
-            closed_at = CASE WHEN ($1 = 'TP' OR $1 = 'SL' OR $1 = 'FAIL' OR $1 = 'CANCEL' OR $1 = 'EXPIRED') THEN $2 ELSE closed_at END
-        WHERE signal_id = $10
-      `, [
-        internalStatus,
-        now,
-        ackStatus,
-        ticket ?? null,
-        error ?? null,
-        extra.pnl_money_realized ?? null,
-        extra.entry_price_exec ?? null,
-        extra.sl_exec ?? null,
-        extra.tp_exec ?? null,
-        signalId,
-        retryable,
-      ]);
-      return { changes: res.rowCount || 0 };
-    },
-    async findSignalById(signalId) {
-      const res = await pool.query(`SELECT * FROM signals WHERE signal_id = $1 LIMIT 1`, [signalId]);
-      return res.rows[0] || null;
-    },
-    async getSignalByTicket(ticket) {
-      const res = await pool.query(`SELECT * FROM signals WHERE ack_ticket = $1 LIMIT 1`, [String(ticket)]);
-      return res.rows[0] || null;
-    },
     async listSignals(limit, statusFilter, userId = null) {
-      const clauses = ["signal_id NOT LIKE 'SYSTEM_%'"];
-      const params = [];
-
-      if (statusFilter) {
-        params.push(statusFilter);
-        clauses.push(`status = $${params.length}`);
-      }
-      if (userId) {
-        params.push(String(userId).trim());
-        clauses.push(`user_id = $${params.length}`);
-      }
-
-      const whereSql = `WHERE ${clauses.join(" AND ")}`;
+      const clauses = ["signal_id NOT LIKE 'SYSTEM_%'"]; const params = [];
+      if (statusFilter) { params.push(statusFilter); clauses.push(`status = $${params.length}`); }
+      if (userId) { params.push(userId); clauses.push(`user_id = $${params.length}`); }
+      const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
       params.push(limit);
-      const limitIdx = params.length;
-
-      const res = await pool.query(`
-        SELECT signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
-               rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
-               sl_pips, tp_pips, pip_value_per_lot, risk_money_actual, reward_money_planned,
-               note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
-        FROM signals
-        ${whereSql}
-        ORDER BY created_at DESC
-        LIMIT $${limitIdx}
-      `, params);
-      return res.rows.map((r) => mt5MapDbRow(r));
+      const res = await pool.query(`SELECT * FROM signals ${where} ORDER BY created_at DESC LIMIT $${params.length}`, params);
+      return res.rows;
     },
-    async appendSignalEvent(signalId, eventType, payload = {}) {
-      await pool.query(`
-        INSERT INTO signal_events (signal_id, event_type, event_time, payload_json)
-        VALUES ($1, $2, $3, $4::jsonb)
-      `, [String(signalId), String(eventType), mt5NowIso(), JSON.stringify(payload || {})]);
+    async listTradesV2(filters = {}, page = 1, pageSize = 50) {
+      const safePage = Math.max(1, Number(page) || 1); const safePageSize = Math.max(1, Math.min(200, Number(pageSize) || 50));
+      const offset = (safePage - 1) * safePageSize; const clauses = []; const params = [];
+      if (filters.user_id) { params.push(filters.user_id); clauses.push(`user_id = $${params.length}`); }
+      if (filters.account_id) { params.push(filters.account_id); clauses.push(`account_id = $${params.length}`); }
+      const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+      const countRes = await pool.query(`SELECT COUNT(*) FROM trades ${where}`, params);
+      params.push(safePageSize, offset);
+      const res = await pool.query(`SELECT * FROM trades ${where} ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
+      return { items: res.rows, total: parseInt(countRes.rows[0].count), page: safePage, pageSize: safePageSize };
     },
-    async listSignalEvents(signalId, limit = 200) {
-      const safeLimit = Math.max(1, Math.min(2000, Number(limit) || 200));
-      const res = await pool.query(`
-        SELECT id, signal_id, event_type, event_time, payload_json
-        FROM signal_events
-        WHERE signal_id = $1
-        ORDER BY event_time DESC
-        LIMIT $2
-      `, [String(signalId), safeLimit]);
-      return res.rows.map((r) => ({
-        ...r,
-        payload_json: r.payload_json || {},
-      }));
+    async listLogs(filters = {}, limit = 200, offset = 0) {
+      const clauses = []; const params = [];
+      if (filters.user_id) { params.push(filters.user_id); clauses.push(`user_id = $${params.length}`); }
+      if (filters.object_id) { params.push(filters.object_id); clauses.push(`object_id = $${params.length}`); }
+      const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+      params.push(limit, offset);
+      const res = await pool.query(`SELECT * FROM logs ${where} ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
+      return res.rows;
     },
-    async deleteAllEvents() {
-      return pool.query(`DELETE FROM signal_events`);
-    },
-    async listAllEvents(limit, offset, filters = {}) {
-      const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 1000));
-      const safeOffset = Math.max(0, Number(offset) || 0);
-      let sql = `
-        SELECT e.id, e.signal_id, e.event_type, e.event_time, e.payload_json, s.symbol, s.ack_ticket
-        FROM signal_events e
-        LEFT JOIN signals s ON e.signal_id = s.signal_id
-        WHERE 1=1
-      `;
-      const params = [];
-      let pIdx = 1;
-      if (filters.q) {
-        const q = `%${filters.q}%`;
-        sql += ` AND (e.signal_id ILIKE $${pIdx} OR s.ack_ticket::text ILIKE $${pIdx} OR s.symbol ILIKE $${pIdx} OR e.event_type ILIKE $${pIdx})`;
-        params.push(q);
-        pIdx++;
-      }
-      if (filters.type) {
-        sql += ` AND e.event_type ILIKE $${pIdx}`;
-        params.push(filters.type);
-        pIdx++;
-      }
-      if (filters.symbol) {
-        sql += ` AND s.symbol ILIKE $${pIdx}`;
-        params.push(filters.symbol);
-        pIdx++;
-      }
-      sql += ` ORDER BY e.event_time DESC LIMIT $${pIdx} OFFSET $${pIdx + 1}`;
-      params.push(safeLimit, safeOffset);
-
-      const res = await pool.query(sql, params);
-      return res.rows.map((r) => ({
-        ...r,
-        payload_json: r.payload_json || {},
-      }));
-    },
-    async pruneOldSignals(days) {
-      const res = await pool.query(`
-        DELETE FROM signals
-        WHERE status = ANY($1::text[])
-          AND created_at < NOW() - ($2 || ' days')::interval
-      `, [mt5TerminalStatuses(), String(days)]);
-      const left = await pool.query("SELECT COUNT(*)::int AS n FROM signals");
-      return { removed: res.rowCount || 0, remaining: left.rows[0].n };
-    },
-    async deleteSignalsByIds(signalIds) {
-      const ids = Array.isArray(signalIds)
-        ? signalIds.map((s) => String(s || "")).filter(Boolean)
-        : [];
-      if (!ids.length) return { deleted: 0 };
-      await pool.query(`DELETE FROM signal_events WHERE signal_id = ANY($1::text[])`, [ids]);
-      const res = await pool.query(`DELETE FROM signals WHERE signal_id = ANY($1::text[])`, [ids]);
-      return { deleted: res.rowCount || 0 };
-    },
-    async cancelSignalsByIds(signalIds) {
-      const ids = Array.isArray(signalIds)
-        ? signalIds.map((s) => String(s || "")).filter(Boolean)
-        : [];
-      if (!ids.length) return { updated: 0, updated_ids: [] };
-      const now = mt5NowIso();
-      const res = await pool.query(`
-        UPDATE signals
-        SET status = 'CANCEL', closed_at = $1
-        WHERE signal_id = ANY($2::text[]) AND status IN ('NEW','LOCKED','START','PLACED')
-        RETURNING signal_id
-      `, [now, ids]);
-      return { updated: res.rowCount || 0, updated_ids: (res.rows || []).map((r) => String(r.signal_id || "")) };
+    async createAccountV2(payload = {}) {
+       const res = await pool.query(`
+         INSERT INTO accounts (account_id, user_id, status, metadata, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, NOW(), NOW())
+         ON CONFLICT (account_id) DO UPDATE SET status = EXCLUDED.status, metadata = EXCLUDED.metadata, updated_at = NOW()
+         RETURNING *
+       `, [payload.account_id, payload.user_id || CFG.mt5DefaultUserId, payload.status || 'ACTIVE', payload.metadata || {}]);
+       return res.rows[0];
     },
     async listTables() {
-      const res = await pool.query(`
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-          AND table_type = 'BASE TABLE'
-      `);
-      return res.rows.map(r => r.table_name);
+      return ['users', 'accounts', 'signals', 'trades', 'logs'];
     },
-    async listTableRows(table, limit = 50, offset = 0, q = "") {
+    async listTableRows(table, limit = 50, offset = 0, query = "") {
       const allowed = await this.listTables();
-      if (!allowed.includes(table)) throw new Error(`Table ${table} not found or protected`);
-
-      let rows = [];
-      let total = 0;
-
-      if (q) {
-        const colRes = await pool.query(`
-          SELECT column_name, data_type 
-          FROM information_schema.columns 
-          WHERE table_name = $1 AND table_schema = 'public'
-        `, [table]);
-        
-        const searchCols = colRes.rows
-          .filter(c => ['text', 'character varying', 'jsonb', 'json'].includes(c.data_type.toLowerCase()))
-          .map(c => c.column_name);
-
-        if (searchCols.length > 0) {
-          const where = searchCols.map((c, i) => `${c}::text ILIKE $${i + 1}`).join(" OR ");
-          const query = `SELECT * FROM "${table}" WHERE ${where} LIMIT $${searchCols.length + 1} OFFSET $${searchCols.length + 2}`;
-          const countQuery = `SELECT COUNT(*) FROM "${table}" WHERE ${where}`;
-          
-          const params = [...searchCols.map(() => `%${q}%`), limit, offset];
-          const dataRes = await pool.query(query, params);
-          const countRes = await pool.query(countQuery, searchCols.map(() => `%${q}%`));
-          
-          rows = dataRes.rows;
-          total = parseInt(countRes.rows[0].count);
-        } else {
-          const dataRes = await pool.query(`SELECT * FROM "${table}" LIMIT $1 OFFSET $2`, [limit, offset]);
-          const countRes = await pool.query(`SELECT COUNT(*) FROM "${table}"`);
-          rows = dataRes.rows;
-          total = parseInt(countRes.rows[0].count);
+      if (!allowed.includes(table)) throw new Error(`Access denied to table: ${table}`);
+      let where = "";
+      const params = [limit, offset];
+      if (query) {
+        params.push(`%${query}%`);
+        if (table === 'signals' || table === 'trades') {
+          where = `WHERE symbol ILIKE $3 OR signal_id ILIKE $3 OR trade_id ILIKE $3`;
+        } else if (table === 'users' || table === 'accounts') {
+          where = `WHERE user_id ILIKE $3 OR account_id ILIKE $3`;
+        } else if (table === 'logs') {
+          where = `WHERE object_id ILIKE $3 OR metadata::text ILIKE $3`;
         }
-      } else {
-        const dataRes = await pool.query(`SELECT * FROM "${table}" LIMIT $1 OFFSET $2`, [limit, offset]);
-        const countRes = await pool.query(`SELECT COUNT(*) FROM "${table}"`);
-        rows = dataRes.rows;
-        total = parseInt(countRes.rows[0].count);
       }
-
-      return { rows, total };
+      const res = await pool.query(`SELECT * FROM ${table} ${where} ORDER BY 1 DESC LIMIT $1 OFFSET $2`, params);
+      const totalRes = await pool.query(`SELECT COUNT(*) FROM ${table} ${where}`, query ? [params[2]] : []);
+      return { rows: res.rows, total: parseInt(totalRes.rows[0].count) };
     },
-    async getUiAuthUser(email) {
+    async getAccountByIdV2(accountId) {
+      const res = await pool.query(`SELECT * FROM accounts WHERE account_id = $1 LIMIT 1`, [accountId]);
+      return res.rows[0] || null;
+    }
+  };
+
+  async function getUiAuthUser(email) {
+
       const target = normalizeEmail(email);
       if (!target) return null;
       const res = await pool.query(`
@@ -3110,13 +1979,13 @@ function mt5TfToMinutes(tf) {
 async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   const source = String(payload.source || opts.source || "tradingview");
   const eventType = String(opts.eventType || "QUEUED");
-  const fallbackIdPrefix = String(opts.fallbackIdPrefix || "tv");
+  const sourceId = mt5SlugId(source, "tradingview");
 
   const action = mt5NormalizeAction(payload);
   const symbol = mt5NormalizeSymbol(payload);
   const volume = mt5NormalizeVolume(payload);
   const orderType = mt5NormalizeOrderType(payload);
-  const signalId = mt5BuildSignalId(payload, fallbackIdPrefix);
+  const signalId = mt5GenerateId("SIG");
   const userId = envStr(payload.user_id ?? payload.userId ?? payload.user ?? CFG.mt5DefaultUserId, CFG.mt5DefaultUserId);
   const rrPlanned = asNum(payload.rr ?? payload.risk_reward, NaN);
   const riskMoneyPlanned = asNum(payload.risk_money ?? payload.money_risk ?? payload.riskMoney, NaN);
@@ -3146,30 +2015,18 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
     created_at: mt5NowIso(),
     user_id: userId,
     source,
-    action,
+    source_id: sourceId,
     symbol,
-    volume,
+    side: mt5MapActionToSide(action),
     sl: payload.sl ?? null,
     tp: payload.tp ?? null,
     rr_planned: Number.isFinite(rrPlanned) ? rrPlanned : null,
-    risk_money_planned: Number.isFinite(riskMoneyPlanned) ? riskMoneyPlanned : null,
     signal_tf: signalTf || null,
     chart_tf: chartTf || null,
-    pnl_money_realized: null,
-    entry_price_exec: Number.isFinite(plannedEntry) && plannedEntry > 0 ? plannedEntry : null,
-    sl_exec: null,
-    tp_exec: null,
     note,
-    entry_model: String(payload.entry_model || payload.entryModel || payload.model || ""),
     raw_json: rawJsonNormalized,
     status: "NEW",
-    locked_at: null,
-    ack_at: null,
-    opened_at: null,
-    closed_at: null,
-    ack_status: null,
-    ack_ticket: null,
-    ack_error: null,
+
   });
 
   if (upsertResult?.inserted) {
@@ -3179,18 +2036,8 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
     delete sanitizedPayload.api_key;
     delete sanitizedPayload.password;
     delete sanitizedPayload.token;
-    await mt5AppendSignalEvent(signalId, eventType, {
-      source,
-      action,
-      symbol,
-      order_type: orderType,
-      signal_tf: signalTf || null,
-      chart_tf: chartTf || null,
-      timeframe: payload.timeframe || null,
-      strategy: payload.strategy || null,
-      provider: payload.provider || null,
-      raw_payload: sanitizedPayload,
-    });
+    await mt5Log(signalId, "signals", { event_type: eventType, data: sanitizedPayload }, userId);
+
 
     if (CFG.mt5V2DualWriteEnabled) {
       const sourceId = mt5SlugId(source, "tradingview");
@@ -3225,16 +2072,16 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
             provider: payload.provider || null,
           },
         });
-        await mt5AppendSignalEvent(signalId, "V2_FANOUT_CREATED", {
-          source_id: sourceId,
-          created_trades: fanout?.created || 0,
-          account_ids: fanout?.account_ids || [],
-        });
+        await mt5Log(signalId, "signals", { 
+          event: "FANOUT_COMPLETED", 
+          trades_created: fanout?.created || 0,
+          account_ids: fanout?.account_ids || []
+        }, userId);
       } catch (error) {
-        await mt5AppendSignalEvent(signalId, "V2_FANOUT_FAILED", {
-          source_id: sourceId,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        await mt5Log(signalId, "signals", { 
+          event: "FANOUT_FAILED", 
+          error: error instanceof Error ? error.message : String(error)
+        }, userId);
       }
     }
   }
@@ -3374,9 +2221,13 @@ async function mt5ListSignals(limit, statusFilter) {
 }
 
 async function mt5AppendSignalEvent(signalId, eventType, payload = {}) {
-  const b = await mt5Backend();
-  if (!b.appendSignalEvent) return;
-  return b.appendSignalEvent(signalId, eventType, payload);
+  try {
+    const b = await mt5Backend();
+    const userId = payload.user_id || payload.created_by || CFG.mt5DefaultUserId;
+    await b.log(signalId, 'signals', { ...payload, event_type: eventType }, userId);
+  } catch (err) {
+    console.error(`[SIG_EVENT_FAIL] ${signalId} ${eventType}:`, err.message);
+  }
 }
 
 async function mt5UpsertSourceV2(source) {
@@ -3459,8 +2310,15 @@ async function mt5ArchiveAccountV2(accountId) {
 
 async function mt5ListSourcesV2() {
   const b = await mt5Backend();
-  if (!b.listSourcesV2) return [];
-  return b.listSourcesV2();
+  const rows = await b.listLogs({ object_table: 'sources' }, 100);
+  return rows.map(r => ({ ...r.metadata, source_id: r.object_id }));
+}
+
+async function mt5ListBrokersV2() {
+  return [
+    { broker_id: 'BROKER_MT5', name: 'MetaTrader 5', is_active: true },
+    { broker_id: 'BROKER_CTRader', name: 'cTrader', is_active: true }
+  ];
 }
 
 async function mt5GetSourceByIdV2(sourceId) {
@@ -3471,8 +2329,7 @@ async function mt5GetSourceByIdV2(sourceId) {
 
 async function mt5ListSourceEventsV2(sourceId, limit = 100) {
   const b = await mt5Backend();
-  if (!b.listSourceEventsV2) return [];
-  return b.listSourceEventsV2(sourceId, limit);
+  return b.listLogs({ object_id: sourceId }, limit);
 }
 
 async function mt5ListTradesV2(filters = {}, page = 1, pageSize = 50) {
@@ -3483,8 +2340,7 @@ async function mt5ListTradesV2(filters = {}, page = 1, pageSize = 50) {
 
 async function mt5ListTradeEventsV2(tradeId, limit = 200) {
   const b = await mt5Backend();
-  if (!b.listTradeEventsV2) return [];
-  return b.listTradeEventsV2(tradeId, limit);
+  return b.listLogs({ object_id: tradeId }, limit);
 }
 
 async function mt5ListBrokerAccountsV2(brokerId, userId = null) {
@@ -3528,8 +2384,7 @@ async function mt5ReplaceAccountSubscriptionsV2(accountId, items = []) {
 
 async function mt5ListSignalEvents(signalId, limit = 200) {
   const b = await mt5Backend();
-  if (!b.listSignalEvents) return [];
-  return b.listSignalEvents(signalId, limit);
+  return b.listLogs({ object_id: signalId }, limit);
 }
 
 async function mt5ListActiveSignals() {
@@ -4623,8 +3478,7 @@ const appHandler = async (req, res) => {
       const limitRaw = Number(url.searchParams.get("limit") || 5000);
       const limit = Math.max(100, Math.min(50000, Number.isFinite(limitRaw) ? limitRaw : 5000));
       const userId = uiEffectiveUserId(req, url);
-      const allRows = await mt5ListSignals(limit, "", userId);
-      const rows = userId ? allRows.filter(r => String(r.user_id || "") === userId) : allRows;
+      const rows = await mt5ListSignals(limit, "", userId);
       
       const metrics = mt5ComputeMetrics(rows);
       return json(res, 200, {
@@ -5209,35 +4063,19 @@ const appHandler = async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/mt5/api/events") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!requireSystemRoleForUi(req, res)) return;
+    const sess = getUiSessionFromReq(req);
+    const userId = sess.ok ? sess.user_id : (url.searchParams.get("user_id") || null);
+
     try {
-      const { rows: signals } = await mt5GetFilteredTrades(url, null, 10000);
-      const sids = new Set(signals.map(s => String(s.signal_id)));
-      
       const limitRaw = Number(url.searchParams.get("limit") || 200);
       const limit = Math.max(1, Math.min(5000, Number.isFinite(limitRaw) ? limitRaw : 200));
       const offsetRaw = Number(url.searchParams.get("offset") || 0);
       const offset = Math.max(0, Number.isFinite(offsetRaw) ? offsetRaw : 0);
+
+      const b = await mt5Backend();
+      const rows = await b.listLogs({ user_id: userId }, limit, offset);
       
-      const q = (url.searchParams.get("q") || "").toLowerCase();
-      
-      const allEvents = await mt5ListAllEvents(limit * 5, offset); // Pull more for manual filtering if needed, or filter by signal_id
-      
-      const filterSymbol = url.searchParams.get("symbol");
-      let rows = allEvents;
-      if (sids.size < 5000) { 
-         // If a symbol filter is active, exclude SYSTEM_SYNC_PUSH unless no symbol was selected
-         rows = rows.filter(e => sids.has(String(e.signal_id)) || (!filterSymbol && String(e.signal_id) === 'SYSTEM_SYNC_PUSH'));
-      }
-      
-      if (q) {
-        rows = rows.filter(e => 
-          String(e.event_type || "").toLowerCase().includes(q) ||
-          String(e.signal_id || "").toLowerCase().includes(q)
-        );
-      }
-      
-      return json(res, 200, { ok: true, events: rows.slice(0, limit) });
+      return json(res, 200, { ok: true, events: rows });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });

@@ -152,7 +152,7 @@ export default function SignalsPage() {
     try {
       setBulkBusy(true);
       const payload = {
-        action: String(createForm.action || "BUY").toUpperCase(),
+        side: String(createForm.action || "BUY").toUpperCase(),
         symbol: String(createForm.symbol || "").trim().toUpperCase(),
         volume: createForm.volume === "" ? undefined : Number(createForm.volume),
         price: createForm.price === "" ? undefined : Number(createForm.price),
@@ -322,7 +322,7 @@ export default function SignalsPage() {
               <tbody>
                 {rows.map(t => {
                   const status = statusUi(t.status);
-                  const sideCls = t.action?.toUpperCase() === 'BUY' ? 'side-buy' : 'side-sell';
+                  const sideCls = t.side?.toUpperCase() === 'BUY' ? 'side-buy' : 'side-sell';
                   
                   return (
                     <tr 
@@ -347,14 +347,14 @@ export default function SignalsPage() {
                       </td>
                       <td>
                         <div className="cell-wrap">
-                          <div className="cell-major"><span className={sideCls}>{t.action?.toUpperCase()}</span> {t.symbol}</div>
+                          <div className="cell-major"><span className={sideCls}>{t.side?.toUpperCase()}</span> {t.symbol}</div>
                           <div className="cell-minor">{t.source || 'signal'} | {t.signal_id.slice(-8)} {t.ack_ticket ? `| #${t.ack_ticket}` : ''}</div>
                         </div>
                       </td>
                       <td>
                         <div className="cell-wrap">
                           <div className="cell-major">
-                            {fPrice(t.entry_price_exec, t.entry_price)} → {fPrice(t.tp_exec, t.tp)} / {fPrice(t.sl_exec, t.sl)}
+                            {fPrice(t.target_price, t.entry_price)} → {fPrice(t.tp)} / {fPrice(t.sl)}
                           </div>
                           <div className="cell-minor">
                             {formatTimeframe(t.chart_tf)} | {formatTimeframe(t.signal_tf)} | {t.rr_planned || '0'} rr | {t.volume || '0'} lots
@@ -443,8 +443,8 @@ export default function SignalsPage() {
               <div className="detail-header" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between' }}>
                 <div>
                   <h2 style={{ margin: 0 }}>
-                    <span className={selectedSignal.action?.toUpperCase() === 'BUY' ? 'side-buy' : 'side-sell'} style={{ fontSize: '24px' }}>
-                      {selectedSignal.action?.toUpperCase()}
+                    <span className={selectedSignal.side?.toUpperCase() === 'BUY' ? 'side-buy' : 'side-sell'} style={{ fontSize: '24px' }}>
+                      {selectedSignal.side?.toUpperCase()}
                     </span> 
                     {" "}{selectedSignal.symbol}
                   </h2>
