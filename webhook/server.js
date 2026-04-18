@@ -1570,10 +1570,85 @@ async function mt5InitBackend() {
       const clauses = []; const params = [];
       if (filters.user_id) { params.push(filters.user_id); clauses.push(`user_id = $${params.length}`); }
       if (filters.object_id) { params.push(filters.object_id); clauses.push(`object_id = $${params.length}`); }
+      if (filters.object_table) { params.push(filters.object_table); clauses.push(`object_table = $${params.length}`); }
       const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
       params.push(limit, offset);
       const res = await pool.query(`SELECT * FROM logs ${where} ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
       return res.rows;
+    },
+    async listSourcesV2() {
+      const res = await pool.query(`
+        SELECT source_id, name, kind, auth_mode, auth_secret_hash, is_active, metadata, created_at, updated_at
+        FROM sources
+        ORDER BY created_at ASC, source_id ASC
+      `);
+      return res.rows || [];
+    },
+    async getSourceByIdV2(sourceId) {
+      const sid = String(sourceId || "").trim();
+      if (!sid) return null;
+      const res = await pool.query(`
+        SELECT source_id, name, kind, auth_mode, auth_secret_hash, is_active, metadata, created_at, updated_at
+        FROM sources
+        WHERE source_id = $1
+        LIMIT 1
+      `, [sid]);
+      return res.rows[0] || null;
+    },
+    async upsertSourceV2(source = {}) {
+      const sourceId = String(source.source_id || "").trim();
+      if (!sourceId) return null;
+      const now = mt5NowIso();
+      const res = await pool.query(`
+        INSERT INTO sources (
+          source_id, name, kind, auth_mode, auth_secret_hash, is_active, metadata, created_at, updated_at
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$8)
+        ON CONFLICT (source_id) DO UPDATE SET
+          name = EXCLUDED.name,
+          kind = EXCLUDED.kind,
+          auth_mode = EXCLUDED.auth_mode,
+          auth_secret_hash = EXCLUDED.auth_secret_hash,
+          is_active = EXCLUDED.is_active,
+          metadata = EXCLUDED.metadata,
+          updated_at = EXCLUDED.updated_at
+        RETURNING source_id, name, kind, auth_mode, auth_secret_hash, is_active, metadata, created_at, updated_at
+      `, [
+        sourceId,
+        String(source.name || sourceId),
+        String(source.kind || "api"),
+        String(source.auth_mode || "token"),
+        source.auth_secret_hash ? String(source.auth_secret_hash) : null,
+        normalizeUserActive(source.is_active, true),
+        source.metadata && typeof source.metadata === "object" ? JSON.stringify(source.metadata) : "{}",
+        now,
+      ]);
+      return res.rows[0] || null;
+    },
+    async rotateSourceSecretV2(sourceId) {
+      const sid = String(sourceId || "").trim();
+      if (!sid) return null;
+      const secretPlain = `src_${crypto.randomBytes(18).toString("hex")}`;
+      const secretHash = hashApiKey(secretPlain);
+      const res = await pool.query(`
+        UPDATE sources
+        SET auth_secret_hash = $1, updated_at = NOW()
+        WHERE source_id = $2
+        RETURNING source_id
+      `, [secretHash, sid]);
+      if (!res.rows[0]) return null;
+      return { source_id: sid, source_secret_plaintext: secretPlain };
+    },
+    async revokeSourceSecretV2(sourceId) {
+      const sid = String(sourceId || "").trim();
+      if (!sid) return { ok: false, error: "source_id is required" };
+      const res = await pool.query(`
+        UPDATE sources
+        SET auth_secret_hash = NULL, updated_at = NOW()
+        WHERE source_id = $1
+      `, [sid]);
+      if ((res.rowCount || 0) === 0) return { ok: false, error: "source not found" };
+      return { ok: true };
     },
     async createAccountV2(payload = {}) {
       const accountId = String(payload.account_id || "").trim();
@@ -2382,8 +2457,11 @@ async function mt5ArchiveAccountV2(accountId) {
 
 async function mt5ListSourcesV2() {
   const b = await mt5Backend();
-  const rows = await b.listLogs({ object_table: 'sources' }, 100);
-  return rows.map(r => ({ ...r.metadata, source_id: r.object_id }));
+  if (b.listSourcesV2) return b.listSourcesV2();
+  const rows = await b.listLogs({ object_table: "sources" }, 100);
+  return rows
+    .map((r) => ({ ...r.metadata, source_id: r.object_id }))
+    .filter((r) => String(r.source_id || "").trim());
 }
 
 async function mt5GetSourceByIdV2(sourceId) {
@@ -2394,7 +2472,7 @@ async function mt5GetSourceByIdV2(sourceId) {
 
 async function mt5ListSourceEventsV2(sourceId, limit = 100) {
   const b = await mt5Backend();
-  return b.listLogs({ object_id: sourceId }, limit);
+  return b.listLogs({ object_table: "sources", object_id: sourceId }, limit);
 }
 
 async function mt5ListTradesV2(filters = {}, page = 1, pageSize = 50) {
@@ -4093,8 +4171,21 @@ const appHandler = async (req, res) => {
 
       const b = await mt5Backend();
       const rows = await b.listLogs({ user_id: userId }, limit, offset);
-      
-      return json(res, 200, { ok: true, events: rows });
+      const events = (rows || []).map((r) => {
+        const payload = r?.metadata && typeof r.metadata === "object" ? r.metadata : {};
+        const data = payload?.data && typeof payload.data === "object" ? payload.data : payload;
+        const symbol = String(data?.symbol || payload?.symbol || "").trim();
+        return {
+          id: Number(r.log_id || 0),
+          event_time: String(r.created_at || ""),
+          event_type: String(payload.event_type || payload.event || "").trim() || String(r.object_table || "LOG"),
+          signal_id: String(r.object_id || ""),
+          ack_ticket: String(data?.ticket || payload?.ticket || data?.ack_ticket || payload?.ack_ticket || ""),
+          symbol: symbol || "N/A",
+          payload_json: payload,
+        };
+      });
+      return json(res, 200, { ok: true, events });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });
@@ -4107,9 +4198,8 @@ const appHandler = async (req, res) => {
     try {
       const payload = await readJson(req);
       const sess = getUiSessionFromReq(req);
-      const signalId = String(payload.signal_id || "").trim();
+      const signalId = String(payload.signal_id || payload.object_id || "").trim() || `ui_note_${Date.now()}`;
       const eventType = String(payload.event_type || "").trim();
-      if (!signalId) return json(res, 400, { ok: false, error: "signal_id is required" });
       if (!eventType) return json(res, 400, { ok: false, error: "event_type is required" });
       const payloadJson = payload.payload_json && typeof payload.payload_json === "object"
         ? { ...payload.payload_json }
