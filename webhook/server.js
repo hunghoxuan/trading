@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.18-01");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.18-02");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1780,61 +1780,83 @@ async function mt5InitBackend() {
     async deleteUserApiKey(userId, keyId) {
       await pool.query(`DELETE FROM user_api_keys WHERE user_id = $1 AND key_id = $2`, [String(userId || ""), String(keyId || "")]);
     },
+    async pruneOldSignals(days) {
+      const res = await pool.query(`
+        WITH signals_del AS (DELETE FROM signals WHERE created_at < NOW() - $1 * INTERVAL '1 day' RETURNING signal_id),
+             trades_del AS (DELETE FROM trades WHERE created_at < NOW() - $1 * INTERVAL '1 day' RETURNING trade_id),
+             logs_del AS (DELETE FROM logs WHERE created_at < NOW() - $1 * INTERVAL '1 day' RETURNING object_id)
+        SELECT (SELECT COUNT(*) FROM signals_del) as signals_count,
+               (SELECT COUNT(*) FROM trades_del) as trades_count,
+               (SELECT COUNT(*) FROM logs_del) as logs_count
+      `, [days]);
+      const counts = res.rows[0];
+      return { 
+        removed: parseInt(counts.signals_count) + parseInt(counts.trades_count), 
+        logs_removed: parseInt(counts.logs_count),
+        remaining: 0 
+      };
+    },
+    async listActiveSignals() {
+      const res = await pool.query(`
+        SELECT * FROM signals 
+        WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'START') 
+        ORDER BY created_at DESC
+      `);
+      return res.rows || [];
+    },
+    async bulkAckSignals(updates) {
+      let count = 0;
+      for (const u of updates) {
+        const res = await pool.query(`
+          UPDATE signals 
+          SET status = $1, ack_status = $2, ack_ticket = $3, pnl_money_realized = $4, updated_at = NOW() 
+          WHERE signal_id = $5
+        `, [u.status, u.status, u.ticket, u.pnl, u.signal_id]);
+        count += res.rowCount;
+      }
+      return { updated: count };
+    },
+    async deleteSignalsByIds(ids) {
+      const res = await pool.query(`DELETE FROM signals WHERE signal_id = ANY($1)`, [ids]);
+      return { deleted: res.rowCount };
+    },
+    async cancelSignalsByIds(ids) {
+      const res = await pool.query(`UPDATE signals SET status = 'CANCEL', updated_at = NOW() WHERE signal_id = ANY($1) RETURNING signal_id`, [ids]);
+      return { updated: res.rowCount, updated_ids: res.rows.map(r => r.signal_id) };
+    },
     async renewSignalsByIds(signalIds) {
-      const ids = Array.isArray(signalIds)
-        ? signalIds.map((s) => String(s || "")).filter(Boolean)
-        : [];
+      const ids = Array.isArray(signalIds) ? signalIds.map(s => String(s || "")).filter(Boolean) : [];
       if (!ids.length) return { updated: 0, updated_ids: [] };
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const selected = await client.query(`
-          SELECT *
-          FROM signals
-          WHERE signal_id = ANY($1::text[])
-          FOR UPDATE
-        `, [ids]);
+        const selected = await client.query(`SELECT * FROM signals WHERE signal_id = ANY($1) FOR UPDATE`, [ids]);
         const updatedIds = [];
         for (const row of (selected.rows || [])) {
           const oldId = String(row.signal_id || "");
           const cur = mt5CanonicalStoredStatus(row.status);
           if (cur === "NEW" || cur === "LOCKED") continue;
+          
           const base = mt5RenewSignalIdBase(oldId);
-          const existingRows = await client.query(`
-            SELECT signal_id
-            FROM signals
-            WHERE signal_id = $1 OR signal_id LIKE $2
-          `, [base, `${base}.%`]);
-          const renewedId = mt5RenewSignalIdFromExisting(
-            base,
-            (existingRows.rows || []).map((r) => String(r.signal_id || "")),
-          );
-          const now = mt5NowIso();
+          const existingRows = await client.query(`SELECT signal_id FROM signals WHERE signal_id = $1 OR signal_id LIKE $2`, [base, `${base}.%`]);
+          const renewedId = mt5RenewSignalIdFromExisting(base, (existingRows.rows || []).map(r => String(r.signal_id || "")));
+          
           const ins = await client.query(`
             INSERT INTO signals (
-              signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
-              signal_tf, chart_tf, rr_planned, risk_money_planned,
-              pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
-              note, raw_json, status, locked_at, ack_at, opened_at, closed_at,
-              ack_status, ack_ticket, ack_error
+              signal_id, created_at, user_id, source, side, symbol, volume, sl, tp,
+              signal_tf, chart_tf, rr_planned, note, raw_json, status
             )
-            VALUES (
-              $1, $2, $3, $4, $5, $6, $7, $8, $9,
-              $10, $11, $12, $13,
-              NULL, NULL, NULL, NULL,
-              $14, $15, 'NEW', NULL, NULL, NULL, NULL,
-              NULL, NULL, NULL
-            )
-            ON CONFLICT (signal_id) DO NOTHING
+            VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'NEW')
+            ON CONFLICT DO NOTHING
           `, [
-            renewedId, now, row.user_id, row.source, row.action, row.symbol, row.volume, row.sl, row.tp,
-            row.signal_tf, row.chart_tf, row.rr_planned, row.risk_money_planned,
-            row.note, row.raw_json,
+            renewedId, row.user_id, row.source, row.side || row.action, row.symbol, row.volume, row.sl, row.tp,
+            row.signal_tf, row.chart_tf, row.rr_planned, row.note, row.raw_json
           ]);
-          if ((ins.rowCount || 0) <= 0) continue;
-          await client.query(`DELETE FROM signal_events WHERE signal_id = $1`, [oldId]);
-          await client.query(`DELETE FROM signals WHERE signal_id = $1`, [oldId]);
-          updatedIds.push(renewedId);
+          
+          if ((ins.rowCount || 0) > 0) {
+            await client.query(`DELETE FROM signals WHERE signal_id = $1`, [oldId]);
+            updatedIds.push(renewedId);
+          }
         }
         await client.query("COMMIT");
         return { updated: updatedIds.length, updated_ids: updatedIds };
@@ -1844,7 +1866,7 @@ async function mt5InitBackend() {
       } finally {
         client.release();
       }
-    },
+    }
   };
   return MT5_BACKEND;
 }
