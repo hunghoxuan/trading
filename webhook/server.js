@@ -1633,10 +1633,8 @@ async function mt5InitBackend() {
     async getAccountByIdV2(accountId) {
       const res = await pool.query(`SELECT * FROM accounts WHERE account_id = $1 LIMIT 1`, [accountId]);
       return res.rows[0] || null;
-    }
-  };
-
-  async function getUiAuthUser(email) {
+    },
+    async getUiAuthUser(email) {
 
       const target = normalizeEmail(email);
       if (!target) return null;
