@@ -3919,18 +3919,19 @@ function mt5ComputeTradeMetrics(rows) {
   const trades = all.filter((r) => mt5IsTradeStatus(r.status || r.execution_status));
   
   const wins = trades.filter((r) => {
-    const s = mt5CanonicalStoredStatus(r.status || r.execution_status);
-    return s === "TP";
+    const s = mt5CanonicalStoredStatus(r.status || r.execution_status || r.close_reason);
+    return s === "TP" || String(r.close_reason).toUpperCase() === "TP";
   }).length;
   
   const losses = trades.filter((r) => {
-    const s = mt5CanonicalStoredStatus(r.status || r.execution_status);
-    return s === "SL";
+    const s = mt5CanonicalStoredStatus(r.status || r.execution_status || r.close_reason);
+    return s === "SL" || String(r.close_reason).toUpperCase() === "SL";
   }).length;
   
   const tpSlTrades = trades.filter(r => {
-    const s = mt5CanonicalStoredStatus(r.status || r.execution_status);
-    return s === "TP" || s === "SL";
+    const s = mt5CanonicalStoredStatus(r.status || r.execution_status || r.close_reason);
+    const res = String(r.close_reason).toUpperCase();
+    return s === "TP" || s === "SL" || res === "TP" || res === "SL";
   });
 
   const winBase = wins + losses; 
