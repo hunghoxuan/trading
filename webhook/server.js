@@ -4731,7 +4731,7 @@ const appHandler = async (req, res) => {
         filters: {
           user_id: userId || "",
           symbol,
-          source,
+          source: sourceId,
           entry_model: model,
           chart_tf: chartTf,
           signal_tf: signalTf,
