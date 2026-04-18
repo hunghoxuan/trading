@@ -2074,13 +2074,22 @@ async function mt5InitBackend() {
       `, [brokerId, now, aid]);
       return { ok: true, account_id: aid, broker_id: brokerId, last_seen_at: String(payload.now || now) };
     },
-    async listAccountsV2() {
+    async listAccountsV2(userId = null) {
+      const clauses = [];
+      const params = [];
+      if (userId) {
+        params.push(String(userId).trim());
+        clauses.push(`user_id = $${params.length}`);
+      }
+      const whereSql = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+      
       const res = await pool.query(`
         SELECT account_id, user_id, name, balance, status, broker_id, api_key_last4, api_key_rotated_at, metadata, created_at, updated_at
         FROM accounts
+        ${whereSql}
         ORDER BY updated_at DESC
         LIMIT 500
-      `);
+      `, params);
       return res.rows || [];
     },
     async getAccountByIdV2(accountId) {
@@ -2280,35 +2289,44 @@ async function mt5InitBackend() {
         params.push(String(value).trim());
         clauses.push(sql.replace("?", `$${params.length}`));
       }
-      addClause("account_id = ?", filters.account_id);
-      addClause("source_id = ?", filters.source_id);
-      addClause("dispatch_status = ?", filters.dispatch_status);
-      addClause("execution_status = ?", filters.execution_status);
-      addClause("origin_kind = ?", filters.origin_kind);
-      addClause("symbol = ?", filters.symbol);
-      addClause("side = ?", filters.side);
+      addClause("t.account_id = ?", filters.account_id);
+      addClause("t.source_id = ?", filters.source_id);
+      addClause("t.dispatch_status = ?", filters.dispatch_status);
+      addClause("t.execution_status = ?", filters.execution_status);
+      addClause("t.origin_kind = ?", filters.origin_kind);
+      addClause("t.symbol = ?", filters.symbol);
+      addClause("t.side = ?", filters.side);
       const q = String(filters.q || "").trim();
       if (q) {
         params.push(`%${q}%`);
         const idx = params.length;
-        clauses.push(`(trade_id ILIKE $${idx} OR signal_id ILIKE $${idx} OR broker_trade_id ILIKE $${idx})`);
+        clauses.push(`(t.trade_id ILIKE $${idx} OR t.signal_id ILIKE $${idx} OR t.broker_trade_id ILIKE $${idx})`);
       }
+      const joinClause = filters.user_id ? "JOIN accounts a ON t.account_id = a.account_id" : "";
+      if (filters.user_id) {
+        params.push(String(filters.user_id).trim());
+        clauses.push(`a.user_id = $${params.length}`);
+      }
+      
       const whereSql = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
       const countRes = await pool.query(`
         SELECT COUNT(*)::int AS total
-        FROM trades
+        FROM trades t
+        ${joinClause}
         ${whereSql}
       `, params);
       const total = Number(countRes.rows?.[0]?.total || 0);
       const limitIdx = params.length + 1;
       const offsetIdx = params.length + 2;
       const rowsRes = await pool.query(`
-        SELECT trade_id, account_id, broker_id, signal_id, source_id, origin_kind,
-               symbol, side, dispatch_status, execution_status, close_reason,
-               broker_trade_id, broker_order_id, intent_entry, intent_sl, intent_tp, intent_volume,
-               entry_exec, sl_exec, tp_exec, opened_at, closed_at, pnl_realized,
-               error_code, error_message, created_at, updated_at, metadata
-        FROM trades
+        SELECT t.trade_id, t.account_id, t.broker_id, t.signal_id, t.source_id, t.origin_kind,
+               t.symbol, t.side, t.dispatch_status, t.execution_status, t.close_reason,
+               t.broker_trade_id, t.broker_order_id, t.intent_entry, t.intent_sl, t.intent_tp, t.intent_volume,
+               t.entry_exec, t.sl_exec, t.tp_exec, t.opened_at, t.closed_at, t.pnl_realized,
+               t.error_code, t.error_message, t.created_at, t.updated_at, t.metadata,
+               a.user_id
+        FROM trades t
+        ${joinClause || "LEFT JOIN accounts a ON t.account_id = a.account_id"}
         ${whereSql}
         ORDER BY created_at DESC
         LIMIT $${limitIdx}
@@ -2577,29 +2595,33 @@ async function mt5InitBackend() {
       const res = await pool.query(`SELECT * FROM signals WHERE ack_ticket = $1 LIMIT 1`, [String(ticket)]);
       return res.rows[0] || null;
     },
-    async listSignals(limit, statusFilter) {
+    async listSignals(limit, statusFilter, userId = null) {
+      const clauses = ["signal_id NOT LIKE 'SYSTEM_%'"];
+      const params = [];
+
       if (statusFilter) {
-        const res = await pool.query(`
-          SELECT signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
-                 rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
-                 note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
-          FROM signals
-          WHERE status = $1 AND signal_id NOT LIKE 'SYSTEM_%'
-          ORDER BY created_at DESC
-          LIMIT $2
-        `, [statusFilter, limit]);
-        return res.rows.map((r) => mt5MapDbRow(r));
+        params.push(statusFilter);
+        clauses.push(`status = $${params.length}`);
       }
+      if (userId) {
+        params.push(String(userId).trim());
+        clauses.push(`user_id = $${params.length}`);
+      }
+
+      const whereSql = `WHERE ${clauses.join(" AND ")}`;
+      params.push(limit);
+      const limitIdx = params.length;
+
       const res = await pool.query(`
         SELECT signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
                rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
                sl_pips, tp_pips, pip_value_per_lot, risk_money_actual, reward_money_planned,
                note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
         FROM signals
-        WHERE signal_id NOT LIKE 'SYSTEM_%'
+        ${whereSql}
         ORDER BY created_at DESC
-        LIMIT $1
-      `, [limit]);
+        LIMIT $${limitIdx}
+      `, params);
       return res.rows.map((r) => mt5MapDbRow(r));
     },
     async appendSignalEvent(signalId, eventType, payload = {}) {
@@ -3465,16 +3487,19 @@ async function mt5ListTradeEventsV2(tradeId, limit = 200) {
   return b.listTradeEventsV2(tradeId, limit);
 }
 
-async function mt5ListBrokersV2() {
-  const b = await mt5Backend();
-  if (!b.listBrokersV2) return [];
-  return b.listBrokersV2();
-}
-
-async function mt5ListBrokerAccountsV2(brokerId) {
+async function mt5ListBrokerAccountsV2(brokerId, userId = null) {
   const b = await mt5Backend();
   if (!b.listBrokerAccountsV2) return [];
-  return b.listBrokerAccountsV2(brokerId);
+  // Note: b.listAccountsV2 handles userId filter
+  const all = await b.listAccountsV2(userId);
+  if (!brokerId) return all;
+  return all.filter(a => String(a.broker_id || "") === String(brokerId));
+}
+
+async function mt5ListAccountsV2(userId = null) {
+  const b = await mt5Backend();
+  if (!b.listAccountsV2) return [];
+  return b.listAccountsV2(userId);
 }
 
 async function mt5RotateSourceSecretV2(sourceId) {
@@ -4078,6 +4103,22 @@ function requireAdminKey(req, res, urlObj, payload = null) {
   return false;
 }
 
+/**
+ * Returns the effective user_id for UI requests.
+ * If user is not an admin, always returns their session user_id.
+ * If user is admin, returns the requested user_id from query/payload if any.
+ */
+function uiEffectiveUserId(req, urlObj = null, payload = null) {
+  const sess = getUiSessionFromReq(req);
+  if (!sess.ok) return null;
+  if (isSystemRole(sess.role)) {
+    // Admins can see specific users if requested
+    const target = (payload?.user_id ?? urlObj?.searchParams?.get("user_id") ?? "").trim();
+    return target || null;
+  }
+  return sess.user_id;
+}
+
 function requireSystemRoleForUi(req, res) {
   const uiSess = getUiSessionFromReq(req);
   if (!uiSess.ok) {
@@ -4578,41 +4619,26 @@ const appHandler = async (req, res) => {
     try {
       const limitRaw = Number(url.searchParams.get("limit") || 5000);
       const limit = Math.max(100, Math.min(50000, Number.isFinite(limitRaw) ? limitRaw : 5000));
-      const userId = envStr(url.searchParams.get("user_id"));
-      const allRows = await mt5ListSignals(limit, "");
-      const rows = mt5FilterRows(allRows, { userId });
-      const notProcessed = rows.filter((r) => ["NEW", "LOCKED"].includes(String(r.status || "")));
-      const statusCounts = mt5CountBy(rows, (r) => mt5CanonicalStoredStatus(r.status));
-      const actionCounts = mt5CountBy(rows, (r) => String(r.action || "").toUpperCase());
-      const orderTypeCounts = mt5CountBy(
-        rows,
-        (r) => String(r.raw_json?.order_type || r.raw_json?.orderType || "limit").toUpperCase(),
-      );
-      const topSymbols = mt5CountBy(rows, (r) => String(r.symbol || "").toUpperCase(), { limit: 10 });
-
-      const dayRange = mt5PeriodRange("today");
-      const weekRange = mt5PeriodRange("week");
-      const monthRange = mt5PeriodRange("month");
-
-      const dayRows = mt5FilterRows(rows, { from: dayRange.start, to: dayRange.end });
-      const weekRows = mt5FilterRows(rows, { from: weekRange.start, to: weekRange.end });
-      const monthRows = mt5FilterRows(rows, { from: monthRange.start, to: monthRange.end });
-
+      const userId = uiEffectiveUserId(req, url);
+      const allRows = await mt5ListSignals(limit, "", userId);
+      const rows = userId ? allRows.filter(r => String(r.user_id || "") === userId) : allRows;
+      
+      const metrics = mt5ComputeMetrics(rows);
       return json(res, 200, {
         ok: true,
         version: SERVER_VERSION,
         user_id: userId || null,
-        metrics: mt5ComputeMetrics(rows),
+        metrics,
         benefit: {
-          today: mt5ComputeMetrics(dayRows).pnl_money_realized,
-          week: mt5ComputeMetrics(weekRows).pnl_money_realized,
-          month: mt5ComputeMetrics(monthRows).pnl_money_realized,
+          today: mt5ComputeMetrics(mt5FilterRows(rows, { from: mt5PeriodRange("today").start })).pnl_money_realized,
+          week: mt5ComputeMetrics(mt5FilterRows(rows, { from: mt5PeriodRange("week").start })).pnl_money_realized,
+          month: mt5ComputeMetrics(mt5FilterRows(rows, { from: mt5PeriodRange("month").start })).pnl_money_realized,
         },
-        status_counts: statusCounts,
-        action_counts: actionCounts,
-        order_type_counts: orderTypeCounts,
-        top_symbols: topSymbols,
-        latest_unprocessed: notProcessed.slice(0, 20).map(mt5PublicState),
+        status_counts: mt5CountBy(rows, (r) => mt5CanonicalStoredStatus(r.status)),
+        action_counts: mt5CountBy(rows, (r) => String(r.action || "").toUpperCase()),
+        order_type_counts: mt5CountBy(rows, (r) => String(r.raw_json?.order_type || "limit").toUpperCase()),
+        top_symbols: mt5CountBy(rows, (r) => String(r.symbol || "").toUpperCase(), { limit: 10 }),
+        latest_unprocessed: rows.filter(r => ["NEW", "LOCKED"].includes(r.status)).slice(0, 20).map(mt5PublicState),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -4626,6 +4652,7 @@ const appHandler = async (req, res) => {
     try {
       const limitRaw = Number(url.searchParams.get("limit") || 100000);
       const limit = Math.max(500, Math.min(200000, Number.isFinite(limitRaw) ? limitRaw : 100000));
+      const userId = uiEffectiveUserId(req, url);
       const accountId = envStr(url.searchParams.get("account_id") || url.searchParams.get("user_id"));
       const symbol = envStr(url.searchParams.get("symbol")).toUpperCase();
       const sourceId = envStr(url.searchParams.get("source_id") || url.searchParams.get("source") || url.searchParams.get("strategy"));
@@ -4637,6 +4664,7 @@ const appHandler = async (req, res) => {
 
       // Use V2 trades ledger for authoritative dashboard stats
       const tradesRes = await mt5ListTradesV2({ 
+        user_id: userId,
         account_id: accountId,
         symbol: symbol,
         source_id: sourceId,
@@ -4645,17 +4673,13 @@ const appHandler = async (req, res) => {
       
       const allRows = tradesRes.items || [];
       const rowsByDimension = allRows.filter((r) => {
-        // Source/Model/TF filtering for Dashboard dimension slicing
         const m = r.metadata || {};
-        const rowModel = String(r.entry_model || m.entry_model || m.raw?.entry_model || "");
+        const rowModel = String(r.entry_model || r.metadata?.entry_model || "");
         if (model && rowModel !== model) return false;
-        
-        const rowChartTf = String(m.chart_tf || m.raw?.chart_tf || m.raw?.chartTf || "");
+        const rowChartTf = String(r.metadata?.chart_tf || "");
         if (chartTf && rowChartTf !== chartTf) return false;
-        
-        const rowSignalTf = String(m.signal_tf || m.raw?.signal_tf || m.raw?.sourceTf || "");
+        const rowSignalTf = String(r.metadata?.signal_tf || "");
         if (signalTf && rowSignalTf !== signalTf) return false;
-        
         return true;
       });
 
@@ -4684,7 +4708,7 @@ const appHandler = async (req, res) => {
       for (const r of selectedRows) {
         const pnl = Number(r.pnl_money_realized);
         if (!Number.isFinite(pnl)) continue;
-        const d = new Date(r.closed_at || r.ack_at || r.created_at);
+        const d = new Date(r.closed_at || r.created_at);
         if (!Number.isFinite(d.getTime())) continue;
         const key = seriesBucket === "hour"
           ? `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")} ${String(d.getUTCHours()).padStart(2, "0")}:00`
@@ -4696,10 +4720,9 @@ const appHandler = async (req, res) => {
         .map(([x, y]) => ({ x, y }));
 
       const symbols = [...new Set(rowsByDimension.map((r) => String(r.symbol || "").toUpperCase()).filter(Boolean))].sort();
-      const strategies = [...new Set(rowsByDimension.map((r) => mt5StrategyFromRow(r)).filter(Boolean))].sort();
       const accounts = [...new Set(allRows.map((r) => envStr(r.user_id)).filter(Boolean))].sort();
 
-      const accountsSummary = await mt5ListAccountsV2();
+      const accountsSummary = await mt5ListAccountsV2(userId);
 
       return json(res, 200, {
         ok: true,
@@ -4743,16 +4766,13 @@ const appHandler = async (req, res) => {
       const limitRaw = Number(url.searchParams.get("limit") || 5000);
       const limit = Math.max(100, Math.min(50000, Number.isFinite(limitRaw) ? limitRaw : 5000));
       const period = envStr(url.searchParams.get("period"), "month").toLowerCase();
-      const userId = envStr(url.searchParams.get("user_id"));
+      const userId = uiEffectiveUserId(req, url);
       const range = mt5PeriodRange(period);
-      const rows = mt5FilterRows(await mt5ListSignals(limit, ""), {
-        userId,
-        from: range.start,
-        to: range.end,
-      });
+      const rows = await mt5ListSignals(limit, "", userId);
+      const filtered = mt5FilterRows(rows, { from: range.start, to: range.end });
       const bucket = period === "today" ? "hour" : "day";
       const map = new Map();
-      for (const r of rows) {
+      for (const r of filtered) {
         const pnl = Number(r.pnl_money_realized);
         if (!Number.isFinite(pnl)) continue;
         const d = new Date(r.closed_at || r.ack_at || r.created_at);
@@ -4774,22 +4794,18 @@ const appHandler = async (req, res) => {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
+      const userId = uiEffectiveUserId(req, url);
       const limitRaw = Number(url.searchParams.get("limit") || 20000);
-      const limit = Math.max(100, Math.min(100000, Number.isFinite(limitRaw) ? limitRaw : 20000));
-      const userId = envStr(url.searchParams.get("user_id"));
-      const allRows = mt5FilterRows(await mt5ListSignals(limit, ""), { userId });
-      
-      return json(res, 200, {
-        ok: true,
-        symbols: [...new Set(allRows.map((r) => String(r.symbol || "").toUpperCase()).filter(Boolean))].sort(),
-        sources: [...new Set(allRows.map(r => mt5StrategyFromRow(r)).filter(Boolean))].sort(),
-        entry_models: [...new Set(allRows.map(r => mt5EntryModelFromRow(r)).filter(Boolean))].sort(),
-        chart_tfs: [...new Set(allRows.map(r => String(r.chart_tf || r.raw_json?.chart_tf || r.raw_json?.chartTf || "")).filter(Boolean))].sort(),
-        signal_tfs: [...new Set(allRows.map(r => String(r.signal_tf || r.raw_json?.signal_tf || r.raw_json?.sourceTf || r.raw_json?.timeframe || "")).filter(Boolean))].sort(),
-      });
+      const limit = Math.max(1000, Math.min(100000, Number.isFinite(limitRaw) ? limitRaw : 20000));
+      const rows = await mt5ListSignals(limit, "", userId);
+      const symbols = [...new Set(rows.map((r) => String(r.symbol || "").toUpperCase()))].filter(Boolean).sort();
+      const sources = [...new Set(rows.map((r) => mt5StrategyFromRow(r)))].filter(Boolean).sort();
+      const models = [...new Set(rows.map((r) => mt5EntryModelFromRow(r)))].filter(Boolean).sort();
+      const chartTfs = [...new Set(rows.map((r) => String(r.chart_tf || r.raw_json?.chart_tf || "")))].filter(Boolean).sort();
+      const signalTfs = [...new Set(rows.map((r) => String(r.signal_tf || r.raw_json?.signal_tf || "")))].filter(Boolean).sort();
+      return json(res, 200, { ok: true, symbols, sources, entry_models: models, chart_tfs: chartTfs, signal_tfs: signalTfs });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      return json(res, 400, { ok: false, error: message });
+      return json(res, 400, { ok: false, error: error.message });
     }
   }
 
@@ -4799,8 +4815,8 @@ const appHandler = async (req, res) => {
     try {
       const limitRaw = Number(url.searchParams.get("limit") || 10000);
       const limit = Math.max(100, Math.min(50000, Number.isFinite(limitRaw) ? limitRaw : 10000));
-      const userId = envStr(url.searchParams.get("user_id"));
-      const rows = mt5FilterRows(await mt5ListSignals(limit, ""), { userId });
+      const userId = uiEffectiveUserId(req, url);
+      const rows = await mt5ListSignals(limit, "", userId);
       const symbols = [...new Set(rows.map((r) => String(r.symbol || "").toUpperCase()).filter(Boolean))].sort();
       return json(res, 200, { ok: true, symbols });
     } catch (error) {
@@ -5347,10 +5363,12 @@ const appHandler = async (req, res) => {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
-      const rows = await mt5ListAccountsV2();
-      return json(res, 200, { ok: true, items: rows });
+      const brokerId = url.searchParams.get("broker_id");
+      const userId = uiEffectiveUserId(req, url);
+      const items = await mt5ListBrokerAccountsV2(brokerId, userId);
+      return json(res, 200, { ok: true, items });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, { ok: false, error: error.message });
     }
   }
 
@@ -5455,7 +5473,9 @@ const appHandler = async (req, res) => {
       const pageSizeRaw = Number(url.searchParams.get("pageSize") || url.searchParams.get("limit") || 50);
       const page = Math.max(1, Number.isFinite(pageRaw) ? pageRaw : 1);
       const pageSize = Math.max(1, Math.min(200, Number.isFinite(pageSizeRaw) ? pageSizeRaw : 50));
+      const userId = uiEffectiveUserId(req, url);
       const filters = {
+        user_id: userId,
         account_id: url.searchParams.get("account_id") || "",
         source_id: url.searchParams.get("source_id") || "",
         dispatch_status: url.searchParams.get("dispatch_status") || "",
