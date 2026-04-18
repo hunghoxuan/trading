@@ -2326,19 +2326,6 @@ void ProcessBacktestQueue()
    RefreshDebugPanel();
 }
 
-void SendHeartbeat()
-{
-   string url = InpServerBaseUrl + "/v2/broker/heartbeat";
-   string body = "{";
-   body += "\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",";
-   body += "\"balance\":" + DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2) + ",";
-   body += "\"equity\":" + DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY), 2) + ",";
-   body += "\"free_margin\":" + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN_FREE), 2) + ",";
-   body += "\"margin_level\":" + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN_LEVEL), 2);
-   body += "}";
-   HttpPostJson(url, body);
-}
-
 void OnTimer()
 {
    if(InpBacktestMode)
@@ -2355,13 +2342,6 @@ void OnTimer()
    {
       SyncWithVps();
       g_syncLastTime = now;
-   }
-
-   static datetime lastHeartbeat = 0;
-   if(now - lastHeartbeat >= 5)
-   {
-      lastHeartbeat = now;
-      SendHeartbeat();
    }
 
    string url = InpServerBaseUrl + "/v2/broker/pull?account=" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN));

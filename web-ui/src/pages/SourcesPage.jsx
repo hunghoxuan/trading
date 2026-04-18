@@ -24,6 +24,8 @@ export default function SourcesPage() {
 
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [rotatedSecret, setRotatedSecret] = useState("");
+  const [secretLast4, setSecretLast4] = useState("");
+  const [secretPlain, setSecretPlain] = useState("");
   const [mode, setMode] = useState("create");
   const [form, setForm] = useState({
     source_id: newId("src"),
@@ -77,6 +79,8 @@ export default function SourcesPage() {
     setMode("create");
     setSelectedSourceId("");
     setRotatedSecret("");
+    setSecretLast4("");
+    setSecretPlain("");
     setForm({
       source_id: newId("src"),
       name: "",
@@ -90,6 +94,9 @@ export default function SourcesPage() {
     setMode("edit");
     setSelectedSourceId(String(row.source_id || ""));
     setRotatedSecret("");
+    const metadata = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+    setSecretLast4(String(metadata.auth_secret_last4 || ""));
+    setSecretPlain("");
     setForm({
       source_id: String(row.source_id || ""),
       name: String(row.name || ""),
@@ -164,8 +171,12 @@ export default function SourcesPage() {
     setSaving(true);
     try {
       const out = await api.v2RotateSourceSecret(form.source_id);
-      setRotatedSecret(String(out?.source_secret_plaintext || ""));
+      const nextPlain = String(out?.source_secret_plaintext || "");
+      setRotatedSecret(nextPlain);
+      setSecretPlain(nextPlain);
+      setSecretLast4(String(out?.source_secret_last4 || nextPlain.slice(-4) || ""));
       setMsg({ type: "warning", text: "Source secret rotated. Save this value now." });
+      await loadSources();
     } catch (e) {
       setMsg({ type: "error", text: e?.message || "Failed to rotate source secret" });
     } finally {
@@ -180,13 +191,30 @@ export default function SourcesPage() {
     try {
       await api.v2RevokeSourceSecret(form.source_id);
       setRotatedSecret("");
+      setSecretPlain("");
+      setSecretLast4("");
       setMsg({ type: "warning", text: "Source secret revoked." });
+      await loadSources();
     } catch (e) {
       setMsg({ type: "error", text: e?.message || "Failed to revoke source secret" });
     } finally {
       setSaving(false);
       window.setTimeout(() => setMsg(EMPTY_MSG), 2200);
     }
+  }
+
+  async function onCopySecret() {
+    if (!secretPlain) {
+      setMsg({ type: "warning", text: "No plaintext secret available. Rotate first, then copy." });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(secretPlain);
+      setMsg({ type: "success", text: "Secret copied to clipboard." });
+    } catch {
+      setMsg({ type: "error", text: "Failed to copy secret." });
+    }
+    window.setTimeout(() => setMsg(EMPTY_MSG), 1800);
   }
 
   return (
@@ -302,12 +330,24 @@ export default function SourcesPage() {
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               <button className="primary-button" onClick={onSaveSource} disabled={saving || loading}>{mode === "create" ? "ADD" : "SAVE"}</button>
               {mode === "edit" ? (
-                <>
-                  <button className="secondary-button" onClick={onToggleSource} disabled={saving}>{form.is_active ? "DEACTIVATE" : "ACTIVATE"}</button>
-                  <button className="secondary-button" onClick={onRotateSecret} disabled={saving}>ROTATE SECRET</button>
-                  <button className="danger-button" onClick={onRevokeSecret} disabled={saving}>REVOKE SECRET</button>
-                </>
+                <button className="secondary-button" onClick={onToggleSource} disabled={saving}>{form.is_active ? "DEACTIVATE" : "ACTIVATE"}</button>
               ) : null}
+            </div>
+
+            <div className="panel" style={{ padding: 12 }}>
+              <div className="panel-label" style={{ marginBottom: 8 }}>AUTH SECRET</div>
+              <div className="minor-text" style={{ marginBottom: 10 }}>
+                Last4: {secretLast4 ? `****${secretLast4}` : "(not set)"}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <button className="secondary-button" onClick={onCopySecret} disabled={saving || !secretPlain}>COPY</button>
+                {mode === "edit" ? (
+                  <>
+                    <button className="secondary-button" onClick={onRotateSecret} disabled={saving}>ROTATE</button>
+                    <button className="danger-button" onClick={onRevokeSecret} disabled={saving}>REVOKE</button>
+                  </>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>

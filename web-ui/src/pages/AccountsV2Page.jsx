@@ -34,6 +34,8 @@ export default function AccountsV2Page() {
   const [mode, setMode] = useState("create");
   const [createdKey, setCreatedKey] = useState("");
   const [rotatedKey, setRotatedKey] = useState("");
+  const [apiKeyPlain, setApiKeyPlain] = useState("");
+  const [apiKeyLast4, setApiKeyLast4] = useState("");
   const [selectedSourceIds, setSelectedSourceIds] = useState(new Set());
 
   const [form, setForm] = useState({
@@ -87,6 +89,8 @@ export default function AccountsV2Page() {
     setSelectedAccountId("");
     setCreatedKey("");
     setRotatedKey("");
+    setApiKeyPlain("");
+    setApiKeyLast4("");
     setSelectedSourceIds(new Set());
     setForm({
       account_id: newId("acc"),
@@ -103,6 +107,8 @@ export default function AccountsV2Page() {
     setSelectedAccountId(accountId);
     setCreatedKey("");
     setRotatedKey("");
+    setApiKeyPlain("");
+    setApiKeyLast4(String(row.api_key_last4 || ""));
     setForm({
       account_id: accountId,
       user_id: String(row.user_id || "default"),
@@ -150,8 +156,11 @@ export default function AccountsV2Page() {
         setMsg({ type: "success", text: "Account updated." });
       } else {
         const out = await api.v2CreateAccount(payload);
+        const nextPlain = String(out?.api_key_plaintext || "");
         await saveSubscriptions(accountId);
-        setCreatedKey(String(out?.api_key_plaintext || ""));
+        setCreatedKey(nextPlain);
+        setApiKeyPlain(nextPlain);
+        setApiKeyLast4(nextPlain ? nextPlain.slice(-4) : "");
         setMsg({ type: "success", text: "Account created." });
         setMode("edit");
         setSelectedAccountId(accountId);
@@ -172,7 +181,10 @@ export default function AccountsV2Page() {
     setSaving(true);
     try {
       const out = await api.v2RotateAccountApiKey(form.account_id);
-      setRotatedKey(String(out?.api_key_plaintext || ""));
+      const nextPlain = String(out?.api_key_plaintext || "");
+      setRotatedKey(nextPlain);
+      setApiKeyPlain(nextPlain);
+      setApiKeyLast4(nextPlain ? nextPlain.slice(-4) : "");
       setMsg({ type: "warning", text: "API key rotated. Save this value now." });
       await loadBase();
     } catch (e) {
@@ -180,6 +192,39 @@ export default function AccountsV2Page() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function onRevokeApiKey() {
+    if (mode === "create") return;
+    if (!window.confirm(`Revoke API key for account ${form.account_id}?`)) return;
+    setSaving(true);
+    try {
+      await api.v2RevokeAccountApiKey(form.account_id);
+      setApiKeyPlain("");
+      setApiKeyLast4("");
+      setCreatedKey("");
+      setRotatedKey("");
+      setMsg({ type: "warning", text: "API key revoked." });
+      await loadBase();
+    } catch (e) {
+      setMsg({ type: "error", text: e?.message || "Failed to revoke API key" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onCopyApiKey() {
+    if (!apiKeyPlain) {
+      setMsg({ type: "warning", text: "No plaintext API key available. Rotate to generate one, then copy." });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(apiKeyPlain);
+      setMsg({ type: "success", text: "API key copied to clipboard." });
+    } catch {
+      setMsg({ type: "error", text: "Failed to copy API key." });
+    }
+    window.setTimeout(() => setMsg(EMPTY_MSG), 1800);
   }
 
   async function onToggleStatus() {
@@ -382,12 +427,27 @@ export default function AccountsV2Page() {
               <textarea value={form.metadata_json} onChange={(e) => setForm((p) => ({ ...p, metadata_json: e.target.value }))} rows={4} />
             </label>
 
+            <div className="panel" style={{ padding: 12 }}>
+              <div className="panel-label" style={{ marginBottom: 8 }}>API KEY</div>
+              <div className="minor-text" style={{ marginBottom: 10 }}>
+                Last4: {apiKeyLast4 ? `****${apiKeyLast4}` : "(not set)"}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <button className="secondary-button" onClick={onCopyApiKey} disabled={saving || !apiKeyPlain}>COPY</button>
+                {mode === "edit" ? (
+                  <>
+                    <button className="secondary-button" onClick={onRotateApiKey} disabled={saving}>ROTATE</button>
+                    <button className="danger-button" onClick={onRevokeApiKey} disabled={saving}>REVOKE</button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               <button className="primary-button" onClick={onSave} disabled={saving || loading}>{mode === "create" ? "ADD" : "SAVE"}</button>
               {mode === "edit" ? (
                 <>
                   <button className="secondary-button" onClick={onToggleStatus} disabled={saving}>{String(form.status || "").toUpperCase() === "ACTIVE" ? "DEACTIVATE" : "ACTIVATE"}</button>
-                  <button className="secondary-button" onClick={onRotateApiKey} disabled={saving}>ROTATE API KEY</button>
                   <button className="danger-button" onClick={onArchive} disabled={saving || String(form.status || "").toUpperCase() === "ARCHIVED"}>ARCHIVE</button>
                 </>
               ) : null}

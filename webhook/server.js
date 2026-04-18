@@ -1630,21 +1630,26 @@ async function mt5InitBackend() {
       if (!sid) return null;
       const secretPlain = `src_${crypto.randomBytes(18).toString("hex")}`;
       const secretHash = hashApiKey(secretPlain);
+      const secretLast4 = secretPlain.slice(-4);
       const res = await pool.query(`
         UPDATE sources
-        SET auth_secret_hash = $1, updated_at = NOW()
-        WHERE source_id = $2
+        SET auth_secret_hash = $1,
+            metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('auth_secret_last4', $2),
+            updated_at = NOW()
+        WHERE source_id = $3
         RETURNING source_id
-      `, [secretHash, sid]);
+      `, [secretHash, secretLast4, sid]);
       if (!res.rows[0]) return null;
-      return { source_id: sid, source_secret_plaintext: secretPlain };
+      return { source_id: sid, source_secret_plaintext: secretPlain, source_secret_last4: secretLast4 };
     },
     async revokeSourceSecretV2(sourceId) {
       const sid = String(sourceId || "").trim();
       if (!sid) return { ok: false, error: "source_id is required" };
       const res = await pool.query(`
         UPDATE sources
-        SET auth_secret_hash = NULL, updated_at = NOW()
+        SET auth_secret_hash = NULL,
+            metadata = (COALESCE(metadata, '{}'::jsonb) - 'auth_secret_last4'),
+            updated_at = NOW()
         WHERE source_id = $1
       `, [sid]);
       if ((res.rowCount || 0) === 0) return { ok: false, error: "source not found" };
@@ -1770,6 +1775,17 @@ async function mt5InitBackend() {
       `, [apiKeyHash, apiKeyLast4, targetId]);
       if (!res.rows[0]) return null;
       return { account_id: targetId, api_key_plaintext: plainApiKey };
+    },
+    async revokeAccountApiKeyV2(accountId) {
+      const targetId = String(accountId || "").trim();
+      if (!targetId) return { ok: false, error: "account_id is required" };
+      const res = await pool.query(`
+        UPDATE accounts
+        SET api_key_hash = NULL, api_key_last4 = NULL, api_key_rotated_at = NOW(), updated_at = NOW()
+        WHERE account_id = $1
+      `, [targetId]);
+      if ((res.rowCount || 0) === 0) return { ok: false, error: "account not found" };
+      return { ok: true, account_id: targetId };
     },
     async getAccountSubscriptionsV2(accountId) {
       const targetId = String(accountId || "").trim();
@@ -2417,6 +2433,12 @@ async function mt5RotateAccountApiKeyV2(accountId) {
   const b = await mt5Backend();
   if (!b.rotateAccountApiKeyV2) return null;
   return b.rotateAccountApiKeyV2(accountId);
+}
+
+async function mt5RevokeAccountApiKeyV2(accountId) {
+  const b = await mt5Backend();
+  if (!b.revokeAccountApiKeyV2) return { ok: false, error: "not supported" };
+  return b.revokeAccountApiKeyV2(accountId);
 }
 
 async function mt5BrokerSyncV2(accountId, payload) {
@@ -4542,7 +4564,12 @@ const appHandler = async (req, res) => {
       if (!sourceId) return json(res, 400, { ok: false, error: "source_id is required" });
       const out = await mt5RotateSourceSecretV2(sourceId);
       if (!out) return json(res, 404, { ok: false, error: "source not found or backend unsupported" });
-      return json(res, 200, { ok: true, source_id: out.source_id, source_secret_plaintext: out.source_secret_plaintext });
+      return json(res, 200, {
+        ok: true,
+        source_id: out.source_id,
+        source_secret_plaintext: out.source_secret_plaintext,
+        source_secret_last4: out.source_secret_last4 || null,
+      });
     } catch (error) {
       return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
@@ -4718,6 +4745,23 @@ const appHandler = async (req, res) => {
         account_id: rotated.account_id,
         api_key_plaintext: rotated.api_key_plaintext,
       });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && /^\/v2\/accounts\/[^/]+\/api-key\/revoke$/.test(url.pathname)) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    let payload = {};
+    try { payload = await readJson(req); } catch {}
+    if (!requireAdminKey(req, res, url, payload)) return;
+    try {
+      const m = url.pathname.match(/^\/v2\/accounts\/([^/]+)\/api-key\/revoke$/);
+      const accountId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
+      const out = await mt5RevokeAccountApiKeyV2(accountId);
+      if (!out?.ok) return json(res, 400, { ok: false, error: out?.error || "failed to revoke api key" });
+      return json(res, 200, { ok: true, account_id: accountId });
     } catch (error) {
       return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }

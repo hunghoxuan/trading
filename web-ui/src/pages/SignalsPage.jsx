@@ -482,7 +482,7 @@ export default function SignalsPage() {
                           <div className="json-table-wrapper">
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                               <tbody>
-                                  {(Object.entries(ev.payload_json || {}).length ? Object.entries(ev.payload_json || {}) : [['details', JSON.stringify(ev)]]).map(([k, v]) => {
+                                  {Object.entries(ev.payload_json || {}).map(([k, v]) => {
                                     let label = k.replace(/_/g, ' ').toUpperCase();
                                     if (label === 'SOURCE TF') label = 'SIGNAL TF';
                                     if (label === 'CHART TF PERIOD') label = 'CHART TF';
@@ -496,6 +496,12 @@ export default function SignalsPage() {
                                       </tr>
                                     );
                                   })}
+                                  {Object.entries(ev.payload_json || {}).length === 0 ? (
+                                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                                      <td className="minor-text" style={{ padding: '8px 0', width: '30%', fontWeight: 700, color: 'var(--muted)' }}>NO PAYLOAD</td>
+                                      <td className="minor-text" style={{ padding: '8px 0', color: 'var(--text)' }}>-</td>
+                                    </tr>
+                                  ) : null}
                               </tbody>
                             </table>
                           </div>

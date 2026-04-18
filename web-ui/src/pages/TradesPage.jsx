@@ -220,43 +220,77 @@ export default function TradesPage() {
             <div className="stack-layout" style={{ gap: 14 }}>
               <div className="panel-label" style={{ marginBottom: 0 }}>TRADE DETAIL</div>
               <div className="panel" style={{ padding: 12 }}>
+                {(() => {
+                  const action = String(selectedTrade.action || selectedTrade.side || "-").toUpperCase();
+                  const actionCls = action === "BUY" ? "side-buy" : "side-sell";
+                  const st = statusUi(selectedTrade.execution_status);
+                  const pnl = asNum(selectedTrade.pnl_realized);
+                  const acc = accountById.get(String(selectedTrade.account_id || ""));
+                  return (
+                    <div style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span className={actionCls} style={{ fontSize: 16 }}>{action}</span>
+                        <strong>{selectedTrade.symbol || "-"}</strong>
+                        <span className={`badge ${st.cls}`}>{st.label}</span>
+                      </div>
+                      <div className={pnl != null && pnl < 0 ? "money-neg" : "money-pos"} style={{ fontWeight: 800 }}>
+                        {pnl == null ? "-" : `$${pnl.toFixed(2)}`}
+                      </div>
+                      <div className="minor-text">{acc?.name || selectedTrade.account_id || "-"}</div>
+                    </div>
+                  );
+                })()}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 8 }}>
                   <div><span className="minor-text">Trade ID</span><div>{selectedTrade.trade_id}</div></div>
                   <div><span className="minor-text">Signal ID</span><div>{selectedTrade.signal_id || "-"}</div></div>
-                  <div><span className="minor-text">Account</span><div>{selectedTrade.account_id || "-"}</div></div>
+                  <div><span className="minor-text">Account</span><div>{accountById.get(String(selectedTrade.account_id || ""))?.name || selectedTrade.account_id || "-"}</div></div>
                   <div><span className="minor-text">Source</span><div>{selectedTrade.source_id || "-"}</div></div>
                   <div><span className="minor-text">Action</span><div>{String(selectedTrade.action || selectedTrade.side || "-").toUpperCase()}</div></div>
                   <div><span className="minor-text">Symbol</span><div>{selectedTrade.symbol || "-"}</div></div>
                   <div><span className="minor-text">Entry</span><div>{selectedTrade.entry || "-"}</div></div>
                   <div><span className="minor-text">TP/SL</span><div>{selectedTrade.tp || "-"} / {selectedTrade.sl || "-"}</div></div>
                   <div><span className="minor-text">Volume</span><div>{selectedTrade.volume ?? "-"}</div></div>
-                  <div><span className="minor-text">Status</span><div>{selectedTrade.execution_status || "-"}</div></div>
+                  <div><span className="minor-text">Status</span><div><span className={`badge ${statusUi(selectedTrade.execution_status).cls}`}>{statusUi(selectedTrade.execution_status).label}</span></div></div>
                 </div>
               </div>
 
               <div className="panel" style={{ padding: 12 }}>
                 <div className="panel-label" style={{ marginBottom: 8 }}>HISTORY</div>
-                <div style={{ maxHeight: 320, overflow: "auto" }}>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Time</th>
-                        <th>Event</th>
-                        <th>Payload</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tradeEvents.length === 0 ? (
-                        <tr><td colSpan={3} className="muted">No events.</td></tr>
-                      ) : tradeEvents.map((ev, idx) => (
-                        <tr key={`${ev.log_id || idx}`}>
-                          <td className="minor-text">{fDateTime(ev.created_at || ev.event_time)}</td>
-                          <td>{String(ev?.metadata?.event || ev?.metadata?.event_type || ev.object_table || "LOG")}</td>
-                          <td><code>{JSON.stringify(ev.metadata || {}, null, 0)}</code></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div style={{ maxHeight: 380, overflow: "auto" }}>
+                  {tradeEvents.length === 0 ? (
+                    <div className="muted">No events.</div>
+                  ) : tradeEvents.map((ev, idx) => {
+                    const payload = ev?.metadata && typeof ev.metadata === "object" ? ev.metadata : {};
+                    const entries = Object.entries(payload || {});
+                    const evType = String(payload.event || payload.event_type || ev.object_table || "LOG");
+                    return (
+                      <div key={`${ev.log_id || idx}`} className="panel" style={{ margin: "0 0 10px 0", padding: 12 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                          <span className="panel-label" style={{ margin: 0 }}>{evType}</span>
+                          <span className="minor-text">{fDateTime(ev.created_at || ev.event_time)}</span>
+                        </div>
+                        <div className="json-table-wrapper">
+                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                            <tbody>
+                              {entries.length === 0 ? (
+                                <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                                  <td className="minor-text" style={{ padding: "8px 0", width: "30%", fontWeight: 700, color: "var(--muted)" }}>NO PAYLOAD</td>
+                                  <td className="minor-text" style={{ padding: "8px 0", color: "var(--text)" }}>-</td>
+                                </tr>
+                              ) : entries.map(([k, v]) => (
+                                <tr key={k} style={{ borderBottom: "1px solid var(--border)" }}>
+                                  <td className="minor-text" style={{ padding: "8px 0", width: "30%", fontWeight: 700, color: "var(--muted)" }}>{k}</td>
+                                  <td className="minor-text" style={{ padding: "8px 0", color: "var(--text)" }}>
+                                    {typeof v === "object" ? JSON.stringify(v, null, 2) : String(v)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
