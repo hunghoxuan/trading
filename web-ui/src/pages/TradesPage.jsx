@@ -134,12 +134,12 @@ export default function TradesPage() {
               <tr><td colSpan="7" className="empty-state">No trades found.</td></tr>
             ) : rows.map(t => {
               const status = statusUi(t.execution_status);
-              const sideCls = t.side === 'BUY' ? 'side-buy' : 'side-sell';
+              const actionCls = t.action === 'BUY' ? 'side-buy' : 'side-sell';
               return (
                 <tr key={t.trade_id}>
                   <td>
                     <div className="cell-wrap">
-                      <div className="cell-major"><span className={sideCls}>{t.side}</span> {t.symbol}</div>
+                      <div className="cell-major"><span className={actionCls}>{t.action}</span> {t.symbol}</div>
                       <div className="cell-minor">{t.trade_id.slice(-8)}</div>
                     </div>
                   </td>
@@ -152,13 +152,13 @@ export default function TradesPage() {
                   <td>
                     <div className="cell-wrap">
                       <div className="cell-major">{t.source_id}</div>
-                      <div className="cell-minor">{t.origin_kind}</div>
+                      <div className="cell-minor">{t.note || "-"}</div>
                     </div>
                   </td>
                   <td>
                     <div className="cell-wrap">
-                      <div className="cell-major">{t.intent_entry || '-'}</div>
-                      <div className="cell-minor">SL: {t.intent_sl || '-'} | TP: {t.intent_tp || '-'}</div>
+                      <div className="cell-major">{t.entry || '-'}</div>
+                      <div className="cell-minor">SL: {t.sl || '-'} | TP: {t.tp || '-'}</div>
                     </div>
                   </td>
                   <td>

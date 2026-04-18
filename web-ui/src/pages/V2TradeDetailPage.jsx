@@ -60,7 +60,7 @@ export default function TradeDetailPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <h1 style={{ margin: 0, fontSize: '24px' }}>
-              <span className={t.side === 'BUY' ? 'side-buy' : 'side-sell'}>{t.side}</span> {t.symbol}
+              <span className={t.action === 'BUY' ? 'side-buy' : 'side-sell'}>{t.action}</span> {t.symbol}
             </h1>
             <div className="minor-text" style={{ marginTop: 4 }}>ID: {t.trade_id}</div>
           </div>
@@ -79,12 +79,12 @@ export default function TradeDetailPage() {
             <div style={{ fontWeight: 600 }}>{t.source_id}</div>
           </div>
           <div className="detail-item">
-            <div className="muted small">INTENT</div>
-            <div style={{ fontWeight: 600 }}>{t.intent_entry || '-'}</div>
+            <div className="muted small">ENTRY</div>
+            <div style={{ fontWeight: 600 }}>{t.entry || '-'}</div>
           </div>
           <div className="detail-item">
             <div className="muted small">SL / TP</div>
-            <div style={{ fontWeight: 600 }}>{t.intent_sl || '-'} / {t.intent_tp || '-'}</div>
+            <div style={{ fontWeight: 600 }}>{t.sl || '-'} / {t.tp || '-'}</div>
           </div>
           <div className="detail-item">
             <div className="muted small">PNL</div>

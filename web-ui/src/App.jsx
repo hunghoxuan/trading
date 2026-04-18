@@ -10,7 +10,6 @@ import SubscriptionsPage from "./pages/SubscriptionsPage";
 import SourcesPage from "./pages/SourcesPage";
 import ExecutionV2Page from "./pages/ExecutionV2Page";
 import AccountsV2Page from "./pages/AccountsV2Page";
-import BrokersPage from "./pages/BrokersPage";
 import SignalsPage from "./pages/SignalsPage";
 import SignalDetailPage from "./pages/SignalDetailPage";
 import V2TradeDetailPage from "./pages/V2TradeDetailPage";
@@ -90,7 +89,6 @@ export default function App() {
             <div className="nav-group">
               <span className="nav-group-label" style={{ opacity: 0.5, margin: '0 8px', fontSize: '10px' }}>SYSTEM</span>
               <NavLink to="/accounts-v2" className={({ isActive }) => (isActive ? "active" : "")}>Accounts</NavLink>
-              <NavLink to="/brokers" className={({ isActive }) => (isActive ? "active" : "")}>Brokers</NavLink>
               <NavLink to="/sources" className={({ isActive }) => (isActive ? "active" : "")}>Sources</NavLink>
               <NavLink to="/subscriptions" className={({ isActive }) => (isActive ? "active" : "")}>Subs</NavLink>
               <NavLink to="/logs" className={({ isActive }) => (isActive ? "active" : "")}>Logs</NavLink>
@@ -131,7 +129,6 @@ export default function App() {
           <Route path="/accounts-v2" element={canAccessSystemPages ? <AccountsV2Page /> : <Navigate to="/dashboard" replace />} />
           <Route path="/sources" element={canAccessSystemPages ? <SourcesPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/subscriptions" element={canAccessSystemPages ? <SubscriptionsPage /> : <Navigate to="/dashboard" replace />} />
-          <Route path="/brokers" element={canAccessSystemPages ? <BrokersPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/settings" element={<SettingsPage authUser={authUser} />} />
           <Route path="/login" element={<Navigate to="/dashboard" replace />} />
         </Routes>

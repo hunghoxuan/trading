@@ -21,9 +21,8 @@ export default function ExecutionV2Page() {
     source_id: "",
     dispatch_status: "",
     execution_status: "",
-    origin_kind: "",
     symbol: "",
-    side: "",
+    action: "",
     page: 1,
     pageSize: 30,
   });
@@ -114,13 +113,8 @@ export default function ExecutionV2Page() {
             <option value="CLOSED">CLOSED</option>
             <option value="REJECTED">REJECTED</option>
           </select>
-          <select value={filters.origin_kind} onChange={(e) => updateFilter("origin_kind", e.target.value)}>
-            <option value="">origin: all</option>
-            <option value="SIGNAL">SIGNAL</option>
-            <option value="BROKER">BROKER</option>
-          </select>
-          <select value={filters.side} onChange={(e) => updateFilter("side", e.target.value)}>
-            <option value="">side: all</option>
+          <select value={filters.action} onChange={(e) => updateFilter("action", e.target.value)}>
+            <option value="">action: all</option>
             <option value="BUY">BUY</option>
             <option value="SELL">SELL</option>
           </select>
@@ -140,9 +134,8 @@ export default function ExecutionV2Page() {
                 <th>Trade ID</th>
                 <th>Account</th>
                 <th>Source</th>
-                <th>Origin</th>
                 <th>Symbol</th>
-                <th>Side</th>
+                <th>Action</th>
                 <th>Dispatch</th>
                 <th>Execution</th>
                 <th>Broker Ticket</th>
@@ -156,9 +149,8 @@ export default function ExecutionV2Page() {
                   <td>{r.trade_id}</td>
                   <td>{r.account_id || "-"}</td>
                   <td>{r.source_id || "-"}</td>
-                  <td>{r.origin_kind || "-"}</td>
                   <td>{r.symbol || "-"}</td>
-                  <td>{r.side || "-"}</td>
+                  <td>{r.action || "-"}</td>
                   <td>{r.dispatch_status || "-"}</td>
                   <td>{r.execution_status || "-"}</td>
                   <td>{r.broker_trade_id || "-"}</td>
@@ -168,7 +160,7 @@ export default function ExecutionV2Page() {
               ))}
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="muted">No v2 trades found.</td>
+                  <td colSpan={10} className="muted">No v2 trades found.</td>
                 </tr>
               ) : null}
             </tbody>

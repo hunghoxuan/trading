@@ -48,11 +48,9 @@ export default function UsersPage({ authUser }) {
   const [createUserAlert, setCreateUserAlert] = useState(EMPTY_ALERT);
   const [profileAlert, setProfileAlert] = useState(EMPTY_ALERT);
   const [accountAlert, setAccountAlert] = useState(EMPTY_ALERT);
-  const [apiKeyAlert, setApiKeyAlert] = useState(EMPTY_ALERT);
   const [createUserErrors, setCreateUserErrors] = useState({});
   const [profileErrors, setProfileErrors] = useState({});
   const [accountErrors, setAccountErrors] = useState({});
-  const [apiKeyErrors, setApiKeyErrors] = useState({});
 
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
@@ -66,8 +64,6 @@ export default function UsersPage({ authUser }) {
   const [accountForm, setAccountForm] = useState({ name: "", balance: "", status: ACCOUNT_STATUS_OPTIONS[0] });
   const [editingAccountId, setEditingAccountId] = useState("");
   const [accountFormOpen, setAccountFormOpen] = useState(false);
-  const [apiKeyFormOpen, setApiKeyFormOpen] = useState(false);
-  const [apiKeyLabel, setApiKeyLabel] = useState("");
 
   const filteredUsers = useMemo(() => {
     const q = String(searchQuery || "").trim().toLowerCase();
@@ -128,7 +124,6 @@ export default function UsersPage({ authUser }) {
       setEditingAccountId("");
       setAccountForm({ name: "", balance: "", status: ACCOUNT_STATUS_OPTIONS[0] });
       setAccountFormOpen(false);
-      setApiKeyFormOpen(false);
       setPageAlert(EMPTY_ALERT);
     } catch (e) {
       setPageAlert({ type: "error", text: e?.message || "Failed to load user detail" });
@@ -321,62 +316,6 @@ export default function UsersPage({ authUser }) {
     } finally {
       setSaving(false);
       window.setTimeout(() => setAccountAlert(EMPTY_ALERT), 1800);
-    }
-  }
-
-  async function onCreateApiKey() {
-    if (!selectedUser) return;
-    const label = String(apiKeyLabel || "").trim();
-    if (!label) {
-      setApiKeyErrors({ label: "API key label is required." });
-      setApiKeyAlert({ type: "error", text: "Please fix validation errors." });
-      return;
-    }
-    try {
-      setSaving(true);
-      setApiKeyErrors({});
-      setApiKeyAlert(EMPTY_ALERT);
-      const out = await api.createUserApiKey(selectedUser.user_id, { label });
-      setApiKeyLabel("");
-      const masked = out?.api_key?.key_masked || "";
-      setApiKeyAlert({ type: "success", text: masked ? `API key created (${masked}).` : "API key created." });
-      await loadDetail(selectedUser.user_id);
-    } catch (e) {
-      setApiKeyAlert({ type: "error", text: e?.message || "Failed to create API key" });
-    } finally {
-      setSaving(false);
-      window.setTimeout(() => setApiKeyAlert(EMPTY_ALERT), 2200);
-    }
-  }
-
-  async function onToggleApiKey(row) {
-    if (!selectedUser || !row) return;
-    try {
-      setSaving(true);
-      await api.updateUserApiKey(selectedUser.user_id, row.key_id, { is_active: !row.is_active });
-      setApiKeyAlert({ type: "success", text: "API key updated." });
-      await loadDetail(selectedUser.user_id);
-    } catch (e) {
-      setApiKeyAlert({ type: "error", text: e?.message || "Failed to update API key" });
-    } finally {
-      setSaving(false);
-      window.setTimeout(() => setApiKeyAlert(EMPTY_ALERT), 1800);
-    }
-  }
-
-  async function onDeleteApiKey(row) {
-    if (!selectedUser || !row) return;
-    if (!window.confirm(`Delete API key ${row.label}?`)) return;
-    try {
-      setSaving(true);
-      await api.deleteUserApiKey(selectedUser.user_id, row.key_id);
-      setApiKeyAlert({ type: "warning", text: "API key deleted." });
-      await loadDetail(selectedUser.user_id);
-    } catch (e) {
-      setApiKeyAlert({ type: "error", text: e?.message || "Failed to delete API key" });
-    } finally {
-      setSaving(false);
-      window.setTimeout(() => setApiKeyAlert(EMPTY_ALERT), 1800);
     }
   }
 
@@ -651,93 +590,6 @@ export default function UsersPage({ authUser }) {
                       {accountFormOpen ? "✖ CANCEL" : "＋ CREATE ACCOUNT"}
                     </button>
                   </div>
-                </div>
-              </div>
-
-              <div className="panel" style={{ margin: 0 }}>
-                <div className="panel-label">API KEY MANAGEMENT</div>
-                <div className="stack-layout" style={{ gap: 10 }}>
-                  {apiKeyFormOpen ? (
-                    <>
-                      <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr auto", alignItems: "flex-end" }}>
-                        <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                          <div className="minor-text">Key Label</div>
-                          <input placeholder="Ex: TradingView Bridge" value={apiKeyLabel} onChange={(e) => { setApiKeyLabel(e.target.value); setApiKeyErrors((p) => ({ ...p, label: "" })); if (apiKeyAlert.type === "error") setApiKeyAlert(EMPTY_ALERT); }} />
-                          {apiKeyErrors.label ? <div className="field-validation msg-error">{apiKeyErrors.label}</div> : null}
-                        </label>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button type="button" className="primary-button" onClick={onCreateApiKey} disabled={saving} style={{ padding: "8px 16px" }}>💾 SAVE API KEY</button>
-                          <button type="button" className="secondary-button" onClick={() => { setApiKeyFormOpen(false); setApiKeyLabel(""); setApiKeyErrors({}); }} disabled={saving}>✖ CANCEL</button>
-                        </div>
-                      </div>
-                      {apiKeyAlert.text ? <div className={`form-message msg-${apiKeyAlert.type || "error"}`}>{apiKeyAlert.text}</div> : null}
-                    </>
-                  ) : null}
-                  <div className="events-table-wrap" style={{ maxHeight: 220 }}>
-                    <table className="events-table">
-                      <thead>
-                        <tr>
-                          <th>LABEL</th>
-                          <th>KEY</th>
-                          <th>STATUS</th>
-                          <th style={{ textAlign: 'right' }}>ACTIONS</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(detail?.api_keys || []).map((k) => (
-                          <tr key={k.key_id}>
-                            <td className="cell-major">{k.label}</td>
-                            <td className="cell-minor">{k.key_masked || "-"}</td>
-                            <td><span className={`badge ${k.is_active ? "ACTIVE" : "INACTIVE"}`}>{k.is_active ? "ACTIVE" : "INACTIVE"}</span></td>
-                            <td style={{ textAlign: 'right' }}>
-                              <button
-                                type="button"
-                                className="secondary-button icon-button"
-                                style={{ padding: "4px 10px" }}
-                                title={k.is_active ? "Disable API key" : "Enable API key"}
-                                aria-label={k.is_active ? "Disable API key" : "Enable API key"}
-                                onClick={() => onToggleApiKey(k)}
-                              >
-                                {k.is_active ? "⏸" : "▶"}
-                              </button>
-                              <button
-                                type="button"
-                                className="danger-button icon-button"
-                                title="Delete API key"
-                                aria-label="Delete API key"
-                                style={{ padding: "4px 10px", marginLeft: 6 }}
-                                onClick={() => onDeleteApiKey(k)}
-                              >
-                                🗑
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                        {(detail?.api_keys || []).length === 0 ? (<tr><td colSpan={4} className="minor-text">No API keys yet.</td></tr>) : null}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div style={{ paddingTop: 2 }}>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => {
-                        if (apiKeyFormOpen) {
-                          setApiKeyFormOpen(false);
-                          setApiKeyLabel("");
-                          setApiKeyErrors({});
-                        } else {
-                          setApiKeyFormOpen(true);
-                          setApiKeyErrors({});
-                          if (apiKeyAlert.type === "error") setApiKeyAlert(EMPTY_ALERT);
-                        }
-                      }}
-                      disabled={saving}
-                    >
-                      {apiKeyFormOpen ? "✖ CANCEL" : "＋ CREATE API KEY"}
-                    </button>
-                  </div>
-                  <div className="minor-text">API keys are active for API auth when status is ACTIVE (sent via x-api-key).</div>
                 </div>
               </div>
 

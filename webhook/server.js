@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.18-02");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.18-03");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -237,26 +237,6 @@ function uiPublicUserView(user) {
     is_active: normalizeUserActive(user?.is_active, true),
     updated_at: String(user?.updated_at || ""),
     created_at: String(user?.created_at || ""),
-  };
-}
-
-function maskApiKey(raw) {
-  const val = String(raw || "");
-  if (!val) return "";
-  if (val.length <= 8) return `${val.slice(0, 2)}***${val.slice(-1)}`;
-  return `${val.slice(0, 4)}...${val.slice(-4)}`;
-}
-
-function uiPublicApiKeyView(row) {
-  const keyValue = String(row?.key_value || row?.api_key || "");
-  return {
-    key_id: String(row?.key_id || ""),
-    label: String(row?.label || ""),
-    key_masked: maskApiKey(keyValue),
-    is_active: normalizeUserActive(row?.is_active, true),
-    created_at: String(row?.created_at || ""),
-    updated_at: String(row?.updated_at || ""),
-    last_used_at: String(row?.last_used_at || ""),
   };
 }
 
@@ -507,12 +487,11 @@ async function uiGetUserDetail(userIdRaw) {
   if (!user) return { ok: false, error: "User not found" };
   const b = await mt5Backend();
   const accounts = b.listUserAccounts ? await b.listUserAccounts(userId) : [];
-  const apiKeys = b.listUserApiKeys ? await b.listUserApiKeys(userId) : [];
   return {
     ok: true,
     user: uiPublicUserView(user),
     accounts: (accounts || []).map(uiPublicAccountView),
-    api_keys: (apiKeys || []).map(uiPublicApiKeyView),
+    api_keys: [],
   };
 }
 
@@ -544,48 +523,6 @@ async function uiDeleteUserAccount(userIdRaw, accountIdRaw) {
   const b = await mt5Backend();
   if (!b.deleteUserAccount) return { ok: false, error: "Account management is not supported by this backend" };
   await b.deleteUserAccount(userId, accountId);
-  return { ok: true };
-}
-
-async function uiCreateUserApiKey(userIdRaw, payload = {}) {
-  const userId = String(userIdRaw || "").trim();
-  if (!userId) return { ok: false, error: "user_id is required" };
-  const user = await uiReadAuthStateByUserId(userId);
-  if (!user) return { ok: false, error: "User not found" };
-  const label = String(payload.label || "").trim();
-  if (!label) return { ok: false, error: "Key label is required" };
-  const b = await mt5Backend();
-  if (!b.createUserApiKey) return { ok: false, error: "API key management is not supported by this backend" };
-  const keyValue = `tk_${crypto.randomBytes(24).toString("hex")}`;
-  const created = await b.createUserApiKey(userId, { label, key_value: keyValue, is_active: true });
-  return {
-    ok: true,
-    api_key: uiPublicApiKeyView(created || { key_id: "", label, key_value: keyValue, is_active: true }),
-    key_value: keyValue,
-  };
-}
-
-async function uiUpdateUserApiKey(userIdRaw, keyIdRaw, payload = {}) {
-  const userId = String(userIdRaw || "").trim();
-  const keyId = String(keyIdRaw || "").trim();
-  if (!userId || !keyId) return { ok: false, error: "user_id and key_id are required" };
-  const b = await mt5Backend();
-  if (!b.updateUserApiKey) return { ok: false, error: "API key management is not supported by this backend" };
-  const row = await b.updateUserApiKey(userId, keyId, {
-    label: payload.label === undefined ? undefined : String(payload.label || "").trim(),
-    is_active: payload.is_active === undefined ? undefined : normalizeUserActive(payload.is_active, true),
-  });
-  if (!row) return { ok: false, error: "API key not found" };
-  return { ok: true, api_key: uiPublicApiKeyView(row) };
-}
-
-async function uiDeleteUserApiKey(userIdRaw, keyIdRaw) {
-  const userId = String(userIdRaw || "").trim();
-  const keyId = String(keyIdRaw || "").trim();
-  if (!userId || !keyId) return { ok: false, error: "user_id and key_id are required" };
-  const b = await mt5Backend();
-  if (!b.deleteUserApiKey) return { ok: false, error: "API key management is not supported by this backend" };
-  await b.deleteUserApiKey(userId, keyId);
   return { ok: true };
 }
 
@@ -1313,13 +1250,16 @@ async function mt5InitBackend() {
     console.error('[Postgres Pool Error]', err);
   });
 
-  // NEW UNIFIED SCHEMA (v2.1)
+  // NEW UNIFIED SCHEMA (v2.2 simplified)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       user_id TEXT PRIMARY KEY,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'user',
+      user_name TEXT,
+      email TEXT UNIQUE,
+      password_hash TEXT,
+      password_salt TEXT,
+      role TEXT,
+      is_active BOOLEAN DEFAULT TRUE,
       metadata JSONB,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -1328,6 +1268,12 @@ async function mt5InitBackend() {
     CREATE TABLE IF NOT EXISTS accounts (
       account_id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      name TEXT,
+      balance DOUBLE PRECISION NULL,
+      api_key_hash TEXT NULL,
+      api_key_last4 TEXT NULL,
+      api_key_rotated_at TIMESTAMPTZ NULL,
+      source_ids_cache JSONB NULL,
       metadata JSONB,
       status TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1359,29 +1305,25 @@ async function mt5InitBackend() {
       broker_id TEXT NULL,
       signal_id TEXT NULL REFERENCES signals(signal_id) ON DELETE SET NULL,
       source_id TEXT NULL,
-      origin_kind TEXT NOT NULL,
       symbol TEXT NOT NULL,
-      side TEXT NOT NULL,
-      intent_entry FLOAT8 NULL,
-      intent_sl FLOAT8 NULL,
-      intent_tp FLOAT8 NULL,
-      intent_volume FLOAT8 NULL,
-      intent_note TEXT NULL,
+      action TEXT NOT NULL,
+      volume FLOAT8 NULL,
+      entry FLOAT8 NULL,
+      sl FLOAT8 NULL,
+      tp FLOAT8 NULL,
+      note TEXT NULL,
       lease_token TEXT NULL,
       lease_expires_at TIMESTAMPTZ NULL,
       dispatch_status TEXT NOT NULL DEFAULT 'NEW',
       execution_status TEXT NOT NULL DEFAULT 'PENDING',
       close_reason TEXT NULL,
       broker_trade_id TEXT NULL,
-      broker_order_id TEXT NULL,
       entry_exec FLOAT8 NULL,
       sl_exec FLOAT8 NULL,
       tp_exec FLOAT8 NULL,
       opened_at TIMESTAMPTZ NULL,
       closed_at TIMESTAMPTZ NULL,
       pnl_realized FLOAT8 NULL,
-      error_code TEXT NULL,
-      error_message TEXT NULL,
       metadata JSONB NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -1413,7 +1355,7 @@ async function mt5InitBackend() {
     // Legacy tables might already be gone
   }
 
-  const legacyTables = ['signal_events', 'trade_events', 'source_events', 'mt5_signals', 'account_sources', 'ui_auth_users'];
+  const legacyTables = ['signal_events', 'trade_events', 'source_events', 'mt5_signals', 'account_sources', 'ui_auth_users', 'user_api_keys', 'brokers'];
   for (const t of legacyTables) {
     await pool.query(`DROP TABLE IF EXISTS ${t} CASCADE`).catch(() => {});
   }
@@ -1428,6 +1370,29 @@ async function mt5InitBackend() {
   for (const col of legacySigCols) {
     await pool.query(`ALTER TABLE signals DROP COLUMN IF EXISTS ${col}`).catch(() => {});
   }
+
+  // Migration: keep schema simple and aligned with v2.2 fields.
+  await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS balance_start`).catch(() => {});
+  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS name TEXT`).catch(() => {});
+  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS balance DOUBLE PRECISION NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_hash TEXT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_last4 TEXT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_rotated_at TIMESTAMPTZ NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS source_ids_cache JSONB NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE accounts DROP COLUMN IF EXISTS broker_id`).catch(() => {});
+
+  await pool.query(`ALTER TABLE trades RENAME COLUMN side TO action`).catch(() => {});
+  await pool.query(`ALTER TABLE trades RENAME COLUMN intent_entry TO entry`).catch(() => {});
+  await pool.query(`ALTER TABLE trades RENAME COLUMN intent_sl TO sl`).catch(() => {});
+  await pool.query(`ALTER TABLE trades RENAME COLUMN intent_tp TO tp`).catch(() => {});
+  await pool.query(`ALTER TABLE trades RENAME COLUMN intent_note TO note`).catch(() => {});
+  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS volume FLOAT8 NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS origin_kind`).catch(() => {});
+  await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS intent_volume`).catch(() => {});
+  await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS broker_order_id`).catch(() => {});
+  await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS pulled_at`).catch(() => {});
+  await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS error_code`).catch(() => {});
+  await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS error_message`).catch(() => {});
 
   // Ensure default user
   const now = mt5NowIso();
@@ -1492,21 +1457,21 @@ async function mt5InitBackend() {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const accounts = await client.query(`SELECT account_id, broker_id FROM accounts WHERE user_id = $1 AND status != 'ARCHIVED'`, [userId]);
+        const accounts = await client.query(`SELECT account_id FROM accounts WHERE user_id = $1 AND status != 'ARCHIVED'`, [userId]);
         let created = 0; const accountIds = [];
         for (const row of accounts.rows || []) {
           const aid = row.account_id;
           const tradeId = mt5GenerateId("TRD");
           const ins = await client.query(`
             INSERT INTO trades (
-              trade_id, account_id, user_id, broker_id, signal_id, source_id, origin_kind,
-              symbol, side, intent_entry, intent_sl, intent_tp, intent_volume, intent_note,
+              trade_id, account_id, user_id, signal_id, source_id,
+              symbol, action, entry, sl, tp, volume, note,
               dispatch_status, execution_status, created_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,'SIGNAL',$7,$8,$9,$10,$11,$12,$13,'NEW','PENDING',$14,$14)
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'NEW','PENDING',$13,$13)
           `, [
-            tradeId, aid, userId, row.broker_id, signalId, sourceId,
-            payload.symbol, payload.side, payload.intent_entry, payload.intent_sl,
-            payload.intent_tp, payload.intent_volume, payload.intent_note, mt5NowIso()
+            tradeId, aid, userId, signalId, sourceId,
+            payload.symbol, payload.action, payload.entry, payload.sl,
+            payload.tp, payload.volume, payload.note, mt5NowIso()
           ]);
           if ((ins.rowCount || 0) > 0) {
             created++; accountIds.push(aid);
@@ -1584,6 +1549,16 @@ async function mt5InitBackend() {
       const offset = (safePage - 1) * safePageSize; const clauses = []; const params = [];
       if (filters.user_id) { params.push(filters.user_id); clauses.push(`user_id = $${params.length}`); }
       if (filters.account_id) { params.push(filters.account_id); clauses.push(`account_id = $${params.length}`); }
+      if (filters.source_id) { params.push(filters.source_id); clauses.push(`source_id = $${params.length}`); }
+      if (filters.dispatch_status) { params.push(filters.dispatch_status); clauses.push(`dispatch_status = $${params.length}`); }
+      if (filters.execution_status) { params.push(filters.execution_status); clauses.push(`execution_status = $${params.length}`); }
+      if (filters.symbol) { params.push(filters.symbol); clauses.push(`symbol = $${params.length}`); }
+      if (filters.action) { params.push(filters.action); clauses.push(`action = $${params.length}`); }
+      if (filters.q) {
+        params.push(`%${String(filters.q)}%`);
+        const p = `$${params.length}`;
+        clauses.push(`(trade_id ILIKE ${p} OR signal_id ILIKE ${p} OR symbol ILIKE ${p} OR account_id ILIKE ${p} OR source_id ILIKE ${p})`);
+      }
       const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
       const countRes = await pool.query(`SELECT COUNT(*) FROM trades ${where}`, params);
       params.push(safePageSize, offset);
@@ -1600,13 +1575,143 @@ async function mt5InitBackend() {
       return res.rows;
     },
     async createAccountV2(payload = {}) {
-       const res = await pool.query(`
-         INSERT INTO accounts (account_id, user_id, status, metadata, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, NOW(), NOW())
-         ON CONFLICT (account_id) DO UPDATE SET status = EXCLUDED.status, metadata = EXCLUDED.metadata, updated_at = NOW()
-         RETURNING *
-       `, [payload.account_id, payload.user_id || CFG.mt5DefaultUserId, payload.status || 'ACTIVE', payload.metadata || {}]);
-       return res.rows[0];
+      const accountId = String(payload.account_id || "").trim();
+      if (!accountId) return { ok: false, error: "account_id is required" };
+      const now = mt5NowIso();
+      const plainApiKey = `acc_${crypto.randomBytes(18).toString("hex")}`;
+      const apiKeyHash = hashApiKey(plainApiKey);
+      const apiKeyLast4 = plainApiKey.slice(-4);
+      const res = await pool.query(`
+        INSERT INTO accounts (
+          account_id, user_id, name, balance, status, metadata,
+          api_key_hash, api_key_last4, api_key_rotated_at, source_ids_cache,
+          created_at, updated_at
+        )
+        VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10::jsonb,$11,$11)
+        ON CONFLICT (account_id) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
+          name = EXCLUDED.name,
+          balance = EXCLUDED.balance,
+          status = EXCLUDED.status,
+          metadata = EXCLUDED.metadata,
+          updated_at = EXCLUDED.updated_at
+        RETURNING *
+      `, [
+        accountId,
+        String(payload.user_id || CFG.mt5DefaultUserId),
+        String(payload.name || accountId),
+        payload.balance === null || payload.balance === undefined || Number.isNaN(Number(payload.balance)) ? null : Number(payload.balance),
+        String(payload.status || "ACTIVE"),
+        payload.metadata && typeof payload.metadata === "object" ? JSON.stringify(payload.metadata) : "{}",
+        apiKeyHash,
+        apiKeyLast4,
+        now,
+        payload.source_ids_cache && typeof payload.source_ids_cache === "object" ? JSON.stringify(payload.source_ids_cache) : "[]",
+        now,
+      ]);
+      return { ok: true, item: res.rows[0] || null, api_key_plaintext: plainApiKey };
+    },
+    async listAccountsV2(userId = null) {
+      const params = [];
+      let where = "";
+      if (userId) {
+        params.push(String(userId || ""));
+        where = `WHERE user_id = $1`;
+      }
+      const res = await pool.query(`SELECT * FROM accounts ${where} ORDER BY created_at ASC, account_id ASC`, params);
+      return res.rows || [];
+    },
+    async updateAccountV2(accountId, patch = {}) {
+      const targetId = String(accountId || "").trim();
+      if (!targetId) return { ok: false, error: "account_id is required" };
+      const prevRes = await pool.query(`SELECT * FROM accounts WHERE account_id = $1 LIMIT 1`, [targetId]);
+      const prev = prevRes.rows[0];
+      if (!prev) return { ok: false, error: "account not found" };
+      const res = await pool.query(`
+        UPDATE accounts
+        SET user_id = $1,
+            name = $2,
+            balance = $3,
+            status = $4,
+            metadata = $5::jsonb,
+            updated_at = NOW()
+        WHERE account_id = $6
+        RETURNING *
+      `, [
+        String(patch.user_id ?? prev.user_id ?? CFG.mt5DefaultUserId),
+        String(patch.name ?? prev.name ?? targetId),
+        patch.balance === undefined
+          ? (prev.balance === null || prev.balance === undefined ? null : Number(prev.balance))
+          : (patch.balance === null || patch.balance === "" || Number.isNaN(Number(patch.balance)) ? null : Number(patch.balance)),
+        String(patch.status ?? prev.status ?? "ACTIVE"),
+        patch.metadata && typeof patch.metadata === "object"
+          ? JSON.stringify(patch.metadata)
+          : (prev.metadata && typeof prev.metadata === "object" ? JSON.stringify(prev.metadata) : "{}"),
+        targetId,
+      ]);
+      return { ok: true, item: res.rows[0] || null };
+    },
+    async archiveAccountV2(accountId) {
+      const targetId = String(accountId || "").trim();
+      if (!targetId) return { ok: false, error: "account_id is required" };
+      const openRes = await pool.query(`
+        SELECT COUNT(*)::int AS c
+        FROM trades
+        WHERE account_id = $1 AND execution_status IN ('PENDING','OPEN')
+      `, [targetId]);
+      const blocking = Number(openRes.rows?.[0]?.c || 0);
+      if (blocking > 0) return { ok: false, error: "account has open/pending trades", blocking_open_trades: blocking };
+      const res = await pool.query(`
+        UPDATE accounts
+        SET status = 'ARCHIVED', updated_at = NOW()
+        WHERE account_id = $1
+        RETURNING *
+      `, [targetId]);
+      if (!res.rows[0]) return { ok: false, error: "account not found" };
+      return { ok: true, item: res.rows[0] };
+    },
+    async findAccountByApiKeyHash(apiKeyHash) {
+      const h = String(apiKeyHash || "").trim();
+      if (!h) return null;
+      const res = await pool.query(`
+        SELECT * FROM accounts
+        WHERE api_key_hash = $1 AND status = 'ACTIVE'
+        LIMIT 1
+      `, [h]);
+      return res.rows[0] || null;
+    },
+    async rotateAccountApiKeyV2(accountId) {
+      const targetId = String(accountId || "").trim();
+      if (!targetId) return null;
+      const plainApiKey = `acc_${crypto.randomBytes(18).toString("hex")}`;
+      const apiKeyHash = hashApiKey(plainApiKey);
+      const apiKeyLast4 = plainApiKey.slice(-4);
+      const res = await pool.query(`
+        UPDATE accounts
+        SET api_key_hash = $1, api_key_last4 = $2, api_key_rotated_at = NOW(), updated_at = NOW()
+        WHERE account_id = $3
+        RETURNING account_id
+      `, [apiKeyHash, apiKeyLast4, targetId]);
+      if (!res.rows[0]) return null;
+      return { account_id: targetId, api_key_plaintext: plainApiKey };
+    },
+    async getAccountSubscriptionsV2(accountId) {
+      const targetId = String(accountId || "").trim();
+      if (!targetId) return [];
+      const res = await pool.query(`SELECT source_ids_cache FROM accounts WHERE account_id = $1 LIMIT 1`, [targetId]);
+      const cache = res.rows?.[0]?.source_ids_cache;
+      const arr = Array.isArray(cache) ? cache : [];
+      return arr.map((sourceId) => ({ source_id: String(sourceId || ""), is_active: true })).filter((x) => x.source_id);
+    },
+    async replaceAccountSubscriptionsV2(accountId, items = []) {
+      const targetId = String(accountId || "").trim();
+      if (!targetId) return { ok: false, error: "account_id is required" };
+      const sourceIds = (Array.isArray(items) ? items : [])
+        .filter((x) => x && x.is_active !== false)
+        .map((x) => String(x.source_id || "").trim())
+        .filter(Boolean);
+      await pool.query(`UPDATE accounts SET source_ids_cache = $1::jsonb, updated_at = NOW() WHERE account_id = $2`, [JSON.stringify(sourceIds), targetId]);
+      return { ok: true };
     },
     async listTables() {
       return ['users', 'accounts', 'signals', 'trades', 'logs'];
@@ -1731,54 +1836,6 @@ async function mt5InitBackend() {
     },
     async deleteUserAccount(userId, accountId) {
       await pool.query(`DELETE FROM accounts WHERE user_id = $1 AND account_id = $2`, [String(userId || ""), String(accountId || "")]);
-    },
-    async listUserApiKeys(userId) {
-      const res = await pool.query(`
-        SELECT key_id, user_id, label, key_value, is_active, last_used_at, created_at, updated_at
-        FROM user_api_keys
-        WHERE user_id = $1
-        ORDER BY created_at ASC, key_id ASC
-      `, [String(userId || "")]);
-      return res.rows || [];
-    },
-    async createUserApiKey(userId, key) {
-      const now = mt5NowIso();
-      const row = {
-        key_id: String(crypto.randomUUID()),
-        user_id: String(userId || ""),
-        label: String(key?.label || ""),
-        key_value: String(key?.key_value || ""),
-        is_active: normalizeUserActive(key?.is_active, true),
-        created_at: now,
-        updated_at: now,
-      };
-      const res = await pool.query(`
-        INSERT INTO user_api_keys (key_id, user_id, label, key_value, is_active, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING key_id, user_id, label, key_value, is_active, last_used_at, created_at, updated_at
-      `, [row.key_id, row.user_id, row.label, row.key_value, row.is_active, row.created_at, row.updated_at]);
-      return res.rows[0] || row;
-    },
-    async updateUserApiKey(userId, keyId, patch = {}) {
-      const current = await pool.query(`
-        SELECT key_id, user_id, label, key_value, is_active, last_used_at, created_at, updated_at
-        FROM user_api_keys
-        WHERE user_id = $1 AND key_id = $2
-        LIMIT 1
-      `, [String(userId || ""), String(keyId || "")]);
-      if (!current.rows[0]) return null;
-      const nextLabel = patch.label === undefined ? String(current.rows[0].label || "") : String(patch.label || "");
-      const nextActive = patch.is_active === undefined ? normalizeUserActive(current.rows[0].is_active, true) : normalizeUserActive(patch.is_active, true);
-      const res = await pool.query(`
-        UPDATE user_api_keys
-        SET label = $1, is_active = $2, updated_at = $3
-        WHERE user_id = $4 AND key_id = $5
-        RETURNING key_id, user_id, label, key_value, is_active, last_used_at, created_at, updated_at
-      `, [nextLabel, nextActive, mt5NowIso(), String(userId || ""), String(keyId || "")]);
-      return res.rows[0] || null;
-    },
-    async deleteUserApiKey(userId, keyId) {
-      await pool.query(`DELETE FROM user_api_keys WHERE user_id = $1 AND key_id = $2`, [String(userId || ""), String(keyId || "")]);
     },
     async pruneOldSignals(days) {
       const res = await pool.query(`
@@ -2078,12 +2135,12 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
           source_id: sourceId,
           user_id: userId,
           symbol,
-          side: mt5MapActionToSide(action),
-          intent_entry: Number.isFinite(plannedEntry) && plannedEntry > 0 ? plannedEntry : null,
-          intent_sl: payload.sl ?? null,
-          intent_tp: payload.tp ?? null,
-          intent_volume: volume ?? null,
-          intent_note: note || null,
+          action: mt5MapActionToSide(action),
+          entry: Number.isFinite(plannedEntry) && plannedEntry > 0 ? plannedEntry : null,
+          sl: payload.sl ?? null,
+          tp: payload.tp ?? null,
+          volume: volume ?? null,
+          note: note || null,
           metadata: {
             event_type: eventType,
             order_type: orderType,
@@ -2304,12 +2361,6 @@ async function mt5BrokerHeartbeatV2(accountId, payload) {
   return b.brokerHeartbeatV2(accountId, payload);
 }
 
-async function mt5ListAccountsV2() {
-  const b = await mt5Backend();
-  if (!b.listAccountsV2) return [];
-  return b.listAccountsV2();
-}
-
 async function mt5CreateAccountV2(payload = {}) {
   const b = await mt5Backend();
   if (!b.createAccountV2) return { ok: false, error: "not supported" };
@@ -2334,13 +2385,6 @@ async function mt5ListSourcesV2() {
   return rows.map(r => ({ ...r.metadata, source_id: r.object_id }));
 }
 
-async function mt5ListBrokersV2() {
-  return [
-    { broker_id: 'BROKER_MT5', name: 'MetaTrader 5', is_active: true },
-    { broker_id: 'BROKER_CTRader', name: 'cTrader', is_active: true }
-  ];
-}
-
 async function mt5GetSourceByIdV2(sourceId) {
   const b = await mt5Backend();
   if (!b.getSourceByIdV2) return null;
@@ -2361,15 +2405,6 @@ async function mt5ListTradesV2(filters = {}, page = 1, pageSize = 50) {
 async function mt5ListTradeEventsV2(tradeId, limit = 200) {
   const b = await mt5Backend();
   return b.listLogs({ object_id: tradeId }, limit);
-}
-
-async function mt5ListBrokerAccountsV2(brokerId, userId = null) {
-  const b = await mt5Backend();
-  if (!b.listBrokerAccountsV2) return [];
-  // Note: b.listAccountsV2 handles userId filter
-  const all = await b.listAccountsV2(userId);
-  if (!brokerId) return all;
-  return all.filter(a => String(a.broker_id || "") === String(brokerId));
 }
 
 async function mt5ListAccountsV2(userId = null) {
@@ -2834,9 +2869,9 @@ function mt5ComputeTradeMetrics(rows) {
     // Map V2 fields for R computation if needed
     const mapped = {
       ...r,
-      price: r.intent_entry ?? r.price,
-      sl: r.intent_sl ?? r.sl,
-      tp: r.intent_tp ?? r.tp,
+      price: r.entry ?? r.intent_entry ?? r.price,
+      sl: r.sl ?? r.intent_sl ?? null,
+      tp: r.tp ?? r.intent_tp ?? null,
       pnl_money_realized: r.pnl_realized ?? r.pnl_money_realized
     };
     const rr = mt5ComputeRMultiple(mapped);
@@ -3302,48 +3337,15 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "POST" && /^\/auth\/users\/[^/]+\/api-keys$/.test(url.pathname)) {
-    if (!requireSystemRoleForUi(req, res)) return;
-    try {
-      const userId = decodeURIComponent(url.pathname.slice("/auth/users/".length, -"/api-keys".length));
-      const payload = await readJson(req);
-      const out = await uiCreateUserApiKey(userId, payload || {});
-      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to create API key" });
-      return json(res, 200, out);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      return json(res, 400, { ok: false, error: message });
-    }
+    return json(res, 410, { ok: false, error: "User API key endpoints are removed. Use account API key rotation." });
   }
 
   if (req.method === "PUT" && /^\/auth\/users\/[^/]+\/api-keys\/[^/]+$/.test(url.pathname)) {
-    if (!requireSystemRoleForUi(req, res)) return;
-    try {
-      const parts = url.pathname.split("/").filter(Boolean);
-      const userId = decodeURIComponent(parts[2] || "");
-      const keyId = decodeURIComponent(parts[4] || "");
-      const payload = await readJson(req);
-      const out = await uiUpdateUserApiKey(userId, keyId, payload || {});
-      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to update API key" });
-      return json(res, 200, out);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      return json(res, 400, { ok: false, error: message });
-    }
+    return json(res, 410, { ok: false, error: "User API key endpoints are removed. Use account API key rotation." });
   }
 
   if (req.method === "DELETE" && /^\/auth\/users\/[^/]+\/api-keys\/[^/]+$/.test(url.pathname)) {
-    if (!requireSystemRoleForUi(req, res)) return;
-    try {
-      const parts = url.pathname.split("/").filter(Boolean);
-      const userId = decodeURIComponent(parts[2] || "");
-      const keyId = decodeURIComponent(parts[4] || "");
-      const out = await uiDeleteUserApiKey(userId, keyId);
-      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to delete API key" });
-      return json(res, 200, out);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      return json(res, 400, { ok: false, error: message });
-    }
+    return json(res, 410, { ok: false, error: "User API key endpoints are removed. Use account API key rotation." });
   }
 
   if (req.method === "PUT" && /^\/auth\/users\/[^/]+$/.test(url.pathname)) {
@@ -3919,11 +3921,7 @@ const appHandler = async (req, res) => {
       }
 
       if (table === "user_api_keys") {
-        const userId = String(row.user_id || "").trim();
-        if (!userId) return json(res, 400, { ok: false, error: "row.user_id is required" });
-        const out = await uiCreateUserApiKey(userId, row);
-        if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to create API key" });
-        return json(res, 200, { ok: true, table, created: out.api_key });
+        return json(res, 410, { ok: false, error: "user_api_keys is removed. Use accounts api-key rotation." });
       }
 
       return json(res, 400, { ok: false, error: `Create is not supported for table: ${table}` });
@@ -4225,9 +4223,8 @@ const appHandler = async (req, res) => {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
-      const brokerId = url.searchParams.get("broker_id");
       const userId = uiEffectiveUserId(req, url);
-      const items = await mt5ListBrokerAccountsV2(brokerId, userId);
+      const items = await mt5ListAccountsV2(userId);
       return json(res, 200, { ok: true, items });
     } catch (error) {
       return json(res, 400, { ok: false, error: error.message });
@@ -4248,7 +4245,6 @@ const appHandler = async (req, res) => {
         name: String(payload?.name || accountId),
         balance: payload?.balance,
         status: String(payload?.status || "ACTIVE"),
-        broker_id: payload?.broker_id ?? null,
         metadata: payload?.metadata && typeof payload.metadata === "object" ? payload.metadata : {},
       });
       if (!out?.ok) return json(res, 400, { ok: false, error: out?.error || "failed to create account" });
@@ -4317,14 +4313,7 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/v2/brokers") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!requireAdminKey(req, res, url)) return;
-    try {
-      const rows = await mt5ListBrokersV2();
-      return json(res, 200, { ok: true, items: rows });
-    } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
-    }
+    return json(res, 410, { ok: false, error: "Brokers endpoint removed. Broker metadata is account-scoped." });
   }
 
   if (req.method === "GET" && url.pathname === "/v2/trades") {
@@ -4342,9 +4331,8 @@ const appHandler = async (req, res) => {
         source_id: url.searchParams.get("source_id") || "",
         dispatch_status: url.searchParams.get("dispatch_status") || "",
         execution_status: url.searchParams.get("execution_status") || "",
-        origin_kind: url.searchParams.get("origin_kind") || "",
         symbol: url.searchParams.get("symbol") || "",
-        side: url.searchParams.get("side") || "",
+        action: url.searchParams.get("action") || url.searchParams.get("side") || "",
         q: url.searchParams.get("q") || "",
       };
       const out = await mt5ListTradesV2(filters, page, pageSize);
@@ -4540,12 +4528,12 @@ const appHandler = async (req, res) => {
           signal_id: t.signal_id ?? null,
           source_id: t.source_id ?? null,
           symbol: t.symbol,
-          side: t.side,
-          intent_entry: t.intent_entry ?? null,
-          intent_sl: t.intent_sl ?? null,
-          intent_tp: t.intent_tp ?? null,
-          intent_volume: t.intent_volume ?? null,
-          intent_note: t.intent_note ?? null,
+          action: t.action ?? t.side ?? null,
+          entry: t.entry ?? t.intent_entry ?? null,
+          sl: t.sl ?? t.intent_sl ?? null,
+          tp: t.tp ?? t.intent_tp ?? null,
+          volume: t.volume ?? t.intent_volume ?? null,
+          note: t.note ?? t.intent_note ?? null,
           metadata: t.metadata && typeof t.metadata === "object" ? t.metadata : {},
         })),
       });

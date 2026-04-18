@@ -34,7 +34,6 @@ export default function AccountsV2Page() {
     user_id: "default",
     name: "",
     status: "ACTIVE",
-    broker_id: "",
     balance: "",
     metadata_json: "{}",
   });
@@ -46,7 +45,6 @@ export default function AccountsV2Page() {
       String(r.account_id || "").toLowerCase().includes(needle)
       || String(r.user_id || "").toLowerCase().includes(needle)
       || String(r.name || "").toLowerCase().includes(needle)
-      || String(r.broker_id || "").toLowerCase().includes(needle)
       || String(r.status || "").toLowerCase().includes(needle)
     );
   }, [rows, q]);
@@ -74,7 +72,6 @@ export default function AccountsV2Page() {
       user_id: "default",
       name: "",
       status: "ACTIVE",
-      broker_id: "",
       balance: "",
       metadata_json: "{}",
     });
@@ -88,7 +85,6 @@ export default function AccountsV2Page() {
       user_id: String(row.user_id || "default"),
       name: String(row.name || ""),
       status: String(row.status || "ACTIVE"),
-      broker_id: String(row.broker_id || ""),
       balance: row.balance === null || row.balance === undefined ? "" : String(row.balance),
       metadata_json: prettyMetadata(row.metadata || {}),
     });
@@ -118,7 +114,6 @@ export default function AccountsV2Page() {
         user_id: String(form.user_id || "default").trim() || "default",
         name: String(form.name || "").trim() || accountId,
         status: String(form.status || "ACTIVE").trim() || "ACTIVE",
-        broker_id: String(form.broker_id || "").trim() || null,
         balance: String(form.balance || "").trim() === "" ? null : Number(form.balance),
         metadata: parseMetadataInput(form.metadata_json),
       };
@@ -150,7 +145,6 @@ export default function AccountsV2Page() {
         user_id: row.user_id,
         name: row.name,
         status: nextStatus,
-        broker_id: row.broker_id || null,
         balance: row.balance,
         metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {},
       });
@@ -237,10 +231,6 @@ export default function AccountsV2Page() {
               </select>
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <div className="minor-text">Broker ID</div>
-              <input value={form.broker_id} onChange={(e) => setForm((p) => ({ ...p, broker_id: e.target.value }))} placeholder="optional" />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <div className="minor-text">Balance</div>
               <input value={form.balance} onChange={(e) => setForm((p) => ({ ...p, balance: e.target.value }))} placeholder="optional number" />
             </label>
@@ -282,7 +272,6 @@ export default function AccountsV2Page() {
                   <th>User</th>
                   <th>Name</th>
                   <th>Status</th>
-                  <th>Broker</th>
                   <th>Balance</th>
                   <th>API</th>
                   <th>Actions</th>
@@ -295,7 +284,6 @@ export default function AccountsV2Page() {
                     <td>{row.user_id || "-"}</td>
                     <td>{row.name || "-"}</td>
                     <td><span className={`badge ${String(row.status || "").toUpperCase()}`}>{String(row.status || "-").toUpperCase()}</span></td>
-                    <td>{row.broker_id || "-"}</td>
                     <td>{row.balance ?? "-"}</td>
                     <td>{row.api_key_last4 ? `****${row.api_key_last4}` : "-"}</td>
                     <td style={{ display: "flex", gap: 8 }}>
@@ -313,7 +301,7 @@ export default function AccountsV2Page() {
                 ))}
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="muted">No accounts found.</td>
+                    <td colSpan={7} className="muted">No accounts found.</td>
                   </tr>
                 ) : null}
               </tbody>
@@ -376,7 +364,7 @@ function AccountDetailDrawer({ account, onClose }) {
               <h2 style={{ margin: 0 }}>{account.name || account.account_id}</h2>
               <span className={`badge ${account.status}`}>{account.status}</span>
             </div>
-            <div className="minor-text monospace" style={{ marginTop: 4 }}>ID: {account.account_id} | Broker: {account.broker_id || "None"}</div>
+            <div className="minor-text monospace" style={{ marginTop: 4 }}>ID: {account.account_id}</div>
           </section>
 
           <section>
@@ -403,7 +391,7 @@ function AccountDetailDrawer({ account, onClose }) {
                     <tr>
                       <th>Status</th>
                       <th>Symbol</th>
-                      <th>Side</th>
+                      <th>Action</th>
                       <th>Time</th>
                     </tr>
                   </thead>
@@ -412,7 +400,7 @@ function AccountDetailDrawer({ account, onClose }) {
                       <tr key={t.trade_id}>
                         <td><span className={`badge ${t.execution_status}`}>{t.execution_status}</span></td>
                         <td>{t.symbol}</td>
-                        <td className={t.side === "BUY" ? "buy" : "sell"}>{t.side}</td>
+                        <td className={t.action === "BUY" ? "buy" : "sell"}>{t.action}</td>
                         <td className="minor-text monospace">{new Date(t.created_at).toLocaleTimeString()}</td>
                       </tr>
                     ))}
