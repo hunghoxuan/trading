@@ -2483,9 +2483,21 @@ async function mt5InitBackend() {
         db.prepare(`
           UPDATE accounts
           SET broker_id = COALESCE(NULLIF(broker_id, ''), ?),
+              balance = COALESCE(?, balance),
+              equity = COALESCE(?, equity),
+              free_margin = COALESCE(?, free_margin),
+              last_heartbeat_at = ?,
               updated_at = ?
           WHERE account_id = ?
-        `).run(brokerId, now, aid);
+        `).run(
+          brokerId,
+          Number.isFinite(Number(payload.balance)) ? Number(payload.balance) : null,
+          Number.isFinite(Number(payload.equity)) ? Number(payload.equity) : null,
+          Number.isFinite(Number(payload.free_margin || payload.margin)) ? Number(payload.free_margin || payload.margin) : null,
+          String(payload.now || now),
+          now,
+          aid
+        );
         return { ok: true, account_id: aid, broker_id: brokerId, last_seen_at: String(payload.now || now) };
       },
       async listAccountsV2() {
@@ -6869,9 +6881,12 @@ const appHandler = async (req, res) => {
       const strategies = [...new Set(rowsByDimension.map((r) => mt5StrategyFromRow(r)).filter(Boolean))].sort();
       const accounts = [...new Set(allRows.map((r) => envStr(r.user_id)).filter(Boolean))].sort();
 
+      const accountsSummary = await mt5ListAccountsV2();
+
       return json(res, 200, {
         ok: true,
         version: SERVER_VERSION,
+        accounts_summary: accountsSummary || [],
         filters: {
           user_id: userId || "",
           symbol,
@@ -7981,7 +7996,19 @@ const appHandler = async (req, res) => {
         return json(res, 400, { ok: false, error: "account_id is required" });
       }
       
-      // TODO: upsert into accounts table
+      const now = mt5NowIso();
+      const b = await mt5Backend();
+      if (b.brokerHeartbeatV2) {
+        await b.brokerHeartbeatV2(accountId, {
+          balance: payload.balance,
+          equity: payload.equity,
+          free_margin: payload.free_margin || payload.margin,
+          name: payload.account_name,
+          broker_type: 'mt5_legacy',
+          now: payload.now || now
+        });
+      }
+
       console.log(`[MT5 Heartbeat] Account=${accountId} Bal=${payload.balance} Eq=${payload.equity}`);
       return json(res, 200, { ok: true, message: "heartbeat_received" });
     } catch (err) {

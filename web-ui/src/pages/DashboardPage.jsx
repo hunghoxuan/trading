@@ -213,6 +213,46 @@ export default function DashboardPage() {
 
 
 
+      <div className="account-cards-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
+        {(data.accounts_summary || []).length === 0 ? (
+          <div className="minor-text" style={{ gridColumn: '1/-1' }}>No active account heartbeats detected.</div>
+        ) : (
+          (data.accounts_summary || []).map(acc => {
+            const lastHb = acc.last_heartbeat_at ? new Date(acc.last_heartbeat_at) : null;
+            const diffMin = lastHb ? Math.floor((new Date() - lastHb) / 60000) : null;
+            const statusClass = diffMin !== null && diffMin < 5 ? 'ACTIVE' : 'INACTIVE';
+            
+            return (
+              <div key={acc.account_id} className="panel fadeIn" style={{ borderLeft: `4px solid var(--${statusClass === 'ACTIVE' ? 'success' : 'muted'})` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div className="panel-label" style={{ margin: 0 }}>{acc.name || acc.account_id}</div>
+                  <div className={`badge ${statusClass}`} style={{ fontSize: '9px' }}>
+                    {statusClass === 'ACTIVE' ? 'LIVE' : 'OFFLINE'}
+                  </div>
+                </div>
+                <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span className="minor-text">Equity:</span>
+                    <span style={{ fontWeight: 700 }} className={moneyClass(acc.equity)}>{asMoneySigned(acc.equity || 0)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span className="minor-text">Balance:</span>
+                    <span>{asMoneySigned(acc.balance || 0)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span className="minor-text">Free Margin:</span>
+                    <span>{asMoneySigned(acc.free_margin || 0)}</span>
+                  </div>
+                </div>
+                <div className="minor-text" style={{ marginTop: '10px', fontSize: '9px', textAlign: 'right' }}>
+                  Last: {lastHb ? lastHb.toLocaleTimeString() : 'Never'}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
       <div className="period-box-grid" style={{ gridTemplateColumns: "repeat(5, 1fr)", gap: '16px' }}>
         {PERIOD_DISPLAY.map((conf) => {
           const v = periodTotals[conf.key] || {};

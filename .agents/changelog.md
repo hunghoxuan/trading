@@ -1,5 +1,13 @@
 # Changelog (Latest first)
 
+## 2026.04.18
+- Fully decoupled **Signals** (Reference Feed) from **Trades** (Execution Ledger) in Web-UI.
+- Linked Signals UI strictly to `signals` DB table and Trades UI strictly to `trades` V2 ledger.
+- Standardized UI Toolbar layouts: "Create" button position now follows "Apply" rule on all pages.
+- Implemented Dedicated Detail Pages for both Signals (`SignalDetailPage.jsx`) and Trades (`V2TradeDetailPage.jsx`).
+- Fixed rendering race conditions and `TypeError` crashes on V2 Trades list.
+- Version: 2026.04.17-48 (Stable)
+
 ## 2026.04.17
 - Added V2 Broker Registry UI and Backend API.
 - Implemented Account Detail Drawer in Accounts V2 page (Subscriptions + Recent Trades + Heartbeat).

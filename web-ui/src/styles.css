@@ -211,12 +211,11 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   display: inline-block; 
   line-height: 1.2; 
 }
-.badge.TP { color: #10b981 !important; border: 1px solid #10b981 !important; }
-.badge.SL { color: #ef4444 !important; border: 1px solid #ef4444 !important; }
-.badge.START { color: #3b82f6 !important; border: 1px solid #3b82f6 !important; }
-.badge.OK, .badge.PLACED { color: #f59e0b !important; border: 1px solid #f59e0b !important; }
-.badge.ACTIVE, .badge.TRUE { color: #f59e0b !important; border: 1px solid #f59e0b !important; }
-.badge.INACTIVE, .badge.DISABLE, .badge.DISABLED, .badge.FALSE { color: var(--muted) !important; border: 1px solid var(--border) !important; }
+.badge.TP, .badge.LIVE, .badge.SUCCESS { color: #10b981 !important; border: 1px solid #10b981 !important; }
+.badge.SL, .badge.FAIL, .badge.ERROR { color: #ef4444 !important; border: 1px solid #ef4444 !important; }
+.badge.START, .badge.PROGRESS { color: #3b82f6 !important; border: 1px solid #3b82f6 !important; }
+.badge.OK, .badge.PLACED, .badge.ACTIVE { color: #f59e0b !important; border: 1px solid #f59e0b !important; }
+.badge.INACTIVE, .badge.DISABLE, .badge.DISABLED, .badge.FALSE, .badge.OFFLINE { color: var(--muted) !important; border: 1px solid var(--border) !important; }
 .badge.OTHER, .badge.NEW { color: var(--muted); border: 1px solid var(--border); }
 
 .side-buy { color: #10b981; font-weight: 800; margin-right: 8px; font-size: 11px; }

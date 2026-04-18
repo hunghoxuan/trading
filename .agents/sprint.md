@@ -9,8 +9,8 @@ Achieve 100% synchronization reliability between MT5 and VPS to eliminate "Ghost
     - [x] Phase 2: Implement Server `/mt5/ea/bulk-sync` (Batch status update).
     - [x] Phase 3: Implement EA `SyncWithVps()` loop to reconcile MT5 state to VPS. (`P0`)
 - [ ] [2026-04-14 15:00] [Hung - Core] [Author: User] Task: Audit and reduce non-essential gate/score/limitation branches. (`P0`)
-- [x] [2026-04-17 21:18] [Architecture/DB/API/Web-UI] [Author: Codex] Task: Execution Hub V2 Phase 1 - finalize SQL schema contracts and v2 API contracts for implementation.
-- [ ] [2026-04-17 22:05] [Architecture/DB/API/Web-UI] [Author: Codex] [DOING][TODO: Codex] Task: Execution Hub V2 Phase 2 - implement DB migrations + dual-write ingest (`signals` immutable + `trades` fan-out).
+- [x] [2026-04-17 21:18] [Architecture/DB/API/Web-UI] [Author: Codex] Task: Execution Hub V2 Phase 2 - implement DB migrations + dual-write ingest (`signals` immutable + `trades` fan-out).
+- [x] [2026-04-18 07:15] [Web-UI] [Author: Codex] Task: UI/UX Standardization and Split (`Signals` feed auditing vs `Trades` execution ledger).
     - [x] Add v2 schema auto-bootstrap (`sources`, `account_sources`, `trades`, `trade_events`) for sqlite/postgres.
     - [x] Add feature-flagged dual-write fan-out from signal ingest into v2 `trades`.
     - [x] Add backfill helper `scripts/mt5_v2_backfill.js` (postgres).
@@ -37,4 +37,17 @@ Achieve 100% synchronization reliability between MT5 and VPS to eliminate "Ghost
         - [x] Standardize Dashboard Toolbar layout (Create button position).
         - [x] Implement Account Detail Drawer (Subscriptions + Trade History).
         - [x] Implement Broker Registry UI (Brokers Table + Mapping).
-    - [ ] Phase 5: Cutover + deprecate legacy `user_api_keys` and signal-status flow.
+    - [ ] Phase 5: Cutover + Deployment
+        - [ ] **Infrastructure/Security**:
+            - [ ] Finalize account-level API key ownership and signed-request validation (HMAC).
+            - [ ] Enforce HTTPS for all broker/TV endpoints.
+        - [ ] **Data Migration**:
+            - [ ] Complete full backfill from `signals` -> `trades`.
+            - [ ] Implement aggressive pruning/deletion of legacy status data in `signals` (keep only as raw audit log).
+        - [ ] **Client Updates**:
+            - [ ] Update **EA Client** (`TVBridgeEA.mq5`) to use `/v2/broker/pull` and account-scoped sync.
+            - [ ] Update **PineScript** strategies to support V2 `source_id` payloads and intent-based mapping.
+        - [ ] **UI/Analytic Finalization**:
+            - [ ] Clean up UI: Remove legacy one-page dashboards and old status-badge logic.
+            - [ ] Rewrite **Dashboard** logic to aggregate from the `trades` ledger (account-level PnL, equity snapshots).
+            - [ ] System-wide stress test and legacy endpoint deprecation.
