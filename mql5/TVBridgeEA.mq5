@@ -135,6 +135,11 @@ string   g_lastSyncPayload = "None";
 datetime g_lastPullUpdate = 0;
 datetime g_lastSyncUpdate = 0;
 
+string   g_leaseTokenMapSignalId[];
+string   g_leaseTokenMapValue[];
+string   g_tradeIdMapSignalId[];
+string   g_tradeIdMapValue[];
+
 // Reliable Ack Queue
 string   g_ackQSignalId[];
 string   g_ackQStatus[];
@@ -1527,14 +1532,43 @@ void ProcessAckQueue()
    int n = ArraySize(g_ackQSignalId);
    if(n == 0) return;
    
-   string url = InpServerBaseUrl + "/mt5/ea/ack";
    int w = 0;
    for(int i=0; i<n; i++)
    {
+      string signalId = g_ackQSignalId[i];
+      string tradeId = "";
+      string leaseToken = "";
+      
+      // Try to find V2 context for this signal
+      for(int j=0; j<ArraySize(g_tradeIdMapSignalId); j++) {
+         if(g_tradeIdMapSignalId[j] == signalId) {
+            tradeId = g_tradeIdMapValue[j];
+            break;
+         }
+      }
+      for(int j=0; j<ArraySize(g_leaseTokenMapSignalId); j++) {
+         if(g_leaseTokenMapSignalId[j] == signalId) {
+            leaseToken = g_leaseTokenMapValue[j];
+            break;
+         }
+      }
+
+      string url;
+      if(tradeId != "") {
+         url = InpServerBaseUrl + "/v2/broker/trades/" + tradeId + "/ack";
+      } else {
+         url = InpServerBaseUrl + "/mt5/ea/ack";
+      }
+
       string body = g_ackQBody[i];
+      // If we have a lease token, ensure it's in the body for V2 ack
+      if(leaseToken != "" && StringFind(body, "\"lease_token\"") < 0) {
+         body = StringSubstr(body, 0, StringLen(body)-1) + ",\"lease_token\":\"" + leaseToken + "\"}";
+      }
+
       if(HttpPostJson(url, body))
       {
-         Print("Reliable Ack SENT OK: status=", g_ackQStatus[i], " id=", g_ackQSignalId[i], " ticket=", g_ackQTicket[i]);
+         Print("Reliable Ack SENT OK: status=", g_ackQStatus[i], " id=", signalId, " url=", url);
          continue;
       }
       
@@ -2294,7 +2328,7 @@ void ProcessBacktestQueue()
 
 void SendHeartbeat()
 {
-   string url = InpServerBaseUrl + "/mt5/ea/heartbeat";
+   string url = InpServerBaseUrl + "/v2/broker/heartbeat";
    string body = "{";
    body += "\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",";
    body += "\"balance\":" + DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2) + ",";
@@ -2330,7 +2364,7 @@ void OnTimer()
       SendHeartbeat();
    }
 
-   string url = InpServerBaseUrl + "/mt5/ea/pull?account=" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN));
+   string url = InpServerBaseUrl + "/v2/broker/pull?account=" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN));
    string resp;
    if(!HttpGet(url, resp))
    {
@@ -2343,24 +2377,72 @@ void OnTimer()
    g_lastPullPayload = resp;
    g_lastPullUpdate = TimeCurrent();
 
-   if(StringFind(resp, "\"signal\":null") >= 0)
+   if(StringFind(resp, "\"item\":null") >= 0 || StringFind(resp, "\"item\":{}") >= 0)
    {
       RefreshDebugPanel();
       return;
    }
 
-   string signalId = JsonGetString(resp, "signal_id");
-   string action   = JsonGetString(resp, "action");
-   string symbolIn = JsonGetString(resp, "symbol");
-   string comment  = JsonGetString(resp, "note");
-   double volume   = JsonGetNumber(resp, "volume", 0.01);
-   double entry    = JsonGetNumber(resp, "entry", 0.0);
-   string orderType = JsonGetString(resp, "order_type");
-   if(StringLen(orderType) == 0)
-      orderType = "limit";
-   double sl       = JsonGetNumber(resp, "sl", 0.0);
-   double tp       = JsonGetNumber(resp, "tp", 0.0);
-   datetime signalTs = (datetime)JsonGetNumber(resp, "created_at_ts", 0.0);
+   string leaseToken = JsonGetString(resp, "lease_token");
+   
+   // Extract signal_id by looking inside "item" manually or use full match
+   string signalId = JsonGetString(resp, "signal_id"); // Fallback if flat
+   if(signalId == "") {
+      int idxItem = StringFind(resp, "\"item\":");
+      if(idxItem >= 0) {
+         string itemJson = StringSubstr(resp, idxItem);
+         signalId = JsonGetString(itemJson, "signal_id");
+      }
+   }
+   
+   string tradeId = "";
+   int idxTid = StringFind(resp, "\"trade_id\":");
+   if(idxTid >= 0) tradeId = JsonGetString(StringSubstr(resp, idxTid), "trade_id");
+   
+   // Track V2 context
+   if(signalId != "" && leaseToken != "") {
+      int nL = ArraySize(g_leaseTokenMapSignalId);
+      ArrayResize(g_leaseTokenMapSignalId, nL+1);
+      ArrayResize(g_leaseTokenMapValue, nL+1);
+      g_leaseTokenMapSignalId[nL] = signalId;
+      g_leaseTokenMapValue[nL] = leaseToken;
+   }
+   if(signalId != "" && tradeId != "") {
+      int nT = ArraySize(g_tradeIdMapSignalId);
+      ArrayResize(g_tradeIdMapSignalId, nT+1);
+      ArrayResize(g_tradeIdMapValue, nT+1);
+      g_tradeIdMapSignalId[nT] = signalId;
+      g_tradeIdMapValue[nT] = tradeId;
+   }
+
+   string itemPart = resp;
+   int itemStart = StringFind(resp, "\"item\":{");
+   if(itemStart >= 0) itemPart = StringSubstr(resp, itemStart);
+
+   string action   = JsonGetString(itemPart, "action");
+   if(action == "") action = JsonGetString(itemPart, "side"); // V2 mapping
+   
+   string symbolIn = JsonGetString(itemPart, "symbol");
+   string comment  = JsonGetString(itemPart, "note");
+   if(comment == "") comment = JsonGetString(itemPart, "intent_note");
+   
+   double volume   = JsonGetNumber(itemPart, "volume", 0.0);
+   if(volume <= 0) volume = JsonGetNumber(itemPart, "intent_volume", 0.0);
+   if(volume <= 0) volume = 0.01;
+   
+   double entry    = JsonGetNumber(itemPart, "entry", 0.0);
+   if(entry <= 0) entry = JsonGetNumber(itemPart, "intent_entry", 0.0);
+   
+   string orderType = JsonGetString(itemPart, "order_type");
+   if(StringLen(orderType) == 0) orderType = "market";
+   
+   double sl       = JsonGetNumber(itemPart, "sl", 0.0);
+   if(sl <= 0) sl = JsonGetNumber(itemPart, "intent_sl", 0.0);
+   
+   double tp       = JsonGetNumber(itemPart, "tp", 0.0);
+   if(tp <= 0) tp = JsonGetNumber(itemPart, "intent_tp", 0.0);
+   
+   datetime signalTs = (datetime)JsonGetNumber(itemPart, "created_at_ts", 0.0);
    if(!IsPlausibleEpochTs(signalTs))
       signalTs = (datetime)JsonGetNumber(resp, "timestamp", 0.0);
    if(!IsPlausibleEpochTs(signalTs))
@@ -2565,8 +2647,10 @@ string g_lastStateHash = "";
 
 void SyncWithVps()
 {
-   string updates = "";
-   int count = 0;
+   string posUpdates = "";
+   string ordUpdates = "";
+   int posCount = 0;
+   int ordCount = 0;
 
    // 1. Positions
    for(int i = 0; i < PositionsTotal(); i++)
@@ -2583,10 +2667,9 @@ void SyncWithVps()
             if(sid == "") sid = PositionGetString(POSITION_COMMENT);
             if(sid != "")
             {
-               if(count > 0) updates += ",";
-               // We only include status/ticket/sid for the "State Fingerprint"
-               updates += "{\"signal_id\":\"" + sid + "\",\"status\":\"START\",\"ticket\":\"" + IntegerToString((int)ticket) + "\",\"pnl\":" + DoubleToString(PositionGetDouble(POSITION_PROFIT), 2) + "}";
-               count++;
+               if(posCount > 0) posUpdates += ",";
+               posUpdates += "{\"signal_id\":\"" + sid + "\",\"status\":\"START\",\"ticket\":\"" + IntegerToString((int)ticket) + "\",\"pnl\":" + DoubleToString(PositionGetDouble(POSITION_PROFIT), 2) + "}";
+               posCount++;
             }
          }
       }
@@ -2607,33 +2690,40 @@ void SyncWithVps()
             if(sid == "") sid = OrderGetString(ORDER_COMMENT);
             if(sid != "")
             {
-               if(count > 0) updates += ",";
-               updates += "{\"signal_id\":\"" + sid + "\",\"status\":\"PLACED\",\"ticket\":\"" + IntegerToString((int)ticket) + "\",\"pnl\":0}";
-               count++;
+               if(ordCount > 0) ordUpdates += ",";
+               ordUpdates += "{\"signal_id\":\"" + sid + "\",\"status\":\"PLACED\",\"ticket\":\"" + IntegerToString((int)ticket) + "\",\"pnl\":0}";
+               ordCount++;
             }
          }
       }
    }
 
-   // [STATE DETECTION] If total state (IDs/Tickets/Statuses) hasn't changed, skip webhook
-   if(updates == g_lastStateHash) {
+   string stateHash = posUpdates + "|" + ordUpdates;
+
+   // [STATE DETECTION] If total state hasn't changed, skip webhook
+   if(stateHash == g_lastStateHash) {
       g_lastSyncPayload = "STABLE (No changes)";
       RefreshDebugPanel();
       return;
    }
-   g_lastStateHash = updates;
+   g_lastStateHash = stateHash;
 
-   string body = "{\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",\"active_signals\":[" + updates + "]}";
-   string url = InpServerBaseUrl + "/mt5/ea/sync";
+   string body = "{";
+   body += "\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",";
+   body += "\"positions\":[" + posUpdates + "],";
+   body += "\"orders\":[" + ordUpdates + "]";
+   body += "}";
+   
+   string url = InpServerBaseUrl + "/v2/broker/sync";
    string resp = "";
    if(HttpPostJsonWithResponse(url, body, resp))
    {
-      g_lastSyncPayload = "OK (Updated): " + StringSubstr(resp, 0, 150);
+      g_lastSyncPayload = "V2 OK: " + StringSubstr(resp, 0, 150);
    }
    else
    {
-      g_lastSyncPayload = "FAIL: " + StringSubstr(resp, 0, 150);
-      g_lastStateHash = ""; // Reset on fail to retry
+      g_lastSyncPayload = "V2 FAIL: " + StringSubstr(resp, 0, 150);
+      g_lastStateHash = ""; 
    }
    g_lastSyncUpdate = TimeCurrent();
    RefreshDebugPanel();

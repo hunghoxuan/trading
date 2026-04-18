@@ -83,17 +83,25 @@ export default function App() {
         </div>
         <nav>
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? "active" : "")}>Dashboard</NavLink>
-          <NavLink to="/signals" className={({ isActive }) => (isActive ? "active" : "")}>Signals</NavLink>
           <NavLink to="/trades" className={({ isActive }) => (isActive ? "active" : "")}>Trades</NavLink>
-          {canAccessSystemPages ? <NavLink to="/logs" className={({ isActive }) => (isActive ? "active" : "")}>Logs</NavLink> : null}
-          {canAccessSystemPages ? <NavLink to="/db" className={({ isActive }) => (isActive ? "active" : "")}>DB</NavLink> : null}
-          {canAccessSystemPages ? <NavLink to="/users" className={({ isActive }) => (isActive ? "active" : "")}>Users</NavLink> : null}
-          {canAccessSystemPages ? <NavLink to="/accounts-v2" className={({ isActive }) => (isActive ? "active" : "")}>Accounts V2</NavLink> : null}
-          {canAccessSystemPages ? <NavLink to="/sources" className={({ isActive }) => (isActive ? "active" : "")}>Sources</NavLink> : null}
-          {canAccessSystemPages ? <NavLink to="/subscriptions" className={({ isActive }) => (isActive ? "active" : "")}>Subscriptions</NavLink> : null}
-          {canAccessSystemPages ? <NavLink to="/execution-v2" className={({ isActive }) => (isActive ? "active" : "")}>Execution V2</NavLink> : null}
-          {canAccessSystemPages ? <NavLink to="/brokers" className={({ isActive }) => (isActive ? "active" : "")}>Brokers</NavLink> : null}
-          <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")}>My Account</NavLink>
+          <NavLink to="/signals" className={({ isActive }) => (isActive ? "active" : "")}>Signals</NavLink>
+          
+          {canAccessSystemPages && (
+            <div className="nav-group">
+              <span className="nav-group-label" style={{ opacity: 0.5, margin: '0 8px', fontSize: '10px' }}>SYSTEM</span>
+              <NavLink to="/accounts-v2" className={({ isActive }) => (isActive ? "active" : "")}>Accounts</NavLink>
+              <NavLink to="/brokers" className={({ isActive }) => (isActive ? "active" : "")}>Brokers</NavLink>
+              <NavLink to="/sources" className={({ isActive }) => (isActive ? "active" : "")}>Sources</NavLink>
+              <NavLink to="/subscriptions" className={({ isActive }) => (isActive ? "active" : "")}>Subs</NavLink>
+              <NavLink to="/logs" className={({ isActive }) => (isActive ? "active" : "")}>Logs</NavLink>
+              <NavLink to="/db" className={({ isActive }) => (isActive ? "active" : "")}>DB</NavLink>
+              <NavLink to="/users" className={({ isActive }) => (isActive ? "active" : "")}>Users</NavLink>
+            </div>
+          )}
+
+          <div style={{ flex: 1 }} />
+          
+          <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")}>Settings</NavLink>
           <button onClick={handleLogout} className="secondary-button" style={{ marginLeft: 8, padding: '4px 10px', fontSize: '11px' }}>Logout</button>
           <button 
              onClick={toggleTheme} 
@@ -101,7 +109,7 @@ export default function App() {
              style={{ 
                padding: '4px 10px', 
                fontSize: '11px', 
-               marginLeft: '20px',
+               marginLeft: '10px',
                width: '80px'
              }}
           >
@@ -123,7 +131,6 @@ export default function App() {
           <Route path="/accounts-v2" element={canAccessSystemPages ? <AccountsV2Page /> : <Navigate to="/dashboard" replace />} />
           <Route path="/sources" element={canAccessSystemPages ? <SourcesPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/subscriptions" element={canAccessSystemPages ? <SubscriptionsPage /> : <Navigate to="/dashboard" replace />} />
-          <Route path="/execution-v2" element={canAccessSystemPages ? <ExecutionV2Page /> : <Navigate to="/dashboard" replace />} />
           <Route path="/brokers" element={canAccessSystemPages ? <BrokersPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/settings" element={<SettingsPage authUser={authUser} />} />
           <Route path="/login" element={<Navigate to="/dashboard" replace />} />

@@ -38,16 +38,16 @@ Achieve 100% synchronization reliability between MT5 and VPS to eliminate "Ghost
         - [x] Implement Account Detail Drawer (Subscriptions + Trade History).
         - [x] Implement Broker Registry UI (Brokers Table + Mapping).
     - [ ] Phase 5: Cutover + Deployment
-        - [ ] **Infrastructure/Security**:
-            - [ ] Finalize account-level API key ownership and signed-request validation (HMAC).
-            - [ ] Enforce HTTPS for all broker/TV endpoints.
-        - [ ] **Data Migration**:
-            - [ ] Complete full backfill from `signals` -> `trades`.
-            - [ ] Implement aggressive pruning/deletion of legacy status data in `signals` (keep only as raw audit log).
-        - [ ] **Client Updates**:
-            - [ ] Update **EA Client** (`TVBridgeEA.mq5`) to use `/v2/broker/pull` and account-scoped sync.
-            - [ ] Update **PineScript** strategies to support V2 `source_id` payloads and intent-based mapping.
-        - [ ] **UI/Analytic Finalization**:
-            - [ ] Clean up UI: Remove legacy one-page dashboards and old status-badge logic.
-            - [ ] Rewrite **Dashboard** logic to aggregate from the `trades` ledger (account-level PnL, equity snapshots).
+        - [x] **Infrastructure/Security**:
+            - [x] Finalize account-level API key ownership and signed-request validation (HMAC).
+            - [ ] Enforce HTTPS for all broker/TV endpoints (User action required for certificate setup).
+        - [x] **Data Migration**:
+            - [x] Complete full backfill from `signals` -> `trades`.
+            - [x] Implement aggressive pruning/deletion of legacy status data in `signals` (keep only as raw audit log).
+        - [x] **Client Updates**:
+            - [x] Update **EA Client** (`TVBridgeEA.mq5`) to use `/v2/broker/pull` and account-scoped sync.
+            - [x] Update **PineScript** strategies to support V2 `source_id` payloads and intent-based mapping.
+        - [x] **UI/Analytic Finalization**:
+            - [x] Clean up UI: Remove legacy one-page dashboards and old status-badge logic.
+            - [x] Rewrite **Dashboard** logic to aggregate from the `trades` ledger (account-level PnL, equity snapshots).
             - [ ] System-wide stress test and legacy endpoint deprecation.
