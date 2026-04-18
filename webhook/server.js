@@ -1573,103 +1573,10 @@ async function mt5InitBackend() {
     // Legacy table may not exist; safe to ignore.
   });
 
-  // Backward-compatible migration from legacy table mt5_signals -> signals.
-  await pool.query(`
-    INSERT INTO signals (
-      signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
-      signal_tf, chart_tf,
-      note, raw_json, status, locked_at, ack_at, ack_status, ack_ticket, ack_error
-    )
-    SELECT
-      s.signal_id, s.created_at, 'default', s.source, s.action, s.symbol, s.volume, s.sl, s.tp,
-      NULL, NULL,
-      s.note, s.raw_json, s.status, s.locked_at, s.ack_at, s.ack_status, s.ack_ticket, s.ack_error
-    FROM mt5_signals s
-    ON CONFLICT (signal_id) DO NOTHING
-  `).catch(() => {
-    // Legacy table may not exist; safe to ignore.
-  });
-
-  const countRes = await pool.query("SELECT COUNT(*)::int AS n FROM signals");
-  if (countRes.rows[0].n === 0) {
-    try {
-      const rows = mt5GetLegacyRows();
-      if (rows.length > 0) {
-        for (const r of rows) {
-          await pool.query(`
-            INSERT INTO signals (
-              signal_id, created_at, user_id, source, action, symbol, volume, sl, tp,
-              signal_tf, chart_tf,
-              rr_planned, risk_money_planned, pnl_money_realized, entry_price_exec, sl_exec, tp_exec,
-              note, raw_json, status, locked_at, ack_at, opened_at, closed_at, ack_status, ack_ticket, ack_error
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27)
-            ON CONFLICT (signal_id) DO UPDATE SET
-              created_at=EXCLUDED.created_at,
-              user_id=EXCLUDED.user_id,
-              source=EXCLUDED.source,
-              action=EXCLUDED.action,
-              symbol=EXCLUDED.symbol,
-              volume=EXCLUDED.volume,
-              sl=EXCLUDED.sl,
-              tp=EXCLUDED.tp,
-              signal_tf=EXCLUDED.signal_tf,
-              chart_tf=EXCLUDED.chart_tf,
-              rr_planned=EXCLUDED.rr_planned,
-              risk_money_planned=EXCLUDED.risk_money_planned,
-              pnl_money_realized=EXCLUDED.pnl_money_realized,
-              entry_price_exec=EXCLUDED.entry_price_exec,
-              sl_exec=EXCLUDED.sl_exec,
-              tp_exec=EXCLUDED.tp_exec,
-              note=EXCLUDED.note,
-              raw_json=EXCLUDED.raw_json,
-              status=EXCLUDED.status,
-              locked_at=EXCLUDED.locked_at,
-              ack_at=EXCLUDED.ack_at,
-              opened_at=EXCLUDED.opened_at,
-              closed_at=EXCLUDED.closed_at,
-              ack_status=EXCLUDED.ack_status,
-              ack_ticket=EXCLUDED.ack_ticket,
-              ack_error=EXCLUDED.ack_error
-          `, [
-            String(r.signal_id || crypto.randomUUID()),
-            String(r.created_at || mt5NowIso()),
-            String(r.user_id || CFG.mt5DefaultUserId),
-            String(r.source || "legacy"),
-            String(r.action || "BUY"),
-            String(r.symbol || ""),
-            Number(r.volume ?? CFG.mt5DefaultLot),
-            r.sl ?? null,
-            r.tp ?? null,
-            r.signal_tf ?? r.raw_json?.sourceTf ?? r.raw_json?.timeframe ?? null,
-            r.chart_tf ?? r.raw_json?.chartTf ?? null,
-            r.rr_planned ?? null,
-            r.risk_money_planned ?? null,
-            r.pnl_money_realized ?? null,
-            r.entry_price_exec ?? null,
-            r.sl_exec ?? null,
-            r.tp_exec ?? null,
-            String(r.note || ""),
-            JSON.stringify(r.raw_json || {}),
-            String(r.status || "NEW"),
-            r.locked_at ?? null,
-            r.ack_at ?? null,
-            r.opened_at ?? null,
-            r.closed_at ?? null,
-            r.ack_status ?? null,
-            r.ack_ticket ?? null,
-            r.ack_error ?? null,
-          ]);
-        }
-        console.log(`MT5: migrated ${rows.length} row(s) from legacy JSON ${mt5LegacyJsonPath()}`);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.log(`MT5: legacy JSON migration failed: ${msg}`);
-    }
-  }
+  // Legacy migration paths removed; using Postgres-exclusive storage.
 
   MT5_BACKEND = {
-    storage,
+    storage: "postgres",
     info: { url: CFG.mt5PostgresUrl.replace(/:[^:@/]+@/, ":***@") },
     async upsertSignal(signal) {
       const r = await pool.query(`
