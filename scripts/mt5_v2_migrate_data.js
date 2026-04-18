@@ -50,7 +50,14 @@ async function main() {
     process.exit(1);
   }
 
-  const { Pool } = require("pg");
+  let pg;
+  try {
+    pg = require("pg");
+  } catch {
+    // Attempt to load from webhook node_modules
+    pg = require(path.resolve(__dirname, "../webhook/node_modules/pg"));
+  }
+  const { Pool } = pg;
   const pool = new Pool({ connectionString: pgUrl });
 
   const report = {
