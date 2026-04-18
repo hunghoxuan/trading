@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
-import { Link } from "react-router-dom";
 
 const STATUS_OPTIONS = ["", "NEW", "LOCKED", "PLACED", "START", "FAIL", "TP", "SL", "CANCEL", "EXPIRED"];
 const BULK_ACTIONS = ["", "Download CSV", "Renew All", "Cancel All", "Delete All"];
@@ -38,7 +37,7 @@ function formatTimeframe(min) {
 
 function PnlDisplay({ value }) {
   const n = Number(value);
-  if (n === null || n === undefined || n === 0) return null;
+  if (!Number.isFinite(n) || n === 0) return null;
   const cls = n > 0 ? "money-pos" : "money-neg";
   const abs = Math.abs(n);
   const str = `$${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -167,7 +166,7 @@ export default function SignalsPage() {
       setCreateMode(false);
       await loadSignals();
       if (out?.trade?.signal_id) {
-        const created = { signal_id: out.trade.signal_id, action: payload.action, symbol: payload.symbol, status: "NEW" };
+        const created = { signal_id: out.trade.signal_id, action: payload.side, symbol: payload.symbol, status: "NEW" };
         setSelectedSignal(created);
       }
     } catch (e) {
@@ -316,13 +315,13 @@ export default function SignalsPage() {
                   <th>POSITION</th>
                   <th>AUDIT</th>
                   <th>STATUS</th>
-                  <th style={{ textAlign: 'right' }}>ACTION</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map(t => {
                   const status = statusUi(t.status);
-                  const sideCls = t.side?.toUpperCase() === 'BUY' ? 'side-buy' : 'side-sell';
+                  const sideValue = String(t.action || t.side || '-').toUpperCase();
+                  const sideCls = sideValue === 'BUY' ? 'side-buy' : 'side-sell';
                   
                   return (
                     <tr 
@@ -347,14 +346,14 @@ export default function SignalsPage() {
                       </td>
                       <td>
                         <div className="cell-wrap">
-                          <div className="cell-major"><span className={sideCls}>{t.side?.toUpperCase()}</span> {t.symbol}</div>
+                          <div className="cell-major"><span className={sideCls}>{sideValue}</span> {t.symbol}</div>
                           <div className="cell-minor">{t.source || 'signal'} | {t.signal_id.slice(-8)} {t.ack_ticket ? `| #${t.ack_ticket}` : ''}</div>
                         </div>
                       </td>
                       <td>
                         <div className="cell-wrap">
                           <div className="cell-major">
-                            {fPrice(t.target_price, t.entry_price)} → {fPrice(t.tp)} / {fPrice(t.sl)}
+                            {fPrice(t.entry, t.target_price || t.entry_price)} → {fPrice(t.tp)} / {fPrice(t.sl)}
                           </div>
                           <div className="cell-minor">
                             {formatTimeframe(t.chart_tf)} | {formatTimeframe(t.signal_tf)} | {t.rr_planned || '0'} rr | {t.volume || '0'} lots
@@ -372,9 +371,6 @@ export default function SignalsPage() {
                           <div className="cell-major"><span className={`badge ${status.cls} badge-fixed`}>{status.label}</span></div>
                           <PnlDisplay value={t.pnl_money_realized} />
                         </div>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <Link to={`/signals/${t.signal_id}`} className="primary-button small">VIEW</Link>
                       </td>
                     </tr>
                   );
@@ -443,8 +439,8 @@ export default function SignalsPage() {
               <div className="detail-header" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between' }}>
                 <div>
                   <h2 style={{ margin: 0 }}>
-                    <span className={selectedSignal.side?.toUpperCase() === 'BUY' ? 'side-buy' : 'side-sell'} style={{ fontSize: '24px' }}>
-                      {selectedSignal.side?.toUpperCase()}
+                    <span className={String(selectedSignal.action || selectedSignal.side || '').toUpperCase() === 'BUY' ? 'side-buy' : 'side-sell'} style={{ fontSize: '24px' }}>
+                      {String(selectedSignal.action || selectedSignal.side || '-').toUpperCase()}
                     </span> 
                     {" "}{selectedSignal.symbol}
                   </h2>
@@ -460,11 +456,11 @@ export default function SignalsPage() {
 
               <div style={{ marginTop: '20px' }}>
                 <div className="panel-label">HISTORY</div>
-                {!signalDetails?.events ? (
+                {!(signalDetails?.events || signalDetails?.items) ? (
                   <div className="loading">FETCHING TELEMETRY LOGS...</div>
                 ) : (
                   <div className="stack-layout" style={{ gap: '10px' }}>
-                    {[...signalDetails.events].sort((a,b) => new Date(b.event_time) - new Date(a.event_time)).map((ev) => {
+                    {[...(signalDetails?.events || signalDetails?.items || [])].sort((a,b) => new Date(b.event_time || b.created_at || 0) - new Date(a.event_time || a.created_at || 0)).map((ev) => {
                       let stTxt = "";
                       let stCls = "OTHER";
                       const tType = String(ev.event_type || "");
@@ -475,18 +471,18 @@ export default function SignalsPage() {
                       }
                       
                       return (
-                        <div key={ev.id} className="panel" style={{ margin: 0, padding: '16px' }}>
+                        <div key={`${ev.id || ev.event_id || ev.created_at || Math.random()}`} className="panel" style={{ margin: 0, padding: '16px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span className="panel-label" style={{ margin: 0 }}>{ev.event_type}</span>
+                              <span className="panel-label" style={{ margin: 0 }}>{ev.event_type || ev.type || "EVENT"}</span>
                               {stTxt && <span className={`badge ${stCls}`}>{stTxt}</span>}
                             </div>
-                            <span className="minor-text">{fDateTime(ev.event_time)}</span>
+                            <span className="minor-text">{fDateTime(ev.event_time || ev.created_at)}</span>
                           </div>
                           <div className="json-table-wrapper">
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                               <tbody>
-                                  {Object.entries(ev.payload_json || {}).map(([k, v]) => {
+                                  {(Object.entries(ev.payload_json || {}).length ? Object.entries(ev.payload_json || {}) : [['details', JSON.stringify(ev)]]).map(([k, v]) => {
                                     let label = k.replace(/_/g, ' ').toUpperCase();
                                     if (label === 'SOURCE TF') label = 'SIGNAL TF';
                                     if (label === 'CHART TF PERIOD') label = 'CHART TF';

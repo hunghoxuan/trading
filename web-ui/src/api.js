@@ -77,6 +77,24 @@ function buildUrl(base, path) {
   return new URL(path, `${base.replace(/\/+$/, "")}/`).toString();
 }
 
+function isAuthFailure(status, data) {
+  if (status === 401 || status === 403) return true;
+  const err = String(data?.error || "").toLowerCase();
+  return err.includes("unauthorized") || err.includes("forbidden") || err.includes("session") || err.includes("login required");
+}
+
+function redirectToLogin() {
+  try {
+    localStorage.removeItem("tvbridge_api_key");
+  } catch {
+    // ignore
+  }
+  if (window.location.pathname.endsWith("/login")) return;
+  const base = window.location.pathname.startsWith("/ui") ? "/ui" : "";
+  const loginPath = `${base}/login`;
+  window.location.assign(loginPath);
+}
+
 async function get(path) {
   const API_KEY = runtimeApiKey();
   const base = runtimeApiBase();
@@ -125,6 +143,10 @@ async function get(path) {
     throw new Error(`Server returned non-JSON response (${res.status})`);
   }
   if (!res.ok || !data.ok) {
+    if (path !== "/auth/login" && isAuthFailure(res.status, data)) {
+      redirectToLogin();
+      throw new Error("Session expired. Redirecting to login.");
+    }
     throw new Error(data.error || `Request failed: ${res.status}`);
   }
   return data;
@@ -182,6 +204,10 @@ async function post(path, body = {}) {
     throw new Error(`Server returned non-JSON response (${res.status})`);
   }
   if (!res.ok || !data.ok) {
+    if (path !== "/auth/login" && isAuthFailure(res.status, data)) {
+      redirectToLogin();
+      throw new Error("Session expired. Redirecting to login.");
+    }
     throw new Error(data.error || `Request failed: ${res.status}`);
   }
   return data;
@@ -239,6 +265,10 @@ async function put(path, body = {}) {
     throw new Error(`Server returned non-JSON response (${res.status})`);
   }
   if (!res.ok || !data.ok) {
+    if (path !== "/auth/login" && isAuthFailure(res.status, data)) {
+      redirectToLogin();
+      throw new Error("Session expired. Redirecting to login.");
+    }
     throw new Error(data.error || `Request failed: ${res.status}`);
   }
   return data;
@@ -280,7 +310,13 @@ async function del(path) {
   }
   let data;
   try { data = await res.json(); } catch { throw new Error(`Server returned non-JSON response (${res.status})`); }
-  if (!res.ok || !data.ok) throw new Error(data.error || `Request failed: ${res.status}`);
+  if (!res.ok || !data.ok) {
+    if (path !== "/auth/login" && isAuthFailure(res.status, data)) {
+      redirectToLogin();
+      throw new Error("Session expired. Redirecting to login.");
+    }
+    throw new Error(data.error || `Request failed: ${res.status}`);
+  }
   return data;
 }
 
@@ -324,6 +360,10 @@ async function downloadCsv(path, params = {}) {
     }
   }
   if (!res.ok) {
+    if (path !== "/auth/login" && isAuthFailure(res.status, {})) {
+      redirectToLogin();
+      throw new Error("Session expired. Redirecting to login.");
+    }
     const text = await res.text();
     throw new Error(text || `Download failed: ${res.status}`);
   }
