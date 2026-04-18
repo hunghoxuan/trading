@@ -1425,8 +1425,9 @@ async function mt5InitBackend() {
 
   // Legacy migration paths removed; using Postgres-exclusive storage.
 
+  const storage = "postgres";
   MT5_BACKEND = {
-    storage: "postgres",
+    storage,
     info: { url: CFG.mt5PostgresUrl.replace(/:[^:@/]+@/, ":***@") },
     async log(objectId, objectTable, metadata = {}, userId = null) {
       await pool.query(`
