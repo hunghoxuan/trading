@@ -3699,7 +3699,9 @@ function mt5FilterRows(rows, opts = {}) {
     if (chartTf && String(r.chart_tf || r.raw_json?.chart_tf || r.raw_json?.chartTf || "") !== chartTf) return false;
     if (signalTf && String(r.signal_tf || r.raw_json?.signal_tf || r.raw_json?.sourceTf || r.raw_json?.timeframe || "") !== signalTf) return false;
     if (statuses.length > 0 && !statuses.includes(rs)) return false;
-    const t = mt5ToMs(r.created_at);
+    // Prefer closed_at for trades PnL accuracy, fallback to created_at
+    const tRaw = r.closed_at || r.ack_at || r.created_at;
+    const t = mt5ToMs(tRaw);
     if (Number.isFinite(fromMs) && (!Number.isFinite(t) || t < fromMs)) return false;
     if (Number.isFinite(toMs) && (!Number.isFinite(t) || t > toMs)) return false;
     return true;
@@ -4706,9 +4708,10 @@ const appHandler = async (req, res) => {
       const seriesBucket = range === "today" ? "hour" : "day";
       const seriesMap = new Map();
       for (const r of selectedRows) {
-        const pnl = Number(r.pnl_money_realized);
+        // Use unified PnL field (pnl_realized for trades, pnl_money_realized for signals)
+        const pnl = Number(r.pnl_realized ?? r.pnl_money_realized);
         if (!Number.isFinite(pnl)) continue;
-        const d = new Date(r.closed_at || r.created_at);
+        const d = new Date(r.closed_at || r.ack_at || r.created_at);
         if (!Number.isFinite(d.getTime())) continue;
         const key = seriesBucket === "hour"
           ? `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")} ${String(d.getUTCHours()).padStart(2, "0")}:00`
