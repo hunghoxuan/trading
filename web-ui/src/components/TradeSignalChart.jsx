@@ -1,25 +1,29 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createChart } from 'lightweight-charts';
 
 /**
- * TradeSignalChart
- * A reusable lightweight-charts component for Trade/Signal details.
- * Supports historical data and live Binance WebSocket simulation.
- * 
- * @param {Object} props
- * @param {string} props.symbol - Symbol like "BTCUSDT" or "EURUSD"
- * @param {string} props.interval - Chart interval like "1m", "5m", "1h"
- * @param {Array} props.historicalData - Initial candles [{time, open, high, low, close}]
- * @param {boolean} props.live - Whether to connect to Binance WebSocket for live updates
- * @param {number} props.entryPrice - Optional entry price for a horizontal line
- * @param {number} props.slPrice - Optional SL price for a horizontal line
- * @param {number} props.tpPrice - Optional TP price for a horizontal line
+ * Symbol helper to map common broker symbols to Binance
  */
+function mapToBinance(symbol) {
+  if (!symbol) return '';
+  let s = String(symbol).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  // Mapping logic
+  if (s === 'BTCUSD') return 'BTCUSDT';
+  if (s === 'ETHUSD') return 'ETHUSDT';
+  if (s === 'XAUUSD') return 'PAXGUSDT'; // Best crypto proxy for gold on Binance
+  if (s === 'XAGUSD') return 'XAGUSDT';
+  if (s === 'SOLUSD') return 'SOLUSDT';
+  if (s === 'BNBUSD') return 'BNBUSDT';
+  // If it's 6 characters ending in USD, append T
+  if (s.length === 6 && s.endsWith('USD')) return s + 'T';
+  return s;
+}
+
 export const TradeSignalChart = ({ 
   symbol = 'BTCUSDT', 
-  interval = '1m', 
+  interval = '1h', 
   historicalData = [], 
-  live = false,
+  live = true,
   entryPrice = null,
   slPrice = null,
   tpPrice = null
@@ -28,24 +32,31 @@ export const TradeSignalChart = ({
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
   const socketRef = useRef(null);
+  const [loading, setLoading] = useState(true);
+
+  // Normalize interval for Binance
+  const bInterval = (interval || '1h').toLowerCase().replace('manual', '1h');
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
+    let isMounted = true;
+    const binanceSymbol = mapToBinance(symbol);
+
     // 1. Initialize Chart
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
-      height: 400,
+      height: 380,
       layout: {
         background: { color: '#0d1117' },
         textColor: '#d1d4dc',
       },
       grid: {
-        vertLines: { color: 'rgba(42, 46, 57, 0.2)' },
-        horzLines: { color: 'rgba(42, 46, 57, 0.2)' },
+        vertLines: { color: 'rgba(42, 46, 57, 0.1)' },
+        horzLines: { color: 'rgba(42, 46, 57, 0.1)' },
       },
       timeScale: {
-        borderColor: 'rgba(197, 203, 206, 0.8)',
+        borderColor: 'rgba(197, 203, 206, 0.4)',
         timeVisible: true,
       },
     });
@@ -58,90 +69,97 @@ export const TradeSignalChart = ({
       wickDownColor: '#ef5350',
     });
 
-    if (historicalData && historicalData.length > 0) {
-      candleSeries.setData(historicalData);
-    }
-
-    // 2. Add Price Lines if provided
-    if (entryPrice) {
-      candleSeries.createPriceLine({
-        price: entryPrice,
-        color: '#2196f3',
-        lineWidth: 2,
-        lineStyle: 0, // Solid
-        axisLabelVisible: true,
-        title: 'ENTRY',
-      });
-    }
-    if (slPrice) {
-      candleSeries.createPriceLine({
-        price: slPrice,
-        color: '#ef5350',
-        lineWidth: 2,
-        lineStyle: 2, // Dashed
-        axisLabelVisible: true,
-        title: 'SL',
-      });
-    }
-    if (tpPrice) {
-      candleSeries.createPriceLine({
-        price: tpPrice,
-        color: '#26a69a',
-        lineWidth: 2,
-        lineStyle: 1, // Dotted
-        axisLabelVisible: true,
-        title: 'TP',
-      });
-    }
-
     chartRef.current = chart;
     seriesRef.current = candleSeries;
 
-    // 3. Resize Handling
+    // 2. Add Price Lines
+    const asNum = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
+    const ep = asNum(entryPrice);
+    const sp = asNum(slPrice);
+    const tp = asNum(tpPrice);
+
+    if (ep) candleSeries.createPriceLine({ price: ep, color: '#2196f3', lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title: 'ENTRY' });
+    if (sp) candleSeries.createPriceLine({ price: sp, color: '#ef5350', lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'SL' });
+    if (tp) candleSeries.createPriceLine({ price: tp, color: '#26a69a', lineWidth: 2, lineStyle: 1, axisLabelVisible: true, title: 'TP' });
+
+    // 3. Fetch History + Start Live
+    async function initData() {
+      try {
+        setLoading(true);
+        // If no data provided, try fetching from Binance
+        if (historicalData && historicalData.length > 0) {
+          candleSeries.setData(historicalData);
+        } else if (binanceSymbol) {
+          const resp = await fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${bInterval}&limit=500`);
+          if (!resp.ok) throw new Error(\`Binance API error: \${resp.status}\`);
+          const data = await resp.json();
+          const candles = data.map(d => ({
+            time: d[0] / 1000,
+            open: parseFloat(d[1]),
+            high: parseFloat(d[2]),
+            low: parseFloat(d[3]),
+            close: parseFloat(d[4])
+          }));
+          if (isMounted) candleSeries.setData(candles);
+        }
+      } catch (err) {
+        console.error("Chart data fetch failed:", err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+
+      // 4. Start WebSocket
+      if (live && binanceSymbol && isMounted) {
+        const socketUrl = `wss://stream.binance.com:9443/ws/${binanceSymbol.toLowerCase()}@kline_${bInterval}`;
+        const socket = new WebSocket(socketUrl);
+        socket.onmessage = (event) => {
+          const msg = JSON.parse(event.data);
+          if (msg.e === 'kline') {
+            const k = msg.k;
+            const liveCandle = {
+              time: k.t / 1000,
+              open: parseFloat(k.o),
+              high: parseFloat(k.h),
+              low: parseFloat(k.l),
+              close: parseFloat(k.c),
+            };
+            if (isMounted) candleSeries.update(liveCandle);
+          }
+        };
+        socketRef.current = socket;
+      }
+    }
+
+    initData();
+
+    // Resize handling
     const handleResize = () => {
-      chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+      if (chartContainerRef.current) chart.applyOptions({ width: chartContainerRef.current.clientWidth });
     };
     window.addEventListener('resize', handleResize);
 
-    // 4. optional Live Binance WebSocket
-    if (live && symbol) {
-      const bSymbol = symbol.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const socketUrl = `wss://stream.binance.com:9443/ws/${bSymbol}@kline_${interval}`;
-      const socket = new WebSocket(socketUrl);
-
-      socket.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        const candle = message.k;
-        const candleData = {
-          time: candle.t / 1000,
-          open: parseFloat(candle.o),
-          high: parseFloat(candle.h),
-          low: parseFloat(candle.l),
-          close: parseFloat(candle.c),
-        };
-        candleSeries.update(candleData);
-      };
-
-      socketRef.current = socket;
-    }
-
-    // Cleanup
     return () => {
+      isMounted = false;
       window.removeEventListener('resize', handleResize);
       if (socketRef.current) socketRef.current.close();
       chart.remove();
     };
-  }, [symbol, interval, live, entryPrice, slPrice, tpPrice]); // Re-init if core props change
+  }, [symbol, binanceSymbol, bInterval]); // Re-init on symbol/interval change
 
   return (
-    <div className="chart-wrapper" style={{ position: 'relative', width: '100%', marginBottom: '20px' }}>
+    <div className="chart-wrapper" style={{ position: 'relative', width: '100%', minHeight: '420px' }}>
+      {loading && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(13, 17, 23, 0.7)', zIndex: 10, borderRadius: '8px' }}>
+          <div className="loading-small">Loading Chart Data...</div>
+        </div>
+      )}
       <div 
         ref={chartContainerRef} 
         style={{ width: '100%', borderRadius: '8px', overflow: 'hidden', border: '1px solid #30363d' }} 
       />
-      <div style={{ padding: '8px', fontSize: '12px', color: '#8b949e', display: 'flex', justifyContent: 'space-between' }}>
-        <span>{symbol} ({interval})</span>
-        {live && <span style={{ color: '#26a69a' }}>● Live (Binance)</span>}
+      <div style={{ padding: '8px', fontSize: '11px', color: '#8b949e', display: 'flex', justifyContent: 'space-between' }}>
+        <span>{symbol} {interval !== bInterval ? `(${interval} mapped to ${bInterval})` : `(${interval})`}</span>
+        {live && <span style={{ color: '#26a69a' }}>● Streaming (Binance)</span>}
       </div>
     </div>
   );
