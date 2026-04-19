@@ -30,8 +30,59 @@ export default function AccountsV2Page() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
+  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [mode, setMode] = useState("view");
+  const [createdKey, setCreatedKey] = useState("");
+  const [rotatedKey, setRotatedKey] = useState("");
+  const [apiKeyPlain, setApiKeyPlain] = useState("");
+  const [apiKeyLast4, setApiKeyLast4] = useState("");
+  const [revealApiKey, setRevealApiKey] = useState(false);
+  const [selectedSourceIds, setSelectedSourceIds] = useState(new Set());
   const [updateKeyMode, setUpdateKeyMode] = useState(false);
   const [manualKeyInput, setManualKeyInput] = useState("");
+
+  const [form, setForm] = useState({
+    account_id: newId("acc"),
+    user_id: "default",
+    name: "",
+    status: "ACTIVE",
+    metadata_json: "{}",
+  });
+
+  const filtered = useMemo(() => {
+    const needle = String(q || "").trim().toLowerCase();
+    return rows.filter((r) => {
+      if (statusFilter && String(r.status || "").toUpperCase() !== statusFilter) return false;
+      if (userFilter && String(r.user_id || "") !== userFilter) return false;
+      if (!needle) return true;
+      return (
+        String(r.account_id || "").toLowerCase().includes(needle)
+        || String(r.user_id || "").toLowerCase().includes(needle)
+        || String(r.name || "").toLowerCase().includes(needle)
+      );
+    });
+  }, [rows, q, statusFilter, userFilter]);
+
+  const userOptions = useMemo(() => Array.from(new Set(rows.map((r) => String(r.user_id || "")).filter(Boolean))).sort(), [rows]);
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.max(1, Math.min(page, pages));
+  const pageRows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  async function loadBase() {
+    setLoading(true);
+    try {
+      const [aOut, sOut] = await Promise.all([api.v2Accounts(), api.v2Sources()]);
+      const accounts = Array.isArray(aOut?.items) ? aOut.items : [];
+      const sourceItems = Array.isArray(sOut?.items) ? sOut.items : [];
+      setRows(accounts);
+      setSources(sourceItems);
+      setMsg(EMPTY_MSG);
+    } catch (e) {
+      setMsg({ type: "error", text: e?.message || "Failed to load accounts" });
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function onSaveManualKey() {
     if (!manualKeyInput.trim()) return;
@@ -96,27 +147,6 @@ export default function AccountsV2Page() {
       status: "ACTIVE",
       metadata_json: "{}",
     });
-  }
-
-  const userOptions = useMemo(() => Array.from(new Set(rows.map((r) => String(r.user_id || "")).filter(Boolean))).sort(), [rows]);
-  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const safePage = Math.max(1, Math.min(page, pages));
-  const pageRows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
-
-  async function loadBase() {
-    setLoading(true);
-    try {
-      const [aOut, sOut] = await Promise.all([api.v2Accounts(), api.v2Sources()]);
-      const accounts = Array.isArray(aOut?.items) ? aOut.items : [];
-      const sourceItems = Array.isArray(sOut?.items) ? sOut.items : [];
-      setRows(accounts);
-      setSources(sourceItems);
-      setMsg(EMPTY_MSG);
-    } catch (e) {
-      setMsg({ type: "error", text: e?.message || "Failed to load accounts" });
-    } finally {
-      setLoading(false);
-    }
   }
 
   useEffect(() => { loadBase(); }, []);
