@@ -32,6 +32,27 @@ export function mapSymbolToBinance(rawSymbol) {
   return s;
 }
 
+/**
+ * Mapper for Timeframes to Binance Klines interval format
+ */
+export function mapIntervalToBinance(tf) {
+  if (!tf || tf === 'manual') return '1h';
+  let s = String(tf).toLowerCase();
+  
+  // Binance valid: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
+  if (s === '1' || s === '3' || s === '5' || s === '15' || s === '30') return s + 'm';
+  if (s === '60') return '1h';
+  if (s === '240') return '4h';
+  if (s === '1440') return '1d';
+  if (s === '10080') return '1w';
+  if (s === '43200') return '1M';
+
+  // If already tagged, return as is
+  if (/[0-9]+[mhd]$/.test(s)) return s;
+  
+  return s;
+}
+
 export const TradeSignalChart = ({ 
   symbol = 'BTCUSDT', 
   interval = '1h', 
@@ -49,7 +70,7 @@ export const TradeSignalChart = ({
 
   // Derive constants outside of useEffect so they can be used in dependency array
   const binanceSymbol = mapSymbolToBinance(symbol);
-  const bInterval = (interval || '1h').toLowerCase().replace('manual', '1h');
+  const bInterval = mapIntervalToBinance(interval);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -103,8 +124,12 @@ export const TradeSignalChart = ({
         if (historicalData && historicalData.length > 0) {
           candleSeries.setData(historicalData);
         } else {
+          // Use fetch with 'cors' mode explicitly (though it is default for external APIs)
           const resp = await fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${bInterval}&limit=500`);
-          if (!resp.ok) throw new Error(`Binance API error: ${resp.status}`);
+          if (!resp.ok) {
+             const errText = await resp.text();
+             throw new Error(`Binance API error: ${resp.status} - ${errText}`);
+          }
           const data = await resp.json();
           const candles = data.map(d => ({
             time: d[0] / 1000,
@@ -171,7 +196,7 @@ export const TradeSignalChart = ({
         style={{ width: '100%', borderRadius: '8px', overflow: 'hidden', border: '1px solid #30363d' }} 
       />
       <div style={{ padding: '8px', fontSize: '11px', color: '#8b949e', display: 'flex', justifyContent: 'space-between' }}>
-        <span>{symbol} {binanceSymbol !== symbol ? `(mapped to ${binanceSymbol} on Binance)` : `(${interval})`}</span>
+        <span>{symbol} {binanceSymbol !== symbol ? `(mapped to ${binanceSymbol} on Binance)` : `(${interval})`} [{bInterval}]</span>
         {live && binanceSymbol && <span style={{ color: '#26a69a' }}>● Streaming (Binance)</span>}
       </div>
     </div>
