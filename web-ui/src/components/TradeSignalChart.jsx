@@ -2,20 +2,33 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createChart } from 'lightweight-charts';
 
 /**
- * Symbol helper to map common broker symbols to Binance
+ * Universal mapper to convert platform symbols to Binance-compatible ones.
+ * Add more mappings here as needed.
  */
-function mapToBinance(symbol) {
-  if (!symbol) return '';
-  let s = String(symbol).toUpperCase().replace(/[^A-Z0-9]/g, '');
-  // Mapping logic
-  if (s === 'BTCUSD') return 'BTCUSDT';
-  if (s === 'ETHUSD') return 'ETHUSDT';
-  if (s === 'XAUUSD') return 'PAXGUSDT'; // Best crypto proxy for gold on Binance
-  if (s === 'XAGUSD') return 'XAGUSDT';
-  if (s === 'SOLUSD') return 'SOLUSDT';
-  if (s === 'BNBUSD') return 'BNBUSDT';
-  // If it's 6 characters ending in USD, append T
-  if (s.length === 6 && s.endsWith('USD')) return s + 'T';
+export function mapSymbolToBinance(rawSymbol) {
+  if (!rawSymbol) return '';
+  const s = String(rawSymbol).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  
+  const map = {
+    'BTCUSD': 'BTCUSDT',
+    'ETHUSD': 'ETHUSDT',
+    'BNBUSD': 'BNBUSDT',
+    'SOLUSD': 'SOLUSDT',
+    'XRPUSD': 'XRPUSDT',
+    'ADAUSD': 'ADAUSDT',
+    'DOTUSD': 'DOTUSDT',
+    'DOGEUSD': 'DOGEUSDT',
+    'XAUUSD': 'PAXGUSDT', // Gold proxy
+    'XAGUSD': 'XAGUSDT',
+  };
+
+  if (map[s]) return map[s];
+
+  // Generic fallback: if it ends with USD and is likely crypto, try USDT
+  if (s.length >= 6 && s.endsWith('USD')) {
+    return s + 'T';
+  }
+
   return s;
 }
 
@@ -32,16 +45,16 @@ export const TradeSignalChart = ({
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
   const socketRef = useRef(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  // Normalize interval for Binance
+  // Derive constants outside of useEffect so they can be used in dependency array
+  const binanceSymbol = mapSymbolToBinance(symbol);
   const bInterval = (interval || '1h').toLowerCase().replace('manual', '1h');
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
     let isMounted = true;
-    const binanceSymbol = mapToBinance(symbol);
 
     // 1. Initialize Chart
     const chart = createChart(chartContainerRef.current, {
@@ -84,12 +97,12 @@ export const TradeSignalChart = ({
 
     // 3. Fetch History + Start Live
     async function initData() {
+      if (!binanceSymbol) return;
       try {
         setLoading(true);
-        // If no data provided, try fetching from Binance
         if (historicalData && historicalData.length > 0) {
           candleSeries.setData(historicalData);
-        } else if (binanceSymbol) {
+        } else {
           const resp = await fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${bInterval}&limit=500`);
           if (!resp.ok) throw new Error(`Binance API error: ${resp.status}`);
           const data = await resp.json();
@@ -144,7 +157,7 @@ export const TradeSignalChart = ({
       if (socketRef.current) socketRef.current.close();
       chart.remove();
     };
-  }, [symbol, binanceSymbol, bInterval]); // Re-init on symbol/interval change
+  }, [binanceSymbol, bInterval]); // Re-init relative to derived constants
 
   return (
     <div className="chart-wrapper" style={{ position: 'relative', width: '100%', minHeight: '420px' }}>
@@ -158,8 +171,8 @@ export const TradeSignalChart = ({
         style={{ width: '100%', borderRadius: '8px', overflow: 'hidden', border: '1px solid #30363d' }} 
       />
       <div style={{ padding: '8px', fontSize: '11px', color: '#8b949e', display: 'flex', justifyContent: 'space-between' }}>
-        <span>{symbol} {interval !== bInterval ? `(${interval} mapped to ${bInterval})` : `(${interval})`}</span>
-        {live && <span style={{ color: '#26a69a' }}>● Streaming (Binance)</span>}
+        <span>{symbol} {binanceSymbol !== symbol ? `(mapped to ${binanceSymbol} on Binance)` : `(${interval})`}</span>
+        {live && binanceSymbol && <span style={{ color: '#26a69a' }}>● Streaming (Binance)</span>}
       </div>
     </div>
   );
