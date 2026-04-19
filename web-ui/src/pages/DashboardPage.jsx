@@ -199,8 +199,8 @@ export default function DashboardPage() {
             <div style={{ fontWeight: 800, fontSize: '16px', color: 'var(--accent)' }}>{m.count_pending || 0}</div>
           </div>
           <div className="summary-item">
-            <span className="minor-text" style={{ fontSize: '10px' }}>NEW</span>
-            <div style={{ fontWeight: 800, fontSize: '16px', color: 'var(--success)' }}>{m.count_new || 0}</div>
+            <span className="minor-text" style={{ fontSize: '10px' }}>FILLED</span>
+            <div style={{ fontWeight: 800, fontSize: '16px', color: 'var(--success)' }}>{m.count_filled || 0}</div>
           </div>
           <div className="summary-item">
             <span className="minor-text" style={{ fontSize: '10px' }}>CLOSED</span>
