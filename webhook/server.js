@@ -3457,21 +3457,26 @@ function mt5ComputeTradeMetrics(rows) {
   });
 
   const winBase = wins + losses; 
-  
   let totalPnl = 0;
   let buyPnl = 0;
   let sellPnl = 0;
   let winSumPnl = 0;
   let loseSumPnl = 0;
+  let countPending = 0;
+  let countNew = 0;
+  let countClosed = 0;
   
+  for (const r of all) {
+    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    if (s === "PENDING") countPending++;
+    else if (s === "NEW" || s === "PLACED") countNew++;
+    else if (["CLOSED", "TP", "SL", "FAILED", "REJECTED", "CANCEL", "CANCELLED"].includes(s)) countClosed++;
+  }
+
   for (const r of trades) {
     const pnl = Number(r?.pnl_realized ?? r?.pnl_money_realized ?? 0);
     if (Number.isFinite(pnl)) {
       totalPnl += pnl;
-      const act = String(r?.side || r?.action || "").toUpperCase();
-      if (act === "BUY" || act === "LONG") buyPnl += pnl;
-      else if (act === "SELL" || act === "SHORT") sellPnl += pnl;
-
       if (pnl > 0) winSumPnl += pnl;
       else if (pnl < 0) loseSumPnl += pnl;
     }
@@ -3502,6 +3507,9 @@ function mt5ComputeTradeMetrics(rows) {
     win_sum_pnl: winSumPnl,
     lose_sum_pnl: loseSumPnl,
     total_rr: totalRr,
+    count_pending: countPending,
+    count_new: countNew,
+    count_closed: countClosed,
   };
 }
 

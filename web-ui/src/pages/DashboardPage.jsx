@@ -188,39 +188,60 @@ export default function DashboardPage() {
           Last refreshed: {lastRefreshAt ? lastRefreshAt.toLocaleTimeString() : "-"} (auto 10s)
         </span>
       </div>
-      <div className="toolbar-panel">
-        <select value={filters.account_id} onChange={(e) => setFilters((prev) => ({ ...prev, account_id: e.target.value }))}>
-          <option value="">All accounts</option>
-          {(f.accounts || []).map((v) => <option key={v} value={v}>{accountNameById.get(String(v)) || v}</option>)}
-        </select>
-        <select value={filters.symbol} onChange={(e) => setFilters((prev) => ({ ...prev, symbol: e.target.value }))}>
-          <option value="">All symbols</option>
-          {(f.symbols || []).map((v) => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select value={filters.source} onChange={(e) => setFilters((prev) => ({ ...prev, source: e.target.value }))}>
-          <option value="">All Sources</option>
-          {(f.sources || []).map((v) => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select value={filters.entry_model} onChange={(e) => setFilters((prev) => ({ ...prev, entry_model: e.target.value }))}>
-          <option value="">All Models</option>
-          {(f.entry_models || []).map((v) => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select value={filters.direction} onChange={(e) => setFilters((prev) => ({ ...prev, direction: e.target.value }))}>
-          <option value="">All Direction</option>
-          <option value="BUY">Buy</option>
-          <option value="SELL">Sell</option>
-        </select>
-        <select value={filters.chart_tf} onChange={(e) => setFilters((prev) => ({ ...prev, chart_tf: e.target.value }))}>
-          <option value="">Chart TF</option>
-          {(f.chart_tfs || []).map(v => <option key={v} value={v}>{formatTimeframe(v)}</option>)}
-        </select>
-        <select value={filters.signal_tf} onChange={(e) => setFilters((prev) => ({ ...prev, signal_tf: e.target.value }))}>
-          <option value="">Signal TF</option>
-          {(f.signal_tfs || []).map(v => <option key={v} value={v}>{formatTimeframe(v)}</option>)}
-        </select>
-        <select value={filters.range} onChange={(e) => setFilters((prev) => ({ ...prev, range: e.target.value }))} style={{ marginLeft: 'auto' }}>
-          {RANGE_OPTIONS.map((r) => <option key={r.val} value={r.val}>{r.lab}</option>)}
-        </select>
+      <div className="toolbar-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px' }}>
+        <div className="toolbar-group dashboard-summary-highlights" style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+          <div className="summary-item">
+            <span className="minor-text" style={{ fontSize: '10px' }}>TOTAL</span>
+            <div style={{ fontWeight: 800, fontSize: '16px' }}>{m.total_trades || 0}</div>
+          </div>
+          <div className="summary-item">
+            <span className="minor-text" style={{ fontSize: '10px' }}>PENDING</span>
+            <div style={{ fontWeight: 800, fontSize: '16px', color: 'var(--accent)' }}>{m.count_pending || 0}</div>
+          </div>
+          <div className="summary-item">
+            <span className="minor-text" style={{ fontSize: '10px' }}>NEW</span>
+            <div style={{ fontWeight: 800, fontSize: '16px', color: 'var(--success)' }}>{m.count_new || 0}</div>
+          </div>
+          <div className="summary-item">
+            <span className="minor-text" style={{ fontSize: '10px' }}>CLOSED</span>
+            <div style={{ fontWeight: 800, fontSize: '16px', color: 'var(--muted)' }}>{m.count_closed || 0}</div>
+          </div>
+        </div>
+
+        <div className="toolbar-group toolbar-filters" style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end", flex: 1 }}>
+          <select value={filters.account_id} onChange={(e) => setFilters((prev) => ({ ...prev, account_id: e.target.value }))}>
+            <option value="">All accounts</option>
+            {(f.accounts || []).map((v) => <option key={v} value={v}>{accountNameById.get(String(v)) || v}</option>)}
+          </select>
+          <select value={filters.symbol} onChange={(e) => setFilters((prev) => ({ ...prev, symbol: e.target.value }))}>
+            <option value="">All symbols</option>
+            {(f.symbols || []).map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+          <select value={filters.source} onChange={(e) => setFilters((prev) => ({ ...prev, source: e.target.value }))}>
+            <option value="">All Sources</option>
+            {(f.sources || []).map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+          <select value={filters.entry_model} onChange={(e) => setFilters((prev) => ({ ...prev, entry_model: e.target.value }))}>
+            <option value="">All Models</option>
+            {(f.entry_models || []).map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+          <select value={filters.direction} onChange={(e) => setFilters((prev) => ({ ...prev, direction: e.target.value }))}>
+            <option value="">All Direction</option>
+            <option value="BUY">Buy</option>
+            <option value="SELL">Sell</option>
+          </select>
+          <select value={filters.chart_tf} onChange={(e) => setFilters((prev) => ({ ...prev, chart_tf: e.target.value }))}>
+            <option value="">Chart TF</option>
+            {(f.chart_tfs || []).map(v => <option key={v} value={v}>{formatTimeframe(v)}</option>)}
+          </select>
+          <select value={filters.signal_tf} onChange={(e) => setFilters((prev) => ({ ...prev, signal_tf: e.target.value }))}>
+            <option value="">Signal TF</option>
+            {(f.signal_tfs || []).map(v => <option key={v} value={v}>{formatTimeframe(v)}</option>)}
+          </select>
+          <select value={filters.range} onChange={(e) => setFilters((prev) => ({ ...prev, range: e.target.value }))}>
+            {RANGE_OPTIONS.map((r) => <option key={r.val} value={r.val}>{r.lab}</option>)}
+          </select>
+        </div>
       </div>
 
       <div className="period-box-grid" style={{ gridTemplateColumns: "repeat(5, 1fr)", gap: '16px' }}>
