@@ -91,7 +91,7 @@ export const TradeSignalChart = ({
           candleSeries.setData(historicalData);
         } else if (binanceSymbol) {
           const resp = await fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${bInterval}&limit=500`);
-          if (!resp.ok) throw new Error(\`Binance API error: \${resp.status}\`);
+          if (!resp.ok) throw new Error(`Binance API error: ${resp.status}`);
           const data = await resp.json();
           const candles = data.map(d => ({
             time: d[0] / 1000,
