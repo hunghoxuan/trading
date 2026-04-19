@@ -4,10 +4,15 @@ import { api } from "../api";
 
 function statusUi(statusRaw) {
   const s = String(statusRaw || "").toUpperCase();
-  if (s === "FILLED" || s === "OPEN") return { cls: "ACTIVE", label: s };
+  if (s === "FILLED") return { cls: "ACTIVE", label: "FILLED" };
+  if (s === "OPEN") return { cls: "ACTIVE", label: "OPEN" };
   if (s === "CLOSED" || s === "CANCELLED") return { cls: "INACTIVE", label: s };
   if (s === "ERROR") return { cls: "FAIL", label: s };
   return { cls: "OTHER", label: s || "PENDING" };
+}
+
+function brokerTicketOf(t) {
+  return String(t?.broker_trade_id || t?.ticket || "").trim() || "-";
 }
 
 function fDateTime(v) {
@@ -63,6 +68,7 @@ export default function TradeDetailPage() {
               <span className={t.action === 'BUY' ? 'side-buy' : 'side-sell'}>{t.action}</span> {t.symbol}
             </h1>
             <div className="minor-text" style={{ marginTop: 4 }}>ID: {t.trade_id}</div>
+            <div className="minor-text" style={{ marginTop: 2 }}>Ticket: {brokerTicketOf(t)}</div>
           </div>
           <div className={`badge ${status.cls}`} style={{ padding: '8px 16px', fontSize: '14px' }}>
             {status.label}
@@ -77,6 +83,10 @@ export default function TradeDetailPage() {
           <div className="detail-item">
             <div className="muted small">SOURCE</div>
             <div style={{ fontWeight: 600 }}>{t.source_id}</div>
+          </div>
+          <div className="detail-item">
+            <div className="muted small">BROKER TICKET</div>
+            <div style={{ fontWeight: 600 }}>{brokerTicketOf(t)}</div>
           </div>
           <div className="detail-item">
             <div className="muted small">ENTRY</div>

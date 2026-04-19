@@ -38,7 +38,7 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-16.15";
+string EA_BUILD_VERSION = "2026-04-19.1157";
 
 input string InpMappingFile = "TVBridge_Mappings.csv";
 
@@ -134,6 +134,14 @@ string   g_lastPullPayload = "None";
 string   g_lastSyncPayload = "None";
 datetime g_lastPullUpdate = 0;
 datetime g_lastSyncUpdate = 0;
+string   g_lastPullSummary = "INIT";
+string   g_lastSyncSummary = "INIT";
+int      g_lastPullCode = 0;
+int      g_lastSyncCode = 0;
+int      g_lastHttpCode = 0;
+string   g_lastHttpError = "";
+string   g_lastHttpUrl = "";
+string   g_lastHttpMethod = "";
 
 string   g_leaseTokenMapSignalId[];
 string   g_leaseTokenMapValue[];
@@ -195,6 +203,148 @@ double JsonGetNumber(const string json, const string key, const double fallback=
    return StringToDouble(StringSubstr(json, s, e - s));
 }
 
+string JsonExtractFirstArrayObject(const string json, const string key)
+{
+   string needle = "\"" + key + "\":[";
+   int arrStart = StringFind(json, needle);
+   if(arrStart < 0) return "";
+   int i = arrStart + StringLen(needle);
+   int n = StringLen(json);
+
+   while(i < n)
+   {
+      int ch = StringGetCharacter(json, i);
+      if(ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n')
+      {
+         i++;
+         continue;
+      }
+      break;
+   }
+   if(i >= n) return "";
+   if(StringGetCharacter(json, i) != '{') return "";
+
+   int objStart = i;
+   int depth = 0;
+   bool inString = false;
+   bool escaped = false;
+   for(; i < n; i++)
+   {
+      int ch = StringGetCharacter(json, i);
+      if(inString)
+      {
+         if(escaped) escaped = false;
+         else if(ch == '\\') escaped = true;
+         else if(ch == '"') inString = false;
+         continue;
+      }
+      if(ch == '"')
+      {
+         inString = true;
+         continue;
+      }
+      if(ch == '{')
+      {
+         depth++;
+         continue;
+      }
+      if(ch == '}')
+      {
+         depth--;
+         if(depth == 0)
+            return StringSubstr(json, objStart, i - objStart + 1);
+      }
+   }
+   return "";
+}
+
+string BuildApiUrl(const string path)
+{
+   string base = InpServerBaseUrl;
+   while(StringLen(base) > 0 && StringGetCharacter(base, StringLen(base) - 1) == '/')
+      base = StringSubstr(base, 0, StringLen(base) - 1);
+
+   string rel = path;
+   if(StringLen(rel) == 0)
+      rel = "/";
+   if(StringGetCharacter(rel, 0) != '/')
+      rel = "/" + rel;
+
+   return base + rel;
+}
+
+string SanitizeOneLine(const string raw, const int maxLen = 140)
+{
+   string out = "";
+   int n = StringLen(raw);
+   for(int i = 0; i < n; ++i)
+   {
+      int ch = StringGetCharacter(raw, i);
+      if(ch == '\r' || ch == '\n' || ch == '\t')
+         out += " ";
+      else
+         out += StringSubstr(raw, i, 1);
+      if(StringLen(out) >= maxLen)
+         break;
+   }
+   StringTrimLeft(out);
+   StringTrimRight(out);
+   if(StringLen(raw) > StringLen(out))
+      out += "...";
+   return out;
+}
+
+string ExtractApiError(const string body)
+{
+   string msg = JsonGetString(body, "error");
+   if(msg != "")
+      return msg;
+   msg = JsonGetString(body, "message");
+   if(msg != "")
+      return msg;
+   return SanitizeOneLine(body, 120);
+}
+
+string ApiKeyMask()
+{
+   string k = InpEaApiKey;
+   StringTrimLeft(k);
+   StringTrimRight(k);
+   int n = StringLen(k);
+   if(n <= 0) return "(empty)";
+   string prefix = n >= 4 ? StringSubstr(k, 0, 4) : k;
+   string last4 = n >= 4 ? StringSubstr(k, n - 4, 4) : k;
+   return prefix + "***" + last4;
+}
+
+string ApiKeyHint()
+{
+   string k = InpEaApiKey;
+   StringTrimLeft(k);
+   StringTrimRight(k);
+   if(StringLen(k) == 0)
+      return "MISSING";
+   if(StringFind(k, "acc_") != 0)
+      return "INVALID_PREFIX";
+   return "OK";
+}
+
+int CountOccurrences(const string haystack, const string needle)
+{
+   int cnt = 0;
+   int at = 0;
+   int step = StringLen(needle);
+   if(step <= 0) return 0;
+   while(true)
+   {
+      int p = StringFind(haystack, needle, at);
+      if(p < 0) break;
+      cnt++;
+      at = p + step;
+   }
+   return cnt;
+}
+
 bool HttpGet(const string url, string &response)
 {
    char post[];
@@ -203,17 +353,26 @@ bool HttpGet(const string url, string &response)
    string headers = "";
    if(StringLen(InpEaApiKey) > 0)
       headers = "x-api-key: " + InpEaApiKey + "\r\n";
+   g_lastHttpMethod = "GET";
+   g_lastHttpUrl = url;
+   g_lastHttpCode = 0;
+   g_lastHttpError = "";
    ResetLastError();
    int code = WebRequest("GET", url, headers, 5000, post, result, headers);
    if(code == -1)
    {
-      Print("WebRequest GET failed: ", GetLastError(), " url=", url);
+      int err = GetLastError();
+      g_lastHttpCode = -1;
+      g_lastHttpError = "webrequest_error=" + IntegerToString(err);
+      Print("WebRequest GET failed: ", err, " url=", url);
       return false;
    }
+   g_lastHttpCode = code;
    response = CharArrayToString(result);
    if(code < 200 || code >= 300)
    {
-      Print("GET non-2xx code=", code, " body=", response);
+      g_lastHttpError = ExtractApiError(response);
+      Print("GET non-2xx code=", code, " err=", g_lastHttpError, " url=", url);
       return false;
    }
    return true;
@@ -233,14 +392,24 @@ bool HttpPostJsonWithResponse(const string url, const string body, string &respo
    string headers = "Content-Type: application/json\r\n";
    if(StringLen(InpEaApiKey) > 0)
       headers += "x-api-key: " + InpEaApiKey + "\r\n";
+   g_lastHttpMethod = "POST";
+   g_lastHttpUrl = url;
+   g_lastHttpCode = 0;
+   g_lastHttpError = "";
    ResetLastError();
    int code = WebRequest("POST", url, headers, 5000, data, result, headers);
    if(code == -1)
    {
-      response = "Error=" + IntegerToString(GetLastError());
+      int err = GetLastError();
+      g_lastHttpCode = -1;
+      g_lastHttpError = "webrequest_error=" + IntegerToString(err);
+      response = "Error=" + IntegerToString(err);
       return false;
    }
+   g_lastHttpCode = code;
    response = CharArrayToString(result);
+   if(code < 200 || code >= 300)
+      g_lastHttpError = ExtractApiError(response);
    return (code >= 200 && code < 300);
 }
 
@@ -938,15 +1107,15 @@ string NormalizeOrderType(const string orderTypeRaw)
 
 string ResolvePendingKind(const string action, const string orderType, const double entry, const double ask, const double bid)
 {
-   if(orderType == "stop")
-      return "stop";
-   if(orderType == "limit")
-      return "limit";
-   // Auto (market/unknown): infer by side + entry position.
+   double eps = MathMax(0.00000001, MathAbs(entry) * 0.0000001);
+
+   // Normalize pending kind by side + entry/current relation to avoid broker "invalid price".
+   // BUY: entry below ask => LIMIT, otherwise STOP.
+   // SELL: entry above bid => LIMIT, otherwise STOP.
    if(action == "BUY")
-      return (entry < ask ? "limit" : "stop");
+      return (entry <= (ask - eps) ? "limit" : "stop");
    if(action == "SELL")
-      return (entry > bid ? "limit" : "stop");
+      return (entry >= (bid + eps) ? "limit" : "stop");
    return "limit";
 }
 
@@ -1017,11 +1186,22 @@ void RefreshDebugPanel()
    string mode = InpBacktestMode ? "BACKTEST" : "LIVE";
    string stPull = g_lastPullUpdate > 0 ? (" [" + TimeToString(g_lastPullUpdate, TIME_SECONDS) + "]") : "";
    string stSync = g_lastSyncUpdate > 0 ? (" [" + TimeToString(g_lastSyncUpdate, TIME_SECONDS) + "]") : "";
+   string authHint = ApiKeyHint();
+   int ackQ = ArraySize(g_ackQSignalId);
+   int stopQ = ArraySize(g_stopRetrySignalId);
+   int posCnt = PositionsTotal();
+   int ordCnt = OrdersTotal();
    string text =
       "TVBridgeEA | Build " + EA_BUILD_VERSION + " (" + mode + ")\n" +
       "--------------------------------------------------\n" +
-      "LAST PULL (GET)" + stPull + ":\n" + g_lastPullPayload + "\n\n" +
-      "LAST SYNC (PUSH)" + stSync + ":\n" + g_lastSyncPayload;
+      "Account=" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "  Poll=" + IntegerToString(InpPollSeconds) + "s\n" +
+      "API Key=" + ApiKeyMask() + "  AuthHint=" + authHint + "\n" +
+      "PULL" + stPull + " code=" + IntegerToString(g_lastPullCode) + " :: " + g_lastPullSummary + "\n" +
+      "SYNC" + stSync + " code=" + IntegerToString(g_lastSyncCode) + " :: " + g_lastSyncSummary + "\n" +
+      "LAST SIGNAL: " + g_dbgLastStatus + " | " + g_dbgLastAction + " " + g_dbgLastSymbol + " | id=" + g_dbgLastSignalId + "\n" +
+      "Queues: ack=" + IntegerToString(ackQ) + " stopRetry=" + IntegerToString(stopQ) + " | Terminal: pos=" + IntegerToString(posCnt) + " ord=" + IntegerToString(ordCnt);
+   if(authHint != "OK")
+      text += "\nHint: rotate account API key in UI, then paste latest acc_... into InpEaApiKey.";
    Comment(text);
 }
 
@@ -1457,7 +1637,6 @@ bool ComputeMarginPercentVolume(const string action,
 
 void Ack(const string signalId, const string status, const string ticket, const string err)
 {
-   string url = InpServerBaseUrl + "/mt5/ea/ack";
    string ackNote = "action=" + g_ackAction
                     + " symbol=" + g_ackSymbol
                     + " reqVol=" + DoubleToString(g_ackReqVolume, 4)
@@ -1477,7 +1656,9 @@ void Ack(const string signalId, const string status, const string ticket, const 
    body += "\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",";
    body += "\"signal_id\":\"" + JsonEscape(signalId) + "\",";
    body += "\"status\":\"" + JsonEscape(status) + "\",";
+   body += "\"execution_status\":\"" + JsonEscape(status) + "\",";
    body += "\"ticket\":\"" + JsonEscape(ticket) + "\",";
+   body += "\"broker_trade_id\":\"" + JsonEscape(ticket) + "\",";
    body += "\"error\":\"" + JsonEscape(err) + "\",";
    body += "\"result\":\"" + JsonEscape(IntegerToString(g_ackRetcode)) + "\",";
    body += "\"message\":\"" + JsonEscape(g_ackRetmsg) + "\",";
@@ -1553,17 +1734,35 @@ void ProcessAckQueue()
          }
       }
 
-      string url;
-      if(tradeId != "") {
-         url = InpServerBaseUrl + "/v2/broker/trades/" + tradeId + "/ack";
-      } else {
-         url = InpServerBaseUrl + "/mt5/ea/ack";
-      }
+      string url = BuildApiUrl("/v2/broker/ack");
 
       string body = g_ackQBody[i];
-      // If we have a lease token, ensure it's in the body for V2 ack
+      // For v2 ack, trade_id + lease_token are required.
+      if(tradeId != "" && StringFind(body, "\"trade_id\"") < 0) {
+         body = StringSubstr(body, 0, StringLen(body)-1) + ",\"trade_id\":\"" + JsonEscape(tradeId) + "\"}";
+      }
       if(leaseToken != "" && StringFind(body, "\"lease_token\"") < 0) {
-         body = StringSubstr(body, 0, StringLen(body)-1) + ",\"lease_token\":\"" + leaseToken + "\"}";
+         body = StringSubstr(body, 0, StringLen(body)-1) + ",\"lease_token\":\"" + JsonEscape(leaseToken) + "\"}";
+      }
+      if(StringFind(body, "\"trade_id\"") < 0 || StringFind(body, "\"lease_token\"") < 0) {
+         Print("Reliable Ack SKIP (missing v2 context): id=", signalId, " trade_id=", tradeId, " lease_token=", leaseToken);
+         g_ackQRetryCount[i]++;
+         if(g_ackQRetryCount[i] >= 100)
+         {
+            Print("Reliable Ack GAVE UP (missing v2 context): id=", signalId);
+            continue;
+         }
+         if(w != i)
+         {
+            g_ackQSignalId[w] = g_ackQSignalId[i];
+            g_ackQStatus[w] = g_ackQStatus[i];
+            g_ackQTicket[w] = g_ackQTicket[i];
+            g_ackQError[w] = g_ackQError[i];
+            g_ackQBody[w] = g_ackQBody[i];
+            g_ackQRetryCount[w] = g_ackQRetryCount[i];
+         }
+         w++;
+         continue;
       }
 
       if(HttpPostJson(url, body))
@@ -2344,40 +2543,42 @@ void OnTimer()
       g_syncLastTime = now;
    }
 
-   string url = InpServerBaseUrl + "/v2/broker/pull?account=" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN));
+   string url = BuildApiUrl("/v2/broker/pull?account=" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)));
    string resp;
    if(!HttpGet(url, resp))
    {
-      g_lastPullPayload = "GET FAILED: " + url;
+      g_lastPullCode = g_lastHttpCode;
+      g_lastPullSummary = "FAIL " + g_lastHttpMethod + " " + SanitizeOneLine(g_lastHttpUrl, 64) + " | " + g_lastHttpError;
+      g_lastPullPayload = g_lastPullSummary;
       g_lastPullUpdate = TimeCurrent();
       RefreshDebugPanel();
       return;
    }
 
-   g_lastPullPayload = resp;
+   g_lastPullCode = g_lastHttpCode;
+   g_lastPullPayload = SanitizeOneLine(resp, 220);
    g_lastPullUpdate = TimeCurrent();
 
-   if(StringFind(resp, "\"item\":null") >= 0 || StringFind(resp, "\"item\":{}") >= 0)
+   if(StringFind(resp, "\"items\":[]") >= 0 || StringFind(resp, "\"items\":null") >= 0)
    {
+      g_lastPullSummary = "OK no queued trades";
       RefreshDebugPanel();
       return;
    }
 
-   string leaseToken = JsonGetString(resp, "lease_token");
-   
-   // Extract signal_id by looking inside "item" manually or use full match
-   string signalId = JsonGetString(resp, "signal_id"); // Fallback if flat
-   if(signalId == "") {
-      int idxItem = StringFind(resp, "\"item\":");
-      if(idxItem >= 0) {
-         string itemJson = StringSubstr(resp, idxItem);
-         signalId = JsonGetString(itemJson, "signal_id");
-      }
+   string itemPart = JsonExtractFirstArrayObject(resp, "items");
+   if(itemPart == "")
+   {
+      g_lastPullSummary = "OK but cannot parse items payload";
+      RefreshDebugPanel();
+      return;
    }
-   
-   string tradeId = "";
-   int idxTid = StringFind(resp, "\"trade_id\":");
-   if(idxTid >= 0) tradeId = JsonGetString(StringSubstr(resp, idxTid), "trade_id");
+
+   string leaseToken = JsonGetString(itemPart, "lease_token");
+   string tradeId = JsonGetString(itemPart, "trade_id");
+   string signalId = JsonGetString(itemPart, "signal_id");
+   if(signalId == "")
+      signalId = tradeId;
    
    // Track V2 context
    if(signalId != "" && leaseToken != "") {
@@ -2395,10 +2596,6 @@ void OnTimer()
       g_tradeIdMapValue[nT] = tradeId;
    }
 
-   string itemPart = resp;
-   int itemStart = StringFind(resp, "\"item\":{");
-   if(itemStart >= 0) itemPart = StringSubstr(resp, itemStart);
-
    string action   = JsonGetString(itemPart, "action");
    if(action == "") action = JsonGetString(itemPart, "side"); // V2 mapping
    
@@ -2415,6 +2612,11 @@ void OnTimer()
    
    string orderType = JsonGetString(itemPart, "order_type");
    if(StringLen(orderType) == 0) orderType = "market";
+   int itemCount = CountOccurrences(resp, "\"trade_id\"");
+   g_lastPullSummary = "OK items=" + IntegerToString(itemCount) +
+                       " trade=" + tradeId +
+                       " " + action + " " + symbolIn +
+                       " " + orderType;
    
    double sl       = JsonGetNumber(itemPart, "sl", 0.0);
    if(sl <= 0) sl = JsonGetNumber(itemPart, "intent_sl", 0.0);
@@ -2424,12 +2626,12 @@ void OnTimer()
    
    datetime signalTs = (datetime)JsonGetNumber(itemPart, "created_at_ts", 0.0);
    if(!IsPlausibleEpochTs(signalTs))
-      signalTs = (datetime)JsonGetNumber(resp, "timestamp", 0.0);
+      signalTs = (datetime)JsonGetNumber(itemPart, "timestamp", 0.0);
    if(!IsPlausibleEpochTs(signalTs))
    {
-      string tsIso = JsonGetString(resp, "timestamp_iso");
+      string tsIso = JsonGetString(itemPart, "timestamp_iso");
       if(StringLen(tsIso) == 0)
-         tsIso = JsonGetString(resp, "timestamp");
+         tsIso = JsonGetString(itemPart, "timestamp");
       signalTs = ParseSignalTime(tsIso);
    }
    if(!IsPlausibleEpochTs(signalTs))
@@ -2683,6 +2885,9 @@ void SyncWithVps()
    // [STATE DETECTION] If total state hasn't changed, skip webhook
    if(stateHash == g_lastStateHash) {
       g_lastSyncPayload = "STABLE (No changes)";
+      g_lastSyncCode = 0;
+      g_lastSyncSummary = "SKIP stable (no changes)";
+      g_lastSyncUpdate = TimeCurrent();
       RefreshDebugPanel();
       return;
    }
@@ -2694,15 +2899,28 @@ void SyncWithVps()
    body += "\"orders\":[" + ordUpdates + "]";
    body += "}";
    
-   string url = InpServerBaseUrl + "/v2/broker/sync";
+   string url = BuildApiUrl("/v2/broker/sync");
    string resp = "";
    if(HttpPostJsonWithResponse(url, body, resp))
    {
-      g_lastSyncPayload = "V2 OK: " + StringSubstr(resp, 0, 150);
+      g_lastSyncCode = g_lastHttpCode;
+      int synced = (int)JsonGetNumber(resp, "synced", -1);
+      int matched = (int)JsonGetNumber(resp, "matched", -1);
+      int received = (int)JsonGetNumber(resp, "received", -1);
+      g_lastSyncSummary = "OK pushed pos=" + IntegerToString(posCount) + " ord=" + IntegerToString(ordCount);
+      if(synced >= 0 || matched >= 0 || received >= 0)
+      {
+         g_lastSyncSummary += " | synced=" + IntegerToString(synced) +
+                              " matched=" + IntegerToString(matched) +
+                              " recv=" + IntegerToString(received);
+      }
+      g_lastSyncPayload = "V2 OK: " + SanitizeOneLine(resp, 150);
    }
    else
    {
-      g_lastSyncPayload = "V2 FAIL: " + StringSubstr(resp, 0, 150);
+      g_lastSyncCode = g_lastHttpCode;
+      g_lastSyncSummary = "FAIL " + g_lastHttpMethod + " " + SanitizeOneLine(g_lastHttpUrl, 64) + " | " + g_lastHttpError;
+      g_lastSyncPayload = "V2 FAIL: " + SanitizeOneLine(resp, 150);
       g_lastStateHash = ""; 
    }
    g_lastSyncUpdate = TimeCurrent();
@@ -2731,6 +2949,7 @@ int OnInit()
    EventSetTimer(MathMax(InpPollSeconds, 1));
    Print("TVBridgeEA initialized. Add URL to MT5 WebRequest allow-list: ", InpServerBaseUrl);
    Print("TVBridgeEA build: ", EA_BUILD_VERSION);
+   Print("TVBridgeEA auth: key=", ApiKeyMask(), " hint=", ApiKeyHint());
    g_dbgLastStatus = "LIVE_READY";
    g_dbgLastTime = TimeCurrent();
    RefreshDebugPanel();

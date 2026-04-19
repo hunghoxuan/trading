@@ -1,7 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 
-const STATUS_OPTIONS = ["", "NEW", "LOCKED", "PLACED", "START", "FAIL", "TP", "SL", "CANCEL", "EXPIRED"];
+const STATUS_OPTIONS = [
+  { value: "", label: "ALL STATUSES" },
+  { value: "NEW", label: "NEW" },
+  { value: "LOCKED", label: "LOCKED" },
+  { value: "PLACED", label: "PLACED" },
+  { value: "START", label: "START" },
+  { value: "TP", label: "TP" },
+  { value: "SL", label: "SL" },
+  { value: "CANCEL", label: "CANCEL" },
+  { value: "FAIL", label: "FAIL" },
+  { value: "EXPIRED", label: "EXPIRED" },
+];
 const BULK_ACTIONS = ["", "Download CSV", "Renew All", "Cancel All", "Delete All"];
 const RANGE_OPTIONS = [
   { val: "all", lab: "All times" },
@@ -14,6 +25,7 @@ const RANGE_OPTIONS = [
   { val: "year", lab: "This Year" },
 ];
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
+const AUTO_REFRESH_MS = 5000;
 
 function fPrice(v1, v2) {
   const n1 = Number(v1);
@@ -41,7 +53,12 @@ function PnlDisplay({ value }) {
   const cls = n > 0 ? "money-pos" : "money-neg";
   const abs = Math.abs(n);
   const str = `$${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return <div className={`cell-minor ${cls}`} style={{ fontWeight: 800 }}>{n < 0 ? `-${str}` : str}</div>;
+  return <div className={`cell-minor ${cls}`}>{n < 0 ? `-${str}` : str}</div>;
+}
+
+function asNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 function fDateTime(v) {
@@ -79,6 +96,7 @@ export default function SignalsPage() {
   const [advFilters, setAdvFilters] = useState({ sources: [], entry_models: [], chart_tfs: [], signal_tfs: [] });
   const [createMode, setCreateMode] = useState(false);
   const [createMsg, setCreateMsg] = useState("");
+  const [lastRefreshAt, setLastRefreshAt] = useState(null);
   const [createForm, setCreateForm] = useState({
     action: "BUY",
     symbol: "",
@@ -109,10 +127,13 @@ export default function SignalsPage() {
 
   async function loadSymbols() {
     try {
-      const data = await api.filtersAdvanced();
+      const [data, src] = await Promise.all([api.filtersAdvanced(), api.v2Sources()]);
+      const srcFromTrades = data.sources || [];
+      const srcFromV2 = (src?.items || []).map((x) => String(x.name || x.source_id || "")).filter(Boolean);
+      const sources = [...new Set([...srcFromTrades, ...srcFromV2])].sort();
       setSymbols(data.symbols || []);
       setAdvFilters({
-        sources: data.sources || [],
+        sources,
         entry_models: data.entry_models || [],
         chart_tfs: data.chart_tfs || [],
         signal_tfs: data.signal_tfs || [],
@@ -126,10 +147,16 @@ export default function SignalsPage() {
     try {
       setLoading(true);
       const data = await api.trades(query);
-      setRows(data.trades || []);
+      const nextRows = data.trades || [];
+      setRows(nextRows);
       setTotal(data.total || 0);
       setPages(data.pages || 1);
       setError("");
+      setLastRefreshAt(new Date());
+      if (selectedSignal?.signal_id) {
+        const refreshed = nextRows.find((x) => x.signal_id === selectedSignal.signal_id);
+        if (refreshed) setSelectedSignal(refreshed);
+      }
     } catch (e) {
       setError(e?.message || "Failed to load signals");
     } finally {
@@ -212,16 +239,31 @@ export default function SignalsPage() {
 
   useEffect(() => { loadSymbols(); }, []);
   useEffect(() => { loadSignals(); }, [query]);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      loadSignals();
+      if (selectedSignal?.signal_id) {
+        loadSignalDetail(selectedSignal.signal_id);
+      }
+    }, AUTO_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [query, selectedSignal?.signal_id]);
 
   const allSelected = rows.length > 0 && rows.every(r => selectedIds.has(r.signal_id));
 
   return (
     <section className="logs-page-container stack-layout">
-      <h2 className="page-title">Signals</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <h2 className="page-title" style={{ margin: 0 }}>Signals</h2>
+        <span className="minor-text" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+          Last refreshed: {lastRefreshAt ? lastRefreshAt.toLocaleTimeString() : "-"} (auto 5s)
+        </span>
+      </div>
       <div className="toolbar-panel">
         <div className="toolbar-group toolbar-pagination">
           <div className="pager-area">
-            <strong>{total}</strong> RESULTS
+            <strong>{total}</strong>
             {pages > 1 && (
               <div className="pager-mini">
                 <button className="secondary-button" disabled={filter.page <= 1} onClick={() => setFilter(f => ({ ...f, page: f.page - 1 }))}>PREV</button>
@@ -250,7 +292,7 @@ export default function SignalsPage() {
             {symbols.map(s => <option key={s}>{s}</option>)}
           </select>
           <select value={filter.status} onChange={(e) => setFilter(f => ({ ...f, status: e.target.value, page: 1 }))}>
-            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s || "ALL STATUSES"}</option>)}
+            {STATUS_OPTIONS.map(s => <option key={s.value || "all"} value={s.value}>{s.label}</option>)}
           </select>
           <select value={filter.source} onChange={(e) => setFilter(f => ({ ...f, source: e.target.value, page: 1 }))}>
             <option value="">ALL SOURCES</option>
@@ -322,6 +364,9 @@ export default function SignalsPage() {
                   const status = statusUi(t.status);
                   const sideValue = String(t.action || t.side || '-').toUpperCase();
                   const sideCls = sideValue === 'BUY' ? 'side-buy' : 'side-sell';
+                  const sourceLabel = String(t.source || "-");
+                  const sourceId = String(t.source_id || "-");
+                  const signalShort = String(t.signal_id || "").slice(-8) || "-";
                   
                   return (
                     <tr 
@@ -347,22 +392,22 @@ export default function SignalsPage() {
                       <td>
                         <div className="cell-wrap">
                           <div className="cell-major"><span className={sideCls}>{sideValue}</span> {t.symbol}</div>
-                          <div className="cell-minor">{t.source || 'signal'} | {t.signal_id.slice(-8)} {t.ack_ticket ? `| #${t.ack_ticket}` : ''}</div>
+                          <div className="cell-minor">{sourceLabel} | {sourceId} | signal {signalShort}</div>
                         </div>
                       </td>
                       <td>
                         <div className="cell-wrap">
                           <div className="cell-major">
-                            {fPrice(t.entry, t.target_price || t.entry_price)} → {fPrice(t.tp)} / {fPrice(t.sl)}
+                            Entry: {fPrice(t.entry, t.target_price || t.entry_price)} → {fPrice(t.tp)} / {fPrice(t.sl)}
                           </div>
                           <div className="cell-minor">
-                            {formatTimeframe(t.chart_tf)} | {formatTimeframe(t.signal_tf)} | {t.rr_planned || '0'} rr | {t.volume || '0'} lots
+                            {(t.entry_model || "-")} | {formatTimeframe(t.chart_tf)} | {formatTimeframe(t.signal_tf)} | {(asNum(t.rr_planned) ?? 0).toFixed(2)} rr
                           </div>
                         </div>
                       </td>
                       <td>
                         <div className="cell-wrap">
-                          <div className="cell-major">{fDateTime(t.created_at)}</div>
+                          <div className="cell-major">{fDateTime(t.closed_at || t.opened_at || t.created_at)}</div>
                           <div className="cell-minor">{t.note || 'No note'}</div>
                         </div>
                       </td>
@@ -454,6 +499,20 @@ export default function SignalsPage() {
                 </div>
               </div>
 
+              <div className="panel" style={{ padding: 12, marginBottom: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 8 }}>
+                  <div><span className="minor-text">Signal ID</span><div>{selectedSignal.signal_id || "-"}</div></div>
+                  <div><span className="minor-text">Source</span><div>{selectedSignal.source || "-"}</div></div>
+                  <div><span className="minor-text">Entry Model</span><div>{selectedSignal.entry_model || "-"}</div></div>
+                  <div><span className="minor-text">Chart TF</span><div>{formatTimeframe(selectedSignal.chart_tf || "-")}</div></div>
+                  <div><span className="minor-text">Signal TF</span><div>{formatTimeframe(selectedSignal.signal_tf || "-")}</div></div>
+                  <div><span className="minor-text">Entry</span><div>{fPrice(selectedSignal.entry, selectedSignal.target_price || selectedSignal.entry_price)}</div></div>
+                  <div><span className="minor-text">TP/SL</span><div>{fPrice(selectedSignal.tp)} / {fPrice(selectedSignal.sl)}</div></div>
+                  <div><span className="minor-text">Volume</span><div>{selectedSignal.volume || "-"}</div></div>
+                  <div><span className="minor-text">Note</span><div>{selectedSignal.note || "-"}</div></div>
+                </div>
+              </div>
+
               <div style={{ marginTop: '20px' }}>
                 <div className="panel-label">HISTORY</div>
                 {!(signalDetails?.events || signalDetails?.items) ? (
@@ -463,7 +522,8 @@ export default function SignalsPage() {
                     {[...(signalDetails?.events || signalDetails?.items || [])].sort((a,b) => new Date(b.event_time || b.created_at || 0) - new Date(a.event_time || a.created_at || 0)).map((ev) => {
                       let stTxt = "";
                       let stCls = "OTHER";
-                      const tType = String(ev.event_type || "");
+                      const payload = ev.payload_json || ev.metadata || {};
+                      const tType = String(ev.event_type || payload.event_type || payload.event || ev.type || "");
                       if (tType.startsWith("EA_ACK_")) {
                          const raw = tType.replace("EA_ACK_", "");
                          stTxt = raw;
@@ -474,36 +534,15 @@ export default function SignalsPage() {
                         <div key={`${ev.id || ev.event_id || ev.created_at || Math.random()}`} className="panel" style={{ margin: 0, padding: '16px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span className="panel-label" style={{ margin: 0 }}>{ev.event_type || ev.type || "EVENT"}</span>
+                              <span className="panel-label" style={{ margin: 0 }}>{tType || "EVENT"}</span>
                               {stTxt && <span className={`badge ${stCls}`}>{stTxt}</span>}
                             </div>
                             <span className="minor-text">{fDateTime(ev.event_time || ev.created_at)}</span>
                           </div>
                           <div className="json-table-wrapper">
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                              <tbody>
-                                  {Object.entries(ev.payload_json || {}).map(([k, v]) => {
-                                    let label = k.replace(/_/g, ' ').toUpperCase();
-                                    if (label === 'SOURCE TF') label = 'SIGNAL TF';
-                                    if (label === 'CHART TF PERIOD') label = 'CHART TF';
-                                    
-                                    return (
-                                      <tr key={k} style={{ borderBottom: '1px solid var(--border)' }}>
-                                        <td className="minor-text" style={{ padding: '8px 0', width: '30%', fontWeight: 700, color: 'var(--muted)' }}>{label}</td>
-                                        <td className="minor-text" style={{ padding: '8px 0', color: 'var(--text)' }}>
-                                          {k.toLowerCase().includes('tf') || k.toLowerCase().includes('timeframe') ? formatTimeframe(v) : (typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v))}
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                  {Object.entries(ev.payload_json || {}).length === 0 ? (
-                                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                                      <td className="minor-text" style={{ padding: '8px 0', width: '30%', fontWeight: 700, color: 'var(--muted)' }}>NO PAYLOAD</td>
-                                      <td className="minor-text" style={{ padding: '8px 0', color: 'var(--text)' }}>-</td>
-                                    </tr>
-                                  ) : null}
-                              </tbody>
-                            </table>
+                            <pre className="minor-text" style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                              {JSON.stringify(payload || {}, null, 2)}
+                            </pre>
                           </div>
                         </div>
                       );

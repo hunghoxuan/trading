@@ -1,0 +1,78 @@
+//@version=5
+indicator("Test - Random Webhook 30s", overlay=true, max_labels_count=500)
+import hunghoxuan/KitCore/84
+
+// Best-effort 30s scheduler for realtime bars.
+// Note: TradingView only evaluates when chart updates, so exact 30s cadence depends on market ticks.
+intervalSec = input.int(30, "Alert interval (sec)", minval=5, maxval=300)
+enabled = input.bool(true, "Enable random webhook alerts")
+baseVolume = input.float(0.01, "Volume", minval=0.01, step=0.01)
+limitOffsetTicks = input.int(15, "Limit offset (ticks)", minval=1, maxval=200)
+slTicks = input.int(80, "SL distance (ticks)", minval=2, maxval=2000)
+tpTicks = input.int(120, "TP distance (ticks)", minval=2, maxval=4000)
+showMarkers = input.bool(true, "Show chart markers")
+
+var int lastFireMs = na
+var int seq = 0
+
+f_rand_int(int seed, int mod) =>
+    // Deterministic pseudo-random from current realtime context.
+    int(math.abs(math.floor(math.sin(seed * 0.000123) * 1000000.0))) % mod
+
+f_new_id(int nowMs) =>
+    "rnd_" + str.tostring(nowMs) + "_" + str.tostring(bar_index) + "_" + str.tostring(seq)
+
+if enabled and barstate.isrealtime
+    int nowMs = timenow
+    bool shouldFire = na(lastFireMs) or (nowMs - lastFireMs >= intervalSec * 1000)
+    if shouldFire
+        seq += 1
+        int seed = nowMs + bar_index * 997 + seq * 7919
+        bool isBuy = f_rand_int(seed, 2) == 0
+        string side = isBuy ? "BUY" : "SELL"
+        bool isMarket = f_rand_int(seed + 17, 2) == 0
+        string orderType = isMarket ? "market" : "limit"
+
+        float tick = syminfo.mintick
+        float entry = close
+        if not isMarket
+            float off = limitOffsetTicks * tick
+            entry := isBuy ? (close - off) : (close + off)
+
+        float sl = isBuy ? (entry - slTicks * tick) : (entry + slTicks * tick)
+        float tp = isBuy ? (entry + tpTicks * tick) : (entry - tpTicks * tick)
+
+        string signalId = f_new_id(nowMs)
+        string note = "random_30s_test|" + orderType + "|vol=" + str.tostring(baseVolume)
+        string signalTf = timeframe.period
+        string chartTf = timeframe.period
+        string entryModel = "random_webhook_test"
+        KitCore.emit_trade_webhook_new_trade(
+         enabled,
+         true,
+         "tv_random_test",
+         syminfo.ticker,
+         side,
+         signalTf,
+         entry,
+         sl,
+         tp,
+         note,
+         signalId,
+         "ctrader",
+         "PENDING",
+         na,
+         entryModel,
+         na,
+         na,
+         time,
+         "random_30s",
+         chartTf
+         )
+
+        if showMarkers
+            label.new(bar_index, close, side + " " + orderType + "\n" + signalId, style=label.style_label_down, textcolor=color.white, color=color.new(isBuy ? color.green : color.red, 0), size=size.tiny)
+
+        lastFireMs := nowMs
+
+plotchar(enabled ? 1 : 0, title="Enabled", char="•", location=location.top, color=enabled ? color.lime : color.gray)

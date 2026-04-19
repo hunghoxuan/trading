@@ -23,6 +23,9 @@ echo "[deploy] vps_host=${VPS_HOST} app_dir=${VPS_APP_DIR} service_mode=${SERVIC
 
 cd "${ROOT_DIR}"
 
+echo "[deploy] enforcing build-version rule"
+bash scripts/check_build_versions.sh "origin/${BRANCH}"
+
 echo "[deploy] skipping local syntax check (node missing in path)"
 
 if [[ "${PUSH_FIRST}" == "1" ]]; then

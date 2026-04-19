@@ -26,7 +26,8 @@ export default function SourcesPage() {
   const [rotatedSecret, setRotatedSecret] = useState("");
   const [secretLast4, setSecretLast4] = useState("");
   const [secretPlain, setSecretPlain] = useState("");
-  const [mode, setMode] = useState("create");
+  const [revealSecret, setRevealSecret] = useState(false);
+  const [mode, setMode] = useState("view");
   const [form, setForm] = useState({
     source_id: newId("src"),
     name: "",
@@ -74,6 +75,12 @@ export default function SourcesPage() {
 
   useEffect(() => { loadSources(); }, []);
   useEffect(() => { setPage(1); }, [q, kindFilter, statusFilter, pageSize]);
+  useEffect(() => {
+    if (mode === "edit" && selectedSourceId && !rows.some((r) => String(r.source_id || "") === String(selectedSourceId))) {
+      setMode("view");
+      setSelectedSourceId("");
+    }
+  }, [rows, mode, selectedSourceId]);
 
   function openCreateMode() {
     setMode("create");
@@ -81,6 +88,7 @@ export default function SourcesPage() {
     setRotatedSecret("");
     setSecretLast4("");
     setSecretPlain("");
+    setRevealSecret(false);
     setForm({
       source_id: newId("src"),
       name: "",
@@ -97,6 +105,7 @@ export default function SourcesPage() {
     const metadata = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
     setSecretLast4(String(metadata.auth_secret_last4 || ""));
     setSecretPlain("");
+    setRevealSecret(false);
     setForm({
       source_id: String(row.source_id || ""),
       name: String(row.name || ""),
@@ -165,9 +174,9 @@ export default function SourcesPage() {
     }
   }
 
-  async function onRotateSecret() {
+  async function onRevokeAndRegenerateSecret() {
     if (mode === "create") return;
-    if (!window.confirm(`Rotate auth secret for source ${form.source_id}?`)) return;
+    if (!window.confirm(`Revoke current auth secret and generate a new secret for source ${form.source_id}?`)) return;
     setSaving(true);
     try {
       const out = await api.v2RotateSourceSecret(form.source_id);
@@ -175,28 +184,11 @@ export default function SourcesPage() {
       setRotatedSecret(nextPlain);
       setSecretPlain(nextPlain);
       setSecretLast4(String(out?.source_secret_last4 || nextPlain.slice(-4) || ""));
-      setMsg({ type: "warning", text: "Source secret rotated. Save this value now." });
+      setRevealSecret(false);
+      setMsg({ type: "warning", text: "Source secret replaced with a new one." });
       await loadSources();
     } catch (e) {
-      setMsg({ type: "error", text: e?.message || "Failed to rotate source secret" });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function onRevokeSecret() {
-    if (mode === "create") return;
-    if (!window.confirm(`Revoke auth secret for source ${form.source_id}?`)) return;
-    setSaving(true);
-    try {
-      await api.v2RevokeSourceSecret(form.source_id);
-      setRotatedSecret("");
-      setSecretPlain("");
-      setSecretLast4("");
-      setMsg({ type: "warning", text: "Source secret revoked." });
-      await loadSources();
-    } catch (e) {
-      setMsg({ type: "error", text: e?.message || "Failed to revoke source secret" });
+      setMsg({ type: "error", text: e?.message || "Failed to replace source secret" });
     } finally {
       setSaving(false);
       window.setTimeout(() => setMsg(EMPTY_MSG), 2200);
@@ -205,7 +197,7 @@ export default function SourcesPage() {
 
   async function onCopySecret() {
     if (!secretPlain) {
-      setMsg({ type: "warning", text: "No plaintext secret available. Rotate first, then copy." });
+      setMsg({ type: "warning", text: "No plaintext secret available. Revoke to generate one, then copy." });
       return;
     }
     try {
@@ -224,7 +216,7 @@ export default function SourcesPage() {
       <div className="toolbar-panel">
         <div className="toolbar-group toolbar-pagination">
           <div className="pager-area">
-            <strong>{filtered.length}</strong> RESULTS
+            <strong>{filtered.length}</strong>
             {pages > 1 ? (
               <div className="pager-mini">
                 <button className="secondary-button" disabled={safePage <= 1} onClick={() => setPage((p) => p - 1)}>PREV</button>
@@ -293,12 +285,11 @@ export default function SourcesPage() {
         </div>
 
         <div className="logs-detail-pane">
-          <div className="stack-layout" style={{ gap: 14 }}>
-            <div className="panel-label" style={{ marginBottom: 0 }}>{mode === "create" ? "CREATE SOURCE" : "EDIT SOURCE"}</div>
-
-            {rotatedSecret ? (
-              <div className="form-message msg-warning">New source secret (shown once): <code>{rotatedSecret}</code></div>
-            ) : null}
+          {!(mode === "create" || (mode === "edit" && selectedSourceId)) ? (
+            <div className="empty-state minor-text">SELECT A SOURCE TO INSPECT DETAIL</div>
+          ) : (
+            <div className="stack-layout" style={{ gap: 14 }}>
+              <div className="panel-label" style={{ marginBottom: 0 }}>{mode === "create" ? "CREATE SOURCE" : "EDIT SOURCE"}</div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 10 }}>
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -339,17 +330,31 @@ export default function SourcesPage() {
               <div className="minor-text" style={{ marginBottom: 10 }}>
                 Last4: {secretLast4 ? `****${secretLast4}` : "(not set)"}
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                <button className="secondary-button" onClick={onCopySecret} disabled={saving || !secretPlain}>COPY</button>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: 8, alignItems: "center" }}>
+                <input
+                  type={revealSecret ? "text" : "password"}
+                  value={secretPlain || ""}
+                  readOnly
+                  placeholder="No plaintext secret. Revoke to generate a new one."
+                />
+                <button className="secondary-button" onClick={() => setRevealSecret((v) => !v)} disabled={!secretPlain}>
+                  {revealSecret ? "HIDE" : "SHOW"}
+                </button>
+                <button
+                  className="secondary-button"
+                  onClick={onCopySecret}
+                  disabled={saving || !secretPlain}
+                  title={secretPlain ? "Copy current plaintext secret" : "No plaintext secret in memory. Revoke to generate a new secret, then copy it."}
+                >
+                  COPY
+                </button>
                 {mode === "edit" ? (
-                  <>
-                    <button className="secondary-button" onClick={onRotateSecret} disabled={saving}>ROTATE</button>
-                    <button className="danger-button" onClick={onRevokeSecret} disabled={saving}>REVOKE</button>
-                  </>
+                  <button className="danger-button" onClick={onRevokeAndRegenerateSecret} disabled={saving}>REVOKE</button>
                 ) : null}
               </div>
             </div>
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </section>

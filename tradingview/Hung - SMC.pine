@@ -117,7 +117,7 @@ get_data_effective_history_cap_bars(string timeRange) =>
 
 var KitCore.EntryVisualCfg ENTRY_VIS_CFG = KitCore.EntryVisualCfg.new()
 
-HTF_pdarray_PER_TF = math.max(1, 10)
+HTF_pdarray_PER_TF = 1000 // math.max(1, 10)
 HTF1_EXT_BASE = 14
 HTF2_EXT_BASE = 25
 HTF_EXT_PAD = 5

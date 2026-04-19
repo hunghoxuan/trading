@@ -32,12 +32,6 @@ export default function LogsPage() {
   const [pageSize, setPageSize] = useState(50);
   const [bulkAction, setBulkAction] = useState("");
   const [filter, setFilter] = useState({ q: "", type: "", symbol: "", range: "all" });
-  const [createMode, setCreateMode] = useState(false);
-  const [createMsg, setCreateMsg] = useState("");
-  const [createForm, setCreateForm] = useState({
-    event_type: "UI_NOTE",
-    payload_json: "{\n  \"note\": \"\"\n}",
-  });
 
   const query = useMemo(() => ({ 
     q: filter.q, 
@@ -84,25 +78,6 @@ export default function LogsPage() {
     }
   }
 
-  async function onCreateEvent() {
-    try {
-      setLoading(true);
-      const payload = {
-        event_type: String(createForm.event_type || "").trim(),
-        payload_json: createForm.payload_json ? JSON.parse(createForm.payload_json) : {},
-      };
-      await api.createEvent(payload);
-      setCreateMsg("Event created.");
-      setCreateMode(false);
-      await loadEvents();
-    } catch (err) {
-      setError(err?.message || "Failed to create event");
-    } finally {
-      setLoading(false);
-      window.setTimeout(() => setCreateMsg(""), 2000);
-    }
-  }
-
   useEffect(() => { loadSymbols(); }, []);
   useEffect(() => { loadEvents(); }, [query]);
 
@@ -112,7 +87,7 @@ export default function LogsPage() {
       <div className="toolbar-panel">
         <div className="toolbar-group toolbar-pagination">
           <div className="pager-area">
-            <strong>{events.length}</strong> RESULTS
+            <strong>{events.length}</strong>
             {!(page === 0 && events.length < pageSize) && (
               <div className="pager-mini">
                 <button className="secondary-button" disabled={page === 0} onClick={() => setPage(p => p - 1)}>PREV</button>
@@ -136,6 +111,15 @@ export default function LogsPage() {
             onChange={e => { setFilter(f => ({ ...f, q: e.target.value })); setPage(0); }}
             style={{ width: '180px' }}
           />
+          <select value={filter.type} onChange={e => { setFilter(f => ({ ...f, type: e.target.value })); setPage(0); }}>
+            <option value="">ALL TYPES</option>
+            <option value="ORDER">ORDER</option>
+            <option value="SYNC">SYNC</option>
+            <option value="ERROR">ERROR</option>
+            <option value="EA">EA</option>
+            <option value="SIGNAL">SIGNAL</option>
+            <option value="TRADE">TRADE</option>
+          </select>
           <select value={filter.symbol} onChange={e => { setFilter(f => ({ ...f, symbol: e.target.value })); setPage(0); }}>
             <option value="">ALL SYMBOLS</option>
             {symbols.map(s => <option key={s} value={s}>{s}</option>)}
@@ -150,20 +134,6 @@ export default function LogsPage() {
             {BULK_ACTIONS.map(a => <option key={a} value={a}>{a || "BULK ACTION..."}</option>)}
           </select>
           <button type="button" className="primary-button" onClick={onBulkOk} disabled={loading || !bulkAction}>APPLY</button>
-          <button
-            type="button"
-            className="primary-button"
-            onClick={() => {
-              if (createMode) {
-                setCreateMode(false);
-              } else {
-                setCreateMode(true);
-                setSelectedEvent(null);
-              }
-            }}
-          >
-            {createMode ? "CANCEL" : "+ CREATE LOG"}
-          </button>
         </div>
 
       </div>
@@ -171,7 +141,6 @@ export default function LogsPage() {
       <div className="logs-layout-split">
         <div className="logs-list-pane">
           {error && <div className="error">{error}</div>}
-          {createMsg ? <div className="loading" style={{ padding: 10 }}>{createMsg}</div> : null}
           <div className="events-table-wrap">
             <table className="events-table">
               <thead>
@@ -187,7 +156,7 @@ export default function LogsPage() {
                   <tr 
                     key={ev.id} 
                     className={selectedEvent?.id === ev.id ? "active" : ""}
-                    onClick={() => { setCreateMode(false); setSelectedEvent(ev); }}
+                    onClick={() => { setSelectedEvent(ev); }}
                   >
                     <td><strong className="minor-text" style={{ color: 'var(--text)' }}>{ev.symbol || 'N/A'}</strong></td>
                     <td><span className="badge">{ev.event_type}</span></td>
@@ -206,48 +175,17 @@ export default function LogsPage() {
         </div>
 
         <div className="logs-detail-pane">
-          {createMode ? (
-            <div className="panel" style={{ margin: 0 }}>
-              <div className="panel-label">LOG EVENT FORM</div>
-              <div className="stack-layout" style={{ gap: 10 }}>
-                <label>
-                  <div className="muted small">Event Type</div>
-                  <input value={createForm.event_type} onChange={(e) => setCreateForm((p) => ({ ...p, event_type: e.target.value }))} placeholder="UI_NOTE" />
-                </label>
-                <label>
-                  <div className="muted small">Payload JSON</div>
-                  <textarea
-                    value={createForm.payload_json}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, payload_json: e.target.value }))}
-                    rows={10}
-                    style={{ width: "100%", resize: "vertical" }}
-                  />
-                </label>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" className="primary-button" onClick={onCreateEvent} disabled={loading}>{loading ? "💾 SAVING..." : "💾 SAVE EVENT"}</button>
-                  <button type="button" className="secondary-button" onClick={() => setCreateMode(false)} disabled={loading}>✖ CANCEL</button>
-                </div>
-              </div>
-            </div>
-          ) : selectedEvent ? (
+          {selectedEvent ? (
             <div className="event-detail-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                 <div className="panel-label" style={{ margin: 0 }}>EVENT DETAILS #{selectedEvent.id}</div>
                 <div className="minor-text">{fDateTime(selectedEvent.event_time)}</div>
               </div>
-              <div className="json-table-wrapper" style={{ marginTop: '20px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <tbody>
-                    {Object.entries(selectedEvent.payload_json || {}).map(([k, v]) => (
-                      <tr key={k} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td className="minor-text" style={{ padding: '8px 0', width: '30%', fontWeight: 700, color: 'var(--muted)' }}>{k}</td>
-                        <td className="minor-text" style={{ padding: '8px 0', color: 'var(--text)' }}>
-                          {typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="panel" style={{ margin: 0, padding: 12 }}>
+                <div className="panel-label" style={{ marginBottom: 8 }}>RAW JSON</div>
+                <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 12, lineHeight: 1.45 }}>
+{JSON.stringify(selectedEvent.payload_json || {}, null, 2)}
+                </pre>
               </div>
             </div>
           ) : (

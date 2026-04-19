@@ -54,6 +54,28 @@ Health check:
 curl http://localhost:80/health
 ```
 
+### cTrader bridge service (separate executor)
+
+If you run cTrader through an external bridge (`CTRADER_EXECUTOR_URL`), use:
+
+- Bridge script: [`/Users/macmini/Trade/Bot/trading/scripts/ctrader_executor_bridge.js`](/Users/macmini/Trade/Bot/trading/scripts/ctrader_executor_bridge.js)
+- Install helper: [`/Users/macmini/Trade/Bot/trading/scripts/install_ctrader_executor_bridge.sh`](/Users/macmini/Trade/Bot/trading/scripts/install_ctrader_executor_bridge.sh)
+
+Quick install on VPS:
+
+```bash
+cd /Users/macmini/Trade/Bot/trading
+CTRADER_EXECUTOR_API_KEY=<random-long-key> bash scripts/install_ctrader_executor_bridge.sh
+```
+
+Then set webhook env:
+
+```env
+CTRADER_MODE=demo
+CTRADER_EXECUTOR_URL=http://127.0.0.1:8099/execute
+CTRADER_EXECUTOR_API_KEY=<same-key-as-bridge>
+```
+
 HTTPS (native TLS in Node):
 
 ```bash

@@ -104,11 +104,15 @@ async function get(path) {
   async function doFetch(url) {
     const ctrl = new AbortController();
     const timer = window.setTimeout(() => ctrl.abort(), 12000);
+    const headers = API_KEY
+      ? { "x-api-key": API_KEY, "Cache-Control": "no-cache", Pragma: "no-cache" }
+      : { "Cache-Control": "no-cache", Pragma: "no-cache" };
     try {
       return await fetch(url, {
         signal: ctrl.signal,
+        cache: "no-store",
         credentials: "include",
-        headers: API_KEY ? { "x-api-key": API_KEY } : {},
+        headers,
       });
     } catch (err) {
       if (err?.name === "AbortError") {
@@ -165,9 +169,12 @@ async function post(path, body = {}) {
       return await fetch(url, {
         method: "POST",
         signal: ctrl.signal,
+        cache: "no-store",
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
           ...(API_KEY ? { "x-api-key": API_KEY } : {}),
         },
         body: JSON.stringify(body || {}),
@@ -398,6 +405,7 @@ export const api = {
     });
     return get(`/v2/trades?${q.toString()}`);
   },
+  v2TradesBulkAction: (action, filters = {}) => post("/v2/trades/bulk-action", { action, ...filters }),
   v2TradeEvents: (tradeId, limit = 200) => get(`/v2/trades/${encodeURIComponent(tradeId)}/events?limit=${encodeURIComponent(limit)}`),
   v2CreateSource: (payload = {}) => post("/v2/sources", payload),
   v2UpdateSource: (sourceId, payload = {}) => put(`/v2/sources/${encodeURIComponent(sourceId)}`, payload),
@@ -408,6 +416,10 @@ export const api = {
   v2PutSubscriptions: (accountId, items = []) => put(`/v2/accounts/${encodeURIComponent(accountId)}/subscriptions`, { items }),
   v2RotateAccountApiKey: (accountId) => post(`/v2/accounts/${encodeURIComponent(accountId)}/api-key/rotate`, {}),
   v2RevokeAccountApiKey: (accountId) => post(`/v2/accounts/${encodeURIComponent(accountId)}/api-key/revoke`, {}),
+  v2UpdateAccountApiKey: (accountId, plainApiKey) => post(`/v2/broker/accounts/${encodeURIComponent(accountId)}/apiKey`, { api_key_plaintext: plainApiKey }),
+  v2ExecutionProfiles: () => get("/v2/settings/execution-profiles"),
+  v2SaveExecutionProfile: (payload = {}) => post("/v2/settings/execution-profile", payload),
+  v2ApplyExecutionProfile: (payload = {}) => post("/v2/settings/execution-profile/apply", payload),
   login: (email, password) => post("/auth/login", { email, password }),
   logout: () => post("/auth/logout", {}),
   changePassword: (currentPassword, newPassword) => post("/auth/password", { currentPassword, newPassword }),

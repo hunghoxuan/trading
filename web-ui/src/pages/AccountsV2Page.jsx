@@ -30,35 +30,73 @@ export default function AccountsV2Page() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
-  const [selectedAccountId, setSelectedAccountId] = useState("");
-  const [mode, setMode] = useState("create");
-  const [createdKey, setCreatedKey] = useState("");
-  const [rotatedKey, setRotatedKey] = useState("");
-  const [apiKeyPlain, setApiKeyPlain] = useState("");
-  const [apiKeyLast4, setApiKeyLast4] = useState("");
-  const [selectedSourceIds, setSelectedSourceIds] = useState(new Set());
+  const [updateKeyMode, setUpdateKeyMode] = useState(false);
+  const [manualKeyInput, setManualKeyInput] = useState("");
 
-  const [form, setForm] = useState({
-    account_id: newId("acc"),
-    user_id: "default",
-    name: "",
-    status: "ACTIVE",
-    metadata_json: "{}",
-  });
+  async function onSaveManualKey() {
+    if (!manualKeyInput.trim()) return;
+    setSaving(true);
+    try {
+      await api.v2UpdateAccountApiKey(form.account_id, manualKeyInput);
+      setApiKeyLast4(manualKeyInput.slice(-4));
+      setApiKeyPlain(""); // Clear after sync to DB
+      setUpdateKeyMode(false);
+      setManualKeyInput("");
+      setMsg({ type: "success", text: "Manual API key saved." });
+      await loadBase();
+    } catch (e) {
+      setMsg({ type: "error", text: e?.message || "Failed to save API key" });
+    } finally {
+      setSaving(false);
+    }
+  }
 
-  const filtered = useMemo(() => {
-    const needle = String(q || "").trim().toLowerCase();
-    return rows.filter((r) => {
-      if (statusFilter && String(r.status || "").toUpperCase() !== statusFilter) return false;
-      if (userFilter && String(r.user_id || "") !== userFilter) return false;
-      if (!needle) return true;
-      return (
-        String(r.account_id || "").toLowerCase().includes(needle)
-        || String(r.user_id || "").toLowerCase().includes(needle)
-        || String(r.name || "").toLowerCase().includes(needle)
-      );
+  async function openEditMode(row) {
+    const accountId = String(row.account_id || "");
+    setMode("edit");
+    setSelectedAccountId(accountId);
+    setCreatedKey("");
+    setRotatedKey("");
+    setApiKeyPlain("");
+    setApiKeyLast4(String(row.api_key_last4 || ""));
+    setRevealApiKey(false);
+    setUpdateKeyMode(false);
+    setManualKeyInput("");
+    setForm({
+      account_id: accountId,
+      user_id: String(row.user_id || "default"),
+      name: String(row.name || ""),
+      status: String(row.status || "ACTIVE"),
+      metadata_json: prettyMetadata(row.metadata || {}),
     });
-  }, [rows, q, statusFilter, userFilter]);
+    try {
+      const out = await api.v2GetSubscriptions(accountId);
+      const sourceIds = new Set((Array.isArray(out?.items) ? out.items : []).map((x) => String(x.source_id || "")).filter(Boolean));
+      setSelectedSourceIds(sourceIds);
+    } catch {
+      setSelectedSourceIds(new Set());
+    }
+  }
+
+  function openCreateMode() {
+    setMode("create");
+    setSelectedAccountId("");
+    setCreatedKey("");
+    setRotatedKey("");
+    setApiKeyPlain("");
+    setApiKeyLast4("");
+    setRevealApiKey(false);
+    setUpdateKeyMode(false);
+    setManualKeyInput("");
+    setSelectedSourceIds(new Set());
+    setForm({
+      account_id: newId("acc"),
+      user_id: "default",
+      name: "",
+      status: "ACTIVE",
+      metadata_json: "{}",
+    });
+  }
 
   const userOptions = useMemo(() => Array.from(new Set(rows.map((r) => String(r.user_id || "")).filter(Boolean))).sort(), [rows]);
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -83,47 +121,12 @@ export default function AccountsV2Page() {
 
   useEffect(() => { loadBase(); }, []);
   useEffect(() => { setPage(1); }, [q, statusFilter, userFilter, pageSize]);
-
-  function openCreateMode() {
-    setMode("create");
-    setSelectedAccountId("");
-    setCreatedKey("");
-    setRotatedKey("");
-    setApiKeyPlain("");
-    setApiKeyLast4("");
-    setSelectedSourceIds(new Set());
-    setForm({
-      account_id: newId("acc"),
-      user_id: "default",
-      name: "",
-      status: "ACTIVE",
-      metadata_json: "{}",
-    });
-  }
-
-  async function openEditMode(row) {
-    const accountId = String(row.account_id || "");
-    setMode("edit");
-    setSelectedAccountId(accountId);
-    setCreatedKey("");
-    setRotatedKey("");
-    setApiKeyPlain("");
-    setApiKeyLast4(String(row.api_key_last4 || ""));
-    setForm({
-      account_id: accountId,
-      user_id: String(row.user_id || "default"),
-      name: String(row.name || ""),
-      status: String(row.status || "ACTIVE"),
-      metadata_json: prettyMetadata(row.metadata || {}),
-    });
-    try {
-      const out = await api.v2GetSubscriptions(accountId);
-      const sourceIds = new Set((Array.isArray(out?.items) ? out.items : []).map((x) => String(x.source_id || "")).filter(Boolean));
-      setSelectedSourceIds(sourceIds);
-    } catch {
-      setSelectedSourceIds(new Set());
+  useEffect(() => {
+    if (mode === "edit" && selectedAccountId && !rows.some((r) => String(r.account_id || "") === String(selectedAccountId))) {
+      setMode("view");
+      setSelectedAccountId("");
     }
-  }
+  }, [rows, mode, selectedAccountId]);
 
   function parseMetadataInput(raw) {
     const txt = String(raw || "").trim();
@@ -175,9 +178,9 @@ export default function AccountsV2Page() {
     }
   }
 
-  async function onRotateApiKey() {
+  async function onRevokeAndRegenerateApiKey() {
     if (mode === "create") return;
-    if (!window.confirm(`Rotate API key for account ${form.account_id}?`)) return;
+    if (!window.confirm(`Revoke current API key and generate a new API key for account ${form.account_id}?`)) return;
     setSaving(true);
     try {
       const out = await api.v2RotateAccountApiKey(form.account_id);
@@ -185,29 +188,12 @@ export default function AccountsV2Page() {
       setRotatedKey(nextPlain);
       setApiKeyPlain(nextPlain);
       setApiKeyLast4(nextPlain ? nextPlain.slice(-4) : "");
-      setMsg({ type: "warning", text: "API key rotated. Save this value now." });
+      setRevealApiKey(false);
+      setUpdateKeyMode(false);
+      setMsg({ type: "warning", text: "API key replaced with a new one." });
       await loadBase();
     } catch (e) {
-      setMsg({ type: "error", text: e?.message || "Failed to rotate API key" });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function onRevokeApiKey() {
-    if (mode === "create") return;
-    if (!window.confirm(`Revoke API key for account ${form.account_id}?`)) return;
-    setSaving(true);
-    try {
-      await api.v2RevokeAccountApiKey(form.account_id);
-      setApiKeyPlain("");
-      setApiKeyLast4("");
-      setCreatedKey("");
-      setRotatedKey("");
-      setMsg({ type: "warning", text: "API key revoked." });
-      await loadBase();
-    } catch (e) {
-      setMsg({ type: "error", text: e?.message || "Failed to revoke API key" });
+      setMsg({ type: "error", text: e?.message || "Failed to replace API key" });
     } finally {
       setSaving(false);
     }
@@ -215,7 +201,7 @@ export default function AccountsV2Page() {
 
   async function onCopyApiKey() {
     if (!apiKeyPlain) {
-      setMsg({ type: "warning", text: "No plaintext API key available. Rotate to generate one, then copy." });
+      setMsg({ type: "warning", text: "No plaintext API key available. Revoke to generate one, then copy." });
       return;
     }
     try {
@@ -273,7 +259,7 @@ export default function AccountsV2Page() {
       <div className="toolbar-panel">
         <div className="toolbar-group toolbar-pagination">
           <div className="pager-area">
-            <strong>{filtered.length}</strong> RESULTS
+            <strong>{filtered.length}</strong>
             {pages > 1 ? (
               <div className="pager-mini">
                 <button className="secondary-button" disabled={safePage <= 1} onClick={() => setPage((p) => p - 1)}>PREV</button>
@@ -308,8 +294,6 @@ export default function AccountsV2Page() {
       </div>
 
       {msg?.text ? <div className={`form-message msg-${msg.type || "error"}`}>{msg.text}</div> : null}
-      {createdKey ? <div className="form-message msg-warning">New API key (shown once): <code>{createdKey}</code></div> : null}
-      {rotatedKey ? <div className="form-message msg-warning">Rotated API key (shown once): <code>{rotatedKey}</code></div> : null}
 
       <div className="logs-layout-split">
         <div className="logs-list-pane">
@@ -347,8 +331,11 @@ export default function AccountsV2Page() {
         </div>
 
         <div className="logs-detail-pane">
-          <div className="stack-layout" style={{ gap: 14 }}>
-            <div className="panel-label" style={{ marginBottom: 0 }}>{mode === "create" ? "CREATE ACCOUNT" : "EDIT ACCOUNT"}</div>
+          {!(mode === "create" || (mode === "edit" && selectedAccountId)) ? (
+            <div className="empty-state minor-text">SELECT AN ACCOUNT TO INSPECT DETAIL</div>
+          ) : (
+            <div className="stack-layout" style={{ gap: 14 }}>
+              <div className="panel-label" style={{ marginBottom: 0 }}>{mode === "create" ? "CREATE ACCOUNT" : "EDIT ACCOUNT"}</div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 10 }}>
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -432,14 +419,45 @@ export default function AccountsV2Page() {
               <div className="minor-text" style={{ marginBottom: 10 }}>
                 Last4: {apiKeyLast4 ? `****${apiKeyLast4}` : "(not set)"}
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                <button className="secondary-button" onClick={onCopyApiKey} disabled={saving || !apiKeyPlain}>COPY</button>
-                {mode === "edit" ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto auto", gap: 8, alignItems: "center" }}>
+                {updateKeyMode ? (
                   <>
-                    <button className="secondary-button" onClick={onRotateApiKey} disabled={saving}>ROTATE</button>
-                    <button className="danger-button" onClick={onRevokeApiKey} disabled={saving}>REVOKE</button>
+                    <input
+                      type="text"
+                      value={manualKeyInput}
+                      onChange={(e) => setManualKeyInput(e.target.value)}
+                      placeholder="Enter new manual API key..."
+                    />
+                    <button className="primary-button" onClick={onSaveManualKey} disabled={saving}>SAVE</button>
+                    <button className="secondary-button" onClick={() => { setUpdateKeyMode(false); setManualKeyInput(""); }}>CANCEL</button>
                   </>
-                ) : null}
+                ) : (
+                  <>
+                    <input
+                      type={revealApiKey ? "text" : "password"}
+                      value={apiKeyPlain || ""}
+                      readOnly
+                      placeholder="No plaintext API key. Revoke to generate a new one."
+                    />
+                    <button className="secondary-button" onClick={() => setRevealApiKey((v) => !v)} disabled={!apiKeyPlain} title={revealApiKey ? "Hide" : "Show"}>
+                      {revealApiKey ? "👁️" : "👁️"}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      onClick={onCopyApiKey}
+                      disabled={saving || !apiKeyPlain}
+                      title={apiKeyPlain ? "Copy" : "No plaintext key."}
+                    >
+                      📋
+                    </button>
+                    {mode === "edit" ? (
+                      <>
+                        <button className="secondary-button" onClick={() => setUpdateKeyMode(true)} disabled={saving} title="Manual Update">✏️</button>
+                        <button className="danger-button" onClick={onRevokeAndRegenerateApiKey} disabled={saving}>REVOKE</button>
+                      </>
+                    ) : null}
+                  </>
+                )}
               </div>
             </div>
 
@@ -452,7 +470,8 @@ export default function AccountsV2Page() {
                 </>
               ) : null}
             </div>
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </section>

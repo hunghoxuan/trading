@@ -11,6 +11,7 @@ const RANGE_OPTIONS = [
   { val: "month", lab: "This Month" },
   { val: "year", lab: "This Year" },
 ];
+const AUTO_REFRESH_MS = 10000;
 
 const PERIOD_DISPLAY = [
   { key: "all", lab: "All times" },
@@ -63,7 +64,7 @@ function formatTimeframe(min) {
   return `${n / 43200}M`;
 }
 
-function TableBlock({ title, rows, noun = "ITEMS" }) {
+function TableBlock({ title, rows, noun = "ITEMS", nameFormatter = null }) {
   const [sortKey, setSortKey] = useState("WR");
   const [sortDir, setSortDir] = useState("DESC");
 
@@ -76,9 +77,7 @@ function TableBlock({ title, rows, noun = "ITEMS" }) {
     }
   };
 
-  const filteredRows = rows.filter(r => Number(r.pnl_total) !== 0);
-
-  const sortedRows = [...filteredRows].sort((a, b) => {
+  const sortedRows = [...rows].sort((a, b) => {
     let va, vb;
     if (sortKey === "Name") { va = String(a.key); vb = String(b.key); }
     else if (sortKey === "WR") { va = a.win_rate; vb = b.win_rate; }
@@ -115,7 +114,7 @@ function TableBlock({ title, rows, noun = "ITEMS" }) {
           </div>
           {sortedRows.map((r) => (
             <div className="mini-table-row wide" key={r.key} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', display: 'flex', gap: '12px', alignItems: 'center' }}>
-              <span className="mini-name" style={{ flex: '3', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.key}>{r.key}</span>
+              <span className="mini-name" style={{ flex: '3', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.key}>{nameFormatter ? nameFormatter(r.key) : r.key}</span>
               <span style={{ flex: '1', textAlign: 'right' }}>{r.wins}/{r.losses}</span>
               <span style={{ flex: '1', textAlign: 'right' }}>{asPct(r.win_rate)}</span>
               <span style={{ flex: '1.5', textAlign: 'right' }} className={moneyClass(r.pnl_total)}>{asMoneySigned(r.pnl_total)}</span>
@@ -131,8 +130,9 @@ function TableBlock({ title, rows, noun = "ITEMS" }) {
 export default function DashboardPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [lastRefreshAt, setLastRefreshAt] = useState(null);
   const [filters, setFilters] = useState({
-    user_id: "",
+    account_id: "",
     symbol: "",
     source: "",
     entry_model: "",
@@ -150,6 +150,7 @@ export default function DashboardPage() {
       const resp = await api.dashboardAdvanced(filters);
       setData(resp);
       setError("");
+      setLastRefreshAt(new Date());
     } catch (e) {
       setError(e?.message || "Failed to load dashboard");
     } finally {
@@ -159,12 +160,15 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load();
-  }, [filters.user_id, filters.symbol, filters.source, filters.entry_model, filters.direction, filters.chart_tf, filters.signal_tf, filters.range]);
+  }, [filters.account_id, filters.symbol, filters.source, filters.entry_model, filters.direction, filters.chart_tf, filters.signal_tf, filters.range]);
 
   useEffect(() => {
-    const t = setInterval(load, 10000);
+    const t = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      load();
+    }, AUTO_REFRESH_MS);
     return () => clearInterval(t);
-  }, [filters.user_id, filters.symbol, filters.source, filters.entry_model, filters.direction, filters.chart_tf, filters.signal_tf, filters.range]);
+  }, [filters.account_id, filters.symbol, filters.source, filters.entry_model, filters.direction, filters.chart_tf, filters.signal_tf, filters.range]);
 
   if (error) return <div className="error">{error}</div>;
   if (!data) return <div className="loading">Loading dashboard...</div>;
@@ -173,13 +177,21 @@ export default function DashboardPage() {
   const periodTotals = data.period_totals || {};
   const top = data.top_winrate || { symbols: [], entry_models: [], accounts: [] };
   const f = data.filters || {};
+  const accountRows = Array.isArray(data.accounts_summary) ? data.accounts_summary : [];
+  const accountNameById = new Map(accountRows.map((a) => [String(a.account_id || ""), String(a.name || a.account_id || "")]));
 
   return (
     <section className="stack-layout fadeIn">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <h2 className="page-title" style={{ margin: 0 }}>Dashboard</h2>
+        <span className="minor-text" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+          Last refreshed: {lastRefreshAt ? lastRefreshAt.toLocaleTimeString() : "-"} (auto 10s)
+        </span>
+      </div>
       <div className="toolbar-panel">
-        <select value={filters.user_id} onChange={(e) => setFilters((prev) => ({ ...prev, user_id: e.target.value }))}>
+        <select value={filters.account_id} onChange={(e) => setFilters((prev) => ({ ...prev, account_id: e.target.value }))}>
           <option value="">All accounts</option>
-          {(f.accounts || []).map((v) => <option key={v} value={v}>{v}</option>)}
+          {(f.accounts || []).map((v) => <option key={v} value={v}>{accountNameById.get(String(v)) || v}</option>)}
         </select>
         <select value={filters.symbol} onChange={(e) => setFilters((prev) => ({ ...prev, symbol: e.target.value }))}>
           <option value="">All symbols</option>
@@ -209,48 +221,6 @@ export default function DashboardPage() {
         <select value={filters.range} onChange={(e) => setFilters((prev) => ({ ...prev, range: e.target.value }))} style={{ marginLeft: 'auto' }}>
           {RANGE_OPTIONS.map((r) => <option key={r.val} value={r.val}>{r.lab}</option>)}
         </select>
-      </div>
-
-
-
-      <div className="account-cards-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
-        {(data.accounts_summary || []).length === 0 ? (
-          <div className="minor-text" style={{ gridColumn: '1/-1' }}>No active account heartbeats detected.</div>
-        ) : (
-          (data.accounts_summary || []).map(acc => {
-            const lastHb = acc.last_heartbeat_at ? new Date(acc.last_heartbeat_at) : null;
-            const diffMin = lastHb ? Math.floor((new Date() - lastHb) / 60000) : null;
-            const statusClass = diffMin !== null && diffMin < 5 ? 'ACTIVE' : 'INACTIVE';
-            
-            return (
-              <div key={acc.account_id} className="panel fadeIn" style={{ borderLeft: `4px solid var(--${statusClass === 'ACTIVE' ? 'success' : 'muted'})` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div className="panel-label" style={{ margin: 0 }}>{acc.name || acc.account_id}</div>
-                  <div className={`badge ${statusClass}`} style={{ fontSize: '9px' }}>
-                    {statusClass === 'ACTIVE' ? 'LIVE' : 'OFFLINE'}
-                  </div>
-                </div>
-                <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span className="minor-text">Equity:</span>
-                    <span style={{ fontWeight: 700 }} className={moneyClass(acc.equity)}>{asMoneySigned(acc.equity || 0)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span className="minor-text">Balance:</span>
-                    <span>{asMoneySigned(acc.balance || 0)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span className="minor-text">Free Margin:</span>
-                    <span>{asMoneySigned(acc.free_margin || 0)}</span>
-                  </div>
-                </div>
-                <div className="minor-text" style={{ marginTop: '10px', fontSize: '9px', textAlign: 'right' }}>
-                  Last: {lastHb ? lastHb.toLocaleTimeString() : 'Never'}
-                </div>
-              </div>
-            );
-          })
-        )}
       </div>
 
       <div className="period-box-grid" style={{ gridTemplateColumns: "repeat(5, 1fr)", gap: '16px' }}>
@@ -283,7 +253,7 @@ export default function DashboardPage() {
       <div className="dashboard-grid tables">
         <TableBlock title="Symbols" noun="Symbols" rows={Array.isArray(top.symbols) ? top.symbols : []} />
         <TableBlock title="Entry Model" noun="Models" rows={Array.isArray(top.entry_models) ? top.entry_models : []} />
-        <TableBlock title="Accounts" noun="Accounts" rows={Array.isArray(top.accounts) ? top.accounts : []} />
+        <TableBlock title="Accounts" noun="Accounts" rows={Array.isArray(top.accounts) ? top.accounts : []} nameFormatter={(id) => accountNameById.get(String(id)) || id} />
       </div>
     </section>
   );

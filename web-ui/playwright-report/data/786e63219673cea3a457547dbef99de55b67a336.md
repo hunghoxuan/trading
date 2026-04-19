@@ -1,0 +1,82 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: remote-ui.spec.js >> trades page loads list panel
+- Location: tests/e2e/remote-ui.spec.js:25:1
+
+# Error details
+
+```
+Error: expect(locator).toBeVisible() failed
+
+Locator: getByRole('heading', { name: 'Trades' })
+Expected: visible
+Timeout: 20000ms
+Error: element(s) not found
+
+Call log:
+  - Expect "toBeVisible" with timeout 20000ms
+  - waiting for getByRole('heading', { name: 'Trades' })
+
+```
+
+# Page snapshot
+
+```yaml
+- main [ref=e4]:
+  - generic [ref=e5]:
+    - generic [ref=e6]: AUTHENTICATION
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - generic [ref=e9]: Email Address
+        - textbox "Email Address" [ref=e10]:
+          - /placeholder: Enter your email
+      - generic [ref=e11]:
+        - generic [ref=e12]: Password
+        - textbox "Password" [ref=e13]:
+          - /placeholder: Enter your password
+      - button "🔐 SIGN IN" [ref=e14] [cursor=pointer]
+```
+
+# Test source
+
+```ts
+  1  | import { test, expect } from "@playwright/test";
+  2  | 
+  3  | const API_KEY = process.env.API_KEY || "";
+  4  | const API_BASE = process.env.BASE_URL || "http://139.59.211.192";
+  5  | 
+  6  | test.beforeEach(async ({ page }) => {
+  7  |   await page.addInitScript(([apiKey, apiBase]) => {
+  8  |     if (apiKey) {
+  9  |       localStorage.setItem("tvbridge_api_key", apiKey);
+  10 |     }
+  11 |     if (apiBase) {
+  12 |       localStorage.setItem("tvbridge_api_base", apiBase);
+  13 |     }
+  14 |   }, [API_KEY, API_BASE]);
+  15 | });
+  16 | 
+  17 | test("dashboard page loads data", async ({ page }) => {
+  18 |   await page.goto("dashboard");
+  19 |   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible({ timeout: 20_000 });
+  20 |   await expect(page.getByText("Loading dashboard...")).toHaveCount(0);
+  21 |   await expect(page.locator(".error")).toHaveCount(0);
+  22 |   await expect(page.getByText("Total Trades")).toBeVisible();
+  23 | });
+  24 | 
+  25 | test("trades page loads list panel", async ({ page }) => {
+  26 |   await page.goto("trades");
+> 27 |   await expect(page.getByRole("heading", { name: "Trades" })).toBeVisible({ timeout: 20_000 });
+     |                                                               ^ Error: expect(locator).toBeVisible() failed
+  28 |   await expect(page.getByText("Loading trades...")).toHaveCount(0);
+  29 |   await expect(page.locator(".error")).toHaveCount(0);
+  30 |   await expect(page.getByRole("heading", { name: "Filters" })).toBeVisible();
+  31 | });
+  32 | 
+```

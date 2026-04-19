@@ -93,9 +93,7 @@ export default function UsersPage({ authUser }) {
       const out = await api.listUsers();
       const rows = Array.isArray(out?.users) ? out.users : [];
       setUsers(rows);
-      if (!selectedUserId && rows.length > 0) {
-        setSelectedUserId(String(rows[0].user_id || ""));
-      }
+      if (selectedUserId && !rows.some((u) => String(u.user_id) === String(selectedUserId))) setSelectedUserId("");
       setPageAlert(EMPTY_ALERT);
     } catch (e) {
       setPageAlert({ type: "error", text: e?.message || "Failed to load users" });
@@ -151,10 +149,6 @@ export default function UsersPage({ authUser }) {
   }
 
   function cancelCreateMode() {
-    if (users.length > 0) {
-      openViewMode(users[0].user_id);
-      return;
-    }
     setDetailMode("view");
     setSelectedUserId("");
   }

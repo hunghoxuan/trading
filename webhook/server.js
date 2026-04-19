@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.18-03");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.19-01");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -108,6 +108,8 @@ const CFG = {
   ctraderMode: envStr(process.env.CTRADER_MODE).toLowerCase(),
   ctraderExecutorUrl: envStr(process.env.CTRADER_EXECUTOR_URL),
   ctraderExecutorApiKey: envStr(process.env.CTRADER_EXECUTOR_API_KEY),
+  ctraderClientId: envStr(process.env.CTRADER_CLIENT_ID),
+  ctraderSecret: envStr(process.env.CTRADER_SECRET),
 
   maxRiskPct: asNum(process.env.MAX_RISK_PCT, NaN),
 
@@ -733,6 +735,8 @@ function isApiPath(pathname) {
     p.startsWith("/auth/") ||
     p === "/signal" ||
     p.startsWith("/signal/") ||
+    p === "/v2" ||
+    p.startsWith("/v2/") ||
     p.startsWith("/mt5/") ||
     p.startsWith("/webhook")
   );
@@ -836,11 +840,15 @@ function normalizeSide(sideRaw) {
 }
 
 function normalizeSignal(payload) {
-  const strategy = String(payload.strategy || payload.system || "UnknownStrategy");
+  const strategy = String(payload.strategy || payload.source || payload.system || "UnknownStrategy");
   const symbol = String(payload.symbol || payload.ticker || "").toUpperCase();
   const side = normalizeSide(payload.side || payload.action);
   const tradeId = envStr(payload.signal_id ?? payload.id ?? payload.trade_id ?? payload.tradeId);
   const timeframe = String(payload.timeframe || payload.tf || "n/a");
+  const orderTypeRaw = envStr(payload.order_type ?? payload.orderType);
+  const orderType = orderTypeRaw ? mt5NormalizeOrderType(payload) : "market";
+  const chartTf = envStr(payload.chart_tf ?? payload.chartTf ?? payload.timeframe ?? payload.tf);
+  const signalTf = envStr(payload.signal_tf ?? payload.signalTf);
   const price = asNum(payload.price ?? payload.entry, NaN);
   const sl = asNum(payload.stop_loss ?? payload.sl, NaN);
   const tp = asNum(payload.take_profit ?? payload.tp, NaN);
@@ -867,6 +875,9 @@ function normalizeSignal(payload) {
     note,
     signalTime,
     quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : null,
+    order_type: orderType,
+    chart_tf: chartTf || null,
+    signal_tf: signalTf || null,
     user_id: userId,
     entry_model: entryModel || null,
     rr_planned: Number.isFinite(rrPlanned) ? rrPlanned : null,
@@ -1066,11 +1077,14 @@ async function executeBinance(signal) {
   };
 }
 
-async function executeCTrader(signal) {
-  if (!CFG.ctraderEnabled) {
-    const reason = CFG.ctraderMode
-      ? "CTRADER_MODE invalid (use demo|live, or empty to disable)"
-      : "CTRADER_MODE empty (disabled)";
+async function executeCTrader(signal, opts = {}) {
+  const mode = String(opts?.mode || CFG.ctraderMode || "").trim().toLowerCase();
+  const modeEnabled = ["demo", "live"].includes(mode);
+  const enabled = opts?.forceEnabled ? modeEnabled : CFG.ctraderEnabled;
+  if (!enabled) {
+    const reason = mode
+      ? "CTRADER mode invalid (use demo|live, or empty to disable)"
+      : "CTRADER mode empty (disabled)";
     return { broker: "ctrader", status: "skipped", reason };
   }
   if (!CFG.ctraderExecutorUrl) {
@@ -1087,8 +1101,9 @@ async function executeCTrader(signal) {
     method: "POST",
     headers,
     body: JSON.stringify({
-      mode: CFG.ctraderMode,
+      mode: mode || CFG.ctraderMode,
       signal,
+      execution_profile: opts?.profile || null,
     }),
   });
 
@@ -1107,7 +1122,7 @@ async function executeCTrader(signal) {
   return {
     broker: "ctrader",
     status: "submitted",
-    mode: CFG.ctraderMode,
+    mode: mode || CFG.ctraderMode,
     response: body,
   };
 }
@@ -1123,19 +1138,69 @@ function buildExecSummary(execResults) {
     .join(" | ");
 }
 
+async function resolveExecutionPlan(signal) {
+  const userId = String(signal?.user_id || CFG.mt5DefaultUserId).trim() || CFG.mt5DefaultUserId;
+  const profile = await mt5GetActiveExecutionProfileV2(userId).catch(() => null);
+  if (!profile) {
+    return {
+      kind: "legacy",
+      runMt5: true,
+      runBinance: true,
+      runCTrader: true,
+      profile: null,
+    };
+  }
+  const route = String(profile.route || "").trim().toLowerCase();
+  if (route === "ctrader") {
+    return {
+      kind: "profile",
+      runMt5: false,
+      runBinance: false,
+      runCTrader: true,
+      ctraderMode: String(profile.ctrader_mode || CFG.ctraderMode || "demo").toLowerCase(),
+      profile,
+    };
+  }
+  // `ea` and `v2` both route into MT5 queue. Consumer side differs externally.
+  return {
+    kind: "profile",
+    runMt5: true,
+    runBinance: false,
+    runCTrader: false,
+    profile,
+  };
+}
+
 async function handleSignal(payload) {
   const signal = normalizeSignal(payload);
   enforceRiskAndPolicy(signal);
 
+  const plan = await resolveExecutionPlan(signal);
   const execResults = [];
-  const mt5Res = await executeMt5(signal);
-  execResults.push(mt5Res);
+  if (plan.runMt5) {
+    const mt5Res = await executeMt5(signal);
+    execResults.push(mt5Res);
+  } else {
+    execResults.push({ broker: "mt5", status: "skipped", reason: "Execution profile route != mt5" });
+  }
 
-  const binanceRes = await executeBinance(signal);
-  execResults.push(binanceRes);
+  if (plan.runBinance) {
+    const binanceRes = await executeBinance(signal);
+    execResults.push(binanceRes);
+  } else {
+    execResults.push({ broker: "binance", status: "skipped", reason: "Execution profile route disabled" });
+  }
 
-  const ctraderRes = await executeCTrader(signal);
-  execResults.push(ctraderRes);
+  if (plan.runCTrader) {
+    const ctraderRes = await executeCTrader(signal, {
+      mode: plan.ctraderMode,
+      forceEnabled: plan.kind === "profile",
+      profile: plan.profile,
+    });
+    execResults.push(ctraderRes);
+  } else {
+    execResults.push({ broker: "ctrader", status: "skipped", reason: "Execution profile route disabled" });
+  }
 
   const text = formatSignal(signal);
   const telegram = await sendTelegram(text);
@@ -1143,6 +1208,12 @@ async function handleSignal(payload) {
   return {
     ok: true,
     signal,
+    execution_plan: plan?.profile ? {
+      profile_id: plan.profile.profile_id || null,
+      route: plan.profile.route || null,
+      account_id: plan.profile.account_id || null,
+      ctrader_mode: plan.ctraderMode || null,
+    } : null,
     execution: execResults,
     telegram,
   };
@@ -1195,16 +1266,24 @@ function mt5MapDbRow(row) {
   const execEntry = row.entry_price_exec === null || row.entry_price_exec === undefined ? null : Number(row.entry_price_exec);
   const execSl = row.sl_exec === null || row.sl_exec === undefined ? null : Number(row.sl_exec);
   const execTp = row.tp_exec === null || row.tp_exec === undefined ? null : Number(row.tp_exec);
+  const rowEntry = row.entry === null || row.entry === undefined ? null : Number(row.entry);
+  const entryFromRaw = Number(raw.entry ?? raw.price);
+  const resolvedEntry = Number.isFinite(rowEntry) && rowEntry > 0
+    ? rowEntry
+    : (Number.isFinite(entryFromRaw) && entryFromRaw > 0 ? entryFromRaw : null);
+  const tfFallback = String(row.signal_tf || raw.signal_tf || raw.signalTf || raw.sourceTf || raw.timeframe || "");
   return {
     signal_id: String(row.signal_id),
     created_at: String(row.created_at),
     user_id: String(row.user_id || CFG.mt5DefaultUserId || "default"),
     source: String(row.source || ""),
-    action: String(row.action || ""),
+    action: String(row.action || row.side || ""),
+    side: String(row.side || row.action || ""),
     symbol: String(row.symbol || ""),
     volume: Number(row.volume),
     sl: row.sl === null || row.sl === undefined ? null : Number(row.sl),
     tp: row.tp === null || row.tp === undefined ? null : Number(row.tp),
+    entry: resolvedEntry,
     rr_planned: row.rr_planned === null || row.rr_planned === undefined ? null : Number(row.rr_planned),
     risk_money_planned: row.risk_money_planned === null || row.risk_money_planned === undefined ? null : Number(row.risk_money_planned),
     pnl_money_realized: row.pnl_money_realized === null || row.pnl_money_realized === undefined ? null : Number(row.pnl_money_realized),
@@ -1213,8 +1292,9 @@ function mt5MapDbRow(row) {
     tp_exec: Number.isFinite(execTp) && execTp > 0 ? execTp : null,
     note: String(row.note || ""),
     raw_json: raw,
-    signal_tf: String(row.signal_tf || raw.signal_tf || raw.signalTf || raw.sourceTf || raw.timeframe || ""),
-    chart_tf: String(row.chart_tf || raw.chart_tf || raw.chartTf || ""),
+    signal_tf: tfFallback,
+    chart_tf: String(row.chart_tf || raw.chart_tf || raw.chartTf || raw.chartTimeframe || tfFallback || ""),
+    entry_model: String(row.entry_model || raw.entry_model || raw.entryModel || ""),
     status: String(row.status || ""),
     locked_at: row.locked_at ?? null,
     ack_at: row.ack_at ?? null,
@@ -1288,6 +1368,7 @@ async function mt5InitBackend() {
       source_id TEXT,
       symbol TEXT NOT NULL,
       side TEXT NOT NULL,
+      entry_model TEXT NULL,
       sl DOUBLE PRECISION NULL,
       tp DOUBLE PRECISION NULL,
       signal_tf TEXT NULL,
@@ -1305,6 +1386,9 @@ async function mt5InitBackend() {
       broker_id TEXT NULL,
       signal_id TEXT NULL REFERENCES signals(signal_id) ON DELETE SET NULL,
       source_id TEXT NULL,
+      entry_model TEXT NULL,
+      signal_tf TEXT NULL,
+      chart_tf TEXT NULL,
       symbol TEXT NOT NULL,
       action TEXT NOT NULL,
       volume FLOAT8 NULL,
@@ -1324,6 +1408,21 @@ async function mt5InitBackend() {
       opened_at TIMESTAMPTZ NULL,
       closed_at TIMESTAMPTZ NULL,
       pnl_realized FLOAT8 NULL,
+      metadata JSONB NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS execution_profiles (
+      profile_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      profile_name TEXT NOT NULL,
+      route TEXT NOT NULL,
+      account_id TEXT NULL REFERENCES accounts(account_id) ON DELETE SET NULL,
+      source_ids JSONB NULL,
+      ctrader_mode TEXT NULL,
+      ctrader_account_id TEXT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
       metadata JSONB NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -1373,6 +1472,8 @@ async function mt5InitBackend() {
 
   // Migration: keep schema simple and aligned with v2.2 fields.
   await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS balance_start`).catch(() => {});
+  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS source_id TEXT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS entry_model TEXT NULL`).catch(() => {});
   await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS name TEXT`).catch(() => {});
   await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS balance DOUBLE PRECISION NULL`).catch(() => {});
   await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_hash TEXT NULL`).catch(() => {});
@@ -1380,6 +1481,11 @@ async function mt5InitBackend() {
   await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_rotated_at TIMESTAMPTZ NULL`).catch(() => {});
   await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS source_ids_cache JSONB NULL`).catch(() => {});
   await pool.query(`ALTER TABLE accounts DROP COLUMN IF EXISTS broker_id`).catch(() => {});
+  await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS source_ids JSONB NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS ctrader_mode TEXT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS ctrader_account_id TEXT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS metadata JSONB NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`).catch(() => {});
 
   await pool.query(`ALTER TABLE trades RENAME COLUMN side TO action`).catch(() => {});
   await pool.query(`ALTER TABLE trades RENAME COLUMN intent_entry TO entry`).catch(() => {});
@@ -1387,12 +1493,30 @@ async function mt5InitBackend() {
   await pool.query(`ALTER TABLE trades RENAME COLUMN intent_tp TO tp`).catch(() => {});
   await pool.query(`ALTER TABLE trades RENAME COLUMN intent_note TO note`).catch(() => {});
   await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS volume FLOAT8 NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS user_id TEXT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS entry_model TEXT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS signal_tf TEXT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS chart_tf TEXT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE trades DROP CONSTRAINT IF EXISTS trades_execution_status_check`).catch(() => {});
+  await pool.query(`
+    ALTER TABLE trades
+    ADD CONSTRAINT trades_execution_status_check
+    CHECK (execution_status = ANY (ARRAY['PENDING','OPEN','CLOSED','REJECTED','CANCELLED']))
+  `).catch(() => {});
   await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS origin_kind`).catch(() => {});
   await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS intent_volume`).catch(() => {});
   await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS broker_order_id`).catch(() => {});
   await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS pulled_at`).catch(() => {});
   await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS error_code`).catch(() => {});
   await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS error_message`).catch(() => {});
+  await pool.query(`
+    UPDATE trades t
+    SET entry_model = COALESCE(NULLIF(t.entry_model, ''), NULLIF(s.entry_model, ''), s.raw_json->>'entry_model'),
+        signal_tf = COALESCE(NULLIF(t.signal_tf, ''), s.signal_tf),
+        chart_tf = COALESCE(NULLIF(t.chart_tf, ''), s.chart_tf)
+    FROM signals s
+    WHERE t.signal_id = s.signal_id
+  `).catch(() => {});
 
   // Ensure default user
   const now = mt5NowIso();
@@ -1439,14 +1563,15 @@ async function mt5InitBackend() {
       const r = await pool.query(`
         INSERT INTO signals (
           signal_id, created_at, user_id, source, source_id, symbol, side, sl, tp,
-          signal_tf, chart_tf, rr_planned, note, raw_json, status
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15)
+          entry_model, signal_tf, chart_tf, rr_planned, note, raw_json, status
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16)
         ON CONFLICT (signal_id) DO NOTHING
         RETURNING signal_id
       `, [
         signal.signal_id, signal.created_at, signal.user_id, signal.source, signal.source_id,
-        signal.symbol, signal.side, signal.sl, signal.tp, signal.signal_tf, signal.chart_tf,
-        signal.rr_planned, signal.note, JSON.stringify(signal.raw_json || {}), signal.status || 'NEW'
+        signal.symbol, signal.side, signal.sl, signal.tp, signal.entry_model || null,
+        signal.signal_tf, signal.chart_tf, signal.rr_planned, signal.note,
+        JSON.stringify(signal.raw_json || {}), signal.status || 'NEW'
       ]);
       return { inserted: (r.rowCount || 0) > 0 };
     },
@@ -1466,13 +1591,15 @@ async function mt5InitBackend() {
           const ins = await client.query(`
             INSERT INTO trades (
               trade_id, account_id, user_id, signal_id, source_id,
+              entry_model, signal_tf, chart_tf,
               symbol, action, entry, sl, tp, volume, note,
-              dispatch_status, execution_status, created_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'NEW','PENDING',$13,$13)
+              dispatch_status, execution_status, metadata, created_at, updated_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'NEW','PENDING',$16::jsonb,$17,$17)
           `, [
             tradeId, aid, userId, signalId, sourceId,
+            payload.entry_model || null, payload.signal_tf || null, payload.chart_tf || null,
             payload.symbol, payload.action, payload.entry, payload.sl,
-            payload.tp, payload.volume, payload.note, mt5NowIso()
+            payload.tp, payload.volume, payload.note, JSON.stringify(payload.metadata || {}), mt5NowIso()
           ]);
           if ((ins.rowCount || 0) > 0) {
             created++; accountIds.push(aid);
@@ -1511,7 +1638,8 @@ async function mt5InitBackend() {
        const now = mt5NowIso();
        const res = await pool.query(`
          UPDATE trades
-         SET execution_status = $1, broker_trade_id = $2, entry_exec = $3, pnl_realized = $4,
+         SET dispatch_status = 'CONSUMED',
+             execution_status = $1, broker_trade_id = $2, entry_exec = $3, pnl_realized = $4,
              closed_at = CASE WHEN $1 = 'CLOSED' THEN $5 ELSE closed_at END, updated_at = $5
          WHERE trade_id = $6 AND account_id = $7 RETURNING user_id
        `, [payload.execution_status, payload.broker_trade_id, payload.entry_exec, payload.pnl_realized, now, payload.trade_id, accountId]);
@@ -1525,7 +1653,182 @@ async function mt5InitBackend() {
       const acc = await pool.query(`SELECT user_id FROM accounts WHERE account_id = $1`, [aid]);
       const uid = acc.rows[0]?.user_id || CFG.mt5DefaultUserId;
       await this.log(aid, 'accounts', { event: 'SYNC', data: payload }, uid);
-      return { ok: true };
+
+      const merged = new Map();
+      const seenTickets = new Set();
+      const hasPositionsSnapshot = Array.isArray(payload?.positions);
+      const hasOrdersSnapshot = Array.isArray(payload?.orders);
+      const snapshotComplete = hasPositionsSnapshot && hasOrdersSnapshot;
+      const statusRank = (s) => {
+        if (s === "CLOSED") return 3;
+        if (s === "OPEN") return 2;
+        return 1;
+      };
+      const pushItems = (arr = []) => {
+        for (const raw of Array.isArray(arr) ? arr : []) {
+          if (!raw || typeof raw !== 'object') continue;
+          const signalId = String(raw.signal_id || "").trim();
+          const ticket = String(raw.ticket || "").trim() || null;
+          if (!signalId && !ticket) continue;
+          if (ticket) seenTickets.add(ticket);
+          const pnlRaw = Number(raw.pnl);
+          const pnl = Number.isFinite(pnlRaw) ? pnlRaw : null;
+          const statusRaw = String(raw.status || "").trim().toUpperCase();
+          let executionStatus = "PENDING";
+          if (statusRaw === "START" || statusRaw === "OPEN") executionStatus = "OPEN";
+          else if (statusRaw === "PLACED" || statusRaw === "NEW" || statusRaw === "PENDING") executionStatus = "PENDING";
+          else if (statusRaw === "TP" || statusRaw === "SL" || statusRaw === "CANCEL" || statusRaw === "FAIL" || statusRaw === "CLOSED") executionStatus = "CLOSED";
+          const key = ticket ? `tk:${ticket}` : `sig:${signalId}`;
+          const prev = merged.get(key);
+          if (!prev) {
+            merged.set(key, { signal_id: signalId || null, ticket, pnl, status_raw: statusRaw || "UNKNOWN", execution_status: executionStatus });
+          } else {
+            if (!prev.signal_id && signalId) prev.signal_id = signalId;
+            if (statusRank(executionStatus) > statusRank(prev.execution_status)) {
+              prev.execution_status = executionStatus;
+              prev.status_raw = statusRaw || prev.status_raw;
+            }
+            if (pnl !== null) prev.pnl = pnl;
+          }
+        }
+      };
+
+      pushItems(payload.positions);
+      pushItems(payload.orders);
+      const items = Array.from(merged.values());
+
+      let matched = 0;
+      let synced = 0;
+      for (const it of items) {
+        let res = { rowCount: 0 };
+        if (it.ticket) {
+          res = await pool.query(`
+            UPDATE trades
+            SET dispatch_status = CASE
+                  WHEN dispatch_status IN ('NEW','LEASED') THEN 'CONSUMED'
+                  ELSE dispatch_status
+                END,
+                execution_status = CASE
+                  WHEN execution_status IN ('CLOSED', 'CANCELLED') AND $1 NOT IN ('CLOSED', 'CANCELLED') THEN execution_status
+                  WHEN execution_status = 'OPEN' AND $1 = 'PENDING' THEN execution_status
+                  ELSE $1
+                END,
+                pnl_realized = COALESCE($2, pnl_realized),
+                closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED') THEN NOW() ELSE closed_at END,
+                updated_at = NOW()
+            WHERE account_id = $3 AND broker_trade_id = $4
+            RETURNING trade_id
+          `, [it.execution_status, it.pnl, aid, it.ticket]);
+        }
+        if (it.signal_id) {
+          if (res.rowCount === 0) {
+            res = await pool.query(`
+            UPDATE trades
+            SET dispatch_status = CASE
+                  WHEN dispatch_status IN ('NEW','LEASED') THEN 'CONSUMED'
+                  ELSE dispatch_status
+                END,
+                execution_status = CASE
+                  WHEN execution_status IN ('CLOSED', 'CANCELLED') AND $1 NOT IN ('CLOSED', 'CANCELLED') THEN execution_status
+                  WHEN execution_status = 'OPEN' AND $1 = 'PENDING' THEN execution_status
+                  ELSE $1
+                END,
+                broker_trade_id = COALESCE(NULLIF($2, ''), broker_trade_id),
+                pnl_realized = COALESCE($3, pnl_realized),
+                closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED') THEN NOW() ELSE closed_at END,
+                updated_at = NOW()
+            WHERE trade_id = (
+              SELECT trade_id
+              FROM trades
+              WHERE account_id = $4
+                AND signal_id = $5
+              ORDER BY
+                CASE WHEN broker_trade_id IS NULL OR broker_trade_id = '' THEN 0 ELSE 1 END,
+                created_at ASC
+              LIMIT 1
+            )
+            RETURNING trade_id
+            `, [it.execution_status, it.ticket, it.pnl, aid, it.signal_id]);
+          }
+        }
+        if (res.rowCount === 0 && it.ticket) {
+          // Last-resort fallback: bind ticket to oldest unresolved trade for this account.
+          res = await pool.query(`
+            UPDATE trades
+            SET dispatch_status = CASE
+                  WHEN dispatch_status IN ('NEW','LEASED') THEN 'CONSUMED'
+                  ELSE dispatch_status
+                END,
+                execution_status = CASE
+                  WHEN execution_status IN ('CLOSED', 'CANCELLED') AND $1 NOT IN ('CLOSED', 'CANCELLED') THEN execution_status
+                  WHEN execution_status = 'OPEN' AND $1 = 'PENDING' THEN execution_status
+                  ELSE $1
+                END,
+                broker_trade_id = COALESCE(NULLIF($2, ''), broker_trade_id),
+                pnl_realized = COALESCE($3, pnl_realized),
+                closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED') THEN NOW() ELSE closed_at END,
+                updated_at = NOW()
+            WHERE trade_id = (
+              SELECT trade_id
+              FROM trades
+              WHERE account_id = $4
+                AND execution_status IN ('PENDING','OPEN')
+                AND (broker_trade_id IS NULL OR broker_trade_id = '')
+              ORDER BY created_at ASC
+              LIMIT 1
+            )
+            RETURNING trade_id
+          `, [it.execution_status, it.ticket, it.pnl, aid]);
+        }
+        matched += res.rowCount;
+        if (res.rowCount > 0) {
+          synced++;
+          const tid = String(res.rows?.[0]?.trade_id || "").trim();
+          if (tid) {
+            await this.log(tid, 'trades', {
+              event: 'SYNC_UPDATE',
+              status_raw: it.status_raw,
+              execution_status: it.execution_status,
+              ticket: it.ticket || null,
+              signal_id: it.signal_id || null,
+              pnl: it.pnl,
+            }, uid);
+          }
+        }
+      }
+      let closed_by_snapshot = 0;
+      if (snapshotComplete) {
+        if (seenTickets.size > 0) {
+          const closeRes = await pool.query(`
+            UPDATE trades
+            SET execution_status = CASE WHEN execution_status = 'PENDING' THEN 'CANCELLED' ELSE 'CLOSED' END,
+                close_reason = COALESCE(close_reason, CASE WHEN execution_status = 'PENDING' THEN 'CANCEL' ELSE 'MANUAL' END),
+                closed_at = COALESCE(closed_at, NOW()),
+                updated_at = NOW()
+            WHERE account_id = $1
+              AND execution_status IN ('OPEN','PENDING')
+              AND broker_trade_id IS NOT NULL
+              AND broker_trade_id <> ''
+              AND NOT (broker_trade_id = ANY($2::text[]))
+          `, [aid, Array.from(seenTickets)]);
+          closed_by_snapshot = Number(closeRes.rowCount || 0);
+        } else {
+          const closeRes = await pool.query(`
+            UPDATE trades
+            SET execution_status = CASE WHEN execution_status = 'PENDING' THEN 'CANCELLED' ELSE 'CLOSED' END,
+                close_reason = COALESCE(close_reason, CASE WHEN execution_status = 'PENDING' THEN 'CANCEL' ELSE 'MANUAL' END),
+                closed_at = COALESCE(closed_at, NOW()),
+                updated_at = NOW()
+            WHERE account_id = $1
+              AND execution_status IN ('OPEN','PENDING')
+              AND broker_trade_id IS NOT NULL
+              AND broker_trade_id <> ''
+          `, [aid]);
+          closed_by_snapshot = Number(closeRes.rowCount || 0);
+        }
+      }
+
+      return { ok: true, synced, matched, received: items.length, closed_by_snapshot };
     },
     async brokerHeartbeatV2(accountId, payload = {}) {
       const aid = String(accountId || "").trim();
@@ -1543,18 +1846,23 @@ async function mt5InitBackend() {
       const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
       params.push(limit);
       const res = await pool.query(`SELECT * FROM signals ${where} ORDER BY created_at DESC LIMIT $${params.length}`, params);
-      return res.rows;
+      return (res.rows || []).map((r) => mt5MapDbRow(r)).filter(Boolean);
     },
     async listTradesV2(filters = {}, page = 1, pageSize = 50) {
       const safePage = Math.max(1, Number(page) || 1); const safePageSize = Math.max(1, Math.min(200, Number(pageSize) || 50));
       const offset = (safePage - 1) * safePageSize; const clauses = []; const params = [];
+      const tradeIds = Array.isArray(filters.trade_ids) ? filters.trade_ids.map((v) => String(v || "").trim()).filter(Boolean) : [];
+      if (tradeIds.length) { params.push(tradeIds); clauses.push(`trade_id = ANY($${params.length}::text[])`); }
       if (filters.user_id) { params.push(filters.user_id); clauses.push(`user_id = $${params.length}`); }
       if (filters.account_id) { params.push(filters.account_id); clauses.push(`account_id = $${params.length}`); }
       if (filters.source_id) { params.push(filters.source_id); clauses.push(`source_id = $${params.length}`); }
       if (filters.dispatch_status) { params.push(filters.dispatch_status); clauses.push(`dispatch_status = $${params.length}`); }
       if (filters.execution_status) { params.push(filters.execution_status); clauses.push(`execution_status = $${params.length}`); }
+      if (filters.created_from) { params.push(filters.created_from); clauses.push(`created_at >= $${params.length}`); }
+      if (filters.created_to) { params.push(filters.created_to); clauses.push(`created_at <= $${params.length}`); }
       if (filters.symbol) { params.push(filters.symbol); clauses.push(`symbol = $${params.length}`); }
-      if (filters.action) { params.push(filters.action); clauses.push(`action = $${params.length}`); }
+      const actionFilter = filters.action || filters.side;
+      if (actionFilter) { params.push(actionFilter); clauses.push(`action = $${params.length}`); }
       if (filters.q) {
         params.push(`%${String(filters.q)}%`);
         const p = `$${params.length}`;
@@ -1566,6 +1874,51 @@ async function mt5InitBackend() {
       const res = await pool.query(`SELECT * FROM trades ${where} ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
       return { items: res.rows, total: parseInt(countRes.rows[0].count), page: safePage, pageSize: safePageSize };
     },
+    async bulkActionTradesV2(action, filters = {}) {
+      const act = String(action || "").trim().toLowerCase();
+      if (!act) return { ok: false, error: "action is required" };
+      if (!["close_all", "cancel_all", "delete_all"].includes(act)) {
+        return { ok: false, error: "unsupported action" };
+      }
+      const isDelete = act === "delete_all";
+      const baseOffset = isDelete ? 0 : 2;
+      const clauses = [];
+      const closeReason = act === "cancel_all" ? "CANCEL" : "MANUAL";
+      const nextStatus = act === "cancel_all" ? "CANCELLED" : "CLOSED";
+      const params = isDelete ? [] : [closeReason, nextStatus];
+      const tradeIds = Array.isArray(filters.trade_ids) ? filters.trade_ids.map((v) => String(v || "").trim()).filter(Boolean) : [];
+      if (tradeIds.length) { params.push(tradeIds); clauses.push(`trade_id = ANY($${baseOffset + params.length}::text[])`); }
+      if (filters.user_id) { params.push(filters.user_id); clauses.push(`user_id = $${baseOffset + params.length}`); }
+      if (filters.account_id) { params.push(filters.account_id); clauses.push(`account_id = $${baseOffset + params.length}`); }
+      if (filters.source_id) { params.push(filters.source_id); clauses.push(`source_id = $${baseOffset + params.length}`); }
+      if (filters.execution_status) { params.push(filters.execution_status); clauses.push(`execution_status = $${baseOffset + params.length}`); }
+      if (filters.created_from) { params.push(filters.created_from); clauses.push(`created_at >= $${baseOffset + params.length}`); }
+      if (filters.created_to) { params.push(filters.created_to); clauses.push(`created_at <= $${baseOffset + params.length}`); }
+      if (filters.q) {
+        params.push(`%${String(filters.q)}%`);
+        const p = `$${baseOffset + params.length}`;
+        clauses.push(`(trade_id ILIKE ${p} OR signal_id ILIKE ${p} OR symbol ILIKE ${p} OR account_id ILIKE ${p} OR source_id ILIKE ${p})`);
+      }
+      if (act === "close_all") clauses.push(`execution_status IN ('OPEN','PENDING')`);
+      if (act === "cancel_all") clauses.push(`execution_status = 'PENDING'`);
+      const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+      if (act === "delete_all") {
+        const delRes = await pool.query(`
+          DELETE FROM trades
+          ${where}
+        `, params);
+        return { ok: true, updated: Number(delRes.rowCount || 0), action: act };
+      }
+      const res = await pool.query(`
+        UPDATE trades
+        SET execution_status = $2,
+            close_reason = COALESCE(close_reason, $1),
+            closed_at = COALESCE(closed_at, NOW()),
+            updated_at = NOW()
+        ${where}
+      `, params);
+      return { ok: true, updated: Number(res.rowCount || 0), action: act };
+    },
     async listLogs(filters = {}, limit = 200, offset = 0) {
       const clauses = []; const params = [];
       if (filters.user_id) { params.push(filters.user_id); clauses.push(`user_id = $${params.length}`); }
@@ -1575,6 +1928,9 @@ async function mt5InitBackend() {
       params.push(limit, offset);
       const res = await pool.query(`SELECT * FROM logs ${where} ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
       return res.rows;
+    },
+    async deleteAllEvents() {
+      return pool.query(`DELETE FROM logs`);
     },
     async listSourcesV2() {
       const res = await pool.query(`
@@ -1702,6 +2058,101 @@ async function mt5InitBackend() {
       const res = await pool.query(`SELECT * FROM accounts ${where} ORDER BY created_at ASC, account_id ASC`, params);
       return res.rows || [];
     },
+    async listExecutionProfilesV2(userId = null) {
+      const params = [];
+      let where = "";
+      if (userId) {
+        params.push(String(userId || "").trim());
+        where = `WHERE user_id = $1`;
+      }
+      const res = await pool.query(`
+        SELECT profile_id, user_id, profile_name, route, account_id, source_ids, ctrader_mode, ctrader_account_id,
+               is_active, metadata, created_at, updated_at
+        FROM execution_profiles
+        ${where}
+        ORDER BY is_active DESC, updated_at DESC, created_at DESC
+      `, params);
+      return res.rows || [];
+    },
+    async getActiveExecutionProfileV2(userId = null) {
+      const params = [];
+      let where = `WHERE is_active = TRUE`;
+      if (userId) {
+        params.push(String(userId || "").trim());
+        where += ` AND user_id = $${params.length}`;
+      }
+      const res = await pool.query(`
+        SELECT profile_id, user_id, profile_name, route, account_id, source_ids, ctrader_mode, ctrader_account_id,
+               is_active, metadata, created_at, updated_at
+        FROM execution_profiles
+        ${where}
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 1
+      `, params);
+      return res.rows?.[0] || null;
+    },
+    async saveExecutionProfileV2(payload = {}) {
+      const profileId = String(payload.profile_id || "default").trim() || "default";
+      const userId = String(payload.user_id || CFG.mt5DefaultUserId).trim() || CFG.mt5DefaultUserId;
+      const profileName = String(payload.profile_name || profileId).trim() || profileId;
+      const routeRaw = String(payload.route || "").trim().toLowerCase();
+      const route = ["ea", "v2", "ctrader"].includes(routeRaw) ? routeRaw : "ea";
+      const accountId = String(payload.account_id || "").trim() || null;
+      const sourceIds = (Array.isArray(payload.source_ids) ? payload.source_ids : [])
+        .map((v) => String(v || "").trim())
+        .filter(Boolean);
+      const ctraderModeRaw = String(payload.ctrader_mode || "").trim().toLowerCase();
+      const ctraderMode = ["demo", "live"].includes(ctraderModeRaw) ? ctraderModeRaw : null;
+      const ctraderAccountId = String(payload.ctrader_account_id || "").trim() || null;
+      const isActive = payload.is_active === undefined ? true : Boolean(payload.is_active);
+      const metadata = payload.metadata && typeof payload.metadata === "object" ? payload.metadata : {};
+
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        if (isActive) {
+          await client.query(`UPDATE execution_profiles SET is_active = FALSE, updated_at = NOW() WHERE user_id = $1`, [userId]);
+        }
+        const res = await client.query(`
+          INSERT INTO execution_profiles (
+            profile_id, user_id, profile_name, route, account_id, source_ids,
+            ctrader_mode, ctrader_account_id, is_active, metadata, created_at, updated_at
+          )
+          VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10::jsonb,NOW(),NOW())
+          ON CONFLICT (profile_id) DO UPDATE SET
+            user_id = EXCLUDED.user_id,
+            profile_name = EXCLUDED.profile_name,
+            route = EXCLUDED.route,
+            account_id = EXCLUDED.account_id,
+            source_ids = EXCLUDED.source_ids,
+            ctrader_mode = EXCLUDED.ctrader_mode,
+            ctrader_account_id = EXCLUDED.ctrader_account_id,
+            is_active = EXCLUDED.is_active,
+            metadata = EXCLUDED.metadata,
+            updated_at = NOW()
+          RETURNING profile_id, user_id, profile_name, route, account_id, source_ids, ctrader_mode, ctrader_account_id,
+                    is_active, metadata, created_at, updated_at
+        `, [
+          profileId,
+          userId,
+          profileName,
+          route,
+          accountId,
+          JSON.stringify(sourceIds),
+          ctraderMode,
+          ctraderAccountId,
+          isActive,
+          JSON.stringify(metadata),
+        ]);
+        await client.query("COMMIT");
+        return { ok: true, item: res.rows?.[0] || null };
+      } catch (error) {
+        await client.query("ROLLBACK");
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      } finally {
+        client.release();
+      }
+    },
     async updateAccountV2(accountId, patch = {}) {
       const targetId = String(accountId || "").trim();
       if (!targetId) return { ok: false, error: "account_id is required" };
@@ -1786,6 +2237,20 @@ async function mt5InitBackend() {
       `, [targetId]);
       if ((res.rowCount || 0) === 0) return { ok: false, error: "account not found" };
       return { ok: true, account_id: targetId };
+    },
+    async updateAccountApiKeyV2(accountId, plainApiKey) {
+      const targetId = String(accountId || "").trim();
+      const plain = String(plainApiKey || "").trim();
+      if (!targetId || !plain) return null;
+      const apiKeyHash = hashApiKey(plain);
+      const apiKeyLast4 = plain.slice(-4);
+      const res = await pool.query(`
+        UPDATE accounts
+        SET api_key_hash = $1, api_key_last4 = $2, api_key_rotated_at = NOW(), updated_at = NOW()
+        WHERE account_id = $3
+        RETURNING account_id
+      `, [apiKeyHash, apiKeyLast4, targetId]);
+      return res.rowCount > 0 ? { account_id: targetId, api_key_last4: apiKeyLast4 } : null;
     },
     async getAccountSubscriptionsV2(accountId) {
       const targetId = String(accountId || "").trim();
@@ -1992,14 +2457,15 @@ async function mt5InitBackend() {
           
           const ins = await client.query(`
             INSERT INTO signals (
-              signal_id, created_at, user_id, source, side, symbol, volume, sl, tp,
+              signal_id, created_at, user_id, source, source_id, side, symbol, entry_model, sl, tp,
               signal_tf, chart_tf, rr_planned, note, raw_json, status
             )
-            VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'NEW')
+            VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'NEW')
             ON CONFLICT DO NOTHING
           `, [
-            renewedId, row.user_id, row.source, row.side || row.action, row.symbol, row.volume, row.sl, row.tp,
-            row.signal_tf, row.chart_tf, row.rr_planned, row.note, row.raw_json
+            renewedId, row.user_id, row.source, row.source_id, row.side || row.action, row.symbol,
+            row.entry_model || row.raw_json?.entry_model || null,
+            row.sl, row.tp, row.signal_tf, row.chart_tf, row.rr_planned, row.note, row.raw_json
           ]);
           
           if ((ins.rowCount || 0) > 0) {
@@ -2110,7 +2576,8 @@ function mt5NormalizeBrokerTicket(item = {}) {
 
 function mt5NormalizeExecutionStatusV2(value) {
   const s = String(value || "").trim().toUpperCase();
-  if (s === "PENDING" || s === "OPEN" || s === "CLOSED" || s === "REJECTED") return s;
+  if (s === "CANCEL" || s === "CANCELED" || s === "CANCELLED") return "CANCELLED";
+  if (s === "PENDING" || s === "OPEN" || s === "CLOSED" || s === "REJECTED" || s === "CANCELLED") return s;
   return "OPEN";
 }
 
@@ -2160,6 +2627,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   const riskMoneyPlanned = asNum(payload.risk_money ?? payload.money_risk ?? payload.riskMoney, NaN);
   const signalTf = mt5TfToMinutes(payload.signal_tf ?? payload.signalTf ?? payload.sourceTf ?? payload.timeframe ?? payload.tf);
   const chartTf = mt5TfToMinutes(payload.chart_tf ?? payload.chartTf ?? payload.chartTimeframe ?? payload.chart_tf_period);
+  const entryModel = String(payload.entry_model ?? payload.entryModel ?? payload.model ?? payload.strategy ?? source ?? "").trim();
   const note = mt5BuildNote(payload);
 
   const plannedEntry = asNum(payload.entry ?? payload.price, NaN);
@@ -2167,7 +2635,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   let rawJsonNormalized = {
     ...rawJson,
     order_type: orderType,
-    entry_model: String(payload.entry_model ?? payload.entryModel ?? ""),
+    entry_model: entryModel || String(rawJson.entry_model ?? rawJson.entryModel ?? ""),
   };
 
   const hasRisk = rawJsonNormalized.riskPct != null || rawJsonNormalized.risk_pct != null || rawJsonNormalized.volumePct != null || rawJsonNormalized.volume_pct != null;
@@ -2187,6 +2655,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
     source_id: sourceId,
     symbol,
     side: mt5MapActionToSide(action),
+    entry_model: entryModel || null,
     sl: payload.sl ?? null,
     tp: payload.tp ?? null,
     rr_planned: Number.isFinite(rrPlanned) ? rrPlanned : null,
@@ -2226,6 +2695,9 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
           signal_id: signalId,
           source_id: sourceId,
           user_id: userId,
+          entry_model: String(payload.entry_model ?? payload.entryModel ?? "") || null,
+          signal_tf: signalTf || null,
+          chart_tf: chartTf || null,
           symbol,
           action: mt5MapActionToSide(action),
           entry: Number.isFinite(plannedEntry) && plannedEntry > 0 ? plannedEntry : null,
@@ -2503,6 +2975,12 @@ async function mt5ListTradesV2(filters = {}, page = 1, pageSize = 50) {
   return b.listTradesV2(filters, page, pageSize);
 }
 
+async function mt5BulkActionTradesV2(action, filters = {}) {
+  const b = await mt5Backend();
+  if (!b.bulkActionTradesV2) return { ok: false, error: "not supported" };
+  return b.bulkActionTradesV2(action, filters);
+}
+
 async function mt5ListTradeEventsV2(tradeId, limit = 200) {
   const b = await mt5Backend();
   return b.listLogs({ object_id: tradeId }, limit);
@@ -2512,6 +2990,24 @@ async function mt5ListAccountsV2(userId = null) {
   const b = await mt5Backend();
   if (!b.listAccountsV2) return [];
   return b.listAccountsV2(userId);
+}
+
+async function mt5ListExecutionProfilesV2(userId = null) {
+  const b = await mt5Backend();
+  if (!b.listExecutionProfilesV2) return [];
+  return b.listExecutionProfilesV2(userId);
+}
+
+async function mt5GetActiveExecutionProfileV2(userId = null) {
+  const b = await mt5Backend();
+  if (!b.getActiveExecutionProfileV2) return null;
+  return b.getActiveExecutionProfileV2(userId);
+}
+
+async function mt5SaveExecutionProfileV2(payload = {}) {
+  const b = await mt5Backend();
+  if (!b.saveExecutionProfileV2) return { ok: false, error: "not supported" };
+  return b.saveExecutionProfileV2(payload);
 }
 
 async function mt5RotateSourceSecretV2(sourceId) {
@@ -2851,11 +3347,11 @@ function mt5IsTradeStatus(statusRaw) {
 }
 
 function mt5ComputeRMultiple(row) {
-  const pnl = Number(row?.pnl_money_realized);
+  const pnl = Number(row?.pnl_realized ?? row?.pnl_money_realized);
   const risk = Number(row?.risk_money_planned);
   if (Number.isFinite(pnl)) {
     if (Number.isFinite(risk) && risk > 0) return pnl / risk;
-    const s = mt5CanonicalStoredStatus(row.status);
+    const s = mt5CanonicalStoredStatus(row?.execution_status || row?.status || row?.close_reason);
     const planned = Number(row?.rr_planned);
     
     if (s === "TP") {
@@ -2874,9 +3370,10 @@ function mt5ComputeTopWinrateRows(rows, keyPicker, { limit = 10, includeDirectio
     const direction = String(row?.action || "").toUpperCase();
     const directionSafe = direction === "BUY" || direction === "SELL" ? direction : "-";
     const key = includeDirection ? `${baseKey} | ${directionSafe}` : baseKey;
-    const status = mt5CanonicalStoredStatus(row.status);
+    const status = mt5CanonicalStoredStatus(row.execution_status || row.status || row.close_reason);
     const rr = mt5ComputeRMultiple(row);
-    const pnl = Number(row.pnl_money_realized);
+    const pnl = Number(row?.pnl_realized ?? row?.pnl_money_realized);
+    const closeReason = String(row?.close_reason || "").toUpperCase();
     if (!map.has(key)) {
       map.set(key, {
         key,
@@ -2893,8 +3390,10 @@ function mt5ComputeTopWinrateRows(rows, keyPicker, { limit = 10, includeDirectio
     }
     const st = map.get(key);
     st.trades++;
-    if (status === "TP") st.wins++;
-    if (status === "SL") st.losses++;
+    if (status === "TP" || closeReason === "TP") st.wins++;
+    else if (status === "SL" || closeReason === "SL") st.losses++;
+    else if (Number.isFinite(pnl) && pnl > 0) st.wins++;
+    else if (Number.isFinite(pnl) && pnl < 0) st.losses++;
     if (Number.isFinite(pnl)) st.pnl_total += pnl;
     if (Number.isFinite(rr)) {
       st.rr_sum += rr;
@@ -2916,32 +3415,44 @@ function mt5EntryModelFromRow(row) {
   const direct = envStr(row?.entry_model);
   if (direct) return direct;
   const raw = row?.raw_json || {};
-  return envStr(raw.entry_model || raw.entryModel || raw.model || raw.strategy);
+  return envStr(raw.entry_model || raw.entryModel || raw.model || raw.strategy || row?.source_id || row?.source || "manual");
 }
 
 function mt5StrategyFromRow(row) {
+  const sourceId = envStr(row?.source_id || row?.source);
+  if (sourceId) return sourceId;
   const raw = row?.raw_json || {};
-  return envStr(raw.strategy || raw.model || raw.entry_model || raw.entryModel);
+  return envStr(raw.source || raw.source_id || raw.strategy || raw.model || raw.entry_model || raw.entryModel);
 }
 
 function mt5ComputeTradeMetrics(rows) {
   const all = Array.isArray(rows) ? rows : [];
   // Support both legacy signal status and v2 execution_status
-  const trades = all.filter((r) => mt5IsTradeStatus(r.status || r.execution_status));
+  const trades = all.filter((r) => {
+    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    if (mt5IsTradeStatus(s)) return true;
+    return ["PENDING", "OPEN", "CLOSED", "REJECTED", "CANCEL", "CANCELLED"].includes(s);
+  });
   
   const wins = trades.filter((r) => {
-    const s = mt5CanonicalStoredStatus(r.status || r.execution_status || r.close_reason);
-    return s === "TP" || String(r.close_reason).toUpperCase() === "TP";
+    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    const res = String(r.close_reason || "").toUpperCase();
+    if (s === "TP" || res === "TP") return true;
+    const pnl = Number(r?.pnl_realized ?? r?.pnl_money_realized);
+    return Number.isFinite(pnl) && pnl > 0;
   }).length;
   
   const losses = trades.filter((r) => {
-    const s = mt5CanonicalStoredStatus(r.status || r.execution_status || r.close_reason);
-    return s === "SL" || String(r.close_reason).toUpperCase() === "SL";
+    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    const res = String(r.close_reason || "").toUpperCase();
+    if (s === "SL" || res === "SL") return true;
+    const pnl = Number(r?.pnl_realized ?? r?.pnl_money_realized);
+    return Number.isFinite(pnl) && pnl < 0;
   }).length;
   
-  const tpSlTrades = trades.filter(r => {
-    const s = mt5CanonicalStoredStatus(r.status || r.execution_status || r.close_reason);
-    const res = String(r.close_reason).toUpperCase();
+  const rrRows = trades.filter((r) => {
+    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    const res = String(r.close_reason || "").toUpperCase();
     return s === "TP" || s === "SL" || res === "TP" || res === "SL";
   });
 
@@ -2966,7 +3477,7 @@ function mt5ComputeTradeMetrics(rows) {
     }
   }
 
-  const totalRr = tpSlTrades.reduce((acc, r) => {
+  const totalRr = rrRows.reduce((acc, r) => {
     // Map V2 fields for R computation if needed
     const mapped = {
       ...r,
@@ -2981,7 +3492,7 @@ function mt5ComputeTradeMetrics(rows) {
   
   return {
     total_signals: all.length,
-    total_trades: tpSlTrades.length,
+    total_trades: trades.length,
     wins,
     losses,
     win_rate: winBase > 0 ? (wins / winBase) * 100 : 0,
@@ -3262,11 +3773,13 @@ async function executeMt5(signal) {
     risk_money: signal.risk_money_planned ?? null,
     price: signal.price ?? null,
     strategy: signal.strategy || null,
+    entry_model: signal.entry_model || signal.raw?.entry_model || signal.raw?.entryModel || signal.strategy || null,
     timeframe: signal.timeframe || null,
     sourceTf: signal.raw?.sourceTf ?? signal.raw?.signal_tf ?? signal.timeframe ?? null,
     chartTf: signal.raw?.chartTf ?? signal.raw?.chart_tf ?? signal.raw?.chartTimeframe ?? signal.raw?.chart_tf_period ?? null,
     note: signal.note || "",
     user_id: signal.user_id || CFG.mt5DefaultUserId,
+    order_type: signal.raw?.order_type ?? signal.raw?.orderType ?? "limit",
     provider: "signal",
     raw_json: signal.raw || {},
   }, {
@@ -3277,7 +3790,7 @@ async function executeMt5(signal) {
 
   return {
     broker: "mt5",
-    status: "queued",
+  status: "queued",
     signal_id: enqueue.signal_id,
   };
 }
@@ -3286,6 +3799,25 @@ const appHandler = async (req, res) => {
   const proto = req?.socket?.encrypted ? "https" : "http";
   const incomingUrl = new URL(req.url, `${proto}://${req.headers.host || "localhost"}`);
   const hostname = normalizeHostHeader(req.headers.host);
+
+  if (req.method === "POST" && /^\/v2\/broker\/accounts\/[^/]+\/apiKey$/.test(incomingUrl.pathname)) {
+    try {
+      const accountId = decodeURIComponent(incomingUrl.pathname.split("/")[4]);
+      const body = await readJson(req);
+      const out = await (await mt5Backend()).updateAccountApiKeyV2(accountId, body.api_key_plaintext);
+      if (!out) return json(res, 404, { ok: false, error: "Account not found" });
+      return json(res, 200, { ok: true, ...out });
+    } catch (e) { return json(res, 400, { ok: false, error: e.message }); }
+  }
+
+  if (req.method === "DELETE" && /^\/v2\/broker\/accounts\/[^/]+\/apiKey$/.test(incomingUrl.pathname)) {
+    try {
+      const accountId = decodeURIComponent(incomingUrl.pathname.split("/")[4]);
+      const out = await (await mt5Backend()).updateAccountApiKeyV2(accountId, null);
+      if (!out) return json(res, 404, { ok: false, error: "Account not found" });
+      return json(res, 200, { ok: true, ...out });
+    } catch (e) { return json(res, 400, { ok: false, error: e.message }); }
+  }
 
   if (tryServeLanding(incomingUrl, req, res, hostname)) {
     return;
@@ -3633,7 +4165,7 @@ const appHandler = async (req, res) => {
       const limitRaw = Number(url.searchParams.get("limit") || 100000);
       const limit = Math.max(500, Math.min(200000, Number.isFinite(limitRaw) ? limitRaw : 100000));
       const userId = uiEffectiveUserId(req, url);
-      const accountId = envStr(url.searchParams.get("account_id") || url.searchParams.get("user_id"));
+      const accountId = envStr(url.searchParams.get("account_id"));
       const symbol = envStr(url.searchParams.get("symbol")).toUpperCase();
       const sourceId = envStr(url.searchParams.get("source_id") || url.searchParams.get("source") || url.searchParams.get("strategy"));
       const model = envStr(url.searchParams.get("entry_model") || url.searchParams.get("model"));
@@ -3656,9 +4188,9 @@ const appHandler = async (req, res) => {
         const m = r.metadata || {};
         const rowModel = String(r.entry_model || r.metadata?.entry_model || "");
         if (model && rowModel !== model) return false;
-        const rowChartTf = String(r.metadata?.chart_tf || "");
+        const rowChartTf = String(r.chart_tf || r.metadata?.chart_tf || "");
         if (chartTf && rowChartTf !== chartTf) return false;
-        const rowSignalTf = String(r.metadata?.signal_tf || "");
+        const rowSignalTf = String(r.signal_tf || r.metadata?.signal_tf || "");
         if (signalTf && rowSignalTf !== signalTf) return false;
         return true;
       });
@@ -3701,7 +4233,7 @@ const appHandler = async (req, res) => {
         .map(([x, y]) => ({ x, y }));
 
       const symbols = [...new Set(rowsByDimension.map((r) => String(r.symbol || "").toUpperCase()).filter(Boolean))].sort();
-      const accounts = [...new Set(allRows.map((r) => envStr(r.user_id)).filter(Boolean))].sort();
+      const accounts = [...new Set(allRows.map((r) => envStr(r.account_id)).filter(Boolean))].sort();
 
       const accountsSummary = await mt5ListAccountsV2(userId);
 
@@ -3722,7 +4254,7 @@ const appHandler = async (req, res) => {
           symbols,
           sources: [...new Set(allRows.map(r => mt5StrategyFromRow(r)).filter(Boolean))].sort(),
           entry_models: [...new Set(allRows.map(r => mt5EntryModelFromRow(r)).filter(Boolean))].sort(),
-          chart_tfs: [...new Set(allRows.map(r => String(r.chart_tf || r.raw_json?.chart_tf || r.raw_json?.chartTf || "")).filter(Boolean))].sort(),
+          chart_tfs: [...new Set(allRows.map(r => String(r.chart_tf || r.raw_json?.chart_tf || r.raw_json?.chartTf || r.raw_json?.chartTimeframe || r.signal_tf || r.raw_json?.signal_tf || r.raw_json?.sourceTf || r.raw_json?.timeframe || "")).filter(Boolean))].sort(),
           signal_tfs: [...new Set(allRows.map(r => String(r.signal_tf || r.raw_json?.signal_tf || r.raw_json?.sourceTf || r.raw_json?.timeframe || "")).filter(Boolean))].sort(),
         },
         metrics: mt5ComputeTradeMetrics(selectedRows),
@@ -3730,7 +4262,7 @@ const appHandler = async (req, res) => {
         top_winrate: {
           symbols: mt5ComputeTopWinrateRows(selectedRows, (r) => String(r.symbol || "").toUpperCase(), { limit: 100, includeDirection: false }),
           entry_models: mt5ComputeTopWinrateRows(selectedRows, (r) => mt5EntryModelFromRow(r), { limit: 100, includeDirection: false }),
-          accounts: mt5ComputeTopWinrateRows(selectedRows, (r) => envStr(r.user_id), { limit: 100, includeDirection: false }),
+          accounts: mt5ComputeTopWinrateRows(selectedRows, (r) => envStr(r.account_id), { limit: 100, includeDirection: false }),
         },
         pnl_series: pnlSeries,
       });
@@ -3782,8 +4314,8 @@ const appHandler = async (req, res) => {
       const symbols = [...new Set(rows.map((r) => String(r.symbol || "").toUpperCase()))].filter(Boolean).sort();
       const sources = [...new Set(rows.map((r) => mt5StrategyFromRow(r)))].filter(Boolean).sort();
       const models = [...new Set(rows.map((r) => mt5EntryModelFromRow(r)))].filter(Boolean).sort();
-      const chartTfs = [...new Set(rows.map((r) => String(r.chart_tf || r.raw_json?.chart_tf || "")))].filter(Boolean).sort();
-      const signalTfs = [...new Set(rows.map((r) => String(r.signal_tf || r.raw_json?.signal_tf || "")))].filter(Boolean).sort();
+      const chartTfs = [...new Set(rows.map((r) => String(r.chart_tf || r.raw_json?.chart_tf || r.raw_json?.chartTf || r.raw_json?.chartTimeframe || r.signal_tf || r.raw_json?.signal_tf || r.raw_json?.sourceTf || r.raw_json?.timeframe || "")))].filter(Boolean).sort();
+      const signalTfs = [...new Set(rows.map((r) => String(r.signal_tf || r.raw_json?.signal_tf || r.raw_json?.sourceTf || r.raw_json?.timeframe || "")))].filter(Boolean).sort();
       return json(res, 200, { ok: true, symbols, sources, entry_models: models, chart_tfs: chartTfs, signal_tfs: signalTfs });
     } catch (error) {
       return json(res, 400, { ok: false, error: error.message });
@@ -4190,23 +4722,59 @@ const appHandler = async (req, res) => {
       const limit = Math.max(1, Math.min(5000, Number.isFinite(limitRaw) ? limitRaw : 200));
       const offsetRaw = Number(url.searchParams.get("offset") || 0);
       const offset = Math.max(0, Number.isFinite(offsetRaw) ? offsetRaw : 0);
+      const q = String(url.searchParams.get("q") || "").trim().toLowerCase();
+      const typeFilter = String(url.searchParams.get("type") || "").trim().toLowerCase();
+      const symbolFilter = String(url.searchParams.get("symbol") || "").trim().toUpperCase();
+      const range = String(url.searchParams.get("range") || "all").trim().toLowerCase();
+      const { start: rangeStart, end: rangeEnd } = mt5PeriodRange(range);
+      const hasExtraFilter = Boolean(q || typeFilter || symbolFilter || (range && range !== "all"));
 
       const b = await mt5Backend();
-      const rows = await b.listLogs({ user_id: userId }, limit, offset);
-      const events = (rows || []).map((r) => {
+      const fetchLimit = hasExtraFilter ? Math.max(limit + offset, 5000) : limit;
+      const fetchOffset = hasExtraFilter ? 0 : offset;
+      const rows = await b.listLogs({ user_id: userId }, fetchLimit, fetchOffset);
+      let events = (rows || []).map((r) => {
         const payload = r?.metadata && typeof r.metadata === "object" ? r.metadata : {};
         const data = payload?.data && typeof payload.data === "object" ? payload.data : payload;
         const symbol = String(data?.symbol || payload?.symbol || "").trim();
+        const eventType = String(payload.event_type || payload.event || "").trim() || String(r.object_table || "LOG");
+        const eventTime = String(r.created_at || "");
+        const signalId = String(r.object_id || "");
+        const ackTicket = String(data?.ticket || payload?.ticket || data?.ack_ticket || payload?.ack_ticket || "");
         return {
           id: Number(r.log_id || 0),
-          event_time: String(r.created_at || ""),
-          event_type: String(payload.event_type || payload.event || "").trim() || String(r.object_table || "LOG"),
-          signal_id: String(r.object_id || ""),
-          ack_ticket: String(data?.ticket || payload?.ticket || data?.ack_ticket || payload?.ack_ticket || ""),
+          event_time: eventTime,
+          event_type: eventType,
+          signal_id: signalId,
+          ack_ticket: ackTicket,
           symbol: symbol || "N/A",
           payload_json: payload,
         };
       });
+      if (hasExtraFilter) {
+        events = events.filter((ev) => {
+          if (symbolFilter && String(ev.symbol || "").toUpperCase() !== symbolFilter) return false;
+          if (typeFilter && !String(ev.event_type || "").toLowerCase().includes(typeFilter)) return false;
+          if (rangeStart || rangeEnd) {
+            const ts = mt5ToMs(ev.event_time);
+            if (!Number.isFinite(ts)) return false;
+            if (rangeStart && ts < mt5ToMs(rangeStart)) return false;
+            if (rangeEnd && ts > mt5ToMs(rangeEnd)) return false;
+          }
+          if (q) {
+            const haystack = [
+              ev.signal_id,
+              ev.ack_ticket,
+              ev.symbol,
+              ev.event_type,
+              JSON.stringify(ev.payload_json || {}),
+            ].join(" ").toLowerCase();
+            if (!haystack.includes(q)) return false;
+          }
+          return true;
+        });
+        events = events.slice(offset, offset + limit);
+      }
       return json(res, 200, { ok: true, events });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -4414,6 +4982,114 @@ const appHandler = async (req, res) => {
     }
   }
 
+  if (req.method === "GET" && url.pathname === "/v2/settings/execution-profiles") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const userId = uiEffectiveUserId(req, url);
+      const [items, active, accounts] = await Promise.all([
+        mt5ListExecutionProfilesV2(userId),
+        mt5GetActiveExecutionProfileV2(userId),
+        mt5ListAccountsV2(userId),
+      ]);
+      return json(res, 200, {
+        ok: true,
+        items,
+        active_profile: active || null,
+        accounts: accounts || [],
+      });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/settings/execution-profile") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    let payload = {};
+    try { payload = await readJson(req); } catch {}
+    if (!requireAdminKey(req, res, url, payload)) return;
+    try {
+      const userId = uiEffectiveUserId(req, url, payload);
+      const route = String(payload?.route || "").trim().toLowerCase();
+      if (!["ea", "v2", "ctrader"].includes(route)) {
+        return json(res, 400, { ok: false, error: "route must be one of: ea, v2, ctrader" });
+      }
+      const accountId = String(payload?.account_id || "").trim();
+      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
+      const sourceIds = (Array.isArray(payload?.source_ids) ? payload.source_ids : [])
+        .map((v) => String(v || "").trim())
+        .filter(Boolean);
+      const save = await mt5SaveExecutionProfileV2({
+        profile_id: String(payload?.profile_id || "default").trim() || "default",
+        profile_name: String(payload?.profile_name || `profile_${route}`).trim() || `profile_${route}`,
+        user_id: userId,
+        route,
+        account_id: accountId,
+        source_ids: sourceIds,
+        ctrader_mode: String(payload?.ctrader_mode || "").trim().toLowerCase(),
+        ctrader_account_id: String(payload?.ctrader_account_id || "").trim(),
+        is_active: payload?.is_active !== false,
+        metadata: payload?.metadata && typeof payload.metadata === "object" ? payload.metadata : {},
+      });
+      if (!save?.ok) return json(res, 400, { ok: false, error: save?.error || "failed to save execution profile" });
+      const rows = await mt5ListExecutionProfilesV2(userId);
+      return json(res, 200, { ok: true, item: save.item || null, items: rows });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/settings/execution-profile/apply") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    let payload = {};
+    try { payload = await readJson(req); } catch {}
+    if (!requireAdminKey(req, res, url, payload)) return;
+    try {
+      const userId = uiEffectiveUserId(req, url, payload);
+      const route = String(payload?.route || "").trim().toLowerCase();
+      if (!["ea", "v2", "ctrader"].includes(route)) {
+        return json(res, 400, { ok: false, error: "route must be one of: ea, v2, ctrader" });
+      }
+      const accountId = String(payload?.account_id || "").trim();
+      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
+      const sourceIds = (Array.isArray(payload?.source_ids) ? payload.source_ids : ["signal", "tradingview"])
+        .map((v) => String(v || "").trim())
+        .filter(Boolean);
+      const save = await mt5SaveExecutionProfileV2({
+        profile_id: String(payload?.profile_id || "default").trim() || "default",
+        profile_name: String(payload?.profile_name || `active_${route}`).trim() || `active_${route}`,
+        user_id: userId,
+        route,
+        account_id: accountId,
+        source_ids: sourceIds,
+        ctrader_mode: String(payload?.ctrader_mode || "").trim().toLowerCase(),
+        ctrader_account_id: String(payload?.ctrader_account_id || "").trim(),
+        is_active: true,
+        metadata: payload?.metadata && typeof payload.metadata === "object" ? payload.metadata : {},
+      });
+      if (!save?.ok) return json(res, 400, { ok: false, error: save?.error || "failed to save execution profile" });
+
+      // Route one-account-only by subscriptions to avoid duplicate fanout.
+      const accounts = await mt5ListAccountsV2(userId);
+      for (const acc of accounts || []) {
+        const aid = String(acc?.account_id || "").trim();
+        if (!aid) continue;
+        const items = aid === accountId ? sourceIds.map((sid) => ({ source_id: sid, is_active: true })) : [];
+        await mt5ReplaceAccountSubscriptionsV2(aid, items);
+      }
+      const active = await mt5GetActiveExecutionProfileV2(userId);
+      return json(res, 200, {
+        ok: true,
+        active_profile: active || null,
+        routed_account_id: accountId,
+        route,
+        note: "Signal fanout routed to selected account. Runtime process mode (EA/v2 daemon/cTrader bridge) is still managed outside server.",
+      });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   if (req.method === "GET" && url.pathname === "/v2/sources") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
@@ -4444,6 +5120,8 @@ const appHandler = async (req, res) => {
         source_id: url.searchParams.get("source_id") || "",
         dispatch_status: url.searchParams.get("dispatch_status") || "",
         execution_status: url.searchParams.get("execution_status") || "",
+        created_from: url.searchParams.get("created_from") || "",
+        created_to: url.searchParams.get("created_to") || "",
         symbol: url.searchParams.get("symbol") || "",
         action: url.searchParams.get("action") || url.searchParams.get("side") || "",
         q: url.searchParams.get("q") || "",
@@ -4458,6 +5136,31 @@ const appHandler = async (req, res) => {
         total,
         pages: Math.max(1, Math.ceil(total / Math.max(1, Number(out?.page_size || pageSize)))),
       });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/trades/bulk-action") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    let payload = {};
+    try { payload = await readJson(req); } catch {}
+    if (!requireAdminKey(req, res, url, payload)) return;
+    try {
+      const userId = uiEffectiveUserId(req, url, payload);
+      const action = String(payload.action || "").trim().toLowerCase();
+      const filters = {
+        user_id: userId,
+        trade_ids: Array.isArray(payload.trade_ids) ? payload.trade_ids : [],
+        account_id: payload.account_id || "",
+        source_id: payload.source_id || "",
+        execution_status: payload.execution_status || "",
+        created_from: payload.created_from || "",
+        created_to: payload.created_to || "",
+        q: payload.q || "",
+      };
+      const out = await mt5BulkActionTradesV2(action, filters);
+      return json(res, out?.ok ? 200 : 400, out);
     } catch (error) {
       return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
@@ -4648,6 +5351,7 @@ const appHandler = async (req, res) => {
           symbol: t.symbol,
           action: t.action ?? t.side ?? null,
           entry: t.entry ?? t.intent_entry ?? null,
+          order_type: String(t.order_type || t.metadata?.order_type || "limit"),
           sl: t.sl ?? t.intent_sl ?? null,
           tp: t.tp ?? t.intent_tp ?? null,
           volume: t.volume ?? t.intent_volume ?? null,
@@ -4695,6 +5399,10 @@ const appHandler = async (req, res) => {
       const statusCode = result?.ok ? 200 : 400;
       return json(res, statusCode, result);
     } catch (error) {
+      console.error("[v2/broker/sync] failed", {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : null,
+      });
       return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
   }
