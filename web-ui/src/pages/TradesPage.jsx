@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
+import { TradeSignalChart } from "../components/TradeSignalChart";
+import { useState, useMemo, useRef, useEffect } from "react";
 
 const STATUS_OPTIONS = [
   { value: "", label: "ALL STATUSES" },
@@ -537,8 +538,19 @@ export default function TradesPage() {
                   <div><span className="minor-text">Note</span><div>{selectedTrade.note || "-"}</div></div>
                   <div><span className="minor-text">Entry</span><div>{selectedTrade.entry || "-"}</div></div>
                   <div><span className="minor-text">TP/SL</span><div>{selectedTrade.tp || "-"} / {selectedTrade.sl || "-"}</div></div>
-                  <div><span className="minor-text">Volume</span><div>{selectedTrade.volume ?? "-"}</div></div>
                 </div>
+              </div>
+
+              <div className="panel" style={{ padding: 12 }}>
+                <div style={{ color: "#94a3b8", fontSize: "11px", marginBottom: "8px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Visual Glance</div>
+                <TradeSignalChart 
+                   symbol={selectedTrade.symbol} 
+                   interval={selectedTrade.signal_tf || selectedTrade.chart_tf || "1h"}
+                   live={true}
+                   entryPrice={asNum(selectedTrade.entry)}
+                   slPrice={asNum(selectedTrade.sl)}
+                   tpPrice={asNum(selectedTrade.tp)}
+                />
               </div>
               {createMode ? (
                 <div className="panel" style={{ padding: 12 }}>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
+import { TradeSignalChart } from "../components/TradeSignalChart";
 
 const STATUS_OPTIONS = [
   { value: "", label: "ALL STATUSES" },
@@ -511,6 +512,18 @@ export default function SignalsPage() {
                   <div><span className="minor-text">Volume</span><div>{selectedSignal.volume || "-"}</div></div>
                   <div><span className="minor-text">Note</span><div>{selectedSignal.note || "-"}</div></div>
                 </div>
+              </div>
+
+              <div className="panel" style={{ padding: 12 }}>
+                <div style={{ color: "#94a3b8", fontSize: "11px", marginBottom: "8px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Market View</div>
+                <TradeSignalChart 
+                   symbol={selectedSignal.symbol} 
+                   interval={selectedSignal.signal_tf || selectedSignal.chart_tf || "1h"}
+                   live={true}
+                   entryPrice={asNum(selectedSignal.entry || selectedSignal.target_price || selectedSignal.entry_price)}
+                   slPrice={asNum(selectedSignal.sl)}
+                   tpPrice={asNum(selectedSignal.tp)}
+                />
               </div>
 
               <div style={{ marginTop: '20px' }}>
