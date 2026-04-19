@@ -17,14 +17,14 @@ if [[ -z "$CHANGED" ]]; then
   exit 0
 fi
 
-CODE_CHANGED="$(echo "$CHANGED" | rg -v '^(docs/|\.agents/|AI\.md$|.*\.md$|test-results/|web-ui/playwright-report/|web-ui/test-results/)' || true)"
+CODE_CHANGED="$(echo "$CHANGED" | grep -vE '^(docs/|\.agents/|AI\.md$|.*\.md$|test-results/|web-ui/playwright-report/|web-ui/test-results/)' || true)"
 if [[ -z "$CODE_CHANGED" ]]; then
   echo "[build-version-check] only docs/artifacts changed; version bump not required"
   exit 0
 fi
 
-SERVER_BUMP="$(git diff -U0 "$BASE_REF...HEAD" -- webhook/server.js | rg '^\+const SERVER_VERSION = envStr\(process\.env\.WEBHOOK_SERVER_VERSION, \"' || true)"
-EA_BUMP="$(git diff -U0 "$BASE_REF...HEAD" -- mql5/TVBridgeEA.mq5 | rg '^\+string EA_BUILD_VERSION = \"' || true)"
+SERVER_BUMP="$(git diff -U0 "$BASE_REF...HEAD" -- webhook/server.js | grep -E '^\+const SERVER_VERSION = envStr\(process\.env\.WEBHOOK_SERVER_VERSION, \"' || true)"
+EA_BUMP="$(git diff -U0 "$BASE_REF...HEAD" -- mql5/TVBridgeEA.mq5 | grep -E '^\+string EA_BUILD_VERSION = \"' || true)"
 
 if [[ -z "$SERVER_BUMP" || -z "$EA_BUMP" ]]; then
   echo "[build-version-check] FAILED"
