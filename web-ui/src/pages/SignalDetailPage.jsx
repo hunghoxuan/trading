@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
-import TradeLevelChart from "../components/TradeLevelChart";
+import { TradeSignalChart } from "../components/TradeSignalChart";
 
 function statusUi(statusRaw) {
   const s = String(statusRaw || "").toUpperCase();
@@ -38,6 +38,11 @@ export default function TradeDetailPage() {
 
   if (error) return <div className="error">{error}</div>;
   if (!data) return <div className="loading">Loading trade...</div>;
+
+  const asPrice = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
 
   const t = data.trade;
   const status = statusUi(t?.status);
@@ -97,7 +102,17 @@ export default function TradeDetailPage() {
         </div>
       )}
 
-      <TradeLevelChart trade={data.chart} />
+      <div className="panel" style={{ marginTop: "1rem" }}>
+        <div style={{ color: "#94a3b8", fontSize: "12px", marginBottom: "12px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Market Glance</div>
+        <TradeSignalChart 
+          symbol={t.symbol} 
+          interval={t.signal_tf || t.chart_tf || "1h"} 
+          live={true}
+          entryPrice={asPrice(t.entry_price || t.raw_json?.entry || t.entry)}
+          slPrice={asPrice(t.sl_price || t.raw_json?.sl || t.sl)}
+          tpPrice={asPrice(t.tp_price || t.raw_json?.tp || t.tp)}
+        />
+      </div>
 
       <h2 style={{ marginTop: "2rem" }}>History</h2>
       <div style={{ marginTop: "1rem" }}>

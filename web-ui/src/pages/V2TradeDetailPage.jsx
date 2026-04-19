@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
+import { TradeSignalChart } from "../components/TradeSignalChart";
 
 function statusUi(statusRaw) {
   const s = String(statusRaw || "").toUpperCase();
@@ -54,6 +55,11 @@ export default function TradeDetailPage() {
 
   const t = trade || {};
   const status = statusUi(t.execution_status);
+  
+  const asPrice = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
 
   return (
     <section className="stack-layout" style={{ gap: 20 }}>
@@ -107,6 +113,18 @@ export default function TradeDetailPage() {
             <div className="minor-text">{fDateTime(t.created_at)}</div>
           </div>
         </div>
+      </div>
+
+      <div className="panel">
+        <div style={{ color: "#94a3b8", fontSize: "12px", marginBottom: "12px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Execution Context</div>
+        <TradeSignalChart 
+          symbol={t.symbol} 
+          interval={t.signal_tf || t.chart_tf || "1h"} 
+          live={true}
+          entryPrice={asPrice(t.entry)}
+          slPrice={asPrice(t.sl)}
+          tpPrice={asPrice(t.tp)}
+        />
       </div>
 
       <div className="panel">
