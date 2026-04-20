@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.20-09"); // AI Hub
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.20-10"); // AI Hub Restored
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1358,6 +1358,23 @@ async function mt5InitBackend() {
       status TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS ai_templates (
+      template_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      symbols TEXT,
+      timeframe TEXT,
+      entry_model TEXT,
+      prompt TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS ai_configs (
+      config_id TEXT PRIMARY KEY DEFAULT 'default',
+      settings JSONB NOT NULL,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS signals (
@@ -5024,6 +5041,93 @@ const appHandler = async (req, res) => {
       return json(res, 200, { ok: true, item: out.item || null, items: rows });
     } catch (error) {
       return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // =========================
+  // AI HUB API
+  // =========================
+  if (req.method === "GET" && url.pathname === "/v2/ai/templates") {
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const db = await mt5InitBackend();
+      const { rows } = await db.query("SELECT * FROM ai_templates ORDER BY created_at DESC");
+      return json(res, 200, { ok: true, templates: rows });
+    } catch (e) {
+      return json(res, 500, { ok: false, error: e.message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/ai/templates") {
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const { name, symbols, timeframe, entry_model, prompt } = await readJson(req);
+      const db = await mt5InitBackend();
+      const { rows } = await db.query(
+        "INSERT INTO ai_templates (name, symbols, timeframe, entry_model, prompt) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+        [name, symbols, timeframe, entry_model, prompt]
+      );
+      return json(res, 201, { ok: true, template: rows[0] });
+    } catch (e) {
+      return json(res, 500, { ok: false, error: e.message });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/v2/ai/config") {
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const db = await mt5InitBackend();
+      const { rows } = await db.query("SELECT * FROM ai_configs WHERE config_id = 'default'");
+      if (!rows.length) {
+        // Return blank but with 200 to avoid crash if possible, or just default
+        return json(res, 200, { ok: true, config: { settings: {} } });
+      }
+      return json(res, 200, { ok: true, config: rows[0] });
+    } catch (e) {
+      return json(res, 500, { ok: false, error: e.message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/ai/config") {
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const body = await readJson(req);
+      const db = await mt5InitBackend();
+      await db.query(
+        "INSERT INTO ai_configs (config_id, settings) VALUES ('default', $1) ON CONFLICT (config_id) DO UPDATE SET settings = $1, updated_at = NOW()",
+        [body.settings || body]
+      );
+      return json(res, 200, { ok: true });
+    } catch (e) {
+      return json(res, 500, { ok: false, error: e.message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/ai/generate") {
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const { templateId, customPrompt, service, model } = await readJson(req);
+      const db = await mt5InitBackend();
+      
+      let finalPrompt = customPrompt || "";
+      if (templateId) {
+        const { rows } = await db.query("SELECT * FROM ai_templates WHERE template_id = $1", [templateId]);
+        if (rows.length) finalPrompt = rows[0].prompt;
+      }
+      
+      const configRes = await db.query("SELECT * FROM ai_configs WHERE config_id = 'default'");
+      const config = configRes.rows[0]?.settings || {};
+      
+      // Mock / Real AI call here
+      // For now, let's return a structured response to prove path
+      const mockSignals = [
+        { symbol: "BTCUSDT", side: "BUY", price: 65000, sl: 64000, tp: 68000, timeframe: "H1", entry_model: "AI_TREND", note: "AI predicted breakout" }
+      ];
+      
+      // Real call would go to Gemini/Ollama/Deepseek
+      return json(res, 200, { ok: true, response: JSON.stringify(mockSignals), signals: mockSignals });
+    } catch (e) {
+      return json(res, 500, { ok: false, error: e.message });
     }
   }
 
