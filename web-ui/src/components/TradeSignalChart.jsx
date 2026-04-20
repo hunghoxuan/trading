@@ -141,7 +141,7 @@ export const TradeSignalChart = ({
              query += `&endTime=${fetchEnd}`;
           }
 
-          const resp = await fetch(`https://api.binance.com/api/v3/klines?${query}`);
+          const resp = await fetch(`/api/proxy/binance?${query}`);
           if (!resp.ok) {
              const errText = await resp.text();
              throw new Error(`Binance API error: ${resp.status} - ${errText}`);

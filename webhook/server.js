@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.20-06");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.20-07");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1720,6 +1720,8 @@ async function mt5InitBackend() {
       for (const it of items) {
         let res = { rowCount: 0 };
         if (it.ticket) {
+          const openedAt = it.opened_at || it.openedAt || null;
+          const closedAt = it.closed_at || it.closedAt || null;
           res = await pool.query(`
             UPDATE trades
             SET dispatch_status = CASE
@@ -1732,11 +1734,12 @@ async function mt5InitBackend() {
                   ELSE $1
                 END,
                 pnl_realized = COALESCE($2, pnl_realized),
-                closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED') THEN NOW() ELSE closed_at END,
+                opened_at = COALESCE($5, opened_at),
+                closed_at = COALESCE($6, CASE WHEN $1 IN ('CLOSED','CANCELLED') THEN NOW() ELSE closed_at END),
                 updated_at = NOW()
             WHERE account_id = $3 AND broker_trade_id = $4
             RETURNING trade_id
-          `, [it.execution_status, it.pnl, aid, it.ticket]);
+          `, [it.execution_status, it.pnl, aid, it.ticket, openedAt, closedAt]);
         }
         if (it.signal_id) {
           if (res.rowCount === 0) {
@@ -3824,6 +3827,20 @@ async function executeMt5(signal) {
 const appHandler = async (req, res) => {
   const proto = req?.socket?.encrypted ? "https" : "http";
   const incomingUrl = new URL(req.url, `${proto}://${req.headers.host || "localhost"}`);
+  if (req.method === "GET" && incomingUrl.pathname === "/api/proxy/binance") {
+    const target = "https://api.binance.com/api/v3/klines?" + incomingUrl.searchParams.toString();
+    https.get(target, (proxyRes) => {
+      res.writeHead(proxyRes.statusCode || 200, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*"
+      });
+      proxyRes.pipe(res);
+    }).on("error", (err) => {
+      json(res, 500, { error: err.message });
+    });
+    return;
+  }
+
   const hostname = normalizeHostHeader(req.headers.host);
 
   if (req.method === "POST" && /^\/v2\/broker\/accounts\/[^/]+\/apiKey$/.test(incomingUrl.pathname)) {

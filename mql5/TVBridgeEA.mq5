@@ -38,7 +38,7 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026.04.20-06";
+string EA_BUILD_VERSION = "2026.04.20-07";
 
 input string InpMappingFile = "TVBridge_Mappings.csv";
 
@@ -2892,7 +2892,7 @@ void SyncWithVps()
             if(sid != "")
             {
                if(posCount > 0) posUpdates += ",";
-               posUpdates += "{\"signal_id\":\"" + sid + "\",\"status\":\"START\",\"ticket\":\"" + IntegerToString((int)ticket) + "\",\"pnl\":" + DoubleToString(PositionGetDouble(POSITION_PROFIT), 2) + "}";
+               posUpdates += "{\"signal_id\":\"" + sid + "\",\"status\":\"START\",\"ticket\":\"" + IntegerToString((int)ticket) + "\",\"pnl\":" + DoubleToString(PositionGetDouble(POSITION_PROFIT), 2) + ",\"opened_at\":\"" + IsoTime((datetime)PositionGetInteger(POSITION_TIME)) + "\"}";
                posCount++;
             }
          }

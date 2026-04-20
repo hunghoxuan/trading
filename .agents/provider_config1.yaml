@@ -1,0 +1,10 @@
+# Sử dụng DeepSeek API vì nó cực rẻ nhưng mạnh như GPT-4
+- provider: "deepseek"
+  base_url: "https://api.deepseek.com"
+  api_key: "sk-b10e0ed7f50a45608c3b520e34561c15"
+  model: "deepseek-coder"
+
+# Hoặc sử dụng Local Ollama để hoàn toàn miễn phí
+- provider: "ollama"
+  base_url: "http://localhost:11434/v1"
+  model: "qwen2.5-coder:14b"
