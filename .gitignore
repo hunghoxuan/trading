@@ -4,3 +4,4 @@ webhook/.env
 
 .test-results/
 tradingview/.backup/
+.agents/provider_config*.yaml
