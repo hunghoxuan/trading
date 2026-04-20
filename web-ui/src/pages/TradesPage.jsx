@@ -550,6 +550,8 @@ export default function TradesPage() {
                    entryPrice={asNum(selectedTrade.entry)}
                    slPrice={asNum(selectedTrade.sl)}
                    tpPrice={asNum(selectedTrade.tp)}
+                   openedAt={selectedTrade.opened_at}
+                   closedAt={selectedTrade.closed_at}
                 />
               </div>
               {createMode ? (

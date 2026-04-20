@@ -124,6 +124,8 @@ export default function TradeDetailPage() {
           entryPrice={asPrice(t.entry)}
           slPrice={asPrice(t.sl)}
           tpPrice={asPrice(t.tp)}
+          openedAt={t.opened_at}
+          closedAt={t.closed_at}
         />
       </div>
 

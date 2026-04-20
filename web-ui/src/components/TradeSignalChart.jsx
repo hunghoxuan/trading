@@ -60,7 +60,9 @@ export const TradeSignalChart = ({
   live = true,
   entryPrice = null,
   slPrice = null,
-  tpPrice = null
+  tpPrice = null,
+  openedAt = null,
+  closedAt = null
 }) => {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
@@ -92,6 +94,7 @@ export const TradeSignalChart = ({
       timeScale: {
         borderColor: 'rgba(197, 203, 206, 0.4)',
         timeVisible: true,
+        secondsVisible: false,
       },
     });
 
@@ -121,24 +124,67 @@ export const TradeSignalChart = ({
       if (!binanceSymbol) return;
       try {
         setLoading(true);
+        let candles = [];
         if (historicalData && historicalData.length > 0) {
-          candleSeries.setData(historicalData);
+          candles = historicalData;
         } else {
-          // Use fetch with 'cors' mode explicitly (though it is default for external APIs)
-          const resp = await fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${bInterval}&limit=500`);
+          // If we have openedAt, we want to make sure we fetch enough data before it
+          // Binance klines can take endTime (optional)
+          let query = `symbol=${binanceSymbol}&interval=${bInterval}&limit=500`;
+          
+          const endTs = closedAt ? new Date(closedAt).getTime() : Date.now();
+          // Add some padding to see what happened after close
+          const fetchEnd = endTs + (1000 * 3600 * 24); // +1 day padding
+          
+          // If the trade is very old, we need to use 'endTime' parameter in Binance API
+          if (fetchEnd < Date.now() - (1000 * 3600)) {
+             query += `&endTime=${fetchEnd}`;
+          }
+
+          const resp = await fetch(`https://api.binance.com/api/v3/klines?${query}`);
           if (!resp.ok) {
              const errText = await resp.text();
              throw new Error(`Binance API error: ${resp.status} - ${errText}`);
           }
           const data = await resp.json();
-          const candles = data.map(d => ({
+          candles = data.map(d => ({
             time: d[0] / 1000,
             open: parseFloat(d[1]),
             high: parseFloat(d[2]),
             low: parseFloat(d[3]),
             close: parseFloat(d[4])
           }));
-          if (isMounted) candleSeries.setData(candles);
+        }
+
+        if (isMounted) {
+          candleSeries.setData(candles);
+
+          // Add Markers for Open/Close
+          const markers = [];
+          if (openedAt) {
+            const openTs = Math.floor(new Date(openedAt).getTime() / 1000);
+            markers.push({ time: openTs, position: 'belowBar', color: '#2196f3', shape: 'arrowUp', text: 'START' });
+          }
+          if (closedAt) {
+            const closeTs = Math.floor(new Date(closedAt).getTime() / 1000);
+            markers.push({ time: closeTs, position: 'aboveBar', color: '#f68410', shape: 'arrowDown', text: 'END' });
+          }
+          if (markers.length > 0) candleSeries.setMarkers(markers);
+
+          // Fit view to trade bounds if available
+          if (openedAt && closedAt) {
+            const rangeStart = Math.floor(new Date(openedAt).getTime() / 1000);
+            const rangeEnd = Math.floor(new Date(closedAt).getTime() / 1000);
+            // Add 10% padding
+            const dur = rangeEnd - rangeStart;
+            chart.timeScale().setVisibleRange({
+               from: rangeStart - (dur * 0.2),
+               to: rangeEnd + (dur * 0.2)
+            });
+          } else if (openedAt) {
+             const rangeStart = Math.floor(new Date(openedAt).getTime() / 1000);
+             chart.timeScale().scrollToPosition(0, false); // Scroll to latest but we might want to center on start
+          }
         }
       } catch (err) {
         console.error("Chart data fetch failed:", err);
@@ -146,8 +192,9 @@ export const TradeSignalChart = ({
         if (isMounted) setLoading(false);
       }
 
-      // 4. Start WebSocket
-      if (live && binanceSymbol && isMounted) {
+      // 4. Start WebSocket (only if not a settled historical trade)
+      const isHistorical = closedAt && (new Date(closedAt).getTime() < Date.now() - 3600000);
+      if (live && binanceSymbol && isMounted && !isHistorical) {
         const socketUrl = `wss://stream.binance.com:9443/ws/${binanceSymbol.toLowerCase()}@kline_${bInterval}`;
         const socket = new WebSocket(socketUrl);
         socket.onmessage = (event) => {
@@ -182,7 +229,7 @@ export const TradeSignalChart = ({
       if (socketRef.current) socketRef.current.close();
       chart.remove();
     };
-  }, [binanceSymbol, bInterval]); // Re-init relative to derived constants
+  }, [binanceSymbol, bInterval, openedAt, closedAt]); // Re-init if bounds change
 
   return (
     <div className="chart-wrapper" style={{ position: 'relative', width: '100%', minHeight: '420px' }}>
@@ -202,3 +249,4 @@ export const TradeSignalChart = ({
     </div>
   );
 };
+

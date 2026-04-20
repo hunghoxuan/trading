@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.20-05");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.20-06");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1636,13 +1636,31 @@ async function mt5InitBackend() {
     },
     async ackTradeV2(accountId, payload = {}) {
        const now = mt5NowIso();
+       const openedAt = payload.opened_at || payload.openedAt || null;
+       const closedAt = payload.closed_at || payload.closedAt || null;
+
        const res = await pool.query(`
          UPDATE trades
          SET dispatch_status = 'CONSUMED',
-             execution_status = $1, broker_trade_id = $2, entry_exec = $3, pnl_realized = $4,
-             closed_at = CASE WHEN $1 = 'CLOSED' THEN $5 ELSE closed_at END, updated_at = $5
-         WHERE trade_id = $6 AND account_id = $7 RETURNING user_id
-       `, [payload.execution_status, payload.broker_trade_id, payload.entry_exec, payload.pnl_realized, now, payload.trade_id, accountId]);
+             execution_status = $1, 
+             broker_trade_id = $2, 
+             entry_exec = $3, 
+             pnl_realized = $4,
+             opened_at = COALESCE($5, opened_at, CASE WHEN $1 = 'OPEN' THEN $6 ELSE NULL END),
+             closed_at = COALESCE($7, CASE WHEN $1 = 'CLOSED' THEN $6 ELSE NULL END), 
+             updated_at = $6
+         WHERE trade_id = $8 AND account_id = $9 RETURNING user_id, opened_at, closed_at
+       `, [
+          payload.execution_status, 
+          payload.broker_trade_id, 
+          payload.entry_exec, 
+          payload.pnl_realized, 
+          openedAt, 
+          now, 
+          closedAt, 
+          payload.trade_id, 
+          accountId
+       ]);
        if (res.rowCount > 0) {
          await this.log(payload.trade_id, 'trades', { event: 'ACK', status: payload.execution_status, pnl: payload.pnl_realized }, res.rows[0].user_id);
        }

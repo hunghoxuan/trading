@@ -38,7 +38,7 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026.04.20-05";
+string EA_BUILD_VERSION = "2026.04.20-06";
 
 input string InpMappingFile = "TVBridge_Mappings.csv";
 
@@ -1635,8 +1635,48 @@ bool ComputeMarginPercentVolume(const string action,
    return false;
 }
 
+string IsoTime(datetime t)
+{
+   if(t <= 0) return "";
+   MqlDateTime dt;
+   // We use STRUCT to avoid TimeToString locale issues. 
+   // Note: We assume broker time or UTC depending on server expectation. 
+   // Usually, it's safest to send as is if server handles broker offset, 
+   // but Z implies UTC.
+   TimeToStruct(t, dt);
+   return StringFormat("%04d-%02d-%02dT%02d:%02d:%02dZ", dt.year, dt.mon, dt.day, dt.hour, dt.min, dt.sec);
+}
+
 void Ack(const string signalId, const string status, const string ticket, const string err)
 {
+   string openTimeIso = "";
+   string closeTimeIso = "";
+   ulong ptk = StringToInteger(ticket);
+   
+   if(ptk > 0)
+   {
+      if(PositionSelectByTicket(ptk))
+         openTimeIso = IsoTime((datetime)PositionGetInteger(POSITION_TIME));
+      else if(HistorySelectByPosition(ptk))
+      {
+         int totalDeals = HistoryDealsTotal();
+         for(int i=0; i<totalDeals; i++)
+         {
+            ulong deal = HistoryDealGetTicket(i);
+            if(HistoryDealGetInteger(deal, DEAL_ENTRY) == DEAL_ENTRY_IN)
+            {
+               openTimeIso = IsoTime((datetime)HistoryDealGetInteger(deal, DEAL_TIME));
+               break;
+            }
+         }
+      }
+   }
+   
+   string s = status;
+   StringToUpper(s);
+   if(s == "CLOSED" || s == "TP" || s == "SL")
+      closeTimeIso = IsoTime(TimeCurrent());
+
    string ackNote = "action=" + g_ackAction
                     + " symbol=" + g_ackSymbol
                     + " reqVol=" + DoubleToString(g_ackReqVolume, 4)
@@ -1665,6 +1705,8 @@ void Ack(const string signalId, const string status, const string ticket, const 
    body += "\"note\":\"" + JsonEscape(ackNote) + "\",";
    body += "\"action\":\"" + JsonEscape(g_ackAction) + "\",";
    body += "\"symbol\":\"" + JsonEscape(g_ackSymbol) + "\",";
+   body += "\"opened_at\":\"" + openTimeIso + "\",";
+   body += "\"closed_at\":\"" + closeTimeIso + "\",";
    body += "\"requested_volume\":" + DoubleToString(g_ackReqVolume, 4) + ",";
    body += "\"used_volume\":" + DoubleToString(g_ackUsedVolume, 4) + ",";
    body += "\"requested_sl\":" + DoubleToString(g_ackReqSl, 8) + ",";
