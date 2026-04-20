@@ -466,4 +466,10 @@ export const api = {
     return get(`/mt5/db/rows?${q.toString()}`);
   },
   dbCreateRow: (payload = {}) => post("/mt5/db/rows/create", payload),
+  aiListTemplates: () => get("/v2/ai/templates"),
+  aiUpsertTemplate: (payload = {}) => post("/v2/ai/templates", payload),
+  aiDeleteTemplate: (templateId) => del(`/v2/ai/templates/${encodeURIComponent(templateId)}`),
+  aiGetConfig: () => get("/v2/ai/config"),
+  aiUpsertConfig: (key, value) => post("/v2/ai/config", { key, value }),
+  aiGenerate: (payload = {}) => post("/v2/ai/generate", payload),
 };

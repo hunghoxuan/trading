@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "AI: Query DeepSeek",
+      "type": "shell",
+      "command": "node scripts/ai.js --provider deepseek \"${input:prompt}\"",
+      "problemMatcher": [],
+      "group": "none"
+    },
+    {
+      "label": "AI: Query Ollama (Qwen)",
+      "type": "shell",
+      "command": "node scripts/ai.js --provider ollama \"${input:prompt}\"",
+      "problemMatcher": [],
+      "group": "none"
+    },
+    {
+      "label": "AI: List Models",
+      "type": "shell",
+      "command": "node scripts/ai.js --list",
+      "problemMatcher": [],
+      "group": "none"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "prompt",
+      "type": "promptString",
+      "description": "Enter your prompt for the AI"
+    }
+  ]
+}

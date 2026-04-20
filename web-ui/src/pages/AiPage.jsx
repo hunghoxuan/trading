@@ -1,0 +1,300 @@
+import { useEffect, useState } from "react";
+import { api } from "../api";
+
+export default function AiPage() {
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const [activeTemplate, setActiveTemplate] = useState({
+    name: "",
+    prompt_text: "",
+    default_symbol: "",
+    default_tf: "",
+    default_model: "deepseek-coder",
+  });
+
+  const [aiConfig, setAiConfig] = useState({});
+  const [showConfig, setShowConfig] = useState(false);
+  
+  const [aiResponse, setAiResponse] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  
+  const [suggestedSignals, setSuggestedSignals] = useState([]);
+  const [selectedSignalIndices, setSelectedSignalIndices] = useState(new Set());
+
+  // Load basic data
+  useEffect(() => {
+    loadTemplates();
+    loadConfig();
+  }, []);
+
+  async function loadTemplates() {
+    try {
+      const res = await api.aiListTemplates();
+      setTemplates(res.templates || []);
+    } catch (e) { setError("Failed to load templates: " + e.message); }
+  }
+
+  async function loadConfig() {
+    try {
+      const res = await api.aiGetConfig();
+      const cfg = {};
+      (res.config || []).forEach(c => cfg[c.config_key] = c.config_value);
+      setAiConfig(cfg);
+    } catch (e) { setError("Failed to load AI config: " + e.message); }
+  }
+
+  const handleSelectTemplate = (t) => {
+    setSelectedTemplateId(t.template_id);
+    setActiveTemplate(t);
+  };
+
+  const handleCreateNew = () => {
+    setSelectedTemplateId(null);
+    setActiveTemplate({
+      name: "New Template",
+      prompt_text: "Analyize this pair: {{symbol}} on {{tf}} timeframe. Identify high quality SMC entries. Output in JSON array format.",
+      default_symbol: "",
+      default_tf: "1h",
+      default_model: "deepseek-coder",
+    });
+  };
+
+  const handleSaveTemplate = async () => {
+    setLoading(true);
+    try {
+      const res = await api.aiUpsertTemplate({ ...activeTemplate, template_id: selectedTemplateId });
+      await loadTemplates();
+      setSelectedTemplateId(res.template.template_id);
+      setActiveTemplate(res.template);
+    } catch (e) { setError("Save failed: " + e.message); }
+    finally { setLoading(false); }
+  };
+
+  const handleDeleteTemplate = async (id) => {
+    if (!window.confirm("Delete this template?")) return;
+    try {
+      await api.aiDeleteTemplate(id);
+      if (selectedTemplateId === id) handleCreateNew();
+      await loadTemplates();
+    } catch (e) { setError("Delete failed: " + e.message); }
+  };
+
+  const handleSaveConfig = async (key, value) => {
+    try {
+      await api.aiUpsertConfig(key, value);
+      await loadConfig();
+    } catch (e) { setError("Config save failed: " + e.message); }
+  };
+
+  const handleRunAI = async () => {
+    setLoading(true);
+    setAiResponse(null);
+    setSuggestedSignals([]);
+    setSelectedSignalIndices(new Set());
+    try {
+      const res = await api.aiGenerate({
+        provider: "deepseek", // Need a selector for provider
+        model: activeTemplate.default_model || "deepseek-coder",
+        prompt: activeTemplate.prompt_text,
+        context: `Symbol: ${activeTemplate.default_symbol || "ALL"}, Timeframe: ${activeTemplate.default_tf || "1h"}`
+      });
+      setAiResponse(res.raw_response);
+      setSuggestedSignals(res.signals || []);
+      // Auto-select all by default
+      if (res.signals?.length > 0) {
+        setSelectedSignalIndices(new Set(res.signals.map((_, i) => i)));
+      }
+    } catch (e) { setError("AI generation failed: " + e.message); }
+    finally { setLoading(false); }
+  };
+
+  const toggleSignalSelection = (idx) => {
+    const next = new Set(selectedSignalIndices);
+    if (next.has(idx)) next.delete(idx);
+    else next.add(idx);
+    setSelectedSignalIndices(next);
+  };
+
+  const handleImportSelected = async () => {
+    const toImport = suggestedSignals.filter((_, i) => selectedSignalIndices.has(i));
+    if (toImport.length === 0) return;
+    
+    setLoading(true);
+    try {
+      let count = 0;
+      for (const sig of toImport) {
+        // Construct standard signal payload
+        const payload = {
+          symbol: sig.symbol,
+          action: sig.side?.toUpperCase().includes("BUY") ? "BUY" : "SELL",
+          entry: sig.entry,
+          sl: sig.sl,
+          tp: sig.tp,
+          tf: sig.timeframe,
+          model: sig.entry_model || activeTemplate.name,
+          note: sig.note,
+          source: "AI_HUB"
+        };
+        await api.createTrade(payload);
+        count++;
+      }
+      alert(`Successfully imported ${count} signals to system.`);
+    } catch (e) { setError("Import failed: " + e.message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <section className="stack-layout fadeIn" style={{ height: "calc(100vh - 100px)", display: "flex", flexDirection: "column" }}>
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h2 className="page-title" style={{ margin: 0 }}>AI Agent Hub</h2>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button className="secondary-button" onClick={() => setShowConfig(!showConfig)}>
+            {showConfig ? "Hide API Keys" : "🔒 Manage API Keys"}
+          </button>
+          <button className="primary-button" onClick={handleRunAI} disabled={loading}>
+            {loading ? "Thinking..." : "🚀 Run AI Analysis"}
+          </button>
+        </div>
+      </header>
+
+      {error && <div className="error" style={{ marginBottom: 16 }}>{error} <button onClick={() => setError("")} style={{ float: 'right' }}>x</button></div>}
+
+      {showConfig && (
+        <div className="panel fadeIn" style={{ marginBottom: 16, background: "var(--bg-accent)" }}>
+          <h3 className="panel-label">Provider API Keys</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div>
+              <label className="minor-text">DeepSeek API Key</label>
+              <input 
+                type="password" 
+                value={aiConfig.DEEPSEEK_API_KEY || ""} 
+                onChange={(e) => handleSaveConfig("DEEPSEEK_API_KEY", e.target.value)}
+                placeholder="sk-..."
+              />
+            </div>
+            <div>
+              <label className="minor-text">Gemini API Key</label>
+              <input 
+                type="password" 
+                value={aiConfig.GEMINI_API_KEY || ""} 
+                onChange={(e) => handleSaveConfig("GEMINI_API_KEY", e.target.value)}
+                placeholder="AI..."
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "250px 1fr", gap: 20, flex: 1, minHeight: 0 }}>
+        {/* Sidebar: Templates */}
+        <aside className="panel" style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <span className="panel-label">Templates</span>
+            <button className="secondary-button" onClick={handleCreateNew} style={{ padding: "2px 8px" }}>+</button>
+          </div>
+          <div style={{ overflowY: "auto", flex: 1 }}>
+            {templates.map(t => (
+              <div 
+                key={t.template_id} 
+                className={`mini-table-row ${selectedTemplateId === t.template_id ? 'active' : ''}`}
+                style={{ padding: 10, cursor: "pointer", borderRadius: 4, marginBottom: 4, border: selectedTemplateId === t.template_id ? "1px solid var(--accent)" : "1px solid transparent" }}
+                onClick={() => handleSelectTemplate(t)}
+              >
+                <div style={{ fontWeight: 600 }}>{t.name}</div>
+                <div className="minor-text" style={{ fontSize: 10 }}>{t.default_model} | {t.default_tf}</div>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        {/* Editor & Results Area */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 20, overflowY: "auto" }}>
+          
+          <div className="panel">
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 150px 100px", gap: 16, marginBottom: 16 }}>
+              <div>
+                <label className="minor-text">Template Name</label>
+                <input type="text" value={activeTemplate.name} onChange={e => setActiveTemplate({...activeTemplate, name: e.target.value})} />
+              </div>
+              <div>
+                <label className="minor-text">Default Symbol</label>
+                <input type="text" value={activeTemplate.default_symbol} onChange={e => setActiveTemplate({...activeTemplate, default_symbol: e.target.value})} placeholder="BTCUSDT" />
+              </div>
+              <div>
+                <label className="minor-text">TF</label>
+                <input type="text" value={activeTemplate.default_tf} onChange={e => setActiveTemplate({...activeTemplate, default_tf: e.target.value})} placeholder="1h" />
+              </div>
+            </div>
+            
+            <label className="minor-text">AI Prompt Template</label>
+            <textarea 
+              rows={6} 
+              style={{ width: "100%", fontFamily: "monospace", fontSize: 12 }}
+              value={activeTemplate.prompt_text}
+              onChange={e => setActiveTemplate({...activeTemplate, prompt_text: e.target.value})}
+            />
+            
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+              <button className="secondary-button" onClick={() => handleDeleteTemplate(selectedTemplateId)} disabled={!selectedTemplateId}>Delete</button>
+              <button className="primary-button" onClick={handleSaveTemplate} style={{ marginLeft: 10 }}>Save Template</button>
+            </div>
+          </div>
+
+          {/* Results Grid */}
+          {suggestedSignals.length > 0 && (
+            <div className="panel fadeIn" style={{ flex: 1 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <h3 className="panel-label" style={{ margin: 0 }}>AI SUGGESTED SIGNALS ({suggestedSignals.length})</h3>
+                <button className="primary-button" onClick={handleImportSelected} disabled={selectedSignalIndices.size === 0}>
+                   📥 Sync to System ({selectedSignalIndices.size})
+                </button>
+              </div>
+              <table className="mini-table" style={{ width: "100%" }}>
+                <thead>
+                  <tr className="mini-table-head">
+                    <th style={{ width: 30 }}></th>
+                    <th>Symbol</th>
+                    <th>Side</th>
+                    <th>Entry</th>
+                    <th>SL/TP</th>
+                    <th>Model</th>
+                    <th>Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {suggestedSignals.map((s, i) => (
+                    <tr key={i} className="mini-table-row" style={{ opacity: selectedSignalIndices.has(i) ? 1 : 0.5 }}>
+                      <td>
+                        <input type="checkbox" checked={selectedSignalIndices.has(i)} onChange={() => toggleSignalSelection(i)} />
+                      </td>
+                      <td style={{ fontWeight: 800 }}>{s.symbol} <span className="minor-text">{s.timeframe}</span></td>
+                      <td style={{ color: s.side?.toUpperCase().includes("BUY") ? "var(--success)" : "var(--neg)" }}>{s.side}</td>
+                      <td>{s.entry}</td>
+                      <td style={{ fontSize: 10 }}>
+                        <div className="money-neg">{s.sl}</div>
+                        <div className="money-pos">{s.tp}</div>
+                      </td>
+                      <td>{s.entry_model}</td>
+                      <td className="minor-text" style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {aiResponse && !suggestedSignals.length && (
+            <div className="panel">
+              <h3 className="panel-label">Raw AI Response</h3>
+              <pre style={{ fontSize: 11, background: "rgba(0,0,0,0.1)", padding: 10, borderRadius: 4, whiteSpace: "pre-wrap" }}>
+                {aiResponse}
+              </pre>
+            </div>
+          )}
+
+        </div>
+      </div>
+    </section>
+  );
+}

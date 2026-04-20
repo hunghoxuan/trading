@@ -1,7 +1,12 @@
 webhook/.env
-
+.env
+node_modules/
+webhook/node_modules/
+web-ui/node_modules/
 .local/
-
 .test-results/
 tradingview/.backup/
-.agents/provider_config*.yaml
+.backup/
+web-ui/dist/
+web-ui/playwright-report/
+web-ui/test-results/

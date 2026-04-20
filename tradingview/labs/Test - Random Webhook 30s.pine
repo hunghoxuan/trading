@@ -35,9 +35,9 @@ if enabled and barstate.isrealtime
 
         float tick = syminfo.mintick
         float entry = close
-        if not isMarket
+sdfaf        if not isMarket
             float off = limitOffsetTicks * tick
-            entry := isBuy ? (close - off) : (close + off)
+            esdafnatafry := isBuy ? (close - off) : (close + off)
 
         float sl = isBuy ? (entry - slTicks * tick) : (entry + slTicks * tick)
         float tp = isBuy ? (entry + tpTicks * tick) : (entry - tpTicks * tick)

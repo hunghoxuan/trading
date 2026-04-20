@@ -1,5 +1,11 @@
 # Changelog (Latest first)
 
+## 2026.04.20
+- [x] [13:38] [Scripts/AI] [Author: Gemini] Task: **Multi-Model AI CLI Gateway**. Implemented `scripts/ai.js` for manual selection and querying of DeepSeek and Qwen (Ollama). Added VS Code tasks (`.vscode/tasks.json`) for IDE-level model selection and prompting. Removed experimental auto-audit from webhook server to honor manual-use preference.
+- [x] [13:41] [Docs/AI] [Author: Gemini] Task: **AI Model Guidelines & Global Config**. Created `docs/AI_GUIDE.md` for model selection/verification instructions. Expanded `provider_config.yaml` with templates for GPT-4o, Claude 3.5, and OpenRouter. Enabled global configuration support via `~/.gemini/antigravity/provider_config.yaml`.
+- Version: 2026.04.20-1141
+
+
 ## 2026.04.18
 - Fully decoupled **Signals** (Reference Feed) from **Trades** (Execution Ledger) in Web-UI.
 - Linked Signals UI strictly to `signals` DB table and Trades UI strictly to `trades` V2 ledger.
