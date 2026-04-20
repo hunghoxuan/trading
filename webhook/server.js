@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.20-10"); // AI Hub Restored
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.20-11"); // AI DB Fixed
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1569,6 +1569,8 @@ async function mt5InitBackend() {
   const storage = "postgres";
   MT5_BACKEND = {
     storage,
+    pool,
+    query: (q, p) => pool.query(q, p),
     info: { url: CFG.mt5PostgresUrl.replace(/:[^:@/]+@/, ":***@") },
     async log(objectId, objectTable, metadata = {}, userId = null) {
       await pool.query(`
