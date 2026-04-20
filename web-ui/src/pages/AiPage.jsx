@@ -38,9 +38,7 @@ export default function AiPage() {
   async function loadConfig() {
     try {
       const res = await api.aiGetConfig();
-      const cfg = {};
-      (res.config || []).forEach(c => cfg[c.config_key] = c.config_value);
-      setAiConfig(cfg);
+      setAiConfig(res.config?.settings || {});
     } catch (e) { setError("Failed to load AI config: " + e.message); }
   }
 
@@ -168,8 +166,10 @@ export default function AiPage() {
               <label className="minor-text">DeepSeek API Key</label>
               <input 
                 type="password" 
+                autoComplete="off"
                 value={aiConfig.DEEPSEEK_API_KEY || ""} 
-                onChange={(e) => handleSaveConfig("DEEPSEEK_API_KEY", e.target.value)}
+                onChange={(e) => setAiConfig(prev => ({ ...prev, DEEPSEEK_API_KEY: e.target.value }))}
+                onBlur={(e) => handleSaveConfig("DEEPSEEK_API_KEY", e.target.value)}
                 placeholder="sk-..."
               />
             </div>
@@ -177,8 +177,10 @@ export default function AiPage() {
               <label className="minor-text">Gemini API Key</label>
               <input 
                 type="password" 
+                autoComplete="off"
                 value={aiConfig.GEMINI_API_KEY || ""} 
-                onChange={(e) => handleSaveConfig("GEMINI_API_KEY", e.target.value)}
+                onChange={(e) => setAiConfig(prev => ({ ...prev, GEMINI_API_KEY: e.target.value }))}
+                onBlur={(e) => handleSaveConfig("GEMINI_API_KEY", e.target.value)}
                 placeholder="AI..."
               />
             </div>

@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.20-11"); // AI DB Fixed
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.20-12"); // AI Config Logic Fixed
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -5095,10 +5095,20 @@ const appHandler = async (req, res) => {
     try {
       const body = await readJson(req);
       const db = await mt5InitBackend();
-      await db.query(
-        "INSERT INTO ai_configs (config_id, settings) VALUES ('default', $1) ON CONFLICT (config_id) DO UPDATE SET settings = $1, updated_at = NOW()",
-        [body.settings || body]
-      );
+      
+      if (body.key && body.value !== undefined) {
+        // Partial update for a single key
+        await db.query(
+          "INSERT INTO ai_configs (config_id, settings) VALUES ('default', jsonb_build_object($1, $2)) ON CONFLICT (config_id) DO UPDATE SET settings = ai_configs.settings || jsonb_build_object($1, $2), updated_at = NOW()",
+          [body.key, body.value]
+        );
+      } else {
+        // Bulk update
+        await db.query(
+          "INSERT INTO ai_configs (config_id, settings) VALUES ('default', $1) ON CONFLICT (config_id) DO UPDATE SET settings = $1, updated_at = NOW()",
+          [body.settings || body]
+        );
+      }
       return json(res, 200, { ok: true });
     } catch (e) {
       return json(res, 500, { ok: false, error: e.message });
