@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.20-07");
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.20-08");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1884,6 +1884,8 @@ async function mt5InitBackend() {
       if (filters.symbol) { params.push(filters.symbol); clauses.push(`symbol = $${params.length}`); }
       const actionFilter = filters.action || filters.side;
       if (actionFilter) { params.push(actionFilter); clauses.push(`action = $${params.length}`); }
+      if (filters.entry_model) { params.push(filters.entry_model); clauses.push(`entry_model = $${params.length}`); }
+      if (filters.chart_tf) { params.push(filters.chart_tf); clauses.push(`chart_tf = $${params.length}`); }
       if (filters.q) {
         params.push(`%${String(filters.q)}%`);
         const p = `$${params.length}`;
@@ -5167,6 +5169,8 @@ const appHandler = async (req, res) => {
         created_to: url.searchParams.get("created_to") || "",
         symbol: url.searchParams.get("symbol") || "",
         action: url.searchParams.get("action") || url.searchParams.get("side") || "",
+        entry_model: url.searchParams.get("entry_model") || "",
+        chart_tf: url.searchParams.get("chart_tf") || "",
         q: url.searchParams.get("q") || "",
       };
       const out = await mt5ListTradesV2(filters, page, pageSize);

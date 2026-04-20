@@ -161,6 +161,10 @@ export default function TradesPage() {
     q: "",
     account_id: "",
     source_id: "",
+    symbol: "",
+    side: "",
+    entry_model: "",
+    chart_tf: "",
     execution_status: "",
     range: "all",
     page: 1,
@@ -175,6 +179,22 @@ export default function TradesPage() {
     (accounts || []).forEach((a) => map.set(String(a.account_id || ""), a));
     return map;
   }, [accounts]);
+
+  const uniqueOptions = useMemo(() => {
+    const symbols = new Set();
+    const models = new Set();
+    const tfs = new Set();
+    (rows || []).forEach(r => {
+      if (r.symbol) symbols.add(r.symbol);
+      if (r.entry_model) models.add(r.entry_model);
+      if (r.chart_tf) tfs.add(r.chart_tf);
+    });
+    return {
+      symbols: Array.from(symbols).sort(),
+      models: Array.from(models).sort(),
+      tfs: Array.from(tfs).sort()
+    };
+  }, [rows]);
 
   async function loadMeta() {
     try {
@@ -369,6 +389,23 @@ export default function TradesPage() {
           </select>
           <select value={filter.execution_status} onChange={(e) => setFilter((f) => ({ ...f, execution_status: e.target.value, page: 1 }))}>
             {STATUS_OPTIONS.map((s) => <option key={s.value || "all"} value={s.value}>{s.label}</option>)}
+          </select>
+          <select value={filter.side} onChange={(e) => setFilter((f) => ({ ...f, side: e.target.value, page: 1 }))}>
+            <option value="">ALL SIDES</option>
+            <option value="BUY">BUY</option>
+            <option value="SELL">SELL</option>
+          </select>
+          <select value={filter.symbol} onChange={(e) => setFilter((f) => ({ ...f, symbol: e.target.value, page: 1 }))}>
+            <option value="">ALL SYMBOLS</option>
+            {uniqueOptions.symbols.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select value={filter.entry_model} onChange={(e) => setFilter((f) => ({ ...f, entry_model: e.target.value, page: 1 }))}>
+            <option value="">ALL MODELS</option>
+            {uniqueOptions.models.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <select value={filter.chart_tf} onChange={(e) => setFilter((f) => ({ ...f, chart_tf: e.target.value, page: 1 }))}>
+            <option value="">ALL TFS</option>
+            {uniqueOptions.tfs.map(t => <option key={t} value={t}>{formatTimeframe(t)}</option>)}
           </select>
           <select value={filter.range} onChange={(e) => setFilter((f) => ({ ...f, range: e.target.value, page: 1 }))}>
             {RANGE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
