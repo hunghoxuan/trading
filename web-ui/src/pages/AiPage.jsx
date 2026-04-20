@@ -47,14 +47,27 @@ export default function AiPage() {
     setActiveTemplate(t);
   };
 
+  const DEFAULT_PROMPT = `Role: You are an expert financial analyst and algorithmic trader specialized in price action and technical analysis.
+Task: Analyze the provided live market data for the symbol {SYMBOL} on the {TIMEFRAME} timeframe.
+Instructions:
+Identify the current market structure (Bias, Trend, Range, or Reversal).
+
+Determine a high-probability trade setup based on {INDICATORS/STRATEGY, e.g., SMC, RSI, MACD}.
+
+Provide precise price levels for Entry, Take Profit (TP), and Stop Loss (SL), direction (Buy|Sell)
+
+Ensure the risk-to-reward ratio is at least {RR}.
+
+Output Format: Return ONLY a valid JSON object. Do not include any conversational text, markdown formatting outside the JSON, or explanations before the code block. Json fields: symbol, entry_model, direction, entry, tp, tp2, sl, rr, note: bias, trend and market data with detail analysis.`;
+
   const handleCreateNew = () => {
     setSelectedTemplateId(null);
     setActiveTemplate({
-      name: "New Template",
-      prompt_text: "Analyize this pair: {{symbol}} on {{tf}} timeframe. Identify high quality SMC entries. Output in JSON array format.",
-      default_symbol: "",
+      name: "New AI Strategy",
+      prompt_text: DEFAULT_PROMPT,
+      default_symbol: "BTCUSDT",
       default_tf: "1h",
-      default_model: "deepseek-coder",
+      default_model: "gemini-2.0-flash",
     });
   };
 
@@ -150,9 +163,6 @@ export default function AiPage() {
           <button className="secondary-button" onClick={() => setShowConfig(!showConfig)}>
             {showConfig ? "Hide API Keys" : "🔒 Manage API Keys"}
           </button>
-          <button className="primary-button" onClick={handleRunAI} disabled={loading}>
-            {loading ? "Thinking..." : "🚀 Run AI Analysis"}
-          </button>
         </div>
       </header>
 
@@ -231,15 +241,22 @@ export default function AiPage() {
             
             <label className="minor-text">AI Prompt Template</label>
             <textarea 
-              rows={6} 
-              style={{ width: "100%", fontFamily: "monospace", fontSize: 12 }}
+              rows={12} 
+              style={{ width: "100%", fontFamily: "monospace", fontSize: 12, lineHeight: "1.5" }}
               value={activeTemplate.prompt_text}
               onChange={e => setActiveTemplate({...activeTemplate, prompt_text: e.target.value})}
             />
             
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-              <button className="secondary-button" onClick={() => handleDeleteTemplate(selectedTemplateId)} disabled={!selectedTemplateId}>Delete</button>
-              <button className="primary-button" onClick={handleSaveTemplate} style={{ marginLeft: 10 }}>Save Template</button>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10 }}>
+              <div>
+                <button className="primary-button" onClick={handleRunAI} disabled={loading}>
+                  {loading ? "⌛ Analyzing..." : "🚀 Run AI Analysis"}
+                </button>
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button className="secondary-button" onClick={() => handleDeleteTemplate(selectedTemplateId)} disabled={!selectedTemplateId}>Delete</button>
+                <button className="primary-button" onClick={handleSaveTemplate}>Save Template</button>
+              </div>
             </div>
           </div>
 

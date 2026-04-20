@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.20-13"); // Unified Storage
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.20-14"); // Real AI Integrated
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -5181,7 +5181,7 @@ const appHandler = async (req, res) => {
   if (req.method === "POST" && url.pathname === "/v2/ai/generate") {
     if (!requireAdminKey(req, res, url)) return;
     try {
-      const { templateId, customPrompt, service, model } = await readJson(req);
+      const { templateId, customPrompt, service, model, context } = await readJson(req);
       const db = await mt5InitBackend();
       
       let finalPrompt = customPrompt || "";
@@ -5192,13 +5192,94 @@ const appHandler = async (req, res) => {
       
       const configRes = await db.query("SELECT data FROM user_settings WHERE user_id = $1 AND type = 'api_key'", [CFG.mt5DefaultUserId]);
       const config = configRes.rows[0]?.data || {};
+
+      // Replace placeholders in prompt
+      // {SYMBOL}, {TIMEFRAME}, {INDICATORS/STRATEGY}, {RR}
+      // Context might contain these or we use defaults from template data
+      const { rows: tRows } = templateId ? await db.query("SELECT data FROM user_settings WHERE id = $1", [templateId]) : { rows: [] };
+      const tData = tRows[0]?.data || {};
       
-      const mockSignals = [
-        { symbol: "BTCUSDT", side: "BUY", price: 65000, sl: 64000, tp: 68000, timeframe: "H1", entry_model: "AI_TREND", note: "Refactored Storage Verified" }
-      ];
+      finalPrompt = finalPrompt
+        .replace(/{SYMBOL}/g, tData.default_symbol || "BTCUSDT")
+        .replace(/{TIMEFRAME}/g, tData.default_tf || "H1")
+        .replace(/{INDICATORS\/STRATEGY}/g, "SMC (Market Structure)")
+        .replace(/{RR}/g, "1:2");
+
+      const provider = service || "gemini";
+      const apiKey = provider === "deepseek" ? config.DEEPSEEK_API_KEY : config.GEMINI_API_KEY;
       
-      return json(res, 200, { ok: true, response: JSON.stringify(mockSignals), signals: mockSignals });
+      if (!apiKey) {
+        return json(res, 400, { ok: false, error: `API Key for ${provider} is missing. Please configure it in the AI Hub.` });
+      }
+
+      console.log(`[ai] invoking ${provider} with model ${model || 'default'}`);
+      
+      let endpoint = "";
+      let authHeader = "";
+      let bodyData = {};
+
+      if (provider === "deepseek") {
+        endpoint = "https://api.deepseek.com/chat/completions";
+        authHeader = `Bearer ${apiKey}`;
+        bodyData = {
+          model: model || "deepseek-coder",
+          messages: [{ role: "user", content: finalPrompt }],
+          response_format: { type: "json_object" }
+        };
+      } else {
+        // Default to Gemini (OpenAI compatible route)
+        endpoint = `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=${apiKey}`;
+        authHeader = ""; // Handled in URL
+        bodyData = {
+          model: model || "gemini-2.0-flash",
+          messages: [{ role: "user", content: finalPrompt }]
+        };
+      }
+
+      const aiRes = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authHeader ? { "Authorization": authHeader } : {})
+        },
+        body: JSON.stringify(bodyData)
+      });
+
+      if (!aiRes.ok) {
+        const errText = await aiRes.text();
+        throw new Error(`AI Provider Error: ${errText}`);
+      }
+
+      const aiJson = await aiRes.json();
+      const rawResponse = aiJson.choices?.[0]?.message?.content || "";
+      
+      // Attempt to extract JSON from markdown if present
+      let cleanJson = rawResponse.trim();
+      if (cleanJson.includes("```")) {
+        const match = cleanJson.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (match) cleanJson = match[1];
+      }
+
+      let signals = [];
+      try {
+        const parsed = JSON.parse(cleanJson);
+        signals = Array.isArray(parsed) ? parsed : [parsed];
+      } catch (e) {
+        console.error("[ai] failed to parse JSON from AI response:", cleanJson);
+      }
+
+      return json(res, 200, { 
+        ok: true, 
+        raw_response: rawResponse, 
+        signals: signals.map(s => ({
+          ...s,
+          symbol: s.symbol || tData.default_symbol || "BTCUSDT",
+          side: s.direction || s.side,
+          entry_model: s.entry_model || tData.name || "AI_AGENT"
+        }))
+      });
     } catch (e) {
+      console.error("[ai] error:", e);
       return json(res, 500, { ok: false, error: e.message });
     }
   }
