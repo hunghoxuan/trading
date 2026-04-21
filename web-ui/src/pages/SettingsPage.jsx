@@ -32,8 +32,11 @@ export default function SettingsPage({ authUser }) {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const [settings, setSettings] = useState([]);
+  const [activeType, setActiveType] = useState(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState("");
+  const [newSettingForm, setNewSettingForm] = useState({ type: "", name: "" });
+  const [showAddForm, setShowAddForm] = useState(false);
 
   const canManageExecution = isSystemRole(authUser);
   const [execLoading, setExecLoading] = useState(false);
@@ -49,11 +52,6 @@ export default function SettingsPage({ authUser }) {
     ctrader_mode: "demo",
     ctrader_account_id: "",
   });
-
-  const selectedAccount = useMemo(
-    () => (execAccounts || []).find((a) => String(a?.account_id || "") === String(execForm.account_id || "")) || null,
-    [execAccounts, execForm.account_id],
-  );
 
   async function loadData() {
     try {
@@ -96,9 +94,14 @@ export default function SettingsPage({ authUser }) {
 
       if (sets?.settings) {
         setSettings(sets.settings);
+        if (!activeType && sets.settings.length > 0) {
+          setActiveType(sets.settings[0].type);
+        }
       }
+      setMsg(""); // Clear potential "Not found" or error from previous load
     } catch (err) {
-      setMsg(err.message);
+      console.error(err);
+      if (err.message !== "Not found") setMsg(err.message);
     }
   }
 
@@ -183,6 +186,7 @@ export default function SettingsPage({ authUser }) {
     try {
       await api.deleteSetting(type);
       setSettingsMsg(`Setting ${type} deleted.`);
+      setActiveType(null);
       await loadData();
     } catch (err) {
       setSettingsMsg(err.message);
@@ -192,15 +196,19 @@ export default function SettingsPage({ authUser }) {
     }
   }
 
-  async function addEmptySetting() {
-    const t = window.prompt("Enter setting type (e.g. gemini_secret):");
-    if (!t) return;
-    const n = window.prompt("Enter display name (e.g. Gemini Config):", t);
-    if (!n) return;
+  async function createSetting() {
+    const { type, name } = newSettingForm;
+    if (!type || !name) {
+      setSettingsMsg("Type and Name are required.");
+      return;
+    }
     setSettingsLoading(true);
     try {
-      await api.upsertSetting({ type: t, name: n, data: { key: "" }, status: "active" });
-      setSettingsMsg(`Setting ${t} added.`);
+      await api.upsertSetting({ type, name, data: { key: "" }, status: "active" });
+      setSettingsMsg(`Setting ${type} created.`);
+      setShowAddForm(false);
+      setNewSettingForm({ type: "", name: "" });
+      setActiveType(type);
       await loadData();
     } catch (err) {
       setSettingsMsg(err.message);
@@ -242,13 +250,14 @@ export default function SettingsPage({ authUser }) {
     }
   }
 
+  const selectedSetting = useMemo(() => settings.find(s => s.type === activeType), [settings, activeType]);
+
   return (
     <div className="stack-layout fadeIn" style={{ paddingBottom: 40 }}>
       <h2 className="page-title">Settings</h2>
 
-      {/* Top 3-Card Row */}
+      {/* Top Grid: Profile, Password, Execution */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, alignItems: "start" }}>
-        {/* Card 1: Update Profile */}
         <UserDetailSection
           title="UPDATE PROFILE"
           form={profileForm}
@@ -263,7 +272,6 @@ export default function SettingsPage({ authUser }) {
           footer={msg && !pwdLoading ? <span className="minor-text">{msg}</span> : null}
         />
 
-        {/* Card 2: Update Password */}
         <section className="panel" style={{ height: "100%" }}>
           <div className="panel-label">UPDATE PASSWORD</div>
           <div className="stack-layout" style={{ gap: 12 }}>
@@ -299,11 +307,10 @@ export default function SettingsPage({ authUser }) {
                 {pwdLoading ? "UPDATING..." : "UPDATE"}
               </button>
             </div>
-            {pwdLoading || msg ? <div className="minor-text" style={{ marginTop: 4 }}>{msg}</div> : null}
+            {pwdLoading ? <div className="minor-text" style={{ marginTop: 4 }}>Updating...</div> : null}
           </div>
         </section>
 
-        {/* Card 3: System Execution Profile */}
         {canManageExecution && (
           <section className="panel" style={{ height: "100%" }}>
             <div className="panel-label">EXECUTION PROFILE</div>
@@ -340,74 +347,124 @@ export default function SettingsPage({ authUser }) {
         )}
       </div>
 
-      {/* Card 4: Manage Settings (Full CRUD) */}
-      <section className="panel" style={{ marginTop: 24 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <div className="panel-label" style={{ margin: 0 }}>MANAGE SYSTEM SETTINGS</div>
-          <button className="secondary-button" onClick={addEmptySetting} disabled={settingsLoading}>+ ADD SETTING</button>
-        </div>
+      {/* Main Area: System Settings (List-Detail Layout) */}
+      <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 24, marginTop: 24 }}>
+        {/* Left: Sidebar */}
+        <section className="panel" style={{ margin: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div className="panel-label" style={{ margin: 0 }}>SETTINGS LIST</div>
+            <button className="secondary-button" style={{ padding: "4px 8px" }} onClick={() => setShowAddForm(!showAddForm)}>
+              {showAddForm ? "Cancel" : "+ Add"}
+            </button>
+          </div>
 
-        {settings.length === 0 && <div className="minor-text">No custom settings configured.</div>}
-        
-        <div className="stack-layout" style={{ gap: 24 }}>
-          {settings.map((s) => (
-            <div key={s.type} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 24 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                 <h4 style={{ margin: 0, textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.name || s.type} <span style={{ opacity: 0.5, fontWeight: "normal", fontSize: "0.8em", marginLeft: 10 }}>({s.type})</span></h4>
-                 <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                    <span className={`status-badge ${s.status}`}>{s.status}</span>
-                    <button className="primary-button" style={{ padding: "4px 16px" }} onClick={() => saveSetting(s.type)} disabled={settingsLoading}>
-                       {settingsLoading ? "Saving..." : "Save"}
-                    </button>
-                    <button className="secondary-button" style={{ padding: "4px 16px", color: "var(--danger)" }} onClick={() => deleteSetting(s.type)} disabled={settingsLoading}>
-                       Delete
-                    </button>
-                 </div>
-              </div>
-
-              {s.type === 'api_key' ? (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                  {Object.entries(s.data || {}).map(([key, val]) => (
-                    <label key={key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <span className="minor-text" style={{ fontSize: 10 }}>{key}</span>
-                      <input 
-                        type="password" 
-                        value={val || ""} 
-                        placeholder={`Enter ${key}`}
-                        onChange={(e) => updateSetting(s.type, key, e.target.value)} 
-                      />
-                    </label>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 16 }}>
-                  {Object.entries(s.data || {}).map(([key, val]) => (
-                    <label key={key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <span className="minor-text" style={{ fontSize: 10 }}>{key}</span>
-                      <input 
-                        type="text" 
-                        value={typeof val === 'object' ? JSON.stringify(val) : (val || "")} 
-                        onChange={(e) => updateSetting(s.type, key, e.target.value)} 
-                      />
-                    </label>
-                  ))}
-                  {/* Option to add field to existing setting */}
-                  <button className="minor-text" style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", fontSize: 10, color: "var(--primary)" }} onClick={() => {
-                     const k = window.prompt("New field name:");
-                     if (k) updateSetting(s.type, k, "");
-                  }}>+ add field</button>
-                </div>
-              )}
+          {showAddForm && (
+            <div className="stack-layout fadeIn" style={{ gap: 10, paddingBottom: 16, borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
+               <input 
+                 placeholder="type (e.g. key_gemini)" 
+                 value={newSettingForm.type} 
+                 onChange={e => setNewSettingForm(p => ({ ...p, type: e.target.value }))} 
+               />
+               <input 
+                 placeholder="name (e.g. Gemini API)" 
+                 value={newSettingForm.name} 
+                 onChange={e => setNewSettingForm(p => ({ ...p, name: e.target.value }))} 
+               />
+               <button className="primary-button" onClick={createSetting} disabled={settingsLoading}>CREATE</button>
             </div>
-          ))}
-          {settingsMsg && <div className="minor-text" style={{ color: "var(--success)" }}>{settingsMsg}</div>}
-        </div>
-      </section>
+          )}
 
-      {/* Passive List of All Active Profiles */}
+          <div className="stack-layout" style={{ gap: 2 }}>
+            {settings.map(s => (
+              <div 
+                key={s.type} 
+                className={`sidebar-item ${activeType === s.type ? "active" : ""}`}
+                style={{ 
+                  padding: "10px 14px", 
+                  borderRadius: 6, 
+                  cursor: "pointer",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  background: activeType === s.type ? "var(--selection)" : "transparent",
+                  color: activeType === s.type ? "var(--primary-bright)" : "inherit"
+                }}
+                onClick={() => setActiveType(s.type)}
+              >
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                   <span style={{ fontWeight: 500, fontSize: 13 }}>{s.name || s.type}</span>
+                   <span className="minor-text" style={{ fontSize: 10 }}>{s.type}</span>
+                </div>
+                <span className={`status-badge ${s.status}`} style={{ fontSize: 9 }}>{s.status}</span>
+              </div>
+            ))}
+            {settings.length === 0 && <div className="minor-text">No settings found.</div>}
+          </div>
+        </section>
+
+        {/* Right: Detail */}
+        <section className="panel" style={{ margin: 0 }}>
+           {selectedSetting ? (
+             <div className="fadeIn">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+                   <div>
+                      <h3 style={{ margin: 0, textTransform: "uppercase" }}>{selectedSetting.name}</h3>
+                      <div className="minor-text" style={{ marginTop: 4 }}>Internal Type: {selectedSetting.type}</div>
+                   </div>
+                   <div style={{ display: "flex", gap: 12 }}>
+                      <button className="primary-button" onClick={() => saveSetting(selectedSetting.type)} disabled={settingsLoading}>SAVE CHANGES</button>
+                      <button className="secondary-button" style={{ color: "var(--danger)" }} onClick={() => deleteSetting(selectedSetting.type)} disabled={settingsLoading}>DELETE</button>
+                   </div>
+                </div>
+
+                {selectedSetting.type === 'api_key' ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+                    {Object.entries(selectedSetting.data || {}).map(([key, val]) => (
+                      <label key={key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <span className="minor-text" style={{ fontSize: 11 }}>{key}</span>
+                        <input 
+                          type="password" 
+                          value={val || ""} 
+                          placeholder={`Enter ${key}`}
+                          onChange={(e) => updateSetting(selectedSetting.type, key, e.target.value)} 
+                        />
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="stack-layout" style={{ gap: 20 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 20 }}>
+                      {Object.entries(selectedSetting.data || {}).map(([key, val]) => (
+                        <label key={key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                           <span className="minor-text" style={{ fontSize: 11 }}>{key}</span>
+                           <input 
+                              type="text" 
+                              value={typeof val === 'object' ? JSON.stringify(val) : (val || "")} 
+                              onChange={(e) => updateSetting(selectedSetting.type, key, e.target.value)} 
+                           />
+                        </label>
+                      ))}
+                    </div>
+                    <button className="minor-text" style={{ padding: 4, cursor: "pointer", background: "none", border: "1px dashed var(--border)", width: "fit-content" }} onClick={() => {
+                        const k = window.prompt("Field name:");
+                        if (k) updateSetting(selectedSetting.type, k, "");
+                    }}>+ ADD NEW FIELD</button>
+                  </div>
+                )}
+                
+                {settingsMsg && <div className="minor-text" style={{ marginTop: 16, color: "var(--success)" }}>{settingsMsg}</div>}
+             </div>
+           ) : (
+             <div className="empty-state" style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>
+                Select a setting from the list to view and edit details.
+             </div>
+           )}
+        </section>
+      </div>
+
       {canManageExecution && execProfiles.length > 0 && (
          <section className="panel" style={{ marginTop: 24 }}>
-            <div className="panel-label">ACTIVE PROFILES (READ-ONLY)</div>
+            <div className="panel-label">EXECUTION STATUS</div>
             <div className="table-scroll">
               <table className="table">
                 <thead>
@@ -419,7 +476,7 @@ export default function SettingsPage({ authUser }) {
                       <td>{p.profile_name || p.profile_id}</td>
                       <td>{String(p.route || "").toUpperCase()}</td>
                       <td>{p.account_id}</td>
-                      <td><span className={`status-badge ${p.is_active ? "ACTIVE" : "INACTIVE"}`}>{p.is_active ? "ACTIVE" : "INACTIVE" || "pending"}</span></td>
+                      <td><span className={`status-badge ${p.is_active ? "ACTIVE" : "INACTIVE"}`}>{p.is_active ? "ACTIVE" : "INACTIVE"}</span></td>
                     </tr>
                   ))}
                 </tbody>

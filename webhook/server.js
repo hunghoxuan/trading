@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.21-0536"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.21-0544"); // Real AI Integrated
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -5233,6 +5233,47 @@ const appHandler = async (req, res) => {
       return json(res, 500, { ok: false, error: e.message });
     }
   }
+  if (req.method === "GET" && url.pathname === "/v2/settings") {
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const db = await mt5InitBackend();
+      const userId = CFG.mt5DefaultUserId;
+      const { rows } = await db.query(
+        "SELECT type, name, data, status, created_at FROM user_settings WHERE user_id = $1 ORDER BY type ASC",
+        [userId]
+      );
+      const settings = rows.map(r => ({
+        ...r,
+        data: r.type === 'api_key' ? decryptObject(r.data) : r.data
+      }));
+      return json(res, 200, { ok: true, settings });
+    } catch (e) {
+      return json(res, 500, { ok: false, error: e.message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/settings") {
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const body = await readJsonBody(req);
+      if (!body.type) return json(res, 400, { ok: false, error: "Missing type" });
+      const db = await mt5InitBackend();
+      const userId = CFG.mt5DefaultUserId;
+      const data = body.type === 'api_key' ? encryptObject(body.data) : body.data;
+      
+      await db.query(`
+        INSERT INTO user_settings (user_id, type, name, data, status)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (user_id, type)
+        DO UPDATE SET name = $3, data = $4, status = $5, updated_at = NOW()
+      `, [userId, body.type, body.name || body.type, data, body.status || 'active']);
+      
+      return json(res, 200, { ok: true });
+    } catch (e) {
+      return json(res, 500, { ok: false, error: e.message });
+    }
+  }
+
   if (req.method === "DELETE" && url.pathname.startsWith("/v2/settings/")) {
     if (!requireAdminKey(req, res, url)) return;
     try {

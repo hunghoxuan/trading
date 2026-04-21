@@ -7,6 +7,7 @@ export default function UserDetailSection({
   roleOptions = [],
   showRole = true,
   showActive = true,
+  showPassword = true,
   disableRole = false,
   disableActive = false,
   passwordLabel = "New Password (optional)",
@@ -59,17 +60,19 @@ export default function UserDetailSection({
           </label>
         ) : null}
 
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <div className="minor-text">{passwordLabel}</div>
-          <input
-            type="password"
-            value={form.password || ""}
-            onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
-            placeholder="Leave empty to keep current"
-            style={{ width: '100%', maxWidth: '400px' }}
-          />
-          {fieldErrors.password ? <div className="field-validation msg-error">{fieldErrors.password}</div> : null}
-        </label>
+        {showPassword ? (
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div className="minor-text">{passwordLabel}</div>
+            <input
+              type="password"
+              value={form.password || ""}
+              onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
+              placeholder="Leave empty to keep current"
+              style={{ width: '100%', maxWidth: '400px' }}
+            />
+            {fieldErrors.password ? <div className="field-validation msg-error">{fieldErrors.password}</div> : null}
+          </label>
+        ) : null}
 
         {showActive ? (
           <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: 'pointer' }}>
