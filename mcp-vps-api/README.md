@@ -87,6 +87,7 @@ MCP endpoint URL:
 Auth header (if `MCP_SERVER_TOKEN` is set):
 
 - `Authorization: Bearer <MCP_SERVER_TOKEN>`
+- Recommended on this VPS: set `MCP_SERVER_TOKEN` = existing `SIGNAL_API_KEY`
 
 ## 6) Claude.ai Web Setup (Step-by-step)
 
