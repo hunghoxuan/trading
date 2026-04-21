@@ -2,7 +2,9 @@
 
 This package wraps your VPS API as MCP tools.
 
-Important: this repo currently provides a **local stdio MCP server** (`server.mjs`), which works directly with local MCP clients such as Claude Desktop local config.
+This package supports both:
+- **local stdio MCP** (Claude Desktop)
+- **remote Streamable HTTP MCP** (Claude.ai web custom connector)
 
 ## Support Matrix
 
@@ -24,6 +26,14 @@ Set env vars:
 - `VPS_API_BASE_URL` (example: `https://trade.mozasolution.com`)
 - `VPS_API_KEY` (your server API key)
 - optional `VPS_DEFAULT_SYMBOL` (default `ICMARKETS:UK100`)
+
+Remote MCP extras:
+
+- `MCP_TRANSPORT_MODE=http`
+- `MCP_PORT` (default `8443`)
+- `MCP_SERVER_TOKEN` (optional but recommended)
+- `MCP_HTTPS_ENABLED` (`1` default)
+- `MCP_HTTPS_CERT_PATH` and `MCP_HTTPS_KEY_PATH`
 
 ## 3) Run (Local MCP / stdio)
 
@@ -51,18 +61,44 @@ Add to Claude Desktop config:
 }
 ```
 
-## 5) Claude.ai Web (Remote MCP Connector)
+## 5) Run Remote MCP (Claude.ai Web)
 
-Claude.ai web cannot attach this local stdio server directly.  
-You must host a **remote MCP server** and add it as a custom connector.
+Run locally (for server deployment testing):
 
-High-level flow:
+```bash
+MCP_TRANSPORT_MODE=http \
+MCP_PORT=8443 \
+MCP_SERVER_TOKEN=CHANGE_ME \
+VPS_API_BASE_URL=https://trade.mozasolution.com/webhook \
+VPS_API_KEY=YOUR_API_KEY \
+node server.mjs
+```
 
-1. Deploy a public HTTPS remote MCP endpoint (SSE or Streamable HTTP transport).
-2. Ensure it is reachable from Anthropic cloud (public internet / allowlist rules if needed).
-3. In Claude.ai: `Customize -> Connectors -> Add custom connector`.
-4. Paste your remote MCP server URL (and OAuth settings if used).
-5. Enable connector per conversation.
+Health check:
+
+```bash
+curl -sS https://trade.mozasolution.com:8443/health
+```
+
+MCP endpoint URL:
+
+- `https://trade.mozasolution.com:8443/mcp`
+
+Auth header (if `MCP_SERVER_TOKEN` is set):
+
+- `Authorization: Bearer <MCP_SERVER_TOKEN>`
+
+## 6) Claude.ai Web Setup (Step-by-step)
+
+1. Open Claude.ai → `Customize` → `Connectors`.
+2. Click `Add custom connector`.
+3. Name: `Trading VPS MCP`.
+4. URL: `https://trade.mozasolution.com:8443/mcp`.
+5. If using token auth, add header:
+   - key: `Authorization`
+   - value: `Bearer <MCP_SERVER_TOKEN>`
+6. Save and enable connector in your chat/project.
+7. Ask Claude: `run vps_health`.
 
 Notes:
 
@@ -70,7 +106,7 @@ Notes:
 - Remote connectors are in beta.
 - Local `claude_desktop_config.json` MCP entries do not appear in Claude.ai web.
 
-## 6) Skill Usage (Desktop + Web)
+## 7) Skill Usage (Desktop + Web)
 
 Use [CLAUDE_SKILL_TEMPLATE.md](./CLAUDE_SKILL_TEMPLATE.md) as:
 
