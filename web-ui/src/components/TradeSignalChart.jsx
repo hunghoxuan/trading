@@ -130,7 +130,8 @@ export const TradeSignalChart = ({
         } else {
           // If we have openedAt, we want to make sure we fetch enough data before it
           // Binance klines can take endTime (optional)
-          let query = `symbol=${binanceSymbol}&interval=${bInterval}&limit=500`;
+          const sParam = binanceSymbol || 'BTCUSDT'; 
+          let query = `symbol=${sParam}&interval=${bInterval}&limit=500`;
           
           const endTs = closedAt ? new Date(closedAt).getTime() : Date.now();
           // Add some padding to see what happened after close

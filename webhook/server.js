@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.21-0551"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.21-0625"); // Real AI Integrated
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1446,7 +1446,9 @@ async function mt5InitBackend() {
     ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'ACTIVE';
     ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
     DROP INDEX IF EXISTS idx_user_settings_singleton;
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_user_settings_user_type_name ON user_settings (user_id, type, COALESCE(name, ''));
+    DROP INDEX IF EXISTS idx_user_settings_user_type_name;
+    ALTER TABLE user_settings DROP CONSTRAINT IF EXISTS user_settings_user_type_name_key;
+    ALTER TABLE user_settings ADD CONSTRAINT user_settings_user_type_name_key UNIQUE (user_id, type, name);
 
     -- Keep old tables for safe migration then drop
     DROP TABLE IF EXISTS ai_templates;
