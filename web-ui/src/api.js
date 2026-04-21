@@ -537,6 +537,7 @@ export const api = {
   aiUpsertConfig: (key, value) => post("/v2/ai/config", { key, value }),
   aiGenerate: (payload = {}) => postWithTimeout("/v2/ai/generate", payload, 65000),
   chartSnapshotCreate: (payload = {}) => postWithTimeout("/v2/chart/snapshot", payload, 90000),
+  chartSnapshotCreateBatch: (payload = {}) => postWithTimeout("/v2/chart/snapshot/batch", payload, 180000),
   chartSnapshots: (limit = 30) => get(`/v2/chart/snapshots?limit=${encodeURIComponent(limit)}`),
   getSettings: () => get("/v2/settings"),
   upsertSetting: (payload = {}) => post("/v2/settings", payload),

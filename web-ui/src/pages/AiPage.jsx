@@ -1,5 +1,45 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
+
+const PROVIDER_MODELS = {
+  gemini: ["gemini-2.0-flash", "gemini-2.0-pro-exp-02-05"],
+  openai: ["gpt-4o-mini", "gpt-4.1-mini"],
+  deepseek: ["deepseek-chat", "deepseek-reasoner"],
+};
+
+function inferProviderByModel(modelRaw = "") {
+  const model = String(modelRaw || "").toLowerCase();
+  if (model.includes("deepseek")) return "deepseek";
+  if (model.includes("gpt-")) return "openai";
+  return "gemini";
+}
+
+function normalizeModelForProvider(providerRaw = "gemini", modelRaw = "") {
+  const provider = String(providerRaw || "gemini").toLowerCase();
+  const options = PROVIDER_MODELS[provider] || PROVIDER_MODELS.gemini;
+  const model = String(modelRaw || "");
+  return options.includes(model) ? model : options[0];
+}
+
+function asDisplayText(v) {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v);
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
+
+function normalizeNoteForStorage(v) {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v;
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
 
 export default function AiPage() {
   const [templates, setTemplates] = useState([]);
@@ -9,7 +49,7 @@ export default function AiPage() {
     prompt_text: "",
     default_symbol: "",
     default_tf: "",
-    default_model: "deepseek-coder",
+    default_model: "deepseek-chat",
   });
 
   const [aiConfig, setAiConfig] = useState({});
@@ -24,20 +64,13 @@ export default function AiPage() {
 
   const [provider, setProvider] = useState("gemini");
   const [model, setModel] = useState("gemini-2.0-flash");
+  const runSeqRef = useRef(0);
 
   // Load basic data
   useEffect(() => {
     loadTemplates();
     loadConfig();
   }, []);
-
-  useEffect(() => {
-    if (activeTemplate?.default_model) {
-      setModel(activeTemplate.default_model);
-      if (activeTemplate.default_model.includes("deepseek")) setProvider("deepseek");
-      else setProvider("gemini");
-    }
-  }, [activeTemplate]);
 
   async function loadTemplates() {
     try {
@@ -56,23 +89,23 @@ export default function AiPage() {
   const handleSelectTemplate = (t) => {
     setSelectedTemplateId(t.template_id);
     setActiveTemplate(t);
+    const p = inferProviderByModel(t?.default_model || "");
+    setProvider(p);
+    setModel(normalizeModelForProvider(p, t?.default_model || ""));
   };
 
-  const DEFAULT_PROMPT = `Role: You are an expert financial analyst and algorithmic trader specialized in price action and technical analysis.
-Task: Analyze the provided live market data for the symbol {SYMBOL} on the {TIMEFRAME} timeframe.
-Instructions:
-Identify the current market structure (Bias, Trend, Range, or Reversal).
+  const DEFAULT_PROMPT = `Act as a Senior Algo-Trader. Task: Analyze {SYMBOL} on {TIMEFRAME: default 15m} using {STRATEGY: default Price Action}.
+Execution Logic:
 
-Determine a high-probability trade setup based on {INDICATORS/STRATEGY, e.g., SMC, RSI, MACD}.
-
-Provide precise price levels for Entry, Take Profit (TP), and Stop Loss (SL), direction (Buy|Sell)
-
-Ensure the risk-to-reward ratio is at least {RR}.
-
-Output Format: Return ONLY a valid JSON object. Do not include any conversational text, markdown formatting outside the JSON, or explanations before the code block. Json fields: symbol, entry_model, direction, entry, tp, sl, timeframe, note: bias, trend and market data with detail analysis.`;
+Context First: Establish Weekly, Daily, and 4H Bias. If HTF (Higher Timeframe) alignment is absent, prioritize the dominant trend (Trendfolge).
+Constraint Check: Execute entry ONLY if a high-probability confluence (Zusammenfluss) exists.
+Risk Management: Min RR must be {RR}. If no valid setup meets the criteria, return null for trade levels.
+Volatility Selection: If {SYMBOL} is unspecified, analyze the top 3 high-volume pairs with the highest winning probability (Gewinnwahrscheinlichkeit). Output: Return ONLY a raw JSON object (no prose, no markdown).`;
 
   const handleCreateNew = () => {
     setSelectedTemplateId(null);
+    setProvider("gemini");
+    setModel("gemini-2.0-flash");
     setActiveTemplate({
       name: "New AI Strategy",
       prompt_text: DEFAULT_PROMPT,
@@ -114,6 +147,10 @@ Output Format: Return ONLY a valid JSON object. Do not include any conversationa
   };
 
   const handleRunAI = async () => {
+    const runSeq = ++runSeqRef.current;
+    const requestProvider = provider;
+    const requestModel = normalizeModelForProvider(requestProvider, model);
+
     setLoading(true);
     setAiResponse(null);
     setSuggestedSignals([]);
@@ -121,22 +158,27 @@ Output Format: Return ONLY a valid JSON object. Do not include any conversationa
     setError("");
     try {
       const res = await api.aiGenerate({
-        provider: provider,
-        model: model,
+        provider: requestProvider,
+        model: requestModel,
         templateId: selectedTemplateId,
         customPrompt: activeTemplate.prompt_text,
         symbol: activeTemplate.default_symbol,
         timeframe: activeTemplate.default_tf,
         context: `Symbol: ${activeTemplate.default_symbol || "ALL"}, Timeframe: ${activeTemplate.default_tf || "1h"}`
       });
+      if (runSeq !== runSeqRef.current) return;
       setAiResponse(res.raw_response);
       setSuggestedSignals(res.signals || []);
       // Auto-select all by default
       if (res.signals?.length > 0) {
         setSelectedSignalIndices(new Set(res.signals.map((_, i) => i)));
       }
-    } catch (e) { setError("AI generation failed: " + e.message); }
-    finally { setLoading(false); }
+    } catch (e) {
+      if (runSeq !== runSeqRef.current) return;
+      setError(`AI generation failed (${requestProvider}/${requestModel}): ` + e.message);
+    } finally {
+      if (runSeq === runSeqRef.current) setLoading(false);
+    }
   };
 
   const toggleSignalSelection = (idx) => {
@@ -154,6 +196,7 @@ Output Format: Return ONLY a valid JSON object. Do not include any conversationa
     try {
       let count = 0;
       for (const sig of toImport) {
+        const aiProviderTag = `ai_${String(provider || "agent").toLowerCase()}`;
         const payload = {
           symbol: sig.symbol,
           action: String(sig.side || sig.direction || "BUY").toUpperCase().includes("BUY") ? "BUY" : "SELL",
@@ -161,9 +204,11 @@ Output Format: Return ONLY a valid JSON object. Do not include any conversationa
           sl: Number(sig.sl),
           tp: Number(sig.tp),
           tf: sig.timeframe || activeTemplate.default_tf,
-          model: sig.entry_model || activeTemplate.name || "AI_AGENT",
-          note: sig.note || "",
-          source: "AI_HUB"
+          model: aiProviderTag,
+          entry_model: aiProviderTag,
+          note: normalizeNoteForStorage(sig.note),
+          source: "ai",
+          strategy: "ai"
         };
         await api.createTrade(payload);
         count++;
@@ -260,8 +305,16 @@ Output Format: Return ONLY a valid JSON object. Do not include any conversationa
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
               <div>
                 <label className="minor-text">AI Provider</label>
-                <select value={provider} onChange={e => setProvider(e.target.value)}>
+                <select
+                  value={provider}
+                  onChange={(e) => {
+                    const p = e.target.value;
+                    setProvider(p);
+                    setModel(normalizeModelForProvider(p, ""));
+                  }}
+                >
                   <option value="gemini">Google Gemini</option>
+                  <option value="openai">OpenAI</option>
                   <option value="deepseek">DeepSeek</option>
                 </select>
               </div>
@@ -273,10 +326,15 @@ Output Format: Return ONLY a valid JSON object. Do not include any conversationa
                       <option value="gemini-2.0-flash">gemini-2.0-flash</option>
                       <option value="gemini-2.0-pro-exp-02-05">gemini-2.0-pro-exp</option>
                     </>
+                  ) : provider === "openai" ? (
+                    <>
+                      <option value="gpt-4o-mini">gpt-4o-mini</option>
+                      <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+                    </>
                   ) : (
                     <>
-                      <option value="deepseek-coder">deepseek-coder</option>
                       <option value="deepseek-chat">deepseek-chat</option>
+                      <option value="deepseek-reasoner">deepseek-reasoner</option>
                     </>
                   )}
                 </select>
@@ -331,15 +389,15 @@ Output Format: Return ONLY a valid JSON object. Do not include any conversationa
                       <td>
                         <input type="checkbox" checked={selectedSignalIndices.has(i)} onChange={() => toggleSignalSelection(i)} />
                       </td>
-                      <td style={{ fontWeight: 800 }}>{s.symbol} <span className="minor-text">{s.timeframe}</span></td>
-                      <td style={{ color: String(s.side || "").toUpperCase().includes("BUY") ? "var(--success)" : "var(--neg)" }}>{s.side}</td>
-                      <td>{s.entry}</td>
+                      <td style={{ fontWeight: 800 }}>{asDisplayText(s.symbol)} <span className="minor-text">{asDisplayText(s.timeframe)}</span></td>
+                      <td style={{ color: String(s.side || "").toUpperCase().includes("BUY") ? "var(--success)" : "var(--neg)" }}>{asDisplayText(s.side)}</td>
+                      <td>{asDisplayText(s.entry)}</td>
                       <td style={{ fontSize: 10 }}>
-                        <div className="money-neg">{s.sl}</div>
-                        <div className="money-pos">{s.tp}</div>
+                        <div className="money-neg">{asDisplayText(s.sl)}</div>
+                        <div className="money-pos">{asDisplayText(s.tp)}</div>
                       </td>
-                      <td>{s.entry_model}</td>
-                      <td className="minor-text" style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.note}</td>
+                      <td>{asDisplayText(s.entry_model)}</td>
+                      <td className="minor-text" style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asDisplayText(s.note)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -351,7 +409,7 @@ Output Format: Return ONLY a valid JSON object. Do not include any conversationa
             <div className="panel">
               <h3 className="panel-label">Raw AI Response</h3>
               <pre style={{ fontSize: 11, background: "rgba(0,0,0,0.1)", padding: 10, borderRadius: 4, whiteSpace: "pre-wrap", maxHeight: 400, overflowY: 'auto' }}>
-                {aiResponse}
+                {asDisplayText(aiResponse)}
               </pre>
             </div>
           )}

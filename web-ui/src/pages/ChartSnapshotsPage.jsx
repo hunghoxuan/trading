@@ -1,20 +1,48 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 
+const DEFAULT_CLAUDE_PROMPT = `Act as a Senior Algo-Trader. Task: Analyze {SYMBOL} on {TIMEFRAME: default 15m} using {STRATEGY: default Price Action}.
+Execution Logic:
+
+Context First: Establish Weekly, Daily, and 4H Bias. If HTF (Higher Timeframe) alignment is absent, prioritize the dominant trend (Trendfolge).
+Constraint Check: Execute entry ONLY if a high-probability confluence (Zusammenfluss) exists.
+Risk Management: Min RR must be {RR}. If no valid setup meets the criteria, return null for trade levels.
+Volatility Selection: If {SYMBOL} is unspecified, analyze the top 3 high-volume pairs with the highest winning probability (Gewinnwahrscheinlichkeit). Output: Return ONLY a raw JSON object (no prose, no markdown).`;
+
+function replacePromptVars(template, vars) {
+  return String(template || "")
+    .replace(/{SYMBOL}/g, vars.symbol || "")
+    .replace(/{TIMEFRAME: default 15m}/g, vars.timeframe || "15m")
+    .replace(/{TIMEFRAME}/g, vars.timeframe || "15m")
+    .replace(/{STRATEGY: default Price Action}/g, vars.strategy || "Price Action")
+    .replace(/{STRATEGY}/g, vars.strategy || "Price Action")
+    .replace(/{RR}/g, vars.rr || "1:2");
+}
+
 export default function ChartSnapshotsPage() {
   const [symbol, setSymbol] = useState("OANDA:UK100GBP");
-  const [timeframe, setTimeframe] = useState("5");
+  const [timeframe, setTimeframe] = useState("15m");
   const [provider, setProvider] = useState("");
   const [theme, setTheme] = useState("dark");
-  const [width, setWidth] = useState(1400);
-  const [height, setHeight] = useState(900);
+  const [width, setWidth] = useState(960);
+  const [height, setHeight] = useState(540);
+  const [lookbackBars, setLookbackBars] = useState(300);
+  const [format, setFormat] = useState("jpg");
+  const [quality, setQuality] = useState(55);
   const [limit, setLimit] = useState(30);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState("");
+  const [claudePromptTemplate, setClaudePromptTemplate] = useState(DEFAULT_CLAUDE_PROMPT);
 
   const previewTitle = useMemo(() => `${symbol} • ${timeframe}`, [symbol, timeframe]);
+  const claudePrompt = useMemo(() => replacePromptVars(claudePromptTemplate, {
+    symbol: symbol || "BTCUSDT",
+    timeframe: timeframe || "15m",
+    strategy: "Price Action",
+    rr: "1:2",
+  }), [claudePromptTemplate, symbol, timeframe]);
 
   const load = async () => {
     setLoading(true);
@@ -29,7 +57,7 @@ export default function ChartSnapshotsPage() {
     }
   };
 
-  const capture = async () => {
+  const captureOne = async () => {
     setCapturing(true);
     setError("");
     try {
@@ -38,8 +66,11 @@ export default function ChartSnapshotsPage() {
         timeframe: String(timeframe || "").trim(),
         provider: String(provider || "").trim(),
         theme: String(theme || "dark"),
-        width: Number(width || 1400),
-        height: Number(height || 900),
+        width: Number(width || 960),
+        height: Number(height || 540),
+        lookbackBars: Number(lookbackBars || 300),
+        format: String(format || "jpg"),
+        quality: Number(quality || 55),
       });
       if (out?.item) {
         setItems((prev) => [out.item, ...prev].slice(0, limit));
@@ -51,6 +82,38 @@ export default function ChartSnapshotsPage() {
     }
   };
 
+  const captureThreeTF = async () => {
+    setCapturing(true);
+    setError("");
+    try {
+      const out = await api.chartSnapshotCreateBatch({
+        symbol: String(symbol || "").trim(),
+        provider: String(provider || "").trim(),
+        timeframes: ["15m", "4h", "1D"],
+        theme: String(theme || "dark"),
+        width: Number(width || 960),
+        height: Number(height || 540),
+        lookbackBars: Number(lookbackBars || 300),
+        format: String(format || "jpg"),
+        quality: Number(quality || 55),
+      });
+      if (Array.isArray(out?.items) && out.items.length) {
+        setItems((prev) => [...out.items, ...prev].slice(0, limit));
+      }
+    } catch (e) {
+      setError(String(e?.message || e || "Batch capture failed."));
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  const setUltraSmall = () => {
+    setWidth(640);
+    setHeight(360);
+    setFormat("jpg");
+    setQuality(45);
+  };
+
   useEffect(() => {
     load();
   }, [limit]);
@@ -60,21 +123,34 @@ export default function ChartSnapshotsPage() {
       <section className="panel" style={{ marginBottom: 12 }}>
         <h2 style={{ marginTop: 0 }}>Chart Snapshots (Test)</h2>
         <p className="muted" style={{ marginTop: -6 }}>
-          Create server-side chart screenshots for quick review.
+          Faster capture with zoom/lookback control and 3-TF batch mode.
         </p>
 
         <div className="filters-row">
           <input value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="Symbol (e.g. OANDA:UK100GBP)" />
-          <input value={timeframe} onChange={(e) => setTimeframe(e.target.value)} placeholder="TF (e.g. 5, 15, 60, D)" />
+          <input value={timeframe} onChange={(e) => setTimeframe(e.target.value)} placeholder="TF (e.g. 15m, 4h, 1D)" />
           <input value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="Provider (optional)" />
           <select value={theme} onChange={(e) => setTheme(e.target.value)}>
             <option value="dark">dark</option>
             <option value="light">light</option>
           </select>
-          <input type="number" value={width} onChange={(e) => setWidth(Number(e.target.value || 1400))} placeholder="Width" />
-          <input type="number" value={height} onChange={(e) => setHeight(Number(e.target.value || 900))} placeholder="Height" />
-          <button className="btn-primary" onClick={capture} disabled={capturing}>
-            {capturing ? "Capturing..." : "Capture Snapshot"}
+        </div>
+
+        <div className="filters-row" style={{ marginTop: 8 }}>
+          <input type="number" value={width} onChange={(e) => setWidth(Number(e.target.value || 960))} placeholder="Width" />
+          <input type="number" value={height} onChange={(e) => setHeight(Number(e.target.value || 540))} placeholder="Height" />
+          <input type="number" value={lookbackBars} min={50} max={5000} onChange={(e) => setLookbackBars(Number(e.target.value || 300))} placeholder="Lookback bars" />
+          <select value={format} onChange={(e) => setFormat(e.target.value)}>
+            <option value="jpg">jpg (small)</option>
+            <option value="png">png (sharp)</option>
+          </select>
+          <input type="number" value={quality} min={20} max={95} onChange={(e) => setQuality(Number(e.target.value || 55))} placeholder="JPEG quality" />
+          <button className="secondary-button" onClick={setUltraSmall}>Ultra Small</button>
+          <button className="btn-primary" onClick={captureOne} disabled={capturing}>
+            {capturing ? "Capturing..." : "Capture 1 TF"}
+          </button>
+          <button className="btn-primary" onClick={captureThreeTF} disabled={capturing}>
+            {capturing ? "Capturing..." : "Capture 3 TF (15m/4h/1D)"}
           </button>
           <button className="secondary-button" onClick={load} disabled={loading}>
             {loading ? "Refreshing..." : "Refresh"}
@@ -89,12 +165,28 @@ export default function ChartSnapshotsPage() {
         {error ? <div className="error-banner" style={{ marginTop: 10 }}>{error}</div> : null}
       </section>
 
+      <section className="panel" style={{ marginBottom: 12 }}>
+        <h3 style={{ marginTop: 0 }}>Claude Prompt Template</h3>
+        <p className="muted" style={{ marginTop: -6 }}>
+          Use this prompt with the 3 snapshot files in Claude.ai.
+        </p>
+        <textarea
+          rows={8}
+          style={{ width: "100%", fontFamily: "monospace", fontSize: 12 }}
+          value={claudePromptTemplate}
+          onChange={(e) => setClaudePromptTemplate(e.target.value)}
+        />
+        <label className="minor-text">Resolved prompt</label>
+        <textarea rows={6} style={{ width: "100%", fontFamily: "monospace", fontSize: 12 }} value={claudePrompt} readOnly />
+        <a href="https://claude.ai/" target="_blank" rel="noreferrer">Open Claude.ai</a>
+      </section>
+
       <section className="panel">
         <h3 style={{ marginTop: 0 }}>Latest Snapshots ({items.length})</h3>
         {items.length === 0 ? (
           <div className="muted">No snapshots yet.</div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
             {items.map((it) => (
               <article key={it.id} className="panel" style={{ margin: 0, padding: 10 }}>
                 <div className="muted" style={{ marginBottom: 8 }}>

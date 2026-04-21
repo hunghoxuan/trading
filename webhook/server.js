@@ -6,7 +6,6 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const { URL, URLSearchParams } = require("url");
-const os = require("os");
 
 function loadEnvFile() {
   const envPath = path.join(__dirname, ".env");
@@ -807,6 +806,24 @@ function sanitizeSnapshotToken(value, fallback = "chart") {
   return token || fallback;
 }
 
+function sanitizeSnapshotFileToken(value, fallback = "chart") {
+  const raw = String(value || fallback).trim().toUpperCase();
+  const token = raw.replace(/[^A-Z0-9_-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+  return token || fallback;
+}
+
+function snapshotTimestampToken(dateLike = Date.now()) {
+  const d = new Date(dateLike);
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mi = String(d.getUTCMinutes()).padStart(2, "0");
+  const ss = String(d.getUTCSeconds()).padStart(2, "0");
+  const ms = String(d.getUTCMilliseconds()).padStart(3, "0");
+  return `${yyyy}${mm}${dd}_${hh}${mi}${ss}${ms}`;
+}
+
 function toTradingViewInterval(tfRaw) {
   const tf = String(tfRaw || "5").trim().toLowerCase();
   if (!tf) return "5";
@@ -838,30 +855,23 @@ function loadPlaywrightMaybe() {
   return null;
 }
 
-async function captureTradingViewSnapshot(opts = {}) {
-  const playwright = loadPlaywrightMaybe();
-  if (!playwright || !playwright.chromium) {
-    throw new Error("Playwright not found. Install in webhook or web-ui workspace.");
-  }
-
+async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
   ensureChartSnapshotDir();
   const symbol = toTradingViewSymbol(opts.symbol, opts.provider);
   const interval = toTradingViewInterval(opts.timeframe || opts.tf);
-  const width = Math.max(640, Math.min(Number(opts.width || 1400) || 1400, 2400));
-  const height = Math.max(360, Math.min(Number(opts.height || 900) || 900, 1600));
+  const width = Math.max(480, Math.min(Number(opts.width || 960) || 960, 2400));
+  const height = Math.max(270, Math.min(Number(opts.height || 540) || 540, 1600));
   const theme = String(opts.theme || "dark").toLowerCase() === "light" ? "light" : "dark";
+  const lookbackBars = Math.max(50, Math.min(Number(opts.lookbackBars || 300) || 300, 5000));
+  const outFormatRaw = String(opts.format || "jpg").toLowerCase();
+  const outFormat = outFormatRaw === "png" ? "png" : "jpg";
+  const jpgQuality = Math.max(20, Math.min(Number(opts.quality || 55) || 55, 95));
 
   const ts = Date.now();
-  const fileName = `${ts}_${sanitizeSnapshotToken(symbol)}_${sanitizeSnapshotToken(interval, "TF")}.png`;
+  const fileName = `${snapshotTimestampToken(ts)}_${sanitizeSnapshotFileToken(symbol)}_${sanitizeSnapshotFileToken(interval, "TF")}.${outFormat}`;
   const outPath = path.join(CHART_SNAPSHOT_DIR, fileName);
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tv-snap-"));
-
-  const browser = await playwright.chromium.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-  });
+  const context = await browser.newContext({ viewport: { width: width + 24, height: height + 64 }, deviceScaleFactor: 1 });
   try {
-    const context = await browser.newContext({ viewport: { width: width + 40, height: height + 120 } });
     const page = await context.newPage();
     await page.setContent(
       `
@@ -888,9 +898,9 @@ async function captureTradingViewSnapshot(opts = {}) {
                 theme: ${JSON.stringify(theme)},
                 style: "1",
                 locale: "en",
-                withdateranges: true,
-                hide_side_toolbar: false,
-                allow_symbol_change: true,
+                withdateranges: false,
+                hide_side_toolbar: true,
+                allow_symbol_change: false,
                 details: false,
                 hotlist: false,
                 calendar: false
@@ -904,18 +914,56 @@ async function captureTradingViewSnapshot(opts = {}) {
       `,
       { waitUntil: "domcontentloaded" },
     );
-    await page.waitForTimeout(7000);
+    await page.waitForFunction(() => window.__tvReady === true, { timeout: 15000 });
+    const intervalSec = await page.evaluate((tvInterval) => {
+      const upper = String(tvInterval || "").toUpperCase();
+      if (upper === "D") return 86400;
+      if (upper === "W") return 604800;
+      if (upper === "M") return 2592000;
+      const n = Number(upper);
+      if (Number.isFinite(n) && n > 0) return n * 60;
+      return 300;
+    }, interval);
+    await page.evaluate(({ bars, sec }) => {
+      function applyRange() {
+        try {
+          const chart = window?.TradingView?.widget?.activeChart ? window.TradingView.widget.activeChart() : null;
+          if (!chart || typeof chart.setVisibleRange !== "function") {
+            window.__tvShotReady = true;
+            return;
+          }
+          const to = Math.floor(Date.now() / 1000);
+          const from = Math.max(0, to - Math.max(50, Number(bars) || 300) * Math.max(60, Number(sec) || 300));
+          chart.setVisibleRange({ from, to });
+          setTimeout(() => { window.__tvShotReady = true; }, 900);
+        } catch {
+          window.__tvShotReady = true;
+        }
+      }
+      if (window?.TradingView?.widget?.onChartReady) {
+        window.TradingView.widget.onChartReady(applyRange);
+      } else {
+        setTimeout(applyRange, 700);
+      }
+    }, { bars: lookbackBars, sec: intervalSec });
+    try {
+      await page.waitForFunction(() => window.__tvShotReady === true, { timeout: 12000 });
+    } catch {
+      await page.waitForTimeout(1800);
+    }
     const root = page.locator("#tv-root");
-    await root.screenshot({ path: outPath, type: "png" });
-    await context.close();
+    if (outFormat === "png") {
+      await root.screenshot({ path: outPath, type: "png" });
+    } else {
+      await root.screenshot({ path: outPath, type: "jpeg", quality: jpgQuality });
+    }
   } finally {
-    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
-    await browser.close();
+    try { await context.close(); } catch {}
   }
 
   const st = fs.statSync(outPath);
   return {
-    id: fileName.replace(/\.png$/i, ""),
+    id: fileName.replace(/\.(png|jpe?g)$/i, ""),
     file_name: fileName,
     symbol,
     timeframe: interval,
@@ -923,10 +971,55 @@ async function captureTradingViewSnapshot(opts = {}) {
     theme,
     width,
     height,
+    lookback_bars: lookbackBars,
+    format: outFormat,
     created_at: new Date(st.mtimeMs || Date.now()).toISOString(),
     size_bytes: Number(st.size || 0),
     url: `/v2/chart/snapshots/${encodeURIComponent(fileName)}`,
   };
+}
+
+async function captureTradingViewSnapshot(opts = {}) {
+  const playwright = loadPlaywrightMaybe();
+  if (!playwright || !playwright.chromium) {
+    throw new Error("Playwright not found. Install in webhook or web-ui workspace.");
+  }
+  const browser = await playwright.chromium.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+  });
+  try {
+    return await captureTradingViewSnapshotWithBrowser(browser, opts);
+  } finally {
+    await browser.close();
+  }
+}
+
+async function captureTradingViewSnapshotsBatch(opts = {}) {
+  const playwright = loadPlaywrightMaybe();
+  if (!playwright || !playwright.chromium) {
+    throw new Error("Playwright not found. Install in webhook or web-ui workspace.");
+  }
+  const inputTfs = Array.isArray(opts.timeframes) ? opts.timeframes : [];
+  const normalized = inputTfs
+    .map((tf) => String(tf || "").trim())
+    .filter(Boolean)
+    .slice(0, 10);
+  const timeframes = normalized.length ? normalized : ["15m", "4h", "1D"];
+  const browser = await playwright.chromium.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+  });
+  try {
+    const items = [];
+    for (const tf of timeframes) {
+      const one = await captureTradingViewSnapshotWithBrowser(browser, { ...opts, timeframe: tf, tf });
+      items.push(one);
+    }
+    return items;
+  } finally {
+    await browser.close();
+  }
 }
 
 function normalizeHostHeader(hostRaw) {
@@ -5518,7 +5611,10 @@ const appHandler = async (req, res) => {
       
       finalPrompt = finalPrompt
         .replace(/{SYMBOL}/g, symbol)
+        .replace(/{TIMEFRAME: default 15m}/g, tf)
         .replace(/{TIMEFRAME}/g, tf)
+        .replace(/{STRATEGY: default Price Action}/g, body.strategy || "Price Action")
+        .replace(/{STRATEGY}/g, body.strategy || "Price Action")
         .replace(/{INDICATORS\/STRATEGY}/g, body.indicators || "Technical Analysis")
         .replace(/{RR}/g, body.rr || "1:2");
 
@@ -5665,8 +5761,34 @@ const appHandler = async (req, res) => {
         width: body.width,
         height: body.height,
         theme: body.theme,
+        lookbackBars: body.lookbackBars,
+        format: body.format,
+        quality: body.quality,
       });
       return json(res, 200, { ok: true, item });
+    } catch (error) {
+      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/chart/snapshot/batch") {
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      const body = await readJson(req);
+      const items = await captureTradingViewSnapshotsBatch({
+        symbol: body.symbol,
+        provider: body.provider,
+        timeframes: body.timeframes,
+        width: body.width,
+        height: body.height,
+        theme: body.theme,
+        lookbackBars: body.lookbackBars,
+        format: body.format,
+        quality: body.quality,
+      });
+      return json(res, 200, { ok: true, items });
     } catch (error) {
       return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
@@ -5680,7 +5802,7 @@ const appHandler = async (req, res) => {
       ensureChartSnapshotDir();
       const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit") || 30) || 30, 200));
       const files = fs.readdirSync(CHART_SNAPSHOT_DIR)
-        .filter((f) => f.toLowerCase().endsWith(".png"))
+        .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
         .map((f) => {
           const abs = path.join(CHART_SNAPSHOT_DIR, f);
           const st = fs.statSync(abs);
@@ -5708,7 +5830,7 @@ const appHandler = async (req, res) => {
       ensureChartSnapshotDir();
       const fileName = decodeURIComponent(url.pathname.replace("/v2/chart/snapshots/", "") || "");
       const safeName = path.basename(fileName);
-      if (!safeName || safeName !== fileName || !/\.png$/i.test(safeName)) {
+      if (!safeName || safeName !== fileName || !/\.(png|jpg|jpeg)$/i.test(safeName)) {
         return json(res, 400, { ok: false, error: "Invalid snapshot file" });
       }
       const abs = path.join(CHART_SNAPSHOT_DIR, safeName);
