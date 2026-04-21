@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.21-1526"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.21-2034"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -4928,15 +4928,16 @@ const appHandler = async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/mt5/trades/create") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!requireSystemRoleForUi(req, res)) return;
+    const sess = getUiSessionFromReq(req);
+    if (!sess.ok) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       const payload = await readJson(req);
-      const sess = getUiSessionFromReq(req);
       const requestedSource = String(payload.source || "").trim().toLowerCase();
       const source = requestedSource === "ai" ? "ai" : "ui_manual";
       const entryModel = String(payload.entry_model || payload.model || "").trim();
       const timeframe = String(payload.timeframe || payload.tf || "").trim();
       const strategy = String(payload.strategy || (source === "ai" ? "ai" : "Manual")).trim();
+      const effectiveUserId = uiEffectiveUserId(req, url, payload) || sess.user_id || CFG.mt5DefaultUserId;
       const enqueue = await mt5EnqueueSignalFromPayload({
         id: payload.signal_id || payload.id || "",
         action: payload.action,
@@ -4951,7 +4952,7 @@ const appHandler = async (req, res) => {
         entry_model: entryModel || null,
         timeframe: timeframe || "manual",
         note: payload.note || "",
-        user_id: payload.user_id || sess.user_id || CFG.mt5DefaultUserId,
+        user_id: effectiveUserId,
         order_type: payload.order_type || "limit",
         provider: "ui",
         raw_json: payload && typeof payload === "object" ? payload : {},
