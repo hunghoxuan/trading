@@ -5,12 +5,14 @@ const PROVIDER_MODELS = {
   gemini: ["gemini-2.0-flash", "gemini-2.0-pro-exp-02-05"],
   openai: ["gpt-4o-mini", "gpt-4.1-mini"],
   deepseek: ["deepseek-chat", "deepseek-reasoner"],
+  claude: ["claude-3-5-sonnet-latest", "claude-3-7-sonnet-latest"],
 };
 
 function inferProviderByModel(modelRaw = "") {
   const model = String(modelRaw || "").toLowerCase();
   if (model.includes("deepseek")) return "deepseek";
   if (model.includes("gpt-")) return "openai";
+  if (model.includes("claude")) return "claude";
   return "gemini";
 }
 
@@ -236,6 +238,17 @@ Volatility Selection: If {SYMBOL} is unspecified, analyze the top 3 high-volume 
           <h3 className="panel-label">Provider API Keys</h3>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <div>
+              <label className="minor-text">OpenAI API Key</label>
+              <input 
+                type="password" 
+                autoComplete="off"
+                value={aiConfig.OPENAI_API_KEY || ""} 
+                onChange={(e) => setAiConfig(prev => ({ ...prev, OPENAI_API_KEY: e.target.value }))}
+                onBlur={(e) => handleSaveConfig("OPENAI_API_KEY", e.target.value)}
+                placeholder="sk-..."
+              />
+            </div>
+            <div>
               <label className="minor-text">DeepSeek API Key</label>
               <input 
                 type="password" 
@@ -255,6 +268,17 @@ Volatility Selection: If {SYMBOL} is unspecified, analyze the top 3 high-volume 
                 onChange={(e) => setAiConfig(prev => ({ ...prev, GEMINI_API_KEY: e.target.value }))}
                 onBlur={(e) => handleSaveConfig("GEMINI_API_KEY", e.target.value)}
                 placeholder="AI..."
+              />
+            </div>
+            <div>
+              <label className="minor-text">Claude API Key</label>
+              <input 
+                type="password" 
+                autoComplete="off"
+                value={aiConfig.CLAUDE_API_KEY || ""} 
+                onChange={(e) => setAiConfig(prev => ({ ...prev, CLAUDE_API_KEY: e.target.value }))}
+                onBlur={(e) => handleSaveConfig("CLAUDE_API_KEY", e.target.value)}
+                placeholder="sk-ant-..."
               />
             </div>
           </div>
@@ -316,6 +340,7 @@ Volatility Selection: If {SYMBOL} is unspecified, analyze the top 3 high-volume 
                   <option value="gemini">Google Gemini</option>
                   <option value="openai">OpenAI</option>
                   <option value="deepseek">DeepSeek</option>
+                  <option value="claude">Claude</option>
                 </select>
               </div>
               <div>
@@ -330,6 +355,11 @@ Volatility Selection: If {SYMBOL} is unspecified, analyze the top 3 high-volume 
                     <>
                       <option value="gpt-4o-mini">gpt-4o-mini</option>
                       <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+                    </>
+                  ) : provider === "claude" ? (
+                    <>
+                      <option value="claude-3-5-sonnet-latest">claude-3-5-sonnet-latest</option>
+                      <option value="claude-3-7-sonnet-latest">claude-3-7-sonnet-latest</option>
                     </>
                   ) : (
                     <>

@@ -35,6 +35,9 @@ export default function ChartSnapshotsPage() {
   const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState("");
   const [claudePromptTemplate, setClaudePromptTemplate] = useState(DEFAULT_CLAUDE_PROMPT);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisRaw, setAnalysisRaw] = useState("");
+  const [analysisJson, setAnalysisJson] = useState("");
 
   const previewTitle = useMemo(() => `${symbol} • ${timeframe}`, [symbol, timeframe]);
   const claudePrompt = useMemo(() => replacePromptVars(claudePromptTemplate, {
@@ -107,6 +110,30 @@ export default function ChartSnapshotsPage() {
     }
   };
 
+  const analyzeLatestThree = async () => {
+    setAnalyzing(true);
+    setError("");
+    setAnalysisRaw("");
+    setAnalysisJson("");
+    try {
+      const out = await api.chartSnapshotsAnalyze({
+        model: "claude-3-5-sonnet-latest",
+        prompt: claudePrompt,
+      });
+      const raw = String(out?.raw_response || "");
+      setAnalysisRaw(raw);
+      if (out?.parsed_json) {
+        setAnalysisJson(JSON.stringify(out.parsed_json, null, 2));
+      } else {
+        setAnalysisJson("");
+      }
+    } catch (e) {
+      setError(String(e?.message || e || "Claude analysis failed."));
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   const setUltraSmall = () => {
     setWidth(640);
     setHeight(360);
@@ -152,6 +179,9 @@ export default function ChartSnapshotsPage() {
           <button className="btn-primary" onClick={captureThreeTF} disabled={capturing}>
             {capturing ? "Capturing..." : "Capture 3 TF (15m/4h/1D)"}
           </button>
+          <button className="btn-primary" onClick={analyzeLatestThree} disabled={capturing || analyzing}>
+            {analyzing ? "Analyzing..." : "Analyze Latest 3 (Claude)"}
+          </button>
           <button className="secondary-button" onClick={load} disabled={loading}>
             {loading ? "Refreshing..." : "Refresh"}
           </button>
@@ -179,6 +209,18 @@ export default function ChartSnapshotsPage() {
         <label className="minor-text">Resolved prompt</label>
         <textarea rows={6} style={{ width: "100%", fontFamily: "monospace", fontSize: 12 }} value={claudePrompt} readOnly />
         <a href="https://claude.ai/" target="_blank" rel="noreferrer">Open Claude.ai</a>
+      </section>
+
+      <section className="panel" style={{ marginBottom: 12 }}>
+        <h3 style={{ marginTop: 0 }}>Claude Analysis Result</h3>
+        {analysisJson ? (
+          <>
+            <label className="minor-text">Parsed JSON</label>
+            <textarea rows={10} style={{ width: "100%", fontFamily: "monospace", fontSize: 12 }} value={analysisJson} readOnly />
+          </>
+        ) : null}
+        <label className="minor-text">Raw response</label>
+        <textarea rows={8} style={{ width: "100%", fontFamily: "monospace", fontSize: 12 }} value={analysisRaw} readOnly />
       </section>
 
       <section className="panel">

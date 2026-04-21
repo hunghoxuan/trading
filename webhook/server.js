@@ -344,6 +344,7 @@ const ALLOWED_AI_API_KEY_NAMES = new Set([
   "GEMINI_API_KEY",
   "OPENAI_API_KEY",
   "DEEPSEEK_API_KEY",
+  "CLAUDE_API_KEY",
 ]);
 
 function normalizeAiApiKeyName(rawName) {
@@ -351,6 +352,7 @@ function normalizeAiApiKeyName(rawName) {
   if (name === "GEMINI" || name === "GOOGLE_GEMINI" || name === "GEMINI_KEY") return "GEMINI_API_KEY";
   if (name === "OPENAI" || name === "OPENAI_KEY") return "OPENAI_API_KEY";
   if (name === "DEEPSEEK" || name === "DEEPSEEK_KEY") return "DEEPSEEK_API_KEY";
+  if (name === "CLAUDE" || name === "ANTHROPIC" || name === "ANTHROPIC_API_KEY" || name === "CLAUDE_KEY") return "CLAUDE_API_KEY";
   return name;
 }
 
@@ -1019,6 +1021,29 @@ async function captureTradingViewSnapshotsBatch(opts = {}) {
     return items;
   } finally {
     await browser.close();
+  }
+}
+
+function snapshotMimeByFileName(fileName) {
+  const n = String(fileName || "").toLowerCase();
+  if (n.endsWith(".png")) return "image/png";
+  if (n.endsWith(".jpg") || n.endsWith(".jpeg")) return "image/jpeg";
+  return "";
+}
+
+function extractJsonFromAiText(rawText) {
+  const raw = String(rawText || "");
+  let clean = raw.trim();
+  if (clean.includes("```")) {
+    const match = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (match) clean = match[1];
+  }
+  clean = clean.replace(/^```json/, "").replace(/```$/, "").trim();
+  try {
+    const parsed = JSON.parse(clean);
+    return { parsed, clean };
+  } catch {
+    return { parsed: null, clean };
   }
 }
 
@@ -5523,7 +5548,7 @@ const appHandler = async (req, res) => {
       if (body.type === "api_key") {
         settingName = normalizeAiApiKeyName(settingName);
         if (!ALLOWED_AI_API_KEY_NAMES.has(settingName)) {
-          return json(res, 400, { ok: false, error: "Invalid api_key name. Allowed: GEMINI_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY" });
+          return json(res, 400, { ok: false, error: "Invalid api_key name. Allowed: GEMINI_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY, CLAUDE_API_KEY" });
         }
         const rawValue = String(payloadData.value || "").trim();
         data = encryptObject({ value: rawValue });
@@ -5623,6 +5648,8 @@ const appHandler = async (req, res) => {
         ? config.DEEPSEEK_API_KEY
         : provider === "openai"
           ? config.OPENAI_API_KEY
+          : provider === "claude"
+            ? (config.CLAUDE_API_KEY || config.ANTHROPIC_API_KEY)
           : config.GEMINI_API_KEY;
       
       if (!apiKey) {
@@ -5656,6 +5683,15 @@ const appHandler = async (req, res) => {
           messages: [{ role: "user", content: finalPrompt }],
           response_format: { type: "json_object" }
         };
+      } else if (provider === "claude") {
+        endpoint = "https://api.anthropic.com/v1/messages";
+        authHeader = "";
+        if (!requestModel) requestModel = "claude-3-5-sonnet-latest";
+        bodyData = {
+          model: requestModel,
+          max_tokens: 1200,
+          messages: [{ role: "user", content: finalPrompt }]
+        };
       } else {
         // Default to Gemini (OpenAI compatible route)
         endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
@@ -5676,6 +5712,12 @@ const appHandler = async (req, res) => {
           signal: aiCtrl.signal,
           headers: {
             "Content-Type": "application/json",
+            ...(provider === "claude"
+              ? {
+                  "x-api-key": apiKey,
+                  "anthropic-version": "2023-06-01",
+                }
+              : {}),
             ...(authHeader ? { "Authorization": authHeader } : {})
           },
           body: JSON.stringify(bodyData)
@@ -5695,7 +5737,11 @@ const appHandler = async (req, res) => {
       }
 
       const aiJson = await aiRes.json();
-      const rawResponse = aiJson.choices?.[0]?.message?.content || "";
+      const rawResponse = provider === "claude"
+        ? (Array.isArray(aiJson?.content)
+            ? aiJson.content.filter((x) => x?.type === "text").map((x) => String(x?.text || "")).join("\n")
+            : String(aiJson?.content || ""))
+        : (aiJson.choices?.[0]?.message?.content || "");
       
       // Robust JSON extraction
       let cleanJson = rawResponse.trim();
@@ -5789,6 +5835,117 @@ const appHandler = async (req, res) => {
         quality: body.quality,
       });
       return json(res, 200, { ok: true, items });
+    } catch (error) {
+      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/chart/snapshots/analyze") {
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      const body = await readJson(req);
+      ensureChartSnapshotDir();
+      const userId = sess.user_id || CFG.mt5DefaultUserId;
+      const cfgRows = await (await mt5InitBackend()).query(
+        "SELECT name, data FROM user_settings WHERE user_id = $1 AND type = 'api_key'",
+        [userId],
+      );
+      const config = {};
+      for (const row of cfgRows.rows || []) {
+        const name = normalizeAiApiKeyName(row?.name);
+        const dec = decryptObject(row?.data && typeof row.data === "object" ? row.data : {});
+        if (ALLOWED_AI_API_KEY_NAMES.has(name) && dec?.value) config[name] = String(dec.value || "");
+      }
+      const claudeKey = String(config.CLAUDE_API_KEY || "").trim();
+      if (!claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
+
+      let files = Array.isArray(body.files) ? body.files.map((x) => String(x || "").trim()).filter(Boolean) : [];
+      if (!files.length) {
+        files = fs.readdirSync(CHART_SNAPSHOT_DIR)
+          .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
+          .map((f) => {
+            const st = fs.statSync(path.join(CHART_SNAPSHOT_DIR, f));
+            return { f, t: Number(st.mtimeMs || 0) };
+          })
+          .sort((a, b) => b.t - a.t)
+          .slice(0, 3)
+          .map((x) => x.f);
+      }
+      files = files.slice(0, 3);
+      if (!files.length) return json(res, 400, { ok: false, error: "No snapshots found for analysis." });
+
+      const content = [];
+      const usedFiles = [];
+      for (const fileNameRaw of files) {
+        const safeName = path.basename(String(fileNameRaw || ""));
+        if (!safeName || safeName !== fileNameRaw || !/\.(png|jpg|jpeg)$/i.test(safeName)) continue;
+        const abs = path.join(CHART_SNAPSHOT_DIR, safeName);
+        if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue;
+        const mediaType = snapshotMimeByFileName(safeName);
+        if (!mediaType) continue;
+        const b64 = fs.readFileSync(abs).toString("base64");
+        content.push({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: mediaType,
+            data: b64,
+          },
+        });
+        usedFiles.push(safeName);
+      }
+      if (!content.length) return json(res, 400, { ok: false, error: "No valid snapshot images available." });
+
+      content.push({
+        type: "text",
+        text: String(body.prompt || "").trim() || "Analyze these chart snapshots and return only JSON.",
+      });
+
+      const requestModel = String(body.model || "claude-3-5-sonnet-latest").trim();
+      const aiCtrl = new AbortController();
+      const aiTimer = setTimeout(() => aiCtrl.abort(), 90000);
+      let aiRes;
+      try {
+        aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          signal: aiCtrl.signal,
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": claudeKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: requestModel,
+            max_tokens: Number(body.max_tokens || 1600),
+            messages: [{ role: "user", content }],
+          }),
+        });
+      } catch (e) {
+        if (e?.name === "AbortError") {
+          throw new Error(`Claude timeout (${requestModel}) after 90s.`);
+        }
+        throw e;
+      } finally {
+        clearTimeout(aiTimer);
+      }
+      if (!aiRes.ok) {
+        const errText = await aiRes.text();
+        throw new Error(`Claude API Error (${aiRes.status}): ${errText}`);
+      }
+      const aiJson = await aiRes.json();
+      const rawResponse = Array.isArray(aiJson?.content)
+        ? aiJson.content.filter((x) => x?.type === "text").map((x) => String(x?.text || "")).join("\n")
+        : String(aiJson?.content || "");
+      const extracted = extractJsonFromAiText(rawResponse);
+      return json(res, 200, {
+        ok: true,
+        model: requestModel,
+        used_files: usedFiles,
+        raw_response: rawResponse,
+        parsed_json: extracted.parsed,
+      });
     } catch (error) {
       return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }

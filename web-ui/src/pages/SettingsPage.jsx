@@ -13,6 +13,13 @@ const CTRADER_MODE_OPTIONS = [
   { value: "live", label: "live" },
 ];
 
+const API_KEY_NAME_OPTIONS = [
+  { value: "GEMINI_API_KEY", label: "Gemini API Key" },
+  { value: "OPENAI_API_KEY", label: "OpenAI API Key" },
+  { value: "DEEPSEEK_API_KEY", label: "DeepSeek API Key" },
+  { value: "CLAUDE_API_KEY", label: "Claude API Key" },
+];
+
 function isSystemRole(user) {
   return String(user?.role || "").trim().toLowerCase() === "system";
 }
@@ -32,10 +39,10 @@ export default function SettingsPage({ authUser }) {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const [settings, setSettings] = useState([]);
-  const [activeType, setActiveType] = useState(null);
+  const [activeSettingKey, setActiveSettingKey] = useState(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState("");
-  const [newSettingForm, setNewSettingForm] = useState({ type: "api_key", name: "" });
+  const [newSettingForm, setNewSettingForm] = useState({ type: "api_key", name: "GEMINI_API_KEY", value: "" });
   const [showAddForm, setShowAddForm] = useState(false);
 
   const canManageExecution = isSystemRole(authUser);
@@ -52,6 +59,8 @@ export default function SettingsPage({ authUser }) {
     ctrader_mode: "demo",
     ctrader_account_id: "",
   });
+
+  const getSettingKey = (s) => `${String(s?.type || "")}::${String(s?.name || "")}`;
 
   async function loadData() {
     try {
@@ -93,10 +102,13 @@ export default function SettingsPage({ authUser }) {
       }
 
       if (sets?.settings) {
-        setSettings(sets.settings);
-        if (!activeType && sets.settings.length > 0) {
-          setActiveType(sets.settings[0].type);
-        }
+        const list = Array.isArray(sets.settings) ? sets.settings : [];
+        setSettings(list);
+        setActiveSettingKey((prev) => {
+          if (!list.length) return null;
+          if (prev && list.some((x) => getSettingKey(x) === prev)) return prev;
+          return getSettingKey(list[0]);
+        });
       }
       setMsg(""); // Clear potential "Not found" or error from previous load
     } catch (err) {
@@ -156,21 +168,21 @@ export default function SettingsPage({ authUser }) {
     }
   }
 
-  async function updateSetting(type, field, value) {
-    const s = settings.find(x => x.type === type);
+  async function updateSetting(settingKey, field, value) {
+    const s = settings.find(x => getSettingKey(x) === settingKey);
     if (!s) return;
     const nextData = { ...s.data, [field]: value };
-    setSettings(prev => prev.map(x => x.type === type ? { ...x, data: nextData } : x));
+    setSettings(prev => prev.map(x => getSettingKey(x) === settingKey ? { ...x, data: nextData } : x));
   }
 
-  async function saveSetting(type) {
-    const s = settings.find(x => x.type === type);
+  async function saveSetting(settingKey) {
+    const s = settings.find(x => getSettingKey(x) === settingKey);
     if (!s) return;
     setSettingsLoading(true);
     setSettingsMsg("");
     try {
-      await api.upsertSetting({ type, name: s.name, data: s.data, status: s.status });
-      setSettingsMsg(`Settings for ${type} saved.`);
+      await api.upsertSetting({ type: s.type, name: s.name, data: s.data, status: s.status });
+      setSettingsMsg(`Settings for ${s.type}/${s.name} saved.`);
       await loadData();
     } catch (err) {
       setSettingsMsg(err.message);
@@ -180,13 +192,13 @@ export default function SettingsPage({ authUser }) {
     }
   }
 
-  async function deleteSetting(type) {
+  async function deleteSetting(type, name) {
     if (!window.confirm(`Delete setting ${type}?`)) return;
     setSettingsLoading(true);
     try {
-      await api.deleteSetting(type);
+      await api.deleteSetting(type, name || type);
       setSettingsMsg(`Setting ${type} deleted.`);
-      setActiveType(null);
+      setActiveSettingKey(null);
       await loadData();
     } catch (err) {
       setSettingsMsg(err.message);
@@ -197,18 +209,18 @@ export default function SettingsPage({ authUser }) {
   }
 
   async function createSetting() {
-    const { type, name } = newSettingForm;
+    const { type, name, value } = newSettingForm;
     if (!type || !name) {
       setSettingsMsg("Type and Name are required.");
       return;
     }
     setSettingsLoading(true);
     try {
-      await api.upsertSetting({ type, name, data: { key: "" }, status: "active" });
+      await api.upsertSetting({ type, name, data: { value: String(value || "") }, status: "active" });
       setSettingsMsg(`Setting ${type} created.`);
       setShowAddForm(false);
-      setNewSettingForm({ type: "", name: "" });
-      setActiveType(type);
+      setNewSettingForm({ type: "api_key", name: "GEMINI_API_KEY", value: "" });
+      setActiveSettingKey(`${type}::${name}`);
       await loadData();
     } catch (err) {
       setSettingsMsg(err.message);
@@ -250,7 +262,10 @@ export default function SettingsPage({ authUser }) {
     }
   }
 
-  const selectedSetting = useMemo(() => settings.find(s => s.type === activeType), [settings, activeType]);
+  const selectedSetting = useMemo(
+    () => settings.find((s) => getSettingKey(s) === activeSettingKey),
+    [settings, activeSettingKey],
+  );
 
   return (
     <div className="stack-layout fadeIn" style={{ paddingBottom: 40 }}>
@@ -365,7 +380,14 @@ export default function SettingsPage({ authUser }) {
                   <select 
                     style={{ width: "100%" }}
                     value={newSettingForm.type} 
-                    onChange={e => setNewSettingForm(p => ({ ...p, type: e.target.value }))} 
+                    onChange={(e) => {
+                      const nextType = e.target.value;
+                      setNewSettingForm((p) => ({
+                        ...p,
+                        type: nextType,
+                        name: nextType === "api_key" ? (p.name || "GEMINI_API_KEY") : p.name,
+                      }));
+                    }}
                   >
                     <option value="api_key">api_key</option>
                     <option value="ai_template">ai_template</option>
@@ -374,10 +396,30 @@ export default function SettingsPage({ authUser }) {
                </label>
                <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <span className="minor-text" style={{ fontSize: 10 }}>Entry Name (e.g. Gemini)</span>
-                  <input 
-                    placeholder="name (e.g. Gemini API)" 
-                    value={newSettingForm.name} 
-                    onChange={e => setNewSettingForm(p => ({ ...p, name: e.target.value }))} 
+                  {newSettingForm.type === "api_key" ? (
+                    <select
+                      value={newSettingForm.name}
+                      onChange={(e) => setNewSettingForm((p) => ({ ...p, name: e.target.value }))}
+                    >
+                      {API_KEY_NAME_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input 
+                      placeholder="name (e.g. Gemini API)" 
+                      value={newSettingForm.name} 
+                      onChange={e => setNewSettingForm(p => ({ ...p, name: e.target.value }))} 
+                    />
+                  )}
+               </label>
+               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <span className="minor-text" style={{ fontSize: 10 }}>Value</span>
+                  <textarea
+                    rows={3}
+                    placeholder="Value (text or JSON)"
+                    value={newSettingForm.value}
+                    onChange={e => setNewSettingForm(p => ({ ...p, value: e.target.value }))}
                   />
                </label>
                <button className="primary-button" onClick={createSetting} disabled={settingsLoading}>CREATE</button>
@@ -387,8 +429,8 @@ export default function SettingsPage({ authUser }) {
           <div className="stack-layout" style={{ gap: 2 }}>
             {settings.map(s => (
               <div 
-                key={s.type} 
-                className={`sidebar-item ${activeType === s.type ? "active" : ""}`}
+                key={getSettingKey(s)}
+                className={`sidebar-item ${activeSettingKey === getSettingKey(s) ? "active" : ""}`}
                 style={{ 
                   padding: "10px 14px", 
                   borderRadius: 6, 
@@ -396,10 +438,10 @@ export default function SettingsPage({ authUser }) {
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  background: activeType === s.type ? "var(--selection)" : "transparent",
-                  color: activeType === s.type ? "var(--primary-bright)" : "inherit"
+                  background: activeSettingKey === getSettingKey(s) ? "var(--selection)" : "transparent",
+                  color: activeSettingKey === getSettingKey(s) ? "var(--primary-bright)" : "inherit"
                 }}
-                onClick={() => setActiveType(s.type)}
+                onClick={() => setActiveSettingKey(getSettingKey(s))}
               >
                 <div style={{ display: "flex", flexDirection: "column" }}>
                    <span style={{ fontWeight: 500, fontSize: 13 }}>{s.name || s.type}</span>
@@ -422,8 +464,8 @@ export default function SettingsPage({ authUser }) {
                       <div className="minor-text" style={{ marginTop: 4 }}>Internal Type: {selectedSetting.type}</div>
                    </div>
                    <div style={{ display: "flex", gap: 12 }}>
-                      <button className="primary-button" onClick={() => saveSetting(selectedSetting.type)} disabled={settingsLoading}>SAVE CHANGES</button>
-                      <button className="secondary-button" style={{ color: "var(--danger)" }} onClick={() => deleteSetting(selectedSetting.type)} disabled={settingsLoading}>DELETE</button>
+                      <button className="primary-button" onClick={() => saveSetting(getSettingKey(selectedSetting))} disabled={settingsLoading}>SAVE CHANGES</button>
+                      <button className="secondary-button" style={{ color: "var(--danger)" }} onClick={() => deleteSetting(selectedSetting.type, selectedSetting.name)} disabled={settingsLoading}>DELETE</button>
                    </div>
                 </div>
 
@@ -436,7 +478,7 @@ export default function SettingsPage({ authUser }) {
                           type="password" 
                           value={val || ""} 
                           placeholder={`Enter ${key}`}
-                          onChange={(e) => updateSetting(selectedSetting.type, key, e.target.value)} 
+                          onChange={(e) => updateSetting(getSettingKey(selectedSetting), key, e.target.value)} 
                         />
                       </label>
                     ))}
@@ -450,14 +492,14 @@ export default function SettingsPage({ authUser }) {
                            <input 
                               type="text" 
                               value={typeof val === 'object' ? JSON.stringify(val) : (val || "")} 
-                              onChange={(e) => updateSetting(selectedSetting.type, key, e.target.value)} 
+                              onChange={(e) => updateSetting(getSettingKey(selectedSetting), key, e.target.value)} 
                            />
                         </label>
                       ))}
                     </div>
                     <button className="minor-text" style={{ padding: 4, cursor: "pointer", background: "none", border: "1px dashed var(--border)", width: "fit-content" }} onClick={() => {
                         const k = window.prompt("Field name:");
-                        if (k) updateSetting(selectedSetting.type, k, "");
+                        if (k) updateSetting(getSettingKey(selectedSetting), k, "");
                     }}>+ ADD NEW FIELD</button>
                   </div>
                 )}
