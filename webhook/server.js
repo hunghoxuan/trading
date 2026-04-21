@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.21-0625"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.21-0641"); // Real AI Integrated
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -5236,10 +5236,13 @@ const appHandler = async (req, res) => {
     }
   }
   if (req.method === "GET" && url.pathname === "/v2/settings") {
-    if (!requireAdminKey(req, res, url)) return;
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    
     try {
       const db = await mt5InitBackend();
-      const userId = CFG.mt5DefaultUserId;
+      const userId = sess.user_id || CFG.mt5DefaultUserId;
       const { rows } = await db.query(
         "SELECT type, name, data, status, created_at FROM user_settings WHERE user_id = $1 ORDER BY type ASC",
         [userId]
@@ -5255,12 +5258,15 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/v2/settings") {
-    if (!requireAdminKey(req, res, url)) return;
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    
     try {
       const body = await readJsonBody(req);
       if (!body.type) return json(res, 400, { ok: false, error: "Missing type" });
       const db = await mt5InitBackend();
-      const userId = CFG.mt5DefaultUserId;
+      const userId = sess.user_id || CFG.mt5DefaultUserId;
       const data = body.type === 'api_key' ? encryptObject(body.data) : body.data;
       
       await db.query(`
@@ -5277,13 +5283,19 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "DELETE" && url.pathname.startsWith("/v2/settings/")) {
-    if (!requireAdminKey(req, res, url)) return;
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    
     try {
-      const type = url.pathname.split("/").pop();
-      if (!type) return json(res, 400, { ok: false, error: "Missing setting type" });
+      const parts = url.pathname.split("/"); // ["", "v2", "settings", type, name]
+      const type = decodeURIComponent(parts[3] || "");
+      const name = decodeURIComponent(parts[4] || "");
+      
+      if (!type || !name) return json(res, 400, { ok: false, error: "Missing type or name" });
       const db = await mt5InitBackend();
-      const userId = CFG.mt5DefaultUserId;
-      await db.query("DELETE FROM user_settings WHERE user_id = $1 AND type = $2", [userId, type]);
+      const userId = sess.user_id || CFG.mt5DefaultUserId;
+      await db.query("DELETE FROM user_settings WHERE user_id = $1 AND type = $2 AND name = $3", [userId, type, name]);
       return json(res, 200, { ok: true });
     } catch (e) {
       return json(res, 500, { ok: false, error: e.message });
