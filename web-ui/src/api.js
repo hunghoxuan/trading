@@ -474,4 +474,5 @@ export const api = {
   aiGenerate: (payload = {}) => post("/v2/ai/generate", payload),
   getSettings: () => get("/v2/settings"),
   upsertSetting: (payload = {}) => post("/v2/settings", payload),
+  deleteSetting: (type) => del(`/v2/settings/${type}`),
 };

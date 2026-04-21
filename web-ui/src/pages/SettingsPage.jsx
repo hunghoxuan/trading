@@ -177,6 +177,39 @@ export default function SettingsPage({ authUser }) {
     }
   }
 
+  async function deleteSetting(type) {
+    if (!window.confirm(`Delete setting ${type}?`)) return;
+    setSettingsLoading(true);
+    try {
+      await api.deleteSetting(type);
+      setSettingsMsg(`Setting ${type} deleted.`);
+      await loadData();
+    } catch (err) {
+      setSettingsMsg(err.message);
+    } finally {
+      setSettingsLoading(false);
+      window.setTimeout(() => setSettingsMsg(""), 3000);
+    }
+  }
+
+  async function addEmptySetting() {
+    const t = window.prompt("Enter setting type (e.g. gemini_secret):");
+    if (!t) return;
+    const n = window.prompt("Enter display name (e.g. Gemini Config):", t);
+    if (!n) return;
+    setSettingsLoading(true);
+    try {
+      await api.upsertSetting({ type: t, name: n, data: { key: "" }, status: "active" });
+      setSettingsMsg(`Setting ${t} added.`);
+      await loadData();
+    } catch (err) {
+      setSettingsMsg(err.message);
+    } finally {
+      setSettingsLoading(false);
+      window.setTimeout(() => setSettingsMsg(""), 3000);
+    }
+  }
+
   async function applyExecutionProfile() {
     const route = String(execForm.route || "").trim().toLowerCase();
     const accountId = String(execForm.account_id || "").trim();
@@ -199,7 +232,7 @@ export default function SettingsPage({ authUser }) {
         ctrader_mode: route === "ctrader" ? String(execForm.ctrader_mode || "demo") : "",
         ctrader_account_id: route === "ctrader" ? String(execForm.ctrader_account_id || "").trim() : "",
       });
-      setExecMsg("Execution profile applied.");
+      setExecMsg("Profile applied.");
       await loadData();
     } catch (error) {
       setExecMsg(error?.message || "Failed to apply profile");
@@ -213,7 +246,8 @@ export default function SettingsPage({ authUser }) {
     <div className="stack-layout fadeIn" style={{ paddingBottom: 40 }}>
       <h2 className="page-title">Settings</h2>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+      {/* Top 3-Card Row */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, alignItems: "start" }}>
         {/* Card 1: Update Profile */}
         <UserDetailSection
           title="UPDATE PROFILE"
@@ -230,7 +264,7 @@ export default function SettingsPage({ authUser }) {
         />
 
         {/* Card 2: Update Password */}
-        <section className="panel">
+        <section className="panel" style={{ height: "100%" }}>
           <div className="panel-label">UPDATE PASSWORD</div>
           <div className="stack-layout" style={{ gap: 12 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -239,7 +273,7 @@ export default function SettingsPage({ authUser }) {
                 type="password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder="Required to set new password"
+                placeholder="Current pwd"
               />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -248,42 +282,85 @@ export default function SettingsPage({ authUser }) {
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Min 4 characters"
+                placeholder="New pwd"
               />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span className="minor-text">Confirm New Password</span>
+              <span className="minor-text">Confirm</span>
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Repeat new password"
+                placeholder="Repeat"
               />
             </label>
             <div style={{ marginTop: 8 }}>
               <button className="primary-button" onClick={resetPassword} disabled={pwdLoading}>
-                {pwdLoading ? "UPDATING..." : "UPDATE PASSWORD"}
+                {pwdLoading ? "UPDATING..." : "UPDATE"}
               </button>
             </div>
             {pwdLoading || msg ? <div className="minor-text" style={{ marginTop: 4 }}>{msg}</div> : null}
           </div>
         </section>
+
+        {/* Card 3: System Execution Profile */}
+        {canManageExecution && (
+          <section className="panel" style={{ height: "100%" }}>
+            <div className="panel-label">EXECUTION PROFILE</div>
+            <div className="stack-layout" style={{ gap: 12 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span className="minor-text">Account</span>
+                <select value={execForm.account_id} onChange={(e) => setExecForm((p) => ({ ...p, account_id: e.target.value }))}>
+                  <option value="">Select account</option>
+                  {execAccounts.map((a) => (
+                    <option key={a.account_id} value={a.account_id}>
+                      {a.name || a.account_id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                 <span className="minor-text">Route</span>
+                 <select value={execForm.route} onChange={(e) => setExecForm((p) => ({ ...p, route: e.target.value }))}>
+                   {ROUTE_OPTIONS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+                 </select>
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                 <span className="minor-text">Sources (CSV)</span>
+                 <input value={execForm.source_ids_csv} onChange={(e) => setExecForm((p) => ({ ...p, source_ids_csv: e.target.value }))} />
+              </label>
+              <div style={{ marginTop: 8 }}>
+                <button className="primary-button" onClick={applyExecutionProfile} disabled={execLoading}>
+                  {execLoading ? "APPLYING..." : "APPLY PROFILE"}
+                </button>
+              </div>
+              {execMsg && <div className="minor-text" style={{ marginTop: 4 }}>{execMsg}</div>}
+            </div>
+          </section>
+        )}
       </div>
 
-      {/* Card 3: Manage Settings (Dynamic) */}
+      {/* Card 4: Manage Settings (Full CRUD) */}
       <section className="panel" style={{ marginTop: 24 }}>
-        <div className="panel-label">MANAGE SYSTEM SETTINGS</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div className="panel-label" style={{ margin: 0 }}>MANAGE SYSTEM SETTINGS</div>
+          <button className="secondary-button" onClick={addEmptySetting} disabled={settingsLoading}>+ ADD SETTING</button>
+        </div>
+
         {settings.length === 0 && <div className="minor-text">No custom settings configured.</div>}
         
         <div className="stack-layout" style={{ gap: 24 }}>
           {settings.map((s) => (
-            <div key={s.type} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 20 }}>
+            <div key={s.type} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 24 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                 <h4 style={{ margin: 0, textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.name || s.type}</h4>
-                 <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+                 <h4 style={{ margin: 0, textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.name || s.type} <span style={{ opacity: 0.5, fontWeight: "normal", fontSize: "0.8em", marginLeft: 10 }}>({s.type})</span></h4>
+                 <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                     <span className={`status-badge ${s.status}`}>{s.status}</span>
-                    <button className="secondary-button" style={{ padding: "4px 12px" }} onClick={() => saveSetting(s.type)} disabled={settingsLoading}>
-                       {settingsLoading ? "Saving..." : "Save Changes"}
+                    <button className="primary-button" style={{ padding: "4px 16px" }} onClick={() => saveSetting(s.type)} disabled={settingsLoading}>
+                       {settingsLoading ? "Saving..." : "Save"}
+                    </button>
+                    <button className="secondary-button" style={{ padding: "4px 16px", color: "var(--danger)" }} onClick={() => deleteSetting(s.type)} disabled={settingsLoading}>
+                       Delete
                     </button>
                  </div>
               </div>
@@ -303,10 +380,10 @@ export default function SettingsPage({ authUser }) {
                   ))}
                 </div>
               ) : (
-                <div className="form-grid">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 16 }}>
                   {Object.entries(s.data || {}).map(([key, val]) => (
-                    <label key={key}>
-                      {key}
+                    <label key={key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span className="minor-text" style={{ fontSize: 10 }}>{key}</span>
                       <input 
                         type="text" 
                         value={typeof val === 'object' ? JSON.stringify(val) : (val || "")} 
@@ -314,6 +391,11 @@ export default function SettingsPage({ authUser }) {
                       />
                     </label>
                   ))}
+                  {/* Option to add field to existing setting */}
+                  <button className="minor-text" style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", fontSize: 10, color: "var(--primary)" }} onClick={() => {
+                     const k = window.prompt("New field name:");
+                     if (k) updateSetting(s.type, k, "");
+                  }}>+ add field</button>
                 </div>
               )}
             </div>
@@ -322,41 +404,10 @@ export default function SettingsPage({ authUser }) {
         </div>
       </section>
 
-      {canManageExecution && (
-        <section className="panel" style={{ marginTop: 24 }}>
-          <div className="panel-label">SYSTEM EXECUTION PROFILE</div>
-          <div className="form-grid">
-            <label>
-              Account
-              <select value={execForm.account_id} onChange={(e) => setExecForm((p) => ({ ...p, account_id: e.target.value }))}>
-                <option value="">Select account</option>
-                {execAccounts.map((a) => (
-                  <option key={a.account_id} value={a.account_id}>
-                    {a.name || a.account_id} ({a.account_id})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Route
-              <select value={execForm.route} onChange={(e) => setExecForm((p) => ({ ...p, route: e.target.value }))}>
-                {ROUTE_OPTIONS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
-              </select>
-            </label>
-            <label>
-              Sources (CSV)
-              <input value={execForm.source_ids_csv} onChange={(e) => setExecForm((p) => ({ ...p, source_ids_csv: e.target.value }))} />
-            </label>
-          </div>
-          <div style={{ marginTop: 16, display: "flex", gap: 12, alignItems: "center" }}>
-            <button className="primary-button" onClick={applyExecutionProfile} disabled={execLoading}>
-              {execLoading ? "APPLYING..." : "APPLY PROFILE"}
-            </button>
-            {execMsg && <span className="minor-text">{execMsg}</span>}
-          </div>
-          
-          <div style={{ marginTop: 20 }}>
-            <div className="panel-label">Active Profiles</div>
+      {/* Passive List of All Active Profiles */}
+      {canManageExecution && execProfiles.length > 0 && (
+         <section className="panel" style={{ marginTop: 24 }}>
+            <div className="panel-label">ACTIVE PROFILES (READ-ONLY)</div>
             <div className="table-scroll">
               <table className="table">
                 <thead>
@@ -368,14 +419,13 @@ export default function SettingsPage({ authUser }) {
                       <td>{p.profile_name || p.profile_id}</td>
                       <td>{String(p.route || "").toUpperCase()}</td>
                       <td>{p.account_id}</td>
-                      <td><span className={`status-badge ${p.is_active ? "ACTIVE" : "INACTIVE"}`}>{p.is_active ? "ACTIVE" : "INACTIVE"}</span></td>
+                      <td><span className={`status-badge ${p.is_active ? "ACTIVE" : "INACTIVE"}`}>{p.is_active ? "ACTIVE" : "INACTIVE" || "pending"}</span></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
-        </section>
+         </section>
       )}
     </div>
   );

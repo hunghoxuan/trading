@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.21-0506"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.21-0536"); // Real AI Integrated
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -5228,6 +5228,19 @@ const appHandler = async (req, res) => {
            }
         });
       }
+      return json(res, 200, { ok: true });
+    } catch (e) {
+      return json(res, 500, { ok: false, error: e.message });
+    }
+  }
+  if (req.method === "DELETE" && url.pathname.startsWith("/v2/settings/")) {
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const type = url.pathname.split("/").pop();
+      if (!type) return json(res, 400, { ok: false, error: "Missing setting type" });
+      const db = await mt5InitBackend();
+      const userId = CFG.mt5DefaultUserId;
+      await db.query("DELETE FROM user_settings WHERE user_id = $1 AND type = $2", [userId, type]);
       return json(res, 200, { ok: true });
     } catch (e) {
       return json(res, 500, { ok: false, error: e.message });
