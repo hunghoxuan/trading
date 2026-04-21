@@ -35,7 +35,7 @@ export default function SettingsPage({ authUser }) {
   const [activeType, setActiveType] = useState(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState("");
-  const [newSettingForm, setNewSettingForm] = useState({ type: "", name: "" });
+  const [newSettingForm, setNewSettingForm] = useState({ type: "api_key", name: "" });
   const [showAddForm, setShowAddForm] = useState(false);
 
   const canManageExecution = isSystemRole(authUser);
@@ -360,16 +360,26 @@ export default function SettingsPage({ authUser }) {
 
           {showAddForm && (
             <div className="stack-layout fadeIn" style={{ gap: 10, paddingBottom: 16, borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
-               <input 
-                 placeholder="type (e.g. key_gemini)" 
-                 value={newSettingForm.type} 
-                 onChange={e => setNewSettingForm(p => ({ ...p, type: e.target.value }))} 
-               />
-               <input 
-                 placeholder="name (e.g. Gemini API)" 
-                 value={newSettingForm.name} 
-                 onChange={e => setNewSettingForm(p => ({ ...p, name: e.target.value }))} 
-               />
+               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <span className="minor-text" style={{ fontSize: 10 }}>Category (Type)</span>
+                  <select 
+                    style={{ width: "100%" }}
+                    value={newSettingForm.type} 
+                    onChange={e => setNewSettingForm(p => ({ ...p, type: e.target.value }))} 
+                  >
+                    <option value="api_key">api_key</option>
+                    <option value="ai_template">ai_template</option>
+                    <option value="note">note</option>
+                  </select>
+               </label>
+               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <span className="minor-text" style={{ fontSize: 10 }}>Entry Name (e.g. Gemini)</span>
+                  <input 
+                    placeholder="name (e.g. Gemini API)" 
+                    value={newSettingForm.name} 
+                    onChange={e => setNewSettingForm(p => ({ ...p, name: e.target.value }))} 
+                  />
+               </label>
                <button className="primary-button" onClick={createSetting} disabled={settingsLoading}>CREATE</button>
             </div>
           )}

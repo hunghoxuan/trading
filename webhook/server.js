@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.21-0544"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.21-0551"); // Real AI Integrated
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -1442,11 +1442,11 @@ async function mt5InitBackend() {
     );
 
     -- DDL Migration for existing installations
-    ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS name TEXT;
+    ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT 'default';
     ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'ACTIVE';
     ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_user_settings_singleton ON user_settings (user_id, type) 
-    WHERE (type IN ('api_key', 'settings'));
+    DROP INDEX IF EXISTS idx_user_settings_singleton;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_user_settings_user_type_name ON user_settings (user_id, type, COALESCE(name, ''));
 
     -- Keep old tables for safe migration then drop
     DROP TABLE IF EXISTS ai_templates;
@@ -5196,9 +5196,9 @@ const appHandler = async (req, res) => {
         // Individual key update
         const encValue = encryptData(String(body.value));
         await db.query(`
-          INSERT INTO user_settings (user_id, type, data)
-          VALUES ($1, 'api_key', jsonb_build_object($2, $3))
-          ON CONFLICT (user_id, type) WHERE (type IN ('api_key', 'settings'))
+          INSERT INTO user_settings (user_id, type, name, data)
+          VALUES ($1, 'api_key', 'default', jsonb_build_object($2, $3))
+          ON CONFLICT (user_id, type, name)
           DO UPDATE SET data = user_settings.data || jsonb_build_object($2, $3), updated_at = NOW()
         `, [userId, body.key, encValue]).catch(async () => {
            // Fallback for systems without the partial unique index
@@ -5215,9 +5215,9 @@ const appHandler = async (req, res) => {
         // Bulk settings update
         const settings = encryptObject(body.settings || body || {});
         await db.query(`
-          INSERT INTO user_settings (user_id, type, data)
-          VALUES ($1, 'api_key', $2)
-          ON CONFLICT (user_id, type) WHERE (type IN ('api_key', 'settings'))
+          INSERT INTO user_settings (user_id, type, name, data)
+          VALUES ($1, 'api_key', 'default', $2)
+          ON CONFLICT (user_id, type, name)
           DO UPDATE SET data = $2, updated_at = NOW()
         `, [userId, settings]).catch(async () => {
            const existing = await db.query("SELECT id FROM user_settings WHERE user_id=$1 AND type='api_key'", [userId]);
@@ -5264,8 +5264,8 @@ const appHandler = async (req, res) => {
       await db.query(`
         INSERT INTO user_settings (user_id, type, name, data, status)
         VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (user_id, type)
-        DO UPDATE SET name = $3, data = $4, status = $5, updated_at = NOW()
+        ON CONFLICT (user_id, type, name)
+        DO UPDATE SET data = $4, status = $5, updated_at = NOW()
       `, [userId, body.type, body.name || body.type, data, body.status || 'active']);
       
       return json(res, 200, { ok: true });
