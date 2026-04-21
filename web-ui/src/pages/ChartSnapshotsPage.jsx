@@ -19,6 +19,47 @@ function replacePromptVars(template, vars) {
     .replace(/{RR}/g, vars.rr || "1:2");
 }
 
+function normalizeNoteForStorage(v) {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v;
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
+
+function extractSignalsFromAnalysis(parsed, fallback = {}) {
+  if (!parsed || typeof parsed !== "object") return [];
+  let rows = [];
+  if (Array.isArray(parsed)) rows = parsed;
+  else if (Array.isArray(parsed.signals)) rows = parsed.signals;
+  else rows = [parsed];
+
+  return rows
+    .map((s) => {
+      const sideRaw = String(s?.side || s?.direction || "").toUpperCase();
+      const action = sideRaw.includes("SELL") ? "SELL" : "BUY";
+      const entry = Number(s?.entry ?? s?.price ?? 0);
+      const sl = Number(s?.sl ?? s?.stop_loss ?? 0);
+      const tp = Number(s?.tp ?? s?.take_profit ?? 0);
+      return {
+        symbol: String(s?.symbol || fallback.symbol || "").trim(),
+        action,
+        entry,
+        sl,
+        tp,
+        tf: String(s?.timeframe || fallback.timeframe || "15m").trim(),
+        model: String(s?.entry_model || "ai_claude"),
+        entry_model: String(s?.entry_model || "ai_claude"),
+        note: normalizeNoteForStorage(s?.note ?? s),
+        source: "ai",
+        strategy: "ai",
+      };
+    })
+    .filter((x) => x.symbol && Number.isFinite(x.entry) && Number.isFinite(x.sl) && Number.isFinite(x.tp) && x.entry > 0 && x.sl > 0 && x.tp > 0);
+}
+
 export default function ChartSnapshotsPage() {
   const [symbol, setSymbol] = useState("ICMARKETS:UK100");
   const [timeframe, setTimeframe] = useState("15m");
@@ -36,8 +77,10 @@ export default function ChartSnapshotsPage() {
   const [error, setError] = useState("");
   const [claudePromptTemplate, setClaudePromptTemplate] = useState(DEFAULT_CLAUDE_PROMPT);
   const [analyzing, setAnalyzing] = useState(false);
+  const [addingSignal, setAddingSignal] = useState(false);
   const [analysisRaw, setAnalysisRaw] = useState("");
   const [analysisJson, setAnalysisJson] = useState("");
+  const [analysisParsed, setAnalysisParsed] = useState(null);
   const [symbolOptions, setSymbolOptions] = useState([]);
 
   const previewTitle = useMemo(() => `${symbol} • ${timeframe}`, [symbol, timeframe]);
@@ -116,6 +159,7 @@ export default function ChartSnapshotsPage() {
     setError("");
     setAnalysisRaw("");
     setAnalysisJson("");
+    setAnalysisParsed(null);
     try {
       const out = await api.chartSnapshotsAnalyze({
         model: "claude-sonnet-4-0",
@@ -124,14 +168,37 @@ export default function ChartSnapshotsPage() {
       const raw = String(out?.raw_response || "");
       setAnalysisRaw(raw);
       if (out?.parsed_json) {
+        setAnalysisParsed(out.parsed_json);
         setAnalysisJson(JSON.stringify(out.parsed_json, null, 2));
       } else {
+        setAnalysisParsed(null);
         setAnalysisJson("");
       }
     } catch (e) {
       setError(String(e?.message || e || "Claude analysis failed."));
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const addToSignal = async () => {
+    setAddingSignal(true);
+    setError("");
+    try {
+      let parsed = analysisParsed;
+      if (!parsed && analysisJson) {
+        parsed = JSON.parse(analysisJson);
+      }
+      const signals = extractSignalsFromAnalysis(parsed, { symbol, timeframe });
+      if (!signals.length) throw new Error("No valid signal found in analysis JSON.");
+      for (const payload of signals) {
+        await api.createTrade(payload);
+      }
+      setError(`Added ${signals.length} signal(s) successfully.`);
+    } catch (e) {
+      setError(String(e?.message || e || "Add to Signal failed."));
+    } finally {
+      setAddingSignal(false);
     }
   };
 
@@ -236,6 +303,11 @@ export default function ChartSnapshotsPage() {
 
       <section className="panel" style={{ marginBottom: 12 }}>
         <h3 style={{ marginTop: 0 }}>Claude Analysis Result</h3>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+          <button className="btn-primary" onClick={addToSignal} disabled={addingSignal || !analysisJson}>
+            {addingSignal ? "Adding..." : "Add To Signal"}
+          </button>
+        </div>
         {analysisJson ? (
           <>
             <label className="minor-text">Parsed JSON</label>
