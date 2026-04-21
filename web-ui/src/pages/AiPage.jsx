@@ -22,11 +22,22 @@ export default function AiPage() {
   const [suggestedSignals, setSuggestedSignals] = useState([]);
   const [selectedSignalIndices, setSelectedSignalIndices] = useState(new Set());
 
+  const [provider, setProvider] = useState("gemini");
+  const [model, setModel] = useState("gemini-2.0-flash");
+
   // Load basic data
   useEffect(() => {
     loadTemplates();
     loadConfig();
   }, []);
+
+  useEffect(() => {
+    if (activeTemplate?.default_model) {
+      setModel(activeTemplate.default_model);
+      if (activeTemplate.default_model.includes("deepseek")) setProvider("deepseek");
+      else setProvider("gemini");
+    }
+  }, [activeTemplate]);
 
   async function loadTemplates() {
     try {
@@ -58,7 +69,7 @@ Provide precise price levels for Entry, Take Profit (TP), and Stop Loss (SL), di
 
 Ensure the risk-to-reward ratio is at least {RR}.
 
-Output Format: Return ONLY a valid JSON object. Do not include any conversational text, markdown formatting outside the JSON, or explanations before the code block. Json fields: symbol, entry_model, direction, entry, tp, tp2, sl, rr, note: bias, trend and market data with detail analysis.`;
+Output Format: Return ONLY a valid JSON object. Do not include any conversational text, markdown formatting outside the JSON, or explanations before the code block. Json fields: symbol, entry_model, direction, entry, tp, sl, timeframe, note: bias, trend and market data with detail analysis.`;
 
   const handleCreateNew = () => {
     setSelectedTemplateId(null);
@@ -74,7 +85,11 @@ Output Format: Return ONLY a valid JSON object. Do not include any conversationa
   const handleSaveTemplate = async () => {
     setLoading(true);
     try {
-      const res = await api.aiUpsertTemplate({ ...activeTemplate, template_id: selectedTemplateId });
+      const res = await api.aiUpsertTemplate({ 
+        ...activeTemplate, 
+        template_id: selectedTemplateId,
+        default_model: model
+      });
       await loadTemplates();
       setSelectedTemplateId(res.template.template_id);
       setActiveTemplate(res.template);
@@ -103,11 +118,15 @@ Output Format: Return ONLY a valid JSON object. Do not include any conversationa
     setAiResponse(null);
     setSuggestedSignals([]);
     setSelectedSignalIndices(new Set());
+    setError("");
     try {
       const res = await api.aiGenerate({
-        provider: "deepseek", // Need a selector for provider
-        model: activeTemplate.default_model || "deepseek-coder",
-        prompt: activeTemplate.prompt_text,
+        provider: provider,
+        model: model,
+        templateId: selectedTemplateId,
+        customPrompt: activeTemplate.prompt_text,
+        symbol: activeTemplate.default_symbol,
+        timeframe: activeTemplate.default_tf,
         context: `Symbol: ${activeTemplate.default_symbol || "ALL"}, Timeframe: ${activeTemplate.default_tf || "1h"}`
       });
       setAiResponse(res.raw_response);
@@ -135,16 +154,15 @@ Output Format: Return ONLY a valid JSON object. Do not include any conversationa
     try {
       let count = 0;
       for (const sig of toImport) {
-        // Construct standard signal payload
         const payload = {
           symbol: sig.symbol,
-          action: sig.side?.toUpperCase().includes("BUY") ? "BUY" : "SELL",
-          entry: sig.entry,
-          sl: sig.sl,
-          tp: sig.tp,
-          tf: sig.timeframe,
-          model: sig.entry_model || activeTemplate.name,
-          note: sig.note,
+          action: String(sig.side || sig.direction || "BUY").toUpperCase().includes("BUY") ? "BUY" : "SELL",
+          entry: Number(sig.entry),
+          sl: Number(sig.sl),
+          tp: Number(sig.tp),
+          tf: sig.timeframe || activeTemplate.default_tf,
+          model: sig.entry_model || activeTemplate.name || "AI_AGENT",
+          note: sig.note || "",
           source: "AI_HUB"
         };
         await api.createTrade(payload);
@@ -166,7 +184,7 @@ Output Format: Return ONLY a valid JSON object. Do not include any conversationa
         </div>
       </header>
 
-      {error && <div className="error" style={{ marginBottom: 16 }}>{error} <button onClick={() => setError("")} style={{ float: 'right' }}>x</button></div>}
+      {error && <div className="error" style={{ marginBottom: 16 }}>{error} <button onClick={() => setError("")} style={{ float: 'right', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>x</button></div>}
 
       {showConfig && (
         <div className="panel fadeIn" style={{ marginBottom: 16, background: "var(--bg-accent)" }}>
@@ -238,10 +256,36 @@ Output Format: Return ONLY a valid JSON object. Do not include any conversationa
                 <input type="text" value={activeTemplate.default_tf} onChange={e => setActiveTemplate({...activeTemplate, default_tf: e.target.value})} placeholder="1h" />
               </div>
             </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+              <div>
+                <label className="minor-text">AI Provider</label>
+                <select value={provider} onChange={e => setProvider(e.target.value)}>
+                  <option value="gemini">Google Gemini</option>
+                  <option value="deepseek">DeepSeek</option>
+                </select>
+              </div>
+              <div>
+                <label className="minor-text">Model</label>
+                <select value={model} onChange={e => setModel(e.target.value)}>
+                  {provider === "gemini" ? (
+                    <>
+                      <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                      <option value="gemini-2.0-pro-exp-02-05">gemini-2.0-pro-exp</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="deepseek-coder">deepseek-coder</option>
+                      <option value="deepseek-chat">deepseek-chat</option>
+                    </>
+                  )}
+                </select>
+              </div>
+            </div>
             
             <label className="minor-text">AI Prompt Template</label>
             <textarea 
-              rows={12} 
+              rows={10} 
               style={{ width: "100%", fontFamily: "monospace", fontSize: 12, lineHeight: "1.5" }}
               value={activeTemplate.prompt_text}
               onChange={e => setActiveTemplate({...activeTemplate, prompt_text: e.target.value})}
@@ -288,7 +332,7 @@ Output Format: Return ONLY a valid JSON object. Do not include any conversationa
                         <input type="checkbox" checked={selectedSignalIndices.has(i)} onChange={() => toggleSignalSelection(i)} />
                       </td>
                       <td style={{ fontWeight: 800 }}>{s.symbol} <span className="minor-text">{s.timeframe}</span></td>
-                      <td style={{ color: s.side?.toUpperCase().includes("BUY") ? "var(--success)" : "var(--neg)" }}>{s.side}</td>
+                      <td style={{ color: String(s.side || "").toUpperCase().includes("BUY") ? "var(--success)" : "var(--neg)" }}>{s.side}</td>
                       <td>{s.entry}</td>
                       <td style={{ fontSize: 10 }}>
                         <div className="money-neg">{s.sl}</div>
@@ -303,10 +347,10 @@ Output Format: Return ONLY a valid JSON object. Do not include any conversationa
             </div>
           )}
 
-          {aiResponse && !suggestedSignals.length && (
+          {aiResponse && (
             <div className="panel">
               <h3 className="panel-label">Raw AI Response</h3>
-              <pre style={{ fontSize: 11, background: "rgba(0,0,0,0.1)", padding: 10, borderRadius: 4, whiteSpace: "pre-wrap" }}>
+              <pre style={{ fontSize: 11, background: "rgba(0,0,0,0.1)", padding: 10, borderRadius: 4, whiteSpace: "pre-wrap", maxHeight: 400, overflowY: 'auto' }}>
                 {aiResponse}
               </pre>
             </div>

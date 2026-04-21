@@ -18,7 +18,6 @@ function isSystemRole(user) {
 }
 
 export default function SettingsPage({ authUser }) {
-  const [apiKey, setApiKey] = useState(getRuntimeApiKey());
   const [profileLoading, setProfileLoading] = useState(false);
   const [pwdLoading, setPwdLoading] = useState(false);
   const [msg, setMsg] = useState("");
@@ -27,11 +26,14 @@ export default function SettingsPage({ authUser }) {
     email: "",
     role: "User",
     is_active: true,
-    password: "",
   });
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+
+  const [settings, setSettings] = useState([]);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsMsg, setSettingsMsg] = useState("");
 
   const canManageExecution = isSystemRole(authUser);
   const [execLoading, setExecLoading] = useState(false);
@@ -53,66 +55,56 @@ export default function SettingsPage({ authUser }) {
     [execAccounts, execForm.account_id],
   );
 
-  async function loadExecutionSettings() {
-    if (!canManageExecution) return;
+  async function loadData() {
     try {
-      const out = await api.v2ExecutionProfiles();
-      const accounts = Array.isArray(out?.accounts) ? out.accounts : [];
-      const items = Array.isArray(out?.items) ? out.items : [];
-      const active = out?.active_profile || items.find((x) => x?.is_active) || null;
-      setExecAccounts(accounts);
-      setExecProfiles(items);
-      if (active) {
-        const sourceIds = Array.isArray(active?.source_ids) ? active.source_ids : [];
-        setExecForm({
-          profile_id: String(active.profile_id || "default"),
-          profile_name: String(active.profile_name || "default"),
-          route: String(active.route || "ea"),
-          account_id: String(active.account_id || accounts?.[0]?.account_id || ""),
-          source_ids_csv: sourceIds.length ? sourceIds.join(",") : "signal,tradingview",
-          ctrader_mode: String(active.ctrader_mode || "demo"),
-          ctrader_account_id: String(active.ctrader_account_id || ""),
+      const [prof, exec, sets] = await Promise.all([
+        api.authProfile(),
+        canManageExecution ? api.v2ExecutionProfiles() : Promise.resolve(null),
+        api.getSettings(),
+      ]);
+
+      if (prof?.user) {
+        setProfileForm({
+          user_name: String(prof.user.user_name || ""),
+          email: String(prof.user.email || ""),
+          role: String(prof.user.role || "User"),
+          is_active: Boolean(prof.user.is_active),
         });
-      } else if (accounts.length > 0) {
-        setExecForm((prev) => ({ ...prev, account_id: prev.account_id || String(accounts[0].account_id || "") }));
       }
-    } catch (error) {
-      setExecMsg(error?.message || "Failed to load execution profiles");
+
+      if (exec) {
+        const accounts = Array.isArray(exec.accounts) ? exec.accounts : [];
+        const items = Array.isArray(exec.items) ? exec.items : [];
+        const active = exec.active_profile || items.find((x) => x?.is_active) || null;
+        setExecAccounts(accounts);
+        setExecProfiles(items);
+        if (active) {
+          const sourceIds = Array.isArray(active.source_ids) ? active.source_ids : [];
+          setExecForm({
+            profile_id: String(active.profile_id || "default"),
+            profile_name: String(active.profile_name || "default"),
+            route: String(active.route || "ea"),
+            account_id: String(active.account_id || accounts?.[0]?.account_id || ""),
+            source_ids_csv: sourceIds.length ? sourceIds.join(",") : "signal,tradingview",
+            ctrader_mode: String(active.ctrader_mode || "demo"),
+            ctrader_account_id: String(active.ctrader_account_id || ""),
+          });
+        } else if (accounts.length > 0) {
+          setExecForm((prev) => ({ ...prev, account_id: String(accounts[0].account_id || "") }));
+        }
+      }
+
+      if (sets?.settings) {
+        setSettings(sets.settings);
+      }
+    } catch (err) {
+      setMsg(err.message);
     }
   }
 
   useEffect(() => {
-    setProfileForm((prev) => ({
-      ...prev,
-      user_name: String(authUser?.user_name || ""),
-      email: String(authUser?.email || ""),
-      role: String(authUser?.role || "User"),
-      is_active: Boolean(authUser?.is_active),
-      password: "",
-    }));
-
-    api.authProfile()
-      .then((out) => {
-        if (!out?.user) return;
-        setProfileForm((prev) => ({
-          ...prev,
-          user_name: String(out.user.user_name || ""),
-          email: String(out.user.email || ""),
-          role: String(out.user.role || prev.role || "User"),
-          is_active: Boolean(out.user.is_active),
-          password: "",
-        }));
-      })
-      .catch(() => {});
-
-    loadExecutionSettings();
-  }, [authUser?.user_name, authUser?.email, authUser?.role, authUser?.is_active]);
-
-  function saveApiKey() {
-    setRuntimeApiKey(apiKey);
-    setMsg("API key saved.");
-    window.setTimeout(() => setMsg(""), 1500);
-  }
+    loadData();
+  }, [authUser?.user_id]);
 
   async function saveMyAccount() {
     const name = String(profileForm.user_name || "").trim();
@@ -124,14 +116,9 @@ export default function SettingsPage({ authUser }) {
     setProfileLoading(true);
     try {
       await api.updateAuthProfile(name, mail);
-      if (profileForm.password) {
-        await api.changePassword(currentPassword, profileForm.password);
-        setCurrentPassword("");
-        setProfileForm((prev) => ({ ...prev, password: "" }));
-      }
-      setMsg("My Account updated.");
+      setMsg("Profile updated.");
     } catch (err) {
-      setMsg(err?.message || "Failed to update My Account.");
+      setMsg(err?.message || "Failed to update profile.");
     } finally {
       setProfileLoading(false);
       window.setTimeout(() => setMsg(""), 2500);
@@ -143,8 +130,8 @@ export default function SettingsPage({ authUser }) {
       setMsg("Enter current and new password.");
       return;
     }
-    if (newPassword.length < 8) {
-      setMsg("New password must be at least 8 characters.");
+    if (newPassword.length < 4) {
+      setMsg("New password must be at least 4 characters.");
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -166,13 +153,33 @@ export default function SettingsPage({ authUser }) {
     }
   }
 
+  async function updateSetting(type, field, value) {
+    const s = settings.find(x => x.type === type);
+    if (!s) return;
+    const nextData = { ...s.data, [field]: value };
+    setSettings(prev => prev.map(x => x.type === type ? { ...x, data: nextData } : x));
+  }
+
+  async function saveSetting(type) {
+    const s = settings.find(x => x.type === type);
+    if (!s) return;
+    setSettingsLoading(true);
+    setSettingsMsg("");
+    try {
+      await api.upsertSetting({ type, name: s.name, data: s.data, status: s.status });
+      setSettingsMsg(`Settings for ${type} saved.`);
+      await loadData();
+    } catch (err) {
+      setSettingsMsg(err.message);
+    } finally {
+      setSettingsLoading(false);
+      window.setTimeout(() => setSettingsMsg(""), 3000);
+    }
+  }
+
   async function applyExecutionProfile() {
     const route = String(execForm.route || "").trim().toLowerCase();
     const accountId = String(execForm.account_id || "").trim();
-    if (!["ea", "v2", "ctrader"].includes(route)) {
-      setExecMsg("Route must be ea, v2, or ctrader.");
-      return;
-    }
     if (!accountId) {
       setExecMsg("Select an account.");
       return;
@@ -192,10 +199,10 @@ export default function SettingsPage({ authUser }) {
         ctrader_mode: route === "ctrader" ? String(execForm.ctrader_mode || "demo") : "",
         ctrader_account_id: route === "ctrader" ? String(execForm.ctrader_account_id || "").trim() : "",
       });
-      setExecMsg("Execution profile applied. Signal fanout routed to selected account.");
-      await loadExecutionSettings();
+      setExecMsg("Execution profile applied.");
+      await loadData();
     } catch (error) {
-      setExecMsg(error?.message || "Failed to apply execution profile");
+      setExecMsg(error?.message || "Failed to apply profile");
     } finally {
       setExecLoading(false);
       window.setTimeout(() => setExecMsg(""), 4000);
@@ -203,90 +210,132 @@ export default function SettingsPage({ authUser }) {
   }
 
   return (
-    <div className="stack-layout fadeIn">
-      <h2 className="page-title">My Account</h2>
+    <div className="stack-layout fadeIn" style={{ paddingBottom: 40 }}>
+      <h2 className="page-title">Settings</h2>
 
-      <UserDetailSection
-        title="MY ACCOUNT"
-        form={profileForm}
-        setForm={setProfileForm}
-        roleOptions={[String(profileForm.role || "User")]}
-        showRole={false}
-        showActive={false}
-        passwordLabel="New Password (optional)"
-        primaryLabel={profileLoading ? "SAVING..." : "SAVE ACCOUNT"}
-        onPrimary={saveMyAccount}
-        primaryDisabled={profileLoading}
-        footer={msg ? <span className="minor-text">{msg}</span> : null}
-      />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        {/* Card 1: Update Profile */}
+        <UserDetailSection
+          title="UPDATE PROFILE"
+          form={profileForm}
+          setForm={setProfileForm}
+          roleOptions={[String(profileForm.role || "User")]}
+          showRole={false}
+          showActive={false}
+          showPassword={false}
+          primaryLabel={profileLoading ? "SAVING..." : "SAVE PROFILE"}
+          onPrimary={saveMyAccount}
+          primaryDisabled={profileLoading}
+          footer={msg && !pwdLoading ? <span className="minor-text">{msg}</span> : null}
+        />
 
-      <section className="panel settings-page" style={{ maxWidth: "700px" }}>
-        <div className="panel-label">API ACCESS & PASSWORD</div>
-        <div className="stack-layout" style={{ gap: 10 }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <div className="minor-text">API Key</div>
-            <input
-              type="password"
-              placeholder="Enter API key"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              style={{ width: "100%", maxWidth: "400px" }}
-            />
-          </label>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button className="primary-button" onClick={saveApiKey} style={{ width: "auto" }}>SAVE API KEY</button>
+        {/* Card 2: Update Password */}
+        <section className="panel">
+          <div className="panel-label">UPDATE PASSWORD</div>
+          <div className="stack-layout" style={{ gap: 12 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span className="minor-text">Current Password</span>
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Required to set new password"
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span className="minor-text">New Password</span>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Min 4 characters"
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span className="minor-text">Confirm New Password</span>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Repeat new password"
+              />
+            </label>
+            <div style={{ marginTop: 8 }}>
+              <button className="primary-button" onClick={resetPassword} disabled={pwdLoading}>
+                {pwdLoading ? "UPDATING..." : "UPDATE PASSWORD"}
+              </button>
+            </div>
+            {pwdLoading || msg ? <div className="minor-text" style={{ marginTop: 4 }}>{msg}</div> : null}
           </div>
+        </section>
+      </div>
 
-          <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <div className="minor-text">Current Password</div>
-            <input
-              type="password"
-              placeholder="Current password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              style={{ width: "100%", maxWidth: "400px" }}
-            />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <div className="minor-text">New Password</div>
-            <input
-              type="password"
-              placeholder="At least 8 characters"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              style={{ width: "100%", maxWidth: "400px" }}
-            />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <div className="minor-text">Confirm New Password</div>
-            <input
-              type="password"
-              placeholder="Re-enter new password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              style={{ width: "100%", maxWidth: "400px" }}
-            />
-          </label>
+      {/* Card 3: Manage Settings (Dynamic) */}
+      <section className="panel" style={{ marginTop: 24 }}>
+        <div className="panel-label">MANAGE SYSTEM SETTINGS</div>
+        {settings.length === 0 && <div className="minor-text">No custom settings configured.</div>}
+        
+        <div className="stack-layout" style={{ gap: 24 }}>
+          {settings.map((s) => (
+            <div key={s.type} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                 <h4 style={{ margin: 0, textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.name || s.type}</h4>
+                 <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+                    <span className={`status-badge ${s.status}`}>{s.status}</span>
+                    <button className="secondary-button" style={{ padding: "4px 12px" }} onClick={() => saveSetting(s.type)} disabled={settingsLoading}>
+                       {settingsLoading ? "Saving..." : "Save Changes"}
+                    </button>
+                 </div>
+              </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button className="secondary-button" onClick={resetPassword} style={{ width: "auto" }} disabled={pwdLoading}>
-              {pwdLoading ? "UPDATING..." : "RESET PASSWORD"}
-            </button>
-          </div>
+              {s.type === 'api_key' ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  {Object.entries(s.data || {}).map(([key, val]) => (
+                    <label key={key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span className="minor-text" style={{ fontSize: 10 }}>{key}</span>
+                      <input 
+                        type="password" 
+                        value={val || ""} 
+                        placeholder={`Enter ${key}`}
+                        onChange={(e) => updateSetting(s.type, key, e.target.value)} 
+                      />
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <div className="form-grid">
+                  {Object.entries(s.data || {}).map(([key, val]) => (
+                    <label key={key}>
+                      {key}
+                      <input 
+                        type="text" 
+                        value={typeof val === 'object' ? JSON.stringify(val) : (val || "")} 
+                        onChange={(e) => updateSetting(s.type, key, e.target.value)} 
+                      />
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+          {settingsMsg && <div className="minor-text" style={{ color: "var(--success)" }}>{settingsMsg}</div>}
         </div>
       </section>
 
-      {canManageExecution ? (
-        <section className="panel settings-page">
-          <div className="panel-label">EXECUTION PROFILE</div>
+      {canManageExecution && (
+        <section className="panel" style={{ marginTop: 24 }}>
+          <div className="panel-label">SYSTEM EXECUTION PROFILE</div>
           <div className="form-grid">
             <label>
-              Profile ID
-              <input value={execForm.profile_id} onChange={(e) => setExecForm((p) => ({ ...p, profile_id: e.target.value }))} />
-            </label>
-            <label>
-              Profile Name
-              <input value={execForm.profile_name} onChange={(e) => setExecForm((p) => ({ ...p, profile_name: e.target.value }))} />
+              Account
+              <select value={execForm.account_id} onChange={(e) => setExecForm((p) => ({ ...p, account_id: e.target.value }))}>
+                <option value="">Select account</option>
+                {execAccounts.map((a) => (
+                  <option key={a.account_id} value={a.account_id}>
+                    {a.name || a.account_id} ({a.account_id})
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Route
@@ -295,81 +344,39 @@ export default function SettingsPage({ authUser }) {
               </select>
             </label>
             <label>
-              Account
-              <select value={execForm.account_id} onChange={(e) => setExecForm((p) => ({ ...p, account_id: e.target.value }))}>
-                <option value="">Select account</option>
-                {(execAccounts || []).map((a) => (
-                  <option key={a.account_id} value={a.account_id}>
-                    {a.name || a.account_id} ({a.account_id})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
               Sources (CSV)
-              <input
-                value={execForm.source_ids_csv}
-                onChange={(e) => setExecForm((p) => ({ ...p, source_ids_csv: e.target.value }))}
-                placeholder="signal,tradingview"
-              />
-            </label>
-            <label>
-              cTrader Mode
-              <select value={execForm.ctrader_mode} onChange={(e) => setExecForm((p) => ({ ...p, ctrader_mode: e.target.value }))}>
-                {CTRADER_MODE_OPTIONS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
-              </select>
-            </label>
-            <label>
-              cTrader Account ID
-              <input
-                value={execForm.ctrader_account_id}
-                onChange={(e) => setExecForm((p) => ({ ...p, ctrader_account_id: e.target.value }))}
-                placeholder="45899489"
-              />
+              <input value={execForm.source_ids_csv} onChange={(e) => setExecForm((p) => ({ ...p, source_ids_csv: e.target.value }))} />
             </label>
           </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}>
+          <div style={{ marginTop: 16, display: "flex", gap: 12, alignItems: "center" }}>
             <button className="primary-button" onClick={applyExecutionProfile} disabled={execLoading}>
-              {execLoading ? "APPLYING..." : "APPLY EXECUTION PROFILE"}
+              {execLoading ? "APPLYING..." : "APPLY PROFILE"}
             </button>
-            {selectedAccount ? (
-              <span className="minor-text">Selected account key last4: ****{String(selectedAccount.api_key_last4 || "----")}</span>
-            ) : null}
+            {execMsg && <span className="minor-text">{execMsg}</span>}
           </div>
-          {execMsg ? <div className="minor-text" style={{ marginTop: 8 }}>{execMsg}</div> : null}
-
-          <div style={{ marginTop: 16 }}>
-            <div className="panel-label">Saved Profiles</div>
+          
+          <div style={{ marginTop: 20 }}>
+            <div className="panel-label">Active Profiles</div>
             <div className="table-scroll">
               <table className="table">
                 <thead>
-                  <tr>
-                    <th>Profile</th>
-                    <th>Route</th>
-                    <th>Account</th>
-                    <th>cTrader</th>
-                    <th>Status</th>
-                  </tr>
+                  <tr><th>Profile</th><th>Route</th><th>Account</th><th>Status</th></tr>
                 </thead>
                 <tbody>
-                  {(execProfiles || []).map((p) => (
+                  {execProfiles.map((p) => (
                     <tr key={p.profile_id}>
                       <td>{p.profile_name || p.profile_id}</td>
-                      <td>{String(p.route || "-").toUpperCase()}</td>
-                      <td>{p.account_id || "-"}</td>
-                      <td>{p.ctrader_mode ? `${p.ctrader_mode} / ${p.ctrader_account_id || "-"}` : "-"}</td>
+                      <td>{String(p.route || "").toUpperCase()}</td>
+                      <td>{p.account_id}</td>
                       <td><span className={`status-badge ${p.is_active ? "ACTIVE" : "INACTIVE"}`}>{p.is_active ? "ACTIVE" : "INACTIVE"}</span></td>
                     </tr>
                   ))}
-                  {execProfiles.length === 0 ? (
-                    <tr><td colSpan={5} className="muted">No profiles yet.</td></tr>
-                  ) : null}
                 </tbody>
               </table>
             </div>
           </div>
         </section>
-      ) : null}
+      )}
     </div>
   );
 }

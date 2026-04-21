@@ -472,4 +472,6 @@ export const api = {
   aiGetConfig: () => get("/v2/ai/config"),
   aiUpsertConfig: (key, value) => post("/v2/ai/config", { key, value }),
   aiGenerate: (payload = {}) => post("/v2/ai/generate", payload),
+  getSettings: () => get("/v2/settings"),
+  upsertSetting: (payload = {}) => post("/v2/settings", payload),
 };

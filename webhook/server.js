@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.20-14"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.21-0506"); // Real AI Integrated
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -263,6 +263,76 @@ function fallbackUserNameFromEmail(emailRaw) {
 
 function makeSaltHex() {
   return crypto.randomBytes(16).toString("hex");
+}
+
+// --- Security & Encryption ---
+
+const ENCRYPTION_ALGO = "aes-256-gcm";
+const ENCRYPTION_KEY_SECRET = envStr(process.env.ENCRYPTION_KEY, "a_very_secret_32_byte_key_placeholder_123"); // 32 bytes for aes-256
+
+function getEncryptionKey() {
+  // Ensure the key is exactly 32 bytes
+  return crypto.createHash('sha256').update(ENCRYPTION_KEY_SECRET).digest();
+}
+
+/**
+ * Encrypt sensitive data (API keys, secrets) using AES-256-GCM
+ */
+function encryptData(text) {
+  if (!text) return null;
+  const iv = crypto.randomBytes(12);
+  const key = getEncryptionKey();
+  const cipher = crypto.createCipheriv(ENCRYPTION_ALGO, key, iv);
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const tag = cipher.getAuthTag().toString('hex');
+  // Format: iv:tag:encrypted
+  return `${iv.toString('hex')}:${tag}:${encrypted}`;
+}
+
+/**
+ * Decrypt sensitive data (original plaintext)
+ */
+function decryptData(cipherText) {
+  if (!cipherText) return null;
+  const parts = cipherText.split(':');
+  if (parts.length !== 3) return cipherText; // Return as is if not encrypted format (legacy support)
+  
+  try {
+    const iv = Buffer.from(parts[0], 'hex');
+    const tag = Buffer.from(parts[1], 'hex');
+    const encrypted = parts[2];
+    const key = getEncryptionKey();
+    const decipher = crypto.createDecipheriv(ENCRYPTION_ALGO, key, iv);
+    decipher.setAuthTag(tag);
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (err) {
+    console.warn("[security] Decryption failed, returning raw string (might be plaintext or bad key)", err.message);
+    return cipherText;
+  }
+}
+
+/**
+ * Encrypt/Decrypt object values (for JSONB data containing multiple keys)
+ */
+function encryptObject(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    out[k] = encryptData(String(v || ""));
+  }
+  return out;
+}
+
+function decryptObject(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    out[k] = decryptData(String(v || ""));
+  }
+  return out;
 }
 
 function hashPassword(passwordRaw, saltHex) {
@@ -1363,12 +1433,18 @@ async function mt5InitBackend() {
     CREATE TABLE IF NOT EXISTS user_settings (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      name TEXT, -- New field
       type TEXT NOT NULL, -- 'ai_template', 'api_key', 'settings'
       data JSONB NOT NULL,
       status TEXT DEFAULT 'ACTIVE',
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    -- DDL Migration for existing installations
+    ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS name TEXT;
+    ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'ACTIVE';
+    ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
     CREATE UNIQUE INDEX IF NOT EXISTS idx_user_settings_singleton ON user_settings (user_id, type) 
     WHERE (type IN ('api_key', 'settings'));
 
@@ -5056,11 +5132,11 @@ const appHandler = async (req, res) => {
     try {
       const db = await mt5InitBackend();
       const { rows } = await db.query(
-        "SELECT id as template_id, data FROM user_settings WHERE type = 'ai_template' AND user_id = $1 ORDER BY created_at DESC",
+        "SELECT id as template_id, name, data FROM user_settings WHERE type = 'ai_template' AND user_id = $1 ORDER BY created_at DESC",
         [CFG.mt5DefaultUserId]
       );
       // Flatten data for frontend compatibility
-      const templates = rows.map(r => ({ template_id: r.template_id, ...r.data }));
+      const templates = rows.map(r => ({ template_id: r.template_id, name: r.name, ...r.data }));
       return json(res, 200, { ok: true, templates });
     } catch (e) {
       return json(res, 500, { ok: false, error: e.message });
@@ -5072,22 +5148,22 @@ const appHandler = async (req, res) => {
     try {
       const payload = await readJson(req);
       const db = await mt5InitBackend();
-      const { template_id, ...data } = payload;
+      const { template_id, name, ...data } = payload;
       let row;
       if (template_id) {
         const { rows } = await db.query(
-          "UPDATE user_settings SET data = $1, updated_at = NOW() WHERE id = $2 AND type = 'ai_template' RETURNING id, data",
-          [data, template_id]
+          "UPDATE user_settings SET data = $1, name = $2, updated_at = NOW() WHERE id = $3 AND type = 'ai_template' RETURNING id, name, data",
+          [data, name || data.name || "Unnamed Template", template_id]
         );
         row = rows[0];
       } else {
         const { rows } = await db.query(
-          "INSERT INTO user_settings (user_id, type, data) VALUES ($1, 'ai_template', $2) RETURNING id, data",
-          [CFG.mt5DefaultUserId, data]
+          "INSERT INTO user_settings (user_id, type, name, data) VALUES ($1, 'ai_template', $2, $3) RETURNING id, name, data",
+          [CFG.mt5DefaultUserId, name || data.name || "New Template", data]
         );
         row = rows[0];
       }
-      return json(res, 201, { ok: true, template: { template_id: row.id, ...row.data } });
+      return json(res, 201, { ok: true, template: { template_id: row.id, name: row.name, ...row.data } });
     } catch (e) {
       return json(res, 500, { ok: false, error: e.message });
     }
@@ -5101,7 +5177,9 @@ const appHandler = async (req, res) => {
         "SELECT data as settings FROM user_settings WHERE type = 'api_key' AND user_id = $1",
         [CFG.mt5DefaultUserId]
       );
-      return json(res, 200, { ok: true, config: { settings: rows[0]?.settings || {} } });
+      const rawSettings = rows[0]?.settings || {};
+      const settings = decryptObject(rawSettings); // Decrypt for frontend
+      return json(res, 200, { ok: true, config: { settings } });
     } catch (e) {
       return json(res, 500, { ok: false, error: e.message });
     }
@@ -5112,51 +5190,41 @@ const appHandler = async (req, res) => {
     try {
       const body = await readJson(req);
       const db = await mt5InitBackend();
+      const userId = CFG.mt5DefaultUserId;
       
       if (body.key && body.value !== undefined) {
-        // Update specific key in JSONB
-        await db.query(`
-          INSERT INTO user_settings (user_id, type, data) 
-          VALUES ($1, 'api_key', jsonb_build_object($2, $3))
-          ON CONFLICT (id) DO NOTHING; -- Placeholder, we need a better way for single row type
-        `, [CFG.mt5DefaultUserId, body.key, body.value]);
-        
-        // Actually for api_key we want one row per user
+        // Individual key update
+        const encValue = encryptData(String(body.value));
         await db.query(`
           INSERT INTO user_settings (user_id, type, data)
           VALUES ($1, 'api_key', jsonb_build_object($2, $3))
-          ON CONFLICT (id) DO NOTHING; 
-        `, [CFG.mt5DefaultUserId, body.key, body.value]);
-        
-        // Optimized UPSERT for singleton settings
-        await db.query(`
-          INSERT INTO user_settings (user_id, type, data)
-          VALUES ($1, 'api_key', jsonb_build_object($2, $3))
-          ON CONFLICT (user_id, type) WHERE (type = 'api_key') -- Requires unique index
+          ON CONFLICT (user_id, type) WHERE (type IN ('api_key', 'settings'))
           DO UPDATE SET data = user_settings.data || jsonb_build_object($2, $3), updated_at = NOW()
-        `, [CFG.mt5DefaultUserId, body.key, body.value]).catch(async () => {
-           // Fallback if index not yet created
-           const existing = await db.query("SELECT data FROM user_settings WHERE user_id=$1 AND type='api_key'", [CFG.mt5DefaultUserId]);
+        `, [userId, body.key, encValue]).catch(async () => {
+           // Fallback for systems without the partial unique index
+           const existing = await db.query("SELECT id, data FROM user_settings WHERE user_id=$1 AND type='api_key'", [userId]);
            if (existing.rows.length) {
-             const newData = { ...existing.rows[0].data, [body.key]: body.value };
-             await db.query("UPDATE user_settings SET data=$1, updated_at=NOW() WHERE user_id=$2 AND type='api_key'", [newData, CFG.mt5DefaultUserId]);
+             const oldData = (existing.rows[0].data && typeof existing.rows[0].data === 'object') ? existing.rows[0].data : {};
+             const newData = { ...oldData, [body.key]: encValue };
+             await db.query("UPDATE user_settings SET data=$1, updated_at=NOW() WHERE id=$2", [newData, existing.rows[0].id]);
            } else {
-             await db.query("INSERT INTO user_settings (user_id, type, data) VALUES ($1, 'api_key', $2)", [CFG.mt5DefaultUserId, { [body.key]: body.value }]);
+             await db.query("INSERT INTO user_settings (user_id, type, data) VALUES ($1, 'api_key', $2)", [userId, { [body.key]: encValue }]);
            }
         });
       } else {
-        const settings = body.settings || body;
+        // Bulk settings update
+        const settings = encryptObject(body.settings || body || {});
         await db.query(`
           INSERT INTO user_settings (user_id, type, data)
           VALUES ($1, 'api_key', $2)
-          ON CONFLICT (user_id, type) WHERE (type = 'api_key')
+          ON CONFLICT (user_id, type) WHERE (type IN ('api_key', 'settings'))
           DO UPDATE SET data = $2, updated_at = NOW()
-        `, [CFG.mt5DefaultUserId, settings]).catch(async () => {
-           const existing = await db.query("SELECT id FROM user_settings WHERE user_id=$1 AND type='api_key'", [CFG.mt5DefaultUserId]);
+        `, [userId, settings]).catch(async () => {
+           const existing = await db.query("SELECT id FROM user_settings WHERE user_id=$1 AND type='api_key'", [userId]);
            if (existing.rows.length) {
              await db.query("UPDATE user_settings SET data=$1, updated_at=NOW() WHERE id=$2", [settings, existing.rows[0].id]);
            } else {
-             await db.query("INSERT INTO user_settings (user_id, type, data) VALUES ($1, 'api_key', $2)", [CFG.mt5DefaultUserId, settings]);
+             await db.query("INSERT INTO user_settings (user_id, type, data) VALUES ($1, 'api_key', $2)", [userId, settings]);
            }
         });
       }
@@ -5181,8 +5249,10 @@ const appHandler = async (req, res) => {
   if (req.method === "POST" && url.pathname === "/v2/ai/generate") {
     if (!requireAdminKey(req, res, url)) return;
     try {
-      const { templateId, customPrompt, service, model, context } = await readJson(req);
+      const body = await readJson(req);
+      const { templateId, customPrompt, service, provider: bodyProvider, model, context } = body;
       const db = await mt5InitBackend();
+      const userId = CFG.mt5DefaultUserId;
       
       let finalPrompt = customPrompt || "";
       if (templateId) {
@@ -5190,22 +5260,24 @@ const appHandler = async (req, res) => {
         if (rows.length) finalPrompt = rows[0].data.prompt_text || rows[0].data.prompt;
       }
       
-      const configRes = await db.query("SELECT data FROM user_settings WHERE user_id = $1 AND type = 'api_key'", [CFG.mt5DefaultUserId]);
-      const config = configRes.rows[0]?.data || {};
+      const configRes = await db.query("SELECT data FROM user_settings WHERE user_id = $1 AND type = 'api_key'", [userId]);
+      const configRaw = configRes.rows[0]?.data || {};
+      const config = decryptObject(configRaw); // Internal decryption for use
 
-      // Replace placeholders in prompt
-      // {SYMBOL}, {TIMEFRAME}, {INDICATORS/STRATEGY}, {RR}
-      // Context might contain these or we use defaults from template data
       const { rows: tRows } = templateId ? await db.query("SELECT data FROM user_settings WHERE id = $1", [templateId]) : { rows: [] };
       const tData = tRows[0]?.data || {};
       
+      // Data for placeholders
+      const symbol = body.symbol || tData.default_symbol || "BTCUSDT";
+      const tf = body.timeframe || tData.default_tf || "1h";
+      
       finalPrompt = finalPrompt
-        .replace(/{SYMBOL}/g, tData.default_symbol || "BTCUSDT")
-        .replace(/{TIMEFRAME}/g, tData.default_tf || "H1")
-        .replace(/{INDICATORS\/STRATEGY}/g, "SMC (Market Structure)")
-        .replace(/{RR}/g, "1:2");
+        .replace(/{SYMBOL}/g, symbol)
+        .replace(/{TIMEFRAME}/g, tf)
+        .replace(/{INDICATORS\/STRATEGY}/g, body.indicators || "Technical Analysis")
+        .replace(/{RR}/g, body.rr || "1:2");
 
-      const provider = service || "gemini";
+      const provider = (bodyProvider || service || "gemini").toLowerCase();
       const apiKey = provider === "deepseek" ? config.DEEPSEEK_API_KEY : config.GEMINI_API_KEY;
       
       if (!apiKey) {
@@ -5229,7 +5301,7 @@ const appHandler = async (req, res) => {
       } else {
         // Default to Gemini (OpenAI compatible route)
         endpoint = `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=${apiKey}`;
-        authHeader = ""; // Handled in URL
+        authHeader = "";
         bodyData = {
           model: model || "gemini-2.0-flash",
           messages: [{ role: "user", content: finalPrompt }]
@@ -5247,39 +5319,59 @@ const appHandler = async (req, res) => {
 
       if (!aiRes.ok) {
         const errText = await aiRes.text();
-        throw new Error(`AI Provider Error: ${errText}`);
+        throw new Error(`AI Provider Error (${aiRes.status}): ${errText}`);
       }
 
       const aiJson = await aiRes.json();
       const rawResponse = aiJson.choices?.[0]?.message?.content || "";
       
-      // Attempt to extract JSON from markdown if present
+      // Robust JSON extraction
       let cleanJson = rawResponse.trim();
       if (cleanJson.includes("```")) {
         const match = cleanJson.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
         if (match) cleanJson = match[1];
       }
+      
+      // If it still has markdown prefix (sometimes LLMs ignore instructions), strip it manually
+      cleanJson = cleanJson.replace(/^```json/, "").replace(/```$/, "").trim();
 
       let signals = [];
       try {
         const parsed = JSON.parse(cleanJson);
-        signals = Array.isArray(parsed) ? parsed : [parsed];
+        if (Array.isArray(parsed)) {
+          signals = parsed;
+        } else if (parsed.signals && Array.isArray(parsed.signals)) {
+          signals = parsed.signals;
+        } else if (parsed.symbol || parsed.direction || parsed.side) {
+          signals = [parsed];
+        } else {
+           // Maybe it's a nested object where values are signals?
+           const values = Object.values(parsed);
+           if (values.length > 0 && (values[0].symbol || values[0].direction)) {
+             signals = values;
+           }
+        }
       } catch (e) {
         console.error("[ai] failed to parse JSON from AI response:", cleanJson);
+        // We still return ok: true but empty signals, showing the raw_response to user
       }
 
       return json(res, 200, { 
         ok: true, 
         raw_response: rawResponse, 
-        signals: signals.map(s => ({
+        signals: (signals || []).map(s => ({
           ...s,
-          symbol: s.symbol || tData.default_symbol || "BTCUSDT",
-          side: s.direction || s.side,
+          symbol: s.symbol || symbol,
+          side: s.direction || s.side || "BUY",
+          entry: s.entry || s.price || 0,
+          sl: s.sl || s.stop_loss,
+          tp: s.tp || s.take_profit,
+          timeframe: s.timeframe || tf,
           entry_model: s.entry_model || tData.name || "AI_AGENT"
         }))
       });
     } catch (e) {
-      console.error("[ai] error:", e);
+      console.error("[ai] generation error:", e);
       return json(res, 500, { ok: false, error: e.message });
     }
   }
