@@ -5,7 +5,7 @@ const PROVIDER_MODELS = {
   gemini: ["gemini-2.0-flash", "gemini-2.0-pro-exp-02-05"],
   openai: ["gpt-4o-mini", "gpt-4.1-mini"],
   deepseek: ["deepseek-chat", "deepseek-reasoner"],
-  claude: ["claude-3-5-sonnet-latest", "claude-3-7-sonnet-latest"],
+  claude: ["claude-sonnet-4-0", "claude-3-7-sonnet-latest"],
 };
 
 function inferProviderByModel(modelRaw = "") {
@@ -358,7 +358,7 @@ Volatility Selection: If {SYMBOL} is unspecified, analyze the top 3 high-volume 
                     </>
                   ) : provider === "claude" ? (
                     <>
-                      <option value="claude-3-5-sonnet-latest">claude-3-5-sonnet-latest</option>
+                      <option value="claude-sonnet-4-0">claude-sonnet-4-0</option>
                       <option value="claude-3-7-sonnet-latest">claude-3-7-sonnet-latest</option>
                     </>
                   ) : (

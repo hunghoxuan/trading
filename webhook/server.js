@@ -847,6 +847,75 @@ function toTradingViewSymbol(inputSymbol, provider) {
   return `BINANCE:${raw}`;
 }
 
+function cleanTvHtmlMarker(text) {
+  return String(text || "").replace(/<\/?em>/gi, "").trim();
+}
+
+async function fetchTradingViewSymbolSearch(textRaw, exchangeRaw = "", limitRaw = 10) {
+  const text = String(textRaw || "").trim();
+  if (!text) return [];
+  const exchange = String(exchangeRaw || "").trim().toUpperCase();
+  const limit = Math.max(1, Math.min(Number(limitRaw || 10) || 10, 50));
+  const qs = new URLSearchParams({
+    text,
+    hl: "1",
+    lang: "en",
+    domain: "production",
+  });
+  if (exchange) qs.set("exchange", exchange);
+  const endpoint = `https://symbol-search.tradingview.com/symbol_search/?${qs.toString()}`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const res = await fetch(endpoint, {
+      signal: ctrl.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "Origin": "https://www.tradingview.com",
+        "Referer": "https://www.tradingview.com/",
+        "Accept": "application/json,text/plain,*/*",
+      },
+    });
+    if (!res.ok) return [];
+    const out = await res.json().catch(() => []);
+    if (!Array.isArray(out)) return [];
+    return out.slice(0, limit).map((row) => {
+      const prefix = String(row?.prefix || row?.source_id || row?.exchange || "").toUpperCase();
+      const symbol = cleanTvHtmlMarker(row?.symbol || "");
+      return {
+        symbol,
+        prefix,
+        full_symbol: prefix && symbol ? `${prefix}:${symbol}` : symbol,
+        exchange: String(row?.exchange || row?.source2?.name || row?.source_id || "").trim(),
+        description: cleanTvHtmlMarker(row?.description || ""),
+        type: String(row?.type || ""),
+        provider_id: String(row?.provider_id || ""),
+        source_id: String(row?.source_id || ""),
+      };
+    });
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function resolveTradingViewSymbolForCapture(inputSymbol, provider) {
+  const raw = String(inputSymbol || "").trim().toUpperCase();
+  if (!raw) return "BINANCE:BTCUSDT";
+  if (raw.includes(":")) return raw;
+  const preferred = String(provider || "ICMARKETS").trim().toUpperCase();
+  const exactInPreferred = await fetchTradingViewSymbolSearch(raw, preferred, 8);
+  const preferredExact = exactInPreferred.find((x) => String(x.symbol || "").toUpperCase() === raw);
+  if (preferredExact?.full_symbol) return preferredExact.full_symbol.toUpperCase();
+  if (exactInPreferred[0]?.full_symbol) return String(exactInPreferred[0].full_symbol).toUpperCase();
+  const anyMatches = await fetchTradingViewSymbolSearch(raw, "", 8);
+  const anyExact = anyMatches.find((x) => String(x.symbol || "").toUpperCase() === raw);
+  if (anyExact?.full_symbol) return anyExact.full_symbol.toUpperCase();
+  if (anyMatches[0]?.full_symbol) return String(anyMatches[0].full_symbol).toUpperCase();
+  return toTradingViewSymbol(raw, preferred || "ICMARKETS");
+}
+
 function loadPlaywrightMaybe() {
   try {
     return require("playwright");
@@ -859,7 +928,7 @@ function loadPlaywrightMaybe() {
 
 async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
   ensureChartSnapshotDir();
-  const symbol = toTradingViewSymbol(opts.symbol, opts.provider);
+  const symbol = await resolveTradingViewSymbolForCapture(opts.symbol, opts.provider);
   const interval = toTradingViewInterval(opts.timeframe || opts.tf);
   const width = Math.max(480, Math.min(Number(opts.width || 960) || 960, 2400));
   const height = Math.max(270, Math.min(Number(opts.height || 540) || 540, 1600));
@@ -1045,6 +1114,96 @@ function extractJsonFromAiText(rawText) {
   } catch {
     return { parsed: null, clean };
   }
+}
+
+async function anthropicListModels(apiKey) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/models", {
+      signal: ctrl.signal,
+      headers: {
+        "x-api-key": String(apiKey || ""),
+        "anthropic-version": "2023-06-01",
+      },
+    });
+    if (!res.ok) return [];
+    const out = await res.json().catch(() => ({}));
+    const rows = Array.isArray(out?.data) ? out.data : [];
+    return rows.map((x) => String(x?.id || "").trim()).filter(Boolean);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function pickPreferredAnthropicModel(ids = [], preferred = "") {
+  const list = Array.isArray(ids) ? ids.map((x) => String(x || "").trim()).filter(Boolean) : [];
+  const want = String(preferred || "").trim();
+  if (want && list.includes(want)) return want;
+  const priority = [
+    "claude-sonnet-4-0",
+    "claude-sonnet-4-20250514",
+    "claude-3-7-sonnet-latest",
+    "claude-3-7-sonnet-20250219",
+    "claude-3-5-sonnet-latest",
+    "claude-3-5-sonnet-20241022",
+  ];
+  for (const p of priority) {
+    if (list.includes(p)) return p;
+  }
+  const sonnet = list.find((x) => x.includes("sonnet"));
+  if (sonnet) return sonnet;
+  return list[0] || want;
+}
+
+async function anthropicMessagesWithFallback({ apiKey, model, messages, maxTokens = 1600, timeoutMs = 90000 }) {
+  const requestOnce = async (useModel) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: ctrl.signal,
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": String(apiKey || ""),
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: useModel,
+          max_tokens: Number(maxTokens || 1600),
+          messages: Array.isArray(messages) ? messages : [],
+        }),
+      });
+      return res;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  let useModel = String(model || "claude-sonnet-4-0").trim() || "claude-sonnet-4-0";
+  let res = await requestOnce(useModel);
+  if (!res.ok && res.status === 404) {
+    const errText = await res.text().catch(() => "");
+    const modelNotFound = String(errText || "").toLowerCase().includes("model");
+    if (modelNotFound) {
+      const ids = await anthropicListModels(apiKey);
+      const fallbackModel = pickPreferredAnthropicModel(ids, useModel);
+      if (fallbackModel && fallbackModel !== useModel) {
+        useModel = fallbackModel;
+        res = await requestOnce(useModel);
+      } else {
+        const fake = new Response(errText, { status: 404, statusText: "Not Found" });
+        return { ok: false, response: fake, modelUsed: useModel };
+      }
+    } else {
+      const fake = new Response(errText, { status: res.status, statusText: res.statusText });
+      return { ok: false, response: fake, modelUsed: useModel };
+    }
+  }
+  return { ok: res.ok, response: res, modelUsed: useModel };
 }
 
 function normalizeHostHeader(hostRaw) {
@@ -5686,7 +5845,7 @@ const appHandler = async (req, res) => {
       } else if (provider === "claude") {
         endpoint = "https://api.anthropic.com/v1/messages";
         authHeader = "";
-        if (!requestModel) requestModel = "claude-3-5-sonnet-latest";
+        if (!requestModel) requestModel = "claude-sonnet-4-0";
         bodyData = {
           model: requestModel,
           max_tokens: 1200,
@@ -5706,22 +5865,29 @@ const appHandler = async (req, res) => {
       const aiCtrl = new AbortController();
       const aiTimer = setTimeout(() => aiCtrl.abort(), 45000);
       let aiRes;
+      let aiModelUsed = requestModel;
       try {
-        aiRes = await fetch(endpoint, {
-          method: "POST",
-          signal: aiCtrl.signal,
-          headers: {
-            "Content-Type": "application/json",
-            ...(provider === "claude"
-              ? {
-                  "x-api-key": apiKey,
-                  "anthropic-version": "2023-06-01",
-                }
-              : {}),
-            ...(authHeader ? { "Authorization": authHeader } : {})
-          },
-          body: JSON.stringify(bodyData)
-        });
+        if (provider === "claude") {
+          const out = await anthropicMessagesWithFallback({
+            apiKey,
+            model: requestModel,
+            messages: bodyData.messages,
+            maxTokens: bodyData.max_tokens,
+            timeoutMs: 45000,
+          });
+          aiRes = out.response;
+          aiModelUsed = out.modelUsed || requestModel;
+        } else {
+          aiRes = await fetch(endpoint, {
+            method: "POST",
+            signal: aiCtrl.signal,
+            headers: {
+              "Content-Type": "application/json",
+              ...(authHeader ? { "Authorization": authHeader } : {})
+            },
+            body: JSON.stringify(bodyData)
+          });
+        }
       } catch (e) {
         if (e?.name === "AbortError") {
           throw new Error(`AI Provider Timeout (${provider}/${requestModel}) after 45s. Check provider status/network and retry.`);
@@ -5776,6 +5942,7 @@ const appHandler = async (req, res) => {
 
       return json(res, 200, { 
         ok: true, 
+        model: aiModelUsed,
         raw_response: rawResponse, 
         signals: (signals || []).map(s => ({
           ...s,
@@ -5834,6 +6001,22 @@ const appHandler = async (req, res) => {
         format: body.format,
         quality: body.quality,
       });
+      return json(res, 200, { ok: true, items });
+    } catch (error) {
+      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/v2/chart/symbols") {
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      const q = String(url.searchParams.get("q") || url.searchParams.get("text") || "").trim();
+      const provider = String(url.searchParams.get("provider") || "ICMARKETS").trim();
+      const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit") || 20) || 20, 50));
+      if (!q) return json(res, 200, { ok: true, items: [] });
+      const items = await fetchTradingViewSymbolSearch(q, provider, limit);
       return json(res, 200, { ok: true, items });
     } catch (error) {
       return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
@@ -5903,33 +6086,16 @@ const appHandler = async (req, res) => {
         text: String(body.prompt || "").trim() || "Analyze these chart snapshots and return only JSON.",
       });
 
-      const requestModel = String(body.model || "claude-3-5-sonnet-latest").trim();
-      const aiCtrl = new AbortController();
-      const aiTimer = setTimeout(() => aiCtrl.abort(), 90000);
-      let aiRes;
-      try {
-        aiRes = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          signal: aiCtrl.signal,
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": claudeKey,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: requestModel,
-            max_tokens: Number(body.max_tokens || 1600),
-            messages: [{ role: "user", content }],
-          }),
-        });
-      } catch (e) {
-        if (e?.name === "AbortError") {
-          throw new Error(`Claude timeout (${requestModel}) after 90s.`);
-        }
-        throw e;
-      } finally {
-        clearTimeout(aiTimer);
-      }
+      const requestModel = String(body.model || "claude-sonnet-4-0").trim() || "claude-sonnet-4-0";
+      const out = await anthropicMessagesWithFallback({
+        apiKey: claudeKey,
+        model: requestModel,
+        messages: [{ role: "user", content }],
+        maxTokens: Number(body.max_tokens || 1600),
+        timeoutMs: 90000,
+      });
+      const aiRes = out.response;
+      const resolvedModel = out.modelUsed || requestModel;
       if (!aiRes.ok) {
         const errText = await aiRes.text();
         throw new Error(`Claude API Error (${aiRes.status}): ${errText}`);
@@ -5941,7 +6107,7 @@ const appHandler = async (req, res) => {
       const extracted = extractJsonFromAiText(rawResponse);
       return json(res, 200, {
         ok: true,
-        model: requestModel,
+        model: resolvedModel,
         used_files: usedFiles,
         raw_response: rawResponse,
         parsed_json: extracted.parsed,
@@ -5964,7 +6130,7 @@ const appHandler = async (req, res) => {
           const abs = path.join(CHART_SNAPSHOT_DIR, f);
           const st = fs.statSync(abs);
           return {
-            id: f.replace(/\.png$/i, ""),
+            id: f.replace(/\.(png|jpe?g)$/i, ""),
             file_name: f,
             created_at: new Date(st.mtimeMs || Date.now()).toISOString(),
             size_bytes: Number(st.size || 0),

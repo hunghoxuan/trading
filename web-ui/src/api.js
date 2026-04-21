@@ -539,6 +539,8 @@ export const api = {
   chartSnapshotCreate: (payload = {}) => postWithTimeout("/v2/chart/snapshot", payload, 90000),
   chartSnapshotCreateBatch: (payload = {}) => postWithTimeout("/v2/chart/snapshot/batch", payload, 180000),
   chartSnapshotsAnalyze: (payload = {}) => postWithTimeout("/v2/chart/snapshots/analyze", payload, 120000),
+  chartSymbols: (q = "", provider = "ICMARKETS", limit = 20) =>
+    get(`/v2/chart/symbols?q=${encodeURIComponent(q)}&provider=${encodeURIComponent(provider)}&limit=${encodeURIComponent(limit)}`),
   chartSnapshots: (limit = 30) => get(`/v2/chart/snapshots?limit=${encodeURIComponent(limit)}`),
   getSettings: () => get("/v2/settings"),
   upsertSetting: (payload = {}) => post("/v2/settings", payload),

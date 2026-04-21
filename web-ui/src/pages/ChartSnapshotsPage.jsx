@@ -20,9 +20,9 @@ function replacePromptVars(template, vars) {
 }
 
 export default function ChartSnapshotsPage() {
-  const [symbol, setSymbol] = useState("OANDA:UK100GBP");
+  const [symbol, setSymbol] = useState("ICMARKETS:UK100");
   const [timeframe, setTimeframe] = useState("15m");
-  const [provider, setProvider] = useState("");
+  const [provider, setProvider] = useState("ICMARKETS");
   const [theme, setTheme] = useState("dark");
   const [width, setWidth] = useState(960);
   const [height, setHeight] = useState(540);
@@ -38,6 +38,7 @@ export default function ChartSnapshotsPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisRaw, setAnalysisRaw] = useState("");
   const [analysisJson, setAnalysisJson] = useState("");
+  const [symbolOptions, setSymbolOptions] = useState([]);
 
   const previewTitle = useMemo(() => `${symbol} • ${timeframe}`, [symbol, timeframe]);
   const claudePrompt = useMemo(() => replacePromptVars(claudePromptTemplate, {
@@ -117,7 +118,7 @@ export default function ChartSnapshotsPage() {
     setAnalysisJson("");
     try {
       const out = await api.chartSnapshotsAnalyze({
-        model: "claude-3-5-sonnet-latest",
+        model: "claude-sonnet-4-0",
         prompt: claudePrompt,
       });
       const raw = String(out?.raw_response || "");
@@ -145,6 +146,25 @@ export default function ChartSnapshotsPage() {
     load();
   }, [limit]);
 
+  useEffect(() => {
+    const q = String(symbol || "").trim();
+    const plain = q.includes(":") ? q.split(":").slice(1).join(":") : q;
+    if (!plain || plain.length < 2) {
+      setSymbolOptions([]);
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      try {
+        const out = await api.chartSymbols(plain, provider || "ICMARKETS", 8);
+        const items = Array.isArray(out?.items) ? out.items : [];
+        setSymbolOptions(items.map((x) => x.full_symbol || x.symbol).filter(Boolean));
+      } catch {
+        setSymbolOptions([]);
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [symbol, provider]);
+
   return (
     <div className="page-grid">
       <section className="panel" style={{ marginBottom: 12 }}>
@@ -154,9 +174,12 @@ export default function ChartSnapshotsPage() {
         </p>
 
         <div className="filters-row">
-          <input value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="Symbol (e.g. OANDA:UK100GBP)" />
+          <input list="tv-symbol-options" value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="Symbol (e.g. ICMARKETS:UK100)" />
+          <datalist id="tv-symbol-options">
+            {symbolOptions.map((opt) => <option key={opt} value={opt} />)}
+          </datalist>
           <input value={timeframe} onChange={(e) => setTimeframe(e.target.value)} placeholder="TF (e.g. 15m, 4h, 1D)" />
-          <input value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="Provider (optional)" />
+          <input value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="Provider (e.g. ICMARKETS)" />
           <select value={theme} onChange={(e) => setTheme(e.target.value)}>
             <option value="dark">dark</option>
             <option value="light">light</option>
