@@ -220,6 +220,70 @@ async function post(path, body = {}) {
   return data;
 }
 
+async function postWithTimeout(path, body = {}, timeoutMs = 12000) {
+  const API_KEY = runtimeApiKey();
+  const base = runtimeApiBase();
+  const primaryUrl = buildUrl(base, path);
+  const fallbackUrl = buildUrl(window.location.origin, path);
+
+  async function doFetch(url) {
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      return await fetch(url, {
+        method: "POST",
+        signal: ctrl.signal,
+        cache: "no-store",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+          ...(API_KEY ? { "x-api-key": API_KEY } : {}),
+        },
+        body: JSON.stringify(body || {}),
+      });
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        throw new Error(`Request timeout (${Math.round(timeoutMs / 1000)}s). Check API URL and server status.`);
+      }
+      throw err;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  let res;
+  try {
+    res = await doFetch(primaryUrl);
+  } catch (primaryError) {
+    if (primaryUrl !== fallbackUrl) {
+      try {
+        res = await doFetch(fallbackUrl);
+      } catch {
+        throw primaryError;
+      }
+    } else {
+      throw primaryError;
+    }
+  }
+
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(`Server returned non-JSON response (${res.status})`);
+  }
+  if (!res.ok || !data.ok) {
+    if (path !== "/auth/login" && isAuthFailure(res.status, data)) {
+      redirectToLogin();
+      throw new Error("Session expired. Redirecting to login.");
+    }
+    throw new Error(data.error || `Request failed: ${res.status}`);
+  }
+  return data;
+}
+
 async function put(path, body = {}) {
   const API_KEY = runtimeApiKey();
   const base = runtimeApiBase();
@@ -471,8 +535,10 @@ export const api = {
   aiDeleteTemplate: (templateId) => del(`/v2/ai/templates/${encodeURIComponent(templateId)}`),
   aiGetConfig: () => get("/v2/ai/config"),
   aiUpsertConfig: (key, value) => post("/v2/ai/config", { key, value }),
-  aiGenerate: (payload = {}) => post("/v2/ai/generate", payload),
+  aiGenerate: (payload = {}) => postWithTimeout("/v2/ai/generate", payload, 65000),
+  chartSnapshotCreate: (payload = {}) => postWithTimeout("/v2/chart/snapshot", payload, 90000),
+  chartSnapshots: (limit = 30) => get(`/v2/chart/snapshots?limit=${encodeURIComponent(limit)}`),
   getSettings: () => get("/v2/settings"),
   upsertSetting: (payload = {}) => post("/v2/settings", payload),
-  deleteSetting: (type) => del(`/v2/settings/${type}`),
+  deleteSetting: (type, name) => del(`/v2/settings/${encodeURIComponent(type)}/${encodeURIComponent(name)}`),
 };

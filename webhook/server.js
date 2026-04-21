@@ -6,6 +6,7 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const { URL, URLSearchParams } = require("url");
+const os = require("os");
 
 function loadEnvFile() {
   const envPath = path.join(__dirname, ".env");
@@ -80,7 +81,8 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.21-0641"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.21-1526"); // Real AI Integrated
+const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -337,6 +339,20 @@ function decryptObject(obj) {
 
 function hashPassword(passwordRaw, saltHex) {
   return crypto.scryptSync(String(passwordRaw || ""), saltHex, 64).toString("hex");
+}
+
+const ALLOWED_AI_API_KEY_NAMES = new Set([
+  "GEMINI_API_KEY",
+  "OPENAI_API_KEY",
+  "DEEPSEEK_API_KEY",
+]);
+
+function normalizeAiApiKeyName(rawName) {
+  const name = String(rawName || "").trim().toUpperCase();
+  if (name === "GEMINI" || name === "GOOGLE_GEMINI" || name === "GEMINI_KEY") return "GEMINI_API_KEY";
+  if (name === "OPENAI" || name === "OPENAI_KEY") return "OPENAI_API_KEY";
+  if (name === "DEEPSEEK" || name === "DEEPSEEK_KEY") return "DEEPSEEK_API_KEY";
+  return name;
 }
 
 function hashApiKey(raw) {
@@ -777,6 +793,140 @@ function serveUiFile(res, filePath, method = "GET") {
     return;
   }
   res.end(body);
+}
+
+function ensureChartSnapshotDir() {
+  if (!fs.existsSync(CHART_SNAPSHOT_DIR)) {
+    fs.mkdirSync(CHART_SNAPSHOT_DIR, { recursive: true });
+  }
+}
+
+function sanitizeSnapshotToken(value, fallback = "chart") {
+  const raw = String(value || fallback).trim().toUpperCase();
+  const token = raw.replace(/[^A-Z0-9:_-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+  return token || fallback;
+}
+
+function toTradingViewInterval(tfRaw) {
+  const tf = String(tfRaw || "5").trim().toLowerCase();
+  if (!tf) return "5";
+  if (/^\d+$/.test(tf)) return tf;
+  if (tf.endsWith("m")) return tf.slice(0, -1) || "5";
+  if (tf.endsWith("h")) return String(Number(tf.slice(0, -1) || "1") * 60);
+  if (tf.endsWith("d")) return "D";
+  if (tf.endsWith("w")) return "W";
+  if (tf.endsWith("mo") || tf.endsWith("mth")) return "M";
+  return tf.toUpperCase();
+}
+
+function toTradingViewSymbol(inputSymbol, provider) {
+  const raw = String(inputSymbol || "").trim().toUpperCase();
+  if (!raw) return "BINANCE:BTCUSDT";
+  if (raw.includes(":")) return raw;
+  const prov = String(provider || "").trim().toUpperCase();
+  if (prov) return `${prov}:${raw}`;
+  return `BINANCE:${raw}`;
+}
+
+function loadPlaywrightMaybe() {
+  try {
+    return require("playwright");
+  } catch {}
+  try {
+    return require(path.join(__dirname, "..", "web-ui", "node_modules", "playwright"));
+  } catch {}
+  return null;
+}
+
+async function captureTradingViewSnapshot(opts = {}) {
+  const playwright = loadPlaywrightMaybe();
+  if (!playwright || !playwright.chromium) {
+    throw new Error("Playwright not found. Install in webhook or web-ui workspace.");
+  }
+
+  ensureChartSnapshotDir();
+  const symbol = toTradingViewSymbol(opts.symbol, opts.provider);
+  const interval = toTradingViewInterval(opts.timeframe || opts.tf);
+  const width = Math.max(640, Math.min(Number(opts.width || 1400) || 1400, 2400));
+  const height = Math.max(360, Math.min(Number(opts.height || 900) || 900, 1600));
+  const theme = String(opts.theme || "dark").toLowerCase() === "light" ? "light" : "dark";
+
+  const ts = Date.now();
+  const fileName = `${ts}_${sanitizeSnapshotToken(symbol)}_${sanitizeSnapshotToken(interval, "TF")}.png`;
+  const outPath = path.join(CHART_SNAPSHOT_DIR, fileName);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tv-snap-"));
+
+  const browser = await playwright.chromium.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+  });
+  try {
+    const context = await browser.newContext({ viewport: { width: width + 40, height: height + 120 } });
+    const page = await context.newPage();
+    await page.setContent(
+      `
+      <html>
+        <head><meta charset="utf-8" /></head>
+        <body style="margin:0;background:${theme === "dark" ? "#0b1220" : "#ffffff"};">
+          <div id="tv-root" style="width:${width}px;height:${height}px;"></div>
+          <script src="https://s3.tradingview.com/tv.js"></script>
+          <script>
+            window.__tvReady = false;
+            function boot() {
+              if (!window.TradingView || !window.TradingView.widget) {
+                setTimeout(boot, 120);
+                return;
+              }
+              new TradingView.widget({
+                container_id: "tv-root",
+                autosize: false,
+                width: ${width},
+                height: ${height},
+                symbol: ${JSON.stringify(symbol)},
+                interval: ${JSON.stringify(interval)},
+                timezone: "Etc/UTC",
+                theme: ${JSON.stringify(theme)},
+                style: "1",
+                locale: "en",
+                withdateranges: true,
+                hide_side_toolbar: false,
+                allow_symbol_change: true,
+                details: false,
+                hotlist: false,
+                calendar: false
+              });
+              window.__tvReady = true;
+            }
+            boot();
+          </script>
+        </body>
+      </html>
+      `,
+      { waitUntil: "domcontentloaded" },
+    );
+    await page.waitForTimeout(7000);
+    const root = page.locator("#tv-root");
+    await root.screenshot({ path: outPath, type: "png" });
+    await context.close();
+  } finally {
+    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
+    await browser.close();
+  }
+
+  const st = fs.statSync(outPath);
+  return {
+    id: fileName.replace(/\.png$/i, ""),
+    file_name: fileName,
+    symbol,
+    timeframe: interval,
+    provider: String(opts.provider || ""),
+    theme,
+    width,
+    height,
+    created_at: new Date(st.mtimeMs || Date.now()).toISOString(),
+    size_bytes: Number(st.size || 0),
+    url: `/v2/chart/snapshots/${encodeURIComponent(fileName)}`,
+  };
 }
 
 function normalizeHostHeader(hostRaw) {
@@ -4505,6 +4655,11 @@ const appHandler = async (req, res) => {
     try {
       const payload = await readJson(req);
       const sess = getUiSessionFromReq(req);
+      const requestedSource = String(payload.source || "").trim().toLowerCase();
+      const source = requestedSource === "ai" ? "ai" : "ui_manual";
+      const entryModel = String(payload.entry_model || payload.model || "").trim();
+      const timeframe = String(payload.timeframe || payload.tf || "").trim();
+      const strategy = String(payload.strategy || (source === "ai" ? "ai" : "Manual")).trim();
       const enqueue = await mt5EnqueueSignalFromPayload({
         id: payload.signal_id || payload.id || "",
         action: payload.action,
@@ -4515,15 +4670,16 @@ const appHandler = async (req, res) => {
         rr: payload.rr ?? payload.risk_reward ?? null,
         risk_money: payload.risk_money ?? payload.money_risk ?? null,
         price: payload.price ?? payload.entry ?? null,
-        strategy: payload.strategy || "Manual",
-        timeframe: payload.timeframe || "manual",
+        strategy,
+        entry_model: entryModel || null,
+        timeframe: timeframe || "manual",
         note: payload.note || "",
         user_id: payload.user_id || sess.user_id || CFG.mt5DefaultUserId,
         order_type: payload.order_type || "limit",
         provider: "ui",
         raw_json: payload && typeof payload === "object" ? payload : {},
       }, {
-        source: "ui_manual",
+        source,
         eventType: "UI_CREATE_TRADE",
         fallbackIdPrefix: "ui",
       });
@@ -5263,18 +5419,29 @@ const appHandler = async (req, res) => {
     if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     
     try {
-      const body = await readJsonBody(req);
+      const body = await readJson(req);
       if (!body.type) return json(res, 400, { ok: false, error: "Missing type" });
       const db = await mt5InitBackend();
       const userId = sess.user_id || CFG.mt5DefaultUserId;
-      const data = body.type === 'api_key' ? encryptObject(body.data) : body.data;
+      const payloadData = (body.data && typeof body.data === "object") ? body.data : {};
+      let settingName = String(body.name || body.type || "").trim();
+      let data = payloadData;
+
+      if (body.type === "api_key") {
+        settingName = normalizeAiApiKeyName(settingName);
+        if (!ALLOWED_AI_API_KEY_NAMES.has(settingName)) {
+          return json(res, 400, { ok: false, error: "Invalid api_key name. Allowed: GEMINI_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY" });
+        }
+        const rawValue = String(payloadData.value || "").trim();
+        data = encryptObject({ value: rawValue });
+      }
       
       await db.query(`
         INSERT INTO user_settings (user_id, type, name, data, status)
         VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (user_id, type, name)
         DO UPDATE SET data = $4, status = $5, updated_at = NOW()
-      `, [userId, body.type, body.name || body.type, data, body.status || 'active']);
+      `, [userId, body.type, settingName || body.type, data, body.status || 'active']);
       
       return json(res, 200, { ok: true });
     } catch (e) {
@@ -5328,9 +5495,19 @@ const appHandler = async (req, res) => {
         if (rows.length) finalPrompt = rows[0].data.prompt_text || rows[0].data.prompt;
       }
       
-      const configRes = await db.query("SELECT data FROM user_settings WHERE user_id = $1 AND type = 'api_key'", [userId]);
-      const configRaw = configRes.rows[0]?.data || {};
-      const config = decryptObject(configRaw); // Internal decryption for use
+      const configRes = await db.query("SELECT name, data FROM user_settings WHERE user_id = $1 AND type = 'api_key'", [userId]);
+      const config = {};
+      for (const row of configRes.rows || []) {
+        const name = normalizeAiApiKeyName(row?.name);
+        const dec = decryptObject(row?.data && typeof row.data === "object" ? row.data : {});
+        if (ALLOWED_AI_API_KEY_NAMES.has(name) && dec?.value) {
+          config[name] = String(dec.value || "");
+        }
+        // Backward compatibility: old payloads may store key/value directly in data object.
+        if (dec && typeof dec === "object") {
+          Object.assign(config, dec);
+        }
+      }
 
       const { rows: tRows } = templateId ? await db.query("SELECT data FROM user_settings WHERE id = $1", [templateId]) : { rows: [] };
       const tData = tRows[0]?.data || {};
@@ -5346,7 +5523,11 @@ const appHandler = async (req, res) => {
         .replace(/{RR}/g, body.rr || "1:2");
 
       const provider = (bodyProvider || service || "gemini").toLowerCase();
-      const apiKey = provider === "deepseek" ? config.DEEPSEEK_API_KEY : config.GEMINI_API_KEY;
+      const apiKey = provider === "deepseek"
+        ? config.DEEPSEEK_API_KEY
+        : provider === "openai"
+          ? config.OPENAI_API_KEY
+          : config.GEMINI_API_KEY;
       
       if (!apiKey) {
         return json(res, 400, { ok: false, error: `API Key for ${provider} is missing. Please configure it in the AI Hub.` });
@@ -5357,33 +5538,60 @@ const appHandler = async (req, res) => {
       let endpoint = "";
       let authHeader = "";
       let bodyData = {};
+      let requestModel = String(model || "").trim();
 
       if (provider === "deepseek") {
         endpoint = "https://api.deepseek.com/chat/completions";
         authHeader = `Bearer ${apiKey}`;
+        if (!requestModel) requestModel = "deepseek-chat";
+        // Backward compatibility: deepseek-coder is deprecated in current API naming.
+        if (requestModel === "deepseek-coder") requestModel = "deepseek-chat";
         bodyData = {
-          model: model || "deepseek-coder",
+          model: requestModel,
+          messages: [{ role: "user", content: finalPrompt }],
+          response_format: { type: "json_object" }
+        };
+      } else if (provider === "openai") {
+        endpoint = "https://api.openai.com/v1/chat/completions";
+        authHeader = `Bearer ${apiKey}`;
+        if (!requestModel) requestModel = "gpt-4o-mini";
+        bodyData = {
+          model: requestModel,
           messages: [{ role: "user", content: finalPrompt }],
           response_format: { type: "json_object" }
         };
       } else {
         // Default to Gemini (OpenAI compatible route)
-        endpoint = `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=${apiKey}`;
-        authHeader = "";
+        endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+        authHeader = `Bearer ${apiKey}`;
+        if (!requestModel) requestModel = "gemini-2.0-flash";
         bodyData = {
-          model: model || "gemini-2.0-flash",
+          model: requestModel,
           messages: [{ role: "user", content: finalPrompt }]
         };
       }
 
-      const aiRes = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(authHeader ? { "Authorization": authHeader } : {})
-        },
-        body: JSON.stringify(bodyData)
-      });
+      const aiCtrl = new AbortController();
+      const aiTimer = setTimeout(() => aiCtrl.abort(), 45000);
+      let aiRes;
+      try {
+        aiRes = await fetch(endpoint, {
+          method: "POST",
+          signal: aiCtrl.signal,
+          headers: {
+            "Content-Type": "application/json",
+            ...(authHeader ? { "Authorization": authHeader } : {})
+          },
+          body: JSON.stringify(bodyData)
+        });
+      } catch (e) {
+        if (e?.name === "AbortError") {
+          throw new Error(`AI Provider Timeout (${provider}/${requestModel}) after 45s. Check provider status/network and retry.`);
+        }
+        throw e;
+      } finally {
+        clearTimeout(aiTimer);
+      }
 
       if (!aiRes.ok) {
         const errText = await aiRes.text();
@@ -5441,6 +5649,76 @@ const appHandler = async (req, res) => {
     } catch (e) {
       console.error("[ai] generation error:", e);
       return json(res, 500, { ok: false, error: e.message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/chart/snapshot") {
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      const body = await readJson(req);
+      const item = await captureTradingViewSnapshot({
+        symbol: body.symbol,
+        provider: body.provider,
+        timeframe: body.timeframe || body.tf,
+        width: body.width,
+        height: body.height,
+        theme: body.theme,
+      });
+      return json(res, 200, { ok: true, item });
+    } catch (error) {
+      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/v2/chart/snapshots") {
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      ensureChartSnapshotDir();
+      const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit") || 30) || 30, 200));
+      const files = fs.readdirSync(CHART_SNAPSHOT_DIR)
+        .filter((f) => f.toLowerCase().endsWith(".png"))
+        .map((f) => {
+          const abs = path.join(CHART_SNAPSHOT_DIR, f);
+          const st = fs.statSync(abs);
+          return {
+            id: f.replace(/\.png$/i, ""),
+            file_name: f,
+            created_at: new Date(st.mtimeMs || Date.now()).toISOString(),
+            size_bytes: Number(st.size || 0),
+            url: `/v2/chart/snapshots/${encodeURIComponent(f)}`,
+          };
+        })
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+        .slice(0, limit);
+      return json(res, 200, { ok: true, items: files });
+    } catch (error) {
+      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname.startsWith("/v2/chart/snapshots/")) {
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      ensureChartSnapshotDir();
+      const fileName = decodeURIComponent(url.pathname.replace("/v2/chart/snapshots/", "") || "");
+      const safeName = path.basename(fileName);
+      if (!safeName || safeName !== fileName || !/\.png$/i.test(safeName)) {
+        return json(res, 400, { ok: false, error: "Invalid snapshot file" });
+      }
+      const abs = path.join(CHART_SNAPSHOT_DIR, safeName);
+      if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+        return json(res, 404, { ok: false, error: "Snapshot not found" });
+      }
+      serveUiFile(res, abs, req.method);
+      return;
+    } catch (error) {
+      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
   }
 
