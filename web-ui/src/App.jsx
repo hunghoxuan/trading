@@ -23,10 +23,13 @@ export default function App() {
   const [authUser, setAuthUser] = useState(null);
   const location = useLocation();
   const canAccessSystemPages = String(authUser?.role || "").toLowerCase() === "system";
+  const settingsMenuActive = useMemo(() => {
+    const p = String(location?.pathname || "");
+    return p.startsWith("/profile") || p.startsWith("/settings") || p.startsWith("/accounts-v2");
+  }, [location?.pathname]);
   const systemMenuActive = useMemo(() => {
     const p = String(location?.pathname || "");
-    return p.startsWith("/accounts-v2")
-      || p.startsWith("/sources")
+    return p.startsWith("/sources")
       || p.startsWith("/logs")
       || p.startsWith("/db")
       || p.startsWith("/users");
@@ -91,13 +94,25 @@ export default function App() {
         </div>
         <nav>
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? "active" : "")}>Dashboard</NavLink>
+          <NavLink to="/ai" className={({ isActive }) => (isActive ? "active" : "")}>AI</NavLink>
           <NavLink to="/signals" className={({ isActive }) => (isActive ? "active" : "")}>Signals</NavLink>
           <NavLink to="/trades" className={({ isActive }) => (isActive ? "active" : "")}>Trades</NavLink>
-          <NavLink to="/ai" className={({ isActive }) => (isActive ? "active" : "")}>📸 AI</NavLink>
 
           <div style={{ flex: 1 }} />
           
-          <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")}>Settings</NavLink>
+          <div className="nav-dropdown">
+            <button
+              type="button"
+              className={`secondary-button nav-dropdown-trigger ${settingsMenuActive ? "active" : ""}`}
+            >
+              Settings
+            </button>
+            <div className="nav-dropdown-menu">
+              <NavLink to="/profile">Profile</NavLink>
+              <NavLink to="/settings">Settings</NavLink>
+              {canAccessSystemPages && <NavLink to="/accounts-v2">Accounts</NavLink>}
+            </div>
+          </div>
           {canAccessSystemPages && (
             <div className="nav-dropdown">
               <button
@@ -107,7 +122,6 @@ export default function App() {
                 System
               </button>
               <div className="nav-dropdown-menu">
-                <NavLink to="/accounts-v2">Accounts</NavLink>
                 <NavLink to="/sources">Sources</NavLink>
                 <NavLink to="/logs">Logs</NavLink>
                 <NavLink to="/db">DB</NavLink>
@@ -121,12 +135,12 @@ export default function App() {
              className="secondary-button"
              style={{ 
                padding: '4px 10px', 
-               fontSize: '11px', 
+               fontSize: '11px',
                marginLeft: '10px',
-               width: '80px'
+               minWidth: '40px'
              }}
           >
-            {theme === "dark" ? "☀️ LIGHT" : "🌙 DARK"}
+            {theme === "dark" ? "☀️" : "🌙"}
           </button>
         </nav>
       </header>
@@ -144,6 +158,7 @@ export default function App() {
           <Route path="/users" element={canAccessSystemPages ? <UsersPage authUser={authUser} /> : <Navigate to="/dashboard" replace />} />
           <Route path="/accounts-v2" element={canAccessSystemPages ? <AccountsV2Page /> : <Navigate to="/dashboard" replace />} />
           <Route path="/sources" element={canAccessSystemPages ? <SourcesPage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/profile" element={<SettingsPage authUser={authUser} mode="profile" />} />
           <Route path="/settings" element={<SettingsPage authUser={authUser} />} />
           <Route path="/login" element={<Navigate to="/dashboard" replace />} />
         </Routes>

@@ -24,7 +24,7 @@ function isSystemRole(user) {
   return String(user?.role || "").trim().toLowerCase() === "system";
 }
 
-export default function SettingsPage({ authUser }) {
+export default function SettingsPage({ authUser, mode = "settings" }) {
   const [profileLoading, setProfileLoading] = useState(false);
   const [pwdLoading, setPwdLoading] = useState(false);
   const [msg, setMsg] = useState("");
@@ -44,6 +44,8 @@ export default function SettingsPage({ authUser }) {
   const [settingsMsg, setSettingsMsg] = useState("");
   const [newSettingForm, setNewSettingForm] = useState({ type: "api_key", name: "GEMINI_API_KEY", value: "" });
   const [showAddForm, setShowAddForm] = useState(false);
+  const [jsonDetailText, setJsonDetailText] = useState("");
+  const [symbolsDetailText, setSymbolsDetailText] = useState("");
 
   const canManageExecution = isSystemRole(authUser);
   const [execLoading, setExecLoading] = useState(false);
@@ -216,7 +218,18 @@ export default function SettingsPage({ authUser }) {
     }
     setSettingsLoading(true);
     try {
-      await api.upsertSetting({ type, name, data: { value: String(value || "") }, status: "active" });
+      let data = { value: String(value || "") };
+      if (String(type).toLowerCase() === "symbols") {
+        const symbols = String(value || "")
+          .split(/[\n,]/)
+          .map((x) => String(x || "").trim().toUpperCase())
+          .filter(Boolean);
+        data = { symbols: [...new Set(symbols)] };
+      } else if (String(type).toLowerCase() !== "api_key") {
+        const parsed = JSON.parse(String(value || "{}"));
+        data = parsed && typeof parsed === "object" ? parsed : {};
+      }
+      await api.upsertSetting({ type, name, data, status: "active" });
       setSettingsMsg(`Setting ${type} created.`);
       setShowAddForm(false);
       setNewSettingForm({ type: "api_key", name: "GEMINI_API_KEY", value: "" });
@@ -266,10 +279,37 @@ export default function SettingsPage({ authUser }) {
     () => settings.find((s) => getSettingKey(s) === activeSettingKey),
     [settings, activeSettingKey],
   );
+  const isProfileMode = String(mode || "").toLowerCase() === "profile";
+
+  useEffect(() => {
+    if (!selectedSetting) {
+      setJsonDetailText("");
+      setSymbolsDetailText("");
+      return;
+    }
+    const type = String(selectedSetting.type || "").toLowerCase();
+    if (type === "symbols") {
+      const arr = Array.isArray(selectedSetting?.data?.symbols) ? selectedSetting.data.symbols : [];
+      setSymbolsDetailText(arr.map((x) => String(x || "").trim()).filter(Boolean).join("\n"));
+      setJsonDetailText("");
+      return;
+    }
+    if (type === "api_key") {
+      setJsonDetailText("");
+      setSymbolsDetailText("");
+      return;
+    }
+    try {
+      setJsonDetailText(JSON.stringify(selectedSetting?.data || {}, null, 2));
+    } catch {
+      setJsonDetailText("{}");
+    }
+    setSymbolsDetailText("");
+  }, [activeSettingKey, selectedSetting?.type, selectedSetting?.name]);
 
   return (
     <div className="stack-layout fadeIn" style={{ paddingBottom: 40 }}>
-      <h2 className="page-title">Settings</h2>
+      <h2 className="page-title">{isProfileMode ? "Profile" : "Settings"}</h2>
 
       {/* Top Grid: Profile, Password, Execution */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, alignItems: "start" }}>
@@ -362,7 +402,7 @@ export default function SettingsPage({ authUser }) {
         )}
       </div>
 
-      {/* Main Area: System Settings (List-Detail Layout) */}
+      {!isProfileMode && (
       <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 24, marginTop: 24 }}>
         {/* Left: Sidebar */}
         <section className="panel" style={{ margin: 0 }}>
@@ -390,6 +430,7 @@ export default function SettingsPage({ authUser }) {
                     }}
                   >
                     <option value="api_key">api_key</option>
+                    <option value="symbols">symbols</option>
                     <option value="ai_template">ai_template</option>
                     <option value="note">note</option>
                   </select>
@@ -405,6 +446,12 @@ export default function SettingsPage({ authUser }) {
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
                     </select>
+                  ) : newSettingForm.type === "symbols" ? (
+                    <input
+                      placeholder="WATCHLIST"
+                      value={newSettingForm.name}
+                      onChange={e => setNewSettingForm(p => ({ ...p, name: e.target.value }))}
+                    />
                   ) : (
                     <input 
                       placeholder="name (e.g. Gemini API)" 
@@ -416,8 +463,8 @@ export default function SettingsPage({ authUser }) {
                <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <span className="minor-text" style={{ fontSize: 10 }}>Value</span>
                   <textarea
-                    rows={3}
-                    placeholder="Value (text or JSON)"
+                    rows={newSettingForm.type === "api_key" ? 3 : 10}
+                    placeholder={newSettingForm.type === "api_key" ? "Value" : "JSON object"}
                     value={newSettingForm.value}
                     onChange={e => setNewSettingForm(p => ({ ...p, value: e.target.value }))}
                   />
@@ -483,24 +530,45 @@ export default function SettingsPage({ authUser }) {
                       </label>
                     ))}
                   </div>
+                ) : String(selectedSetting.type || "").toLowerCase() === "symbols" ? (
+                  <div className="stack-layout" style={{ gap: 10 }}>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <span className="minor-text" style={{ fontSize: 11 }}>symbols (one per line)</span>
+                      <textarea
+                        rows={12}
+                        value={symbolsDetailText}
+                        onChange={(e) => {
+                          const text = e.target.value;
+                          setSymbolsDetailText(text);
+                          const arr = text.split(/[\n,]/).map((x) => String(x || "").trim().toUpperCase()).filter(Boolean);
+                          setSettings(prev => prev.map(x => getSettingKey(x) === getSettingKey(selectedSetting) ? { ...x, data: { ...(x.data || {}), symbols: [...new Set(arr)] } } : x));
+                        }}
+                      />
+                    </label>
+                  </div>
                 ) : (
                   <div className="stack-layout" style={{ gap: 20 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 20 }}>
-                      {Object.entries(selectedSetting.data || {}).map(([key, val]) => (
-                        <label key={key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                           <span className="minor-text" style={{ fontSize: 11 }}>{key}</span>
-                           <input 
-                              type="text" 
-                              value={typeof val === 'object' ? JSON.stringify(val) : (val || "")} 
-                              onChange={(e) => updateSetting(getSettingKey(selectedSetting), key, e.target.value)} 
-                           />
-                        </label>
-                      ))}
+                    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <span className="minor-text" style={{ fontSize: 11 }}>JSON Data</span>
+                      <textarea rows={18} value={jsonDetailText} onChange={(e) => setJsonDetailText(e.target.value)} />
+                    </label>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <button
+                        className="secondary-button"
+                        onClick={() => {
+                          try {
+                            const parsed = JSON.parse(String(jsonDetailText || "{}"));
+                            setSettings(prev => prev.map(x => getSettingKey(x) === getSettingKey(selectedSetting) ? { ...x, data: parsed } : x));
+                            setSettingsMsg("JSON updated. Click SAVE CHANGES to persist.");
+                          } catch (err) {
+                            setSettingsMsg(`Invalid JSON: ${err?.message || "parse error"}`);
+                          }
+                        }}
+                      >
+                        APPLY JSON
+                      </button>
+                      <span className="minor-text">Default JSON editor mode</span>
                     </div>
-                    <button className="minor-text" style={{ padding: 4, cursor: "pointer", background: "none", border: "1px dashed var(--border)", width: "fit-content" }} onClick={() => {
-                        const k = window.prompt("Field name:");
-                        if (k) updateSetting(getSettingKey(selectedSetting), k, "");
-                    }}>+ ADD NEW FIELD</button>
                   </div>
                 )}
                 
@@ -513,6 +581,7 @@ export default function SettingsPage({ authUser }) {
            )}
         </section>
       </div>
+      )}
 
       {canManageExecution && execProfiles.length > 0 && (
          <section className="panel" style={{ marginTop: 24 }}>

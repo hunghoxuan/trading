@@ -110,6 +110,8 @@ export default function SignalsPage() {
     note: "",
   });
   const inFlightRef = useRef(false);
+  const [sortKey, setSortKey] = useState("audit");
+  const [sortDir, setSortDir] = useState("desc");
 
   const [filter, setFilter] = useState({
     q: "",
@@ -251,7 +253,44 @@ export default function SignalsPage() {
     return () => window.clearInterval(timer);
   }, [query, selectedSignal?.signal_id]);
 
-  const allSelected = rows.length > 0 && rows.every(r => selectedIds.has(r.signal_id));
+  const sortedRows = useMemo(() => {
+    const statusRankAsc = (v) => {
+      const s = String(v || "").toUpperCase();
+      if (["FILLED", "OPEN", "ACTIVE", "PLACED", "START", "TP"].includes(s)) return 0;
+      if (["PENDING", "NEW", "LOCKED"].includes(s)) return 1;
+      if (["CLOSED", "CANCELLED", "SL", "FAIL", "EXPIRED", "ERROR"].includes(s)) return 2;
+      return 3;
+    };
+    const statusRankDesc = (v) => {
+      const s = String(v || "").toUpperCase();
+      if (["PENDING", "NEW", "LOCKED"].includes(s)) return 0;
+      if (["FILLED", "OPEN", "ACTIVE", "PLACED", "START", "TP"].includes(s)) return 1;
+      if (["CLOSED", "CANCELLED", "SL", "FAIL", "EXPIRED", "ERROR"].includes(s)) return 2;
+      return 3;
+    };
+    const valueOfAudit = (x) => new Date(x?.closed_at || x?.opened_at || x?.created_at || 0).getTime();
+    const out = [...rows];
+    out.sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "symbol") {
+        cmp = String(a?.symbol || "").localeCompare(String(b?.symbol || ""));
+        if (cmp === 0) cmp = valueOfAudit(b) - valueOfAudit(a);
+        return sortDir === "asc" ? cmp : -cmp;
+      }
+      if (sortKey === "status") {
+        cmp = sortDir === "asc"
+          ? statusRankAsc(a?.status) - statusRankAsc(b?.status)
+          : statusRankDesc(a?.status) - statusRankDesc(b?.status);
+        if (cmp === 0) cmp = valueOfAudit(b) - valueOfAudit(a);
+        return cmp;
+      }
+      cmp = valueOfAudit(a) - valueOfAudit(b);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return out;
+  }, [rows, sortKey, sortDir]);
+
+  const allSelected = sortedRows.length > 0 && sortedRows.every(r => selectedIds.has(r.signal_id));
 
   return (
     <section className="logs-page-container stack-layout">
@@ -314,6 +353,15 @@ export default function SignalsPage() {
           <select value={filter.range} onChange={(e) => setFilter(f => ({ ...f, range: e.target.value, page: 1 }))}>
             {RANGE_OPTIONS.map(r => <option key={r.val} value={r.val}>{r.lab}</option>)}
           </select>
+          <select value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
+            <option value="audit">Sort: Audit</option>
+            <option value="symbol">Sort: Symbol</option>
+            <option value="status">Sort: Status</option>
+          </select>
+          <select value={sortDir} onChange={(e) => setSortDir(e.target.value)}>
+            <option value="desc">DESC</option>
+            <option value="asc">ASC</option>
+          </select>
         </div>
 
         <div className="toolbar-group toolbar-bulk-action">
@@ -348,7 +396,7 @@ export default function SignalsPage() {
                         const checked = e.target.checked;
                         setSelectedIds(prev => {
                           const next = new Set(prev);
-                          rows.forEach(r => checked ? next.add(r.signal_id) : next.delete(r.signal_id));
+                          sortedRows.forEach(r => checked ? next.add(r.signal_id) : next.delete(r.signal_id));
                           return next;
                         });
                       }}
@@ -361,7 +409,7 @@ export default function SignalsPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(t => {
+                {sortedRows.map(t => {
                   const status = statusUi(t.status);
                   const sideValue = String(t.action || t.side || '-').toUpperCase();
                   const sideCls = sideValue === 'BUY' ? 'side-buy' : 'side-sell';

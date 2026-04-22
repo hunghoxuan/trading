@@ -495,6 +495,7 @@ export default function ChartSnapshotsPage() {
   const [tab, setTab] = useState("prompt");
   const [responseTab, setResponseTab] = useState("text");
   const [status, setStatus] = useState({ type: "", text: "" });
+  const [actionStatus, setActionStatus] = useState({ action: "", type: "", text: "" });
 
   const [analysisRaw, setAnalysisRaw] = useState("");
   const [analysisJson, setAnalysisJson] = useState("");
@@ -542,6 +543,10 @@ export default function ChartSnapshotsPage() {
     }
   };
 
+  const setActionMessage = (action, type, text) => {
+    setActionStatus({ action, type, text: String(text || "") });
+  };
+
   const analyzeFiles = async (files = []) => {
     setAnalyzing(true);
     setStatus({ type: "", text: "" });
@@ -567,9 +572,13 @@ export default function ChartSnapshotsPage() {
       setUsedFiles(Array.isArray(out?.used_files) ? out.used_files : []);
       if (!files.length) setAnalysisFilesDisplay(Array.isArray(out?.used_files) ? out.used_files : []);
       setResponseTab("text");
-      setStatus({ type: "success", text: `Analyzed ${Array.isArray(out?.used_files) ? out.used_files.length : 0} screenshot(s).` });
+      const msg = `Analyzed ${Array.isArray(out?.used_files) ? out.used_files.length : 0} screenshot(s).`;
+      setStatus({ type: "success", text: msg });
+      setActionMessage("analyze", "success", msg);
     } catch (e) {
-      setStatus({ type: "error", text: String(e?.message || e || "Analyze failed.") });
+      const msg = String(e?.message || e || "Analyze failed.");
+      setStatus({ type: "error", text: msg });
+      setActionMessage("analyze", "error", msg);
     } finally {
       setAnalyzing(false);
     }
@@ -606,12 +615,18 @@ export default function ChartSnapshotsPage() {
       const expectedTfSet = new Set(tfs.map((x) => toTradingViewInterval(x).toUpperCase()));
       const missing = [...expectedTfSet].filter((tf) => !createdTfSet.has(tf));
       if (missing.length) {
-        setStatus({ type: "warning", text: `Captured ${created.length} snapshot(s). Missing TF: ${missing.map(intervalTokenToLabel).join(", ")}` });
+        const msg = `Captured ${created.length} snapshot(s). Missing TF: ${missing.map(intervalTokenToLabel).join(", ")}`;
+        setStatus({ type: "warning", text: msg });
+        setActionMessage("capture", "warning", msg);
       } else {
-        setStatus({ type: "success", text: `Captured ${created.length || tfs.length} snapshot(s).` });
+        const msg = `Captured ${created.length || tfs.length} snapshot(s).`;
+        setStatus({ type: "success", text: msg });
+        setActionMessage("capture", "success", msg);
       }
     } catch (e) {
-      setStatus({ type: "error", text: String(e?.message || e || "Snapshots failed.") });
+      const msg = String(e?.message || e || "Snapshots failed.");
+      setStatus({ type: "error", text: msg });
+      setActionMessage("capture", "error", msg);
     } finally {
       setCapturing(false);
     }
@@ -651,7 +666,9 @@ export default function ChartSnapshotsPage() {
     const matchedFiles = targetTfTokens.map((tf) => byTf.get(tf)).filter(Boolean);
 
     if (matchedFiles.length === targetTfTokens.length && matchedFiles.length > 0) {
-      setStatus({ type: "success", text: `Using existing snapshots (${matchedFiles.length}) from last 15 minutes.` });
+      const msg = `Using existing snapshots (${matchedFiles.length}) from last 15 minutes.`;
+      setStatus({ type: "success", text: msg });
+      setActionMessage("analyze", "success", msg);
       await analyzeFiles(matchedFiles);
       return;
     }
@@ -681,7 +698,9 @@ export default function ChartSnapshotsPage() {
       const newFiles = created.map((x) => String(x?.file_name || "").trim()).filter(Boolean);
       await analyzeFiles(newFiles);
     } catch (e) {
-      setStatus({ type: "error", text: String(e?.message || e || "Snapshots failed before analyze.") });
+      const msg = String(e?.message || e || "Snapshots failed before analyze.");
+      setStatus({ type: "error", text: msg });
+      setActionMessage("analyze", "error", msg);
     } finally {
       setCapturing(false);
     }
@@ -732,11 +751,16 @@ export default function ChartSnapshotsPage() {
       });
       if (!signals.length) throw new Error("No valid signal found in response JSON.");
       for (const payload of signals) {
-        await api.createTrade(payload);
+        const finalPayload = { ...payload, note: responseText || payload.note || "" };
+        await api.createTrade(finalPayload);
       }
-      setStatus({ type: "success", text: `Added ${signals.length} signal(s).` });
+      const msg = `Added ${signals.length} signal(s).`;
+      setStatus({ type: "success", text: msg });
+      setActionMessage("add", "success", msg);
     } catch (e) {
-      setStatus({ type: "error", text: String(e?.message || e || "Add Signal failed.") });
+      const msg = String(e?.message || e || "Add Signal failed.");
+      setStatus({ type: "error", text: msg });
+      setActionMessage("add", "error", msg);
     } finally {
       setAddingSignal(false);
     }
@@ -1032,7 +1056,9 @@ export default function ChartSnapshotsPage() {
               ))}
             </div>
             <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>{capturing ? "Snapshots..." : "Snapshots"}</button>
+            {actionStatus.action === "capture" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
             <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
+            {actionStatus.action === "analyze" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
           </div>
         </section>
 
@@ -1044,7 +1070,7 @@ export default function ChartSnapshotsPage() {
           </div>
 
           {responseTab === "text" ? <textarea className="snapshot-mono-v2" rows={18} value={responseText} readOnly /> : null}
-          {responseTab === "raw" ? <textarea className="snapshot-mono-v2" rows={18} value={analysisRaw || analysisJson} onChange={(e) => setAnalysisRaw(e.target.value)} /> : null}
+          {responseTab === "raw" ? <textarea className="snapshot-mono-v2" rows={18} value={analysisRaw || analysisJson} readOnly /> : null}
           {responseTab === "chart" ? (
             <div className="snapshot-chart-grid-v2">
               {chartFiles.length === 0 ? <div className="minor-text">No chart files from current analysis.</div> : chartFiles.map((f) => {
@@ -1065,6 +1091,7 @@ export default function ChartSnapshotsPage() {
 
           <div className="snapshot-actions-under-v2">
             <button className="primary-button" type="button" onClick={addToSignal} disabled={addingSignal || !canAddSignal}>{addingSignal ? "Adding..." : "Add Signal"}</button>
+            {actionStatus.action === "add" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
           </div>
         </section>
       </section>

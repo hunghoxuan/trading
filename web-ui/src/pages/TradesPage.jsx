@@ -172,6 +172,8 @@ export default function TradesPage() {
   });
 
   const query = useMemo(() => ({ ...filter }), [filter]);
+  const [sortKey, setSortKey] = useState("audit");
+  const [sortDir, setSortDir] = useState("desc");
   const inFlightRef = useRef(false);
 
   const accountById = useMemo(() => {
@@ -350,6 +352,42 @@ export default function TradesPage() {
   }, [query, selectedTrade?.trade_id]);
 
   const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(r.trade_id));
+  const sortedRows = useMemo(() => {
+    const statusRankAsc = (v) => {
+      const s = String(v || "").toUpperCase();
+      if (s === "OPEN" || s === "FILLED") return 0;
+      if (s === "PENDING") return 1;
+      if (s === "CLOSED" || s === "CANCELLED") return 2;
+      return 3;
+    };
+    const statusRankDesc = (v) => {
+      const s = String(v || "").toUpperCase();
+      if (s === "PENDING") return 0;
+      if (s === "OPEN" || s === "FILLED") return 1;
+      if (s === "CLOSED" || s === "CANCELLED") return 2;
+      return 3;
+    };
+    const valueOfAudit = (x) => new Date(x?.closed_at || x?.opened_at || x?.created_at || 0).getTime();
+    const out = [...rows];
+    out.sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "symbol") {
+        cmp = String(a?.symbol || "").localeCompare(String(b?.symbol || ""));
+        if (cmp === 0) cmp = valueOfAudit(b) - valueOfAudit(a);
+        return sortDir === "asc" ? cmp : -cmp;
+      }
+      if (sortKey === "status") {
+        cmp = sortDir === "asc"
+          ? statusRankAsc(a?.execution_status) - statusRankAsc(b?.execution_status)
+          : statusRankDesc(a?.execution_status) - statusRankDesc(b?.execution_status);
+        if (cmp === 0) cmp = valueOfAudit(b) - valueOfAudit(a);
+        return cmp;
+      }
+      cmp = valueOfAudit(a) - valueOfAudit(b);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return out;
+  }, [rows, sortKey, sortDir]);
 
   return (
     <section className="logs-page-container stack-layout">
@@ -410,6 +448,15 @@ export default function TradesPage() {
           <select value={filter.range} onChange={(e) => setFilter((f) => ({ ...f, range: e.target.value, page: 1 }))}>
             {RANGE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
+          <select value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
+            <option value="audit">Sort: Audit</option>
+            <option value="symbol">Sort: Symbol</option>
+            <option value="status">Sort: Status</option>
+          </select>
+          <select value={sortDir} onChange={(e) => setSortDir(e.target.value)}>
+            <option value="desc">DESC</option>
+            <option value="asc">ASC</option>
+          </select>
         </div>
         <div className="toolbar-group toolbar-bulk-action">
           <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)} disabled={bulkBusy}>
@@ -455,9 +502,9 @@ export default function TradesPage() {
               <tbody>
                 {loading && rows.length === 0 ? (
                   <tr><td colSpan="6" className="loading">Loading trades...</td></tr>
-                ) : rows.length === 0 ? (
+                ) : sortedRows.length === 0 ? (
                   <tr><td colSpan="6" className="empty-state">No trades found.</td></tr>
-                ) : rows.map((t) => {
+                ) : sortedRows.map((t) => {
                   const status = statusUi(t.execution_status);
                   const action = String(t.action || t.side || "-").toUpperCase();
                   const actionCls = action === "BUY" ? "side-buy" : "side-sell";
