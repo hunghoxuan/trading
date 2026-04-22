@@ -18,6 +18,7 @@ const API_KEY_NAME_OPTIONS = [
   { value: "OPENAI_API_KEY", label: "OpenAI API Key" },
   { value: "DEEPSEEK_API_KEY", label: "DeepSeek API Key" },
   { value: "CLAUDE_API_KEY", label: "Claude API Key" },
+  { value: "TWELVE_DATA_API_KEY", label: "Twelve Data API Key" },
 ];
 
 function isSystemRole(user) {

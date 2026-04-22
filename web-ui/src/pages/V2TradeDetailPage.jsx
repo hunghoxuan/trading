@@ -126,6 +126,7 @@ export default function TradeDetailPage() {
           tpPrice={asPrice(t.tp)}
           openedAt={t.opened_at}
           closedAt={t.closed_at}
+          analysisSnapshot={t?.metadata?.analysis_snapshot || t?.raw_json?.analysis_snapshot || null}
         />
       </div>
 

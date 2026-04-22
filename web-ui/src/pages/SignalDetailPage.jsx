@@ -111,6 +111,7 @@ export default function TradeDetailPage() {
           entryPrice={asPrice(t.entry_price || t.raw_json?.entry || t.entry)}
           slPrice={asPrice(t.sl_price || t.raw_json?.sl || t.sl)}
           tpPrice={asPrice(t.tp_price || t.raw_json?.tp || t.tp)}
+          analysisSnapshot={t?.raw_json?.analysis_snapshot || null}
         />
       </div>
 

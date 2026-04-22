@@ -53,6 +53,56 @@ export function mapIntervalToBinance(tf) {
   return s;
 }
 
+function parseSnapshotBars(snapshot) {
+  const bars = Array.isArray(snapshot?.bars) ? snapshot.bars : [];
+  return bars
+    .map((x) => {
+      const t = Number(x?.time);
+      const o = Number(x?.open);
+      const h = Number(x?.high);
+      const l = Number(x?.low);
+      const c = Number(x?.close);
+      if (!Number.isFinite(t) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return null;
+      return { time: t, open: o, high: h, low: l, close: c };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.time - b.time);
+}
+
+function parsePdZoneBounds(item) {
+  const asNum = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const lowRaw = asNum(item?.low ?? item?.bottom);
+  const highRaw = asNum(item?.high ?? item?.top);
+  if (lowRaw != null && highRaw != null) {
+    return { low: Math.min(lowRaw, highRaw), high: Math.max(lowRaw, highRaw) };
+  }
+  const zone = String(item?.zone || "").trim();
+  if (!zone) return null;
+  const nums = zone.match(/-?\d+(?:\.\d+)?/g);
+  if (!nums || nums.length < 2) return null;
+  const a = Number(nums[0]);
+  const b = Number(nums[1]);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return { low: Math.min(a, b), high: Math.max(a, b) };
+}
+
+function pdColorByType(typeRaw) {
+  const t = String(typeRaw || "").toUpperCase();
+  if (t.includes("OB")) return '#f59e0b';
+  if (t.includes("FVG")) return '#a78bfa';
+  if (t.includes("LIQ")) return '#ef4444';
+  if (t.includes("S/R") || t.includes("SR")) return '#22c55e';
+  return '#60a5fa';
+}
+
+function extractAnalysisSnapshot(analysisSnapshot) {
+  if (analysisSnapshot && typeof analysisSnapshot === "object") return analysisSnapshot;
+  return null;
+}
+
 export const TradeSignalChart = ({ 
   symbol = 'BTCUSDT', 
   interval = '1h', 
@@ -62,7 +112,8 @@ export const TradeSignalChart = ({
   slPrice = null,
   tpPrice = null,
   openedAt = null,
-  closedAt = null
+  closedAt = null,
+  analysisSnapshot = null
 }) => {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
@@ -121,12 +172,17 @@ export const TradeSignalChart = ({
 
     // 3. Fetch History + Start Live
     async function initData() {
-      if (!binanceSymbol) return;
+      const snapshot = extractAnalysisSnapshot(analysisSnapshot);
+      const snapshotBars = parseSnapshotBars(snapshot);
+      const hasSnapshotBars = snapshotBars.length > 0;
+      if (!binanceSymbol && !hasSnapshotBars) return;
       try {
         setLoading(true);
         let candles = [];
         if (historicalData && historicalData.length > 0) {
           candles = historicalData;
+        } else if (hasSnapshotBars) {
+          candles = snapshotBars;
         } else {
           // If we have openedAt, we want to make sure we fetch enough data before it
           // Binance klines can take endTime (optional)
@@ -172,8 +228,53 @@ export const TradeSignalChart = ({
           }
           if (markers.length > 0) candleSeries.setMarkers(markers);
 
-          // Fit view to trade bounds if available
-          if (openedAt && closedAt) {
+          // Draw PD Array overlays from stored analysis snapshot
+          const pdArrays = Array.isArray(snapshot?.pd_arrays) ? snapshot.pd_arrays : [];
+          if (pdArrays.length) {
+            pdArrays.slice(0, 30).forEach((pd, idx) => {
+              const bounds = parsePdZoneBounds(pd);
+              if (!bounds) return;
+              const color = pdColorByType(pd?.type);
+              candleSeries.createPriceLine({
+                price: bounds.high,
+                color,
+                lineWidth: 1,
+                lineStyle: 2,
+                axisLabelVisible: false,
+                title: `${String(pd?.type || "PD").toUpperCase()} ${String(pd?.timeframe || "").toUpperCase()}`.trim(),
+              });
+              candleSeries.createPriceLine({
+                price: bounds.low,
+                color,
+                lineWidth: 1,
+                lineStyle: 2,
+                axisLabelVisible: false,
+                title: "",
+              });
+              if (idx < 8) {
+                const mid = (bounds.high + bounds.low) / 2;
+                candleSeries.createPriceLine({
+                  price: mid,
+                  color,
+                  lineWidth: 1,
+                  lineStyle: 4,
+                  axisLabelVisible: false,
+                  title: "",
+                });
+              }
+            });
+          }
+
+          // Fit view to stored range first, then trade bounds
+          const snapshotStart = Number(snapshot?.bar_start);
+          const snapshotEnd = Number(snapshot?.bar_end);
+          if (Number.isFinite(snapshotStart) && Number.isFinite(snapshotEnd) && snapshotEnd > snapshotStart) {
+            const dur = snapshotEnd - snapshotStart;
+            chart.timeScale().setVisibleRange({
+              from: snapshotStart - (dur * 0.06),
+              to: snapshotEnd + (dur * 0.06),
+            });
+          } else if (openedAt && closedAt) {
             const rangeStart = Math.floor(new Date(openedAt).getTime() / 1000);
             const rangeEnd = Math.floor(new Date(closedAt).getTime() / 1000);
             // Add 10% padding
@@ -196,6 +297,7 @@ export const TradeSignalChart = ({
       // 4. Start WebSocket (only if not a settled historical trade)
       const isHistorical = closedAt && (new Date(closedAt).getTime() < Date.now() - 3600000);
       if (live && binanceSymbol && isMounted && !isHistorical) {
+        if (hasSnapshotBars) return;
         const socketUrl = `wss://stream.binance.com:9443/ws/${binanceSymbol.toLowerCase()}@kline_${bInterval}`;
         const socket = new WebSocket(socketUrl);
         socket.onmessage = (event) => {
@@ -230,7 +332,7 @@ export const TradeSignalChart = ({
       if (socketRef.current) socketRef.current.close();
       chart.remove();
     };
-  }, [binanceSymbol, bInterval, openedAt, closedAt]); // Re-init if bounds change
+  }, [binanceSymbol, bInterval, openedAt, closedAt, JSON.stringify(analysisSnapshot)]); // Re-init if bounds change
 
   return (
     <div className="chart-wrapper" style={{ position: 'relative', width: '100%', minHeight: '420px' }}>
@@ -245,9 +347,10 @@ export const TradeSignalChart = ({
       />
       <div style={{ padding: '8px', fontSize: '11px', color: '#8b949e', display: 'flex', justifyContent: 'space-between' }}>
         <span>{symbol} {binanceSymbol !== symbol ? `(mapped to ${binanceSymbol} on Binance)` : `(${interval})`} [{bInterval}]</span>
-        {live && binanceSymbol && <span style={{ color: '#26a69a' }}>● Streaming (Binance)</span>}
+        {analysisSnapshot?.status === "ok"
+          ? <span style={{ color: '#22c55e' }}>● Snapshot: TwelveData</span>
+          : (live && binanceSymbol && <span style={{ color: '#26a69a' }}>● Streaming (Binance)</span>)}
       </div>
     </div>
   );
 };
-

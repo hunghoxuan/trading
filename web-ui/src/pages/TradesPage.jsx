@@ -640,6 +640,7 @@ export default function TradesPage() {
                    tpPrice={asNum(selectedTrade.tp)}
                    openedAt={selectedTrade.opened_at}
                    closedAt={selectedTrade.closed_at}
+                   analysisSnapshot={selectedTrade?.metadata?.analysis_snapshot || selectedTrade?.raw_json?.analysis_snapshot || null}
                 />
               </div>
               {createMode ? (

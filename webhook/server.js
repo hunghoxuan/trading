@@ -132,6 +132,7 @@ const CFG = {
   mt5PruneEnabled: asBool(process.env.MT5_PRUNE_ENABLED, true),
   mt5PruneDays: asNum(process.env.MT5_PRUNE_DAYS, 14),
   mt5PruneIntervalMinutes: asNum(process.env.MT5_PRUNE_INTERVAL_MINUTES, 60),
+  twelveDataApiKey: envStr(process.env.TWELVE_DATA_API_KEY),
   mt5PostgresUrl: envStr(process.env.MT5_POSTGRES_URL) || envStr(process.env.POSTGRES_URL) || envStr(process.env.POSTGRE_URL),
   uiDistPath: path.resolve(__dirname, envStr(process.env.WEB_UI_DIST_PATH || process.env.WEBHOOK_UI_DIST_PATH, "../web-ui/dist")),
   landingDistPath: path.resolve(__dirname, envStr(process.env.WEB_LANDING_DIST_PATH, "../web")),
@@ -347,6 +348,7 @@ const ALLOWED_AI_API_KEY_NAMES = new Set([
   "OPENAI_API_KEY",
   "DEEPSEEK_API_KEY",
   "CLAUDE_API_KEY",
+  "TWELVE_DATA_API_KEY",
 ]);
 
 function normalizeAiApiKeyName(rawName) {
@@ -355,6 +357,7 @@ function normalizeAiApiKeyName(rawName) {
   if (name === "OPENAI" || name === "OPENAI_KEY") return "OPENAI_API_KEY";
   if (name === "DEEPSEEK" || name === "DEEPSEEK_KEY") return "DEEPSEEK_API_KEY";
   if (name === "CLAUDE" || name === "ANTHROPIC" || name === "ANTHROPIC_API_KEY" || name === "CLAUDE_KEY") return "CLAUDE_API_KEY";
+  if (name === "TWELVE" || name === "TWELVEDATA" || name === "TWELVE_DATA" || name === "TWELVE_DATA_KEY") return "TWELVE_DATA_API_KEY";
   return name;
 }
 
@@ -3199,6 +3202,164 @@ function mt5TfToMinutes(tf) {
   return isNaN(n) ? s : String(n);
 }
 
+function normalizeSymbolForTwelve(rawSymbol) {
+  const base = String(rawSymbol || "").trim().toUpperCase();
+  if (!base) return "";
+  const noProvider = base.includes(":") ? base.split(":").slice(1).join(":") : base;
+  const compact = noProvider.replace(/[^A-Z0-9]/g, "");
+  if (!compact) return "";
+  if (compact.endsWith("USDT") && compact.length > 4) {
+    const left = compact.slice(0, -4);
+    return `${left}/USD`;
+  }
+  if (/^[A-Z]{6}$/.test(compact)) {
+    return `${compact.slice(0, 3)}/${compact.slice(3)}`;
+  }
+  if (/^[A-Z]{3,5}USD$/.test(compact)) {
+    return `${compact.slice(0, -3)}/USD`;
+  }
+  return compact;
+}
+
+function timeframeToTwelve(tfRaw) {
+  const s = String(tfRaw || "").trim().toLowerCase();
+  if (!s || s === "manual") return "15min";
+  if (/^\d+$/.test(s)) {
+    const n = Number(s);
+    if (!Number.isFinite(n) || n <= 0) return "15min";
+    if (n < 60) return `${n}min`;
+    if (n % 60 === 0 && n < 1440) return `${n / 60}h`;
+    if (n === 1440) return "1day";
+    if (n === 10080) return "1week";
+    if (n === 43200) return "1month";
+    return `${Math.max(1, Math.round(n / 60))}h`;
+  }
+  const m = s.match(/^(\d+)(m|min|h|d|w)$/);
+  if (m) {
+    const n = Math.max(1, Number(m[1] || 1));
+    const unit = m[2];
+    if (unit === "m" || unit === "min") return `${n}min`;
+    if (unit === "h") return `${n}h`;
+    if (unit === "d") return `${n}day`;
+    if (unit === "w") return `${n}week`;
+  }
+  return s;
+}
+
+function parseSnapshotPdArrays(payload = {}) {
+  const fromTradePlan = payload?.market_analysis?.pd_arrays;
+  const direct = payload?.pd_arrays;
+  const arr = Array.isArray(fromTradePlan) ? fromTradePlan : (Array.isArray(direct) ? direct : []);
+  return arr
+    .map((x) => (x && typeof x === "object" ? x : null))
+    .filter(Boolean)
+    .map((x) => ({
+      type: String(x.type || "").trim(),
+      timeframe: String(x.timeframe || x.tf || "").trim(),
+      zone: x.zone,
+      low: x.low ?? x.bottom ?? null,
+      high: x.high ?? x.top ?? null,
+      status: String(x.status || "").trim(),
+      note: String(x.note || "").trim(),
+    }));
+}
+
+function parseSnapshotBarsLimit(payload = {}) {
+  const n = Number(payload.lookbackBars ?? payload.lookback_bars ?? payload.bars ?? 300);
+  if (!Number.isFinite(n)) return 300;
+  return Math.max(50, Math.min(1000, Math.round(n)));
+}
+
+function parseTimeToUnixSec(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return null;
+  let ms = Date.parse(s);
+  if (!Number.isFinite(ms)) {
+    ms = Date.parse(s.replace(" ", "T") + "Z");
+  }
+  if (!Number.isFinite(ms)) return null;
+  return Math.floor(ms / 1000);
+}
+
+async function loadUserApiKeysMap(userId) {
+  const db = await mt5InitBackend();
+  const out = {};
+  const configRes = await db.query("SELECT name, data FROM user_settings WHERE user_id = $1 AND type = 'api_key'", [userId]);
+  for (const row of configRes.rows || []) {
+    const name = normalizeAiApiKeyName(row?.name);
+    const dec = decryptObject(row?.data && typeof row.data === "object" ? row.data : {});
+    if (ALLOWED_AI_API_KEY_NAMES.has(name) && dec?.value) {
+      out[name] = String(dec.value || "");
+    }
+    if (dec && typeof dec === "object") {
+      Object.assign(out, dec);
+    }
+  }
+  return out;
+}
+
+async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, timeframe }) {
+  const keys = await loadUserApiKeysMap(userId).catch(() => ({}));
+  const twelveKey = String(keys.TWELVE_DATA_API_KEY || CFG.twelveDataApiKey || "").trim();
+  if (!twelveKey) return { provider: "twelvedata", status: "skipped", reason: "TWELVE_DATA_API_KEY missing" };
+
+  const tvSymbol = normalizeSymbolForTwelve(symbol);
+  if (!tvSymbol) return { provider: "twelvedata", status: "skipped", reason: "invalid symbol" };
+  const interval = timeframeToTwelve(timeframe);
+  const outputsize = parseSnapshotBarsLimit(payload);
+  const endpoint = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(tvSymbol)}&interval=${encodeURIComponent(interval)}&outputsize=${outputsize}&timezone=UTC&order=ASC&apikey=${encodeURIComponent(twelveKey)}`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const res = await fetch(endpoint, { signal: ctrl.signal });
+    const txt = await res.text();
+    let data = {};
+    try { data = JSON.parse(txt); } catch {}
+    if (!res.ok) {
+      return { provider: "twelvedata", status: "error", reason: `http_${res.status}` };
+    }
+    if (String(data?.status || "").toLowerCase() === "error") {
+      return { provider: "twelvedata", status: "error", reason: String(data?.message || "provider error") };
+    }
+    const values = Array.isArray(data?.values) ? data.values : [];
+    const bars = values
+      .map((v) => {
+        const t = parseTimeToUnixSec(v?.datetime);
+        const o = Number(v?.open);
+        const h = Number(v?.high);
+        const l = Number(v?.low);
+        const c = Number(v?.close);
+        if (!Number.isFinite(t) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return null;
+        return { time: t, open: o, high: h, low: l, close: c };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.time - b.time);
+    const barStart = bars.length ? bars[0].time : null;
+    const barEnd = bars.length ? bars[bars.length - 1].time : null;
+    return {
+      provider: "twelvedata",
+      status: "ok",
+      symbol: String(symbol || "").toUpperCase(),
+      normalized_symbol: tvSymbol,
+      timeframe: String(timeframe || ""),
+      interval,
+      fetched_at: new Date().toISOString(),
+      bar_start: barStart,
+      bar_end: barEnd,
+      bars,
+      entry: Number.isFinite(Number(payload?.entry ?? payload?.price)) ? Number(payload?.entry ?? payload?.price) : null,
+      sl: Number.isFinite(Number(payload?.sl)) ? Number(payload?.sl) : null,
+      tp: Number.isFinite(Number(payload?.tp)) ? Number(payload?.tp) : null,
+      pd_arrays: parseSnapshotPdArrays(payload),
+    };
+  } catch (error) {
+    const reason = error?.name === "AbortError" ? "timeout" : String(error?.message || error || "fetch_failed");
+    return { provider: "twelvedata", status: "error", reason };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   const source = String(payload.source || opts.source || "tradingview");
   const eventType = String(opts.eventType || "QUEUED");
@@ -3298,6 +3459,9 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
             signal_tf: signalTf || null,
             chart_tf: chartTf || null,
             provider: payload.provider || null,
+            analysis_snapshot: rawJsonNormalized?.analysis_snapshot && typeof rawJsonNormalized.analysis_snapshot === "object"
+              ? rawJsonNormalized.analysis_snapshot
+              : null,
           },
         });
         await mt5Log(signalId, "signals", { 
@@ -4980,6 +5144,16 @@ const appHandler = async (req, res) => {
       const timeframe = String(payload.timeframe || payload.tf || "").trim();
       const strategy = String(payload.strategy || (source === "ai" ? "ai" : "Manual")).trim();
       const effectiveUserId = uiEffectiveUserId(req, url, payload) || sess.user_id || CFG.mt5DefaultUserId;
+      const rawPayload = payload && typeof payload === "object" ? { ...payload } : {};
+      const analysisSnapshot = await buildAnalysisSnapshotFromTwelve({
+        userId: effectiveUserId,
+        payload: rawPayload,
+        symbol: payload.symbol,
+        timeframe: timeframe || "15m",
+      }).catch(() => null);
+      if (analysisSnapshot && typeof analysisSnapshot === "object") {
+        rawPayload.analysis_snapshot = analysisSnapshot;
+      }
       const enqueue = await mt5EnqueueSignalFromPayload({
         id: payload.signal_id || payload.id || "",
         action: payload.action,
@@ -4997,7 +5171,7 @@ const appHandler = async (req, res) => {
         user_id: effectiveUserId,
         order_type: payload.order_type || "limit",
         provider: "ui",
-        raw_json: payload && typeof payload === "object" ? payload : {},
+        raw_json: rawPayload,
       }, {
         source,
         eventType: "UI_CREATE_TRADE",
@@ -5750,7 +5924,7 @@ const appHandler = async (req, res) => {
       if (body.type === "api_key") {
         settingName = normalizeAiApiKeyName(settingName);
         if (!ALLOWED_AI_API_KEY_NAMES.has(settingName)) {
-          return json(res, 400, { ok: false, error: "Invalid api_key name. Allowed: GEMINI_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY, CLAUDE_API_KEY" });
+          return json(res, 400, { ok: false, error: "Invalid api_key name. Allowed: GEMINI_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY, CLAUDE_API_KEY, TWELVE_DATA_API_KEY" });
         }
         const rawValue = String(payloadData.value || "").trim();
         data = encryptObject({ value: rawValue });

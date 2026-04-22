@@ -575,6 +575,7 @@ export default function SignalsPage() {
                    entryPrice={asNum(selectedSignal.entry || selectedSignal.target_price || selectedSignal.entry_price)}
                    slPrice={asNum(selectedSignal.sl)}
                    tpPrice={asNum(selectedSignal.tp)}
+                   analysisSnapshot={selectedSignal?.raw_json?.analysis_snapshot || null}
                 />
               </div>
 
