@@ -153,6 +153,16 @@ function parseNum(value) {
   return Number.isFinite(n) ? n : NaN;
 }
 
+function normalizeSignalSymbol(symbolRaw) {
+  const s = String(symbolRaw || "").trim().toUpperCase();
+  if (!s) return "";
+  if (s.includes(":")) {
+    const parts = s.split(":");
+    return String(parts[parts.length - 1] || "").trim().toUpperCase();
+  }
+  return s;
+}
+
 function normalizeNoteForStorage(v) {
   if (v === null || v === undefined) return "";
   if (typeof v === "string") return v;
@@ -409,7 +419,7 @@ function extractSignalsFromAnalysis(parsed, fallback = {}) {
       const sl = parseNum(s?.sl ?? s?.stop_loss);
       const tp = parseNum(s?.tp ?? s?.take_profit ?? s?.tp1 ?? s?.target);
       return {
-        symbol: String(s?.symbol || fallback.symbol || "").trim(),
+        symbol: normalizeSignalSymbol(s?.symbol || fallback.symbol || ""),
         action,
         entry,
         sl,
