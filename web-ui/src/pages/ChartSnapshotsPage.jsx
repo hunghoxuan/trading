@@ -757,14 +757,6 @@ export default function ChartSnapshotsPage() {
             <label className="minor-text">Lookback</label>
             <input type="number" min="50" max="5000" value={cfg.lookbackBars} onChange={(e) => setCfgField("lookbackBars", e.target.value)} />
           </div>
-          <div>
-            <label className="minor-text">Provider</label>
-            <input value={provider} onChange={(e) => setProvider(e.target.value)} />
-          </div>
-          <div>
-            <label className="minor-text">TF</label>
-            <input value={timeframe} onChange={(e) => setTimeframe(e.target.value)} />
-          </div>
         </div>
 
         <div>
@@ -784,7 +776,7 @@ export default function ChartSnapshotsPage() {
         </div>
 
         <div className="snapshot-tf-v2">
-          <div>
+          <div className="snapshot-col-span-5">
             <label className="minor-text">HTF Bias TFs</label>
             <div className="snapshot-tag-wrap-v2">
               {HTF_OPTIONS.map((tf) => (
@@ -792,7 +784,7 @@ export default function ChartSnapshotsPage() {
               ))}
             </div>
           </div>
-          <div>
+          <div className="snapshot-col-span-4">
             <label className="minor-text">Execution TFs</label>
             <div className="snapshot-tag-wrap-v2">
               {EXEC_OPTIONS.map((tf) => (
@@ -800,7 +792,7 @@ export default function ChartSnapshotsPage() {
               ))}
             </div>
           </div>
-          <div>
+          <div className="snapshot-col-span-3">
             <label className="minor-text">Confirmation TFs</label>
             <div className="snapshot-tag-wrap-v2">
               {CONF_OPTIONS.map((tf) => (
@@ -811,7 +803,7 @@ export default function ChartSnapshotsPage() {
         </div>
 
         <div className="snapshot-context-v2">
-          <div>
+          <div className="snapshot-col-span-2">
             <label className="minor-text">HTF Bias</label>
             <select value={cfg.htfbias} onChange={(e) => setCfgField("htfbias", e.target.value)}>
               <option value="">Auto</option>
@@ -820,7 +812,7 @@ export default function ChartSnapshotsPage() {
               <option>Ranging</option>
             </select>
           </div>
-          <div>
+          <div className="snapshot-col-span-2">
             <label className="minor-text">Direction</label>
             <select value={cfg.dir} onChange={(e) => setCfgField("dir", e.target.value)}>
               <option>Direction: Both</option>
@@ -829,11 +821,11 @@ export default function ChartSnapshotsPage() {
               <option>Short only</option>
             </select>
           </div>
-          <div>
+          <div className="snapshot-col-span-4">
             <label className="minor-text">Key Level</label>
             <input value={cfg.keylevel} onChange={(e) => setCfgField("keylevel", e.target.value)} placeholder="e.g. 3300 resistance" />
           </div>
-          <div>
+          <div className="snapshot-col-span-2">
             <label className="minor-text">News</label>
             <select value={cfg.news} onChange={(e) => setCfgField("news", e.target.value)}>
               <option value="">None</option>
@@ -842,7 +834,7 @@ export default function ChartSnapshotsPage() {
               <option>Earnings release</option>
             </select>
           </div>
-          <div className="full">
+          <div className="snapshot-col-span-2">
             <label className="minor-text">Notes</label>
             <input value={cfg.notes} onChange={(e) => setCfgField("notes", e.target.value)} placeholder="Notes / extra context" />
           </div>

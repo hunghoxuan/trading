@@ -477,10 +477,12 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 }
 .snapshot-template-row-v2 {
   display: grid;
-  grid-template-columns: minmax(180px, 220px) minmax(220px, 1fr) auto;
+  grid-template-columns: minmax(170px, 210px) minmax(180px, 240px) auto;
   gap: 10px;
   align-items: end;
   justify-content: end;
+  justify-self: end;
+  width: max-content;
 }
 .snapshot-template-col-v2 {
   min-width: 0;
@@ -526,17 +528,18 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 }
 .snapshot-tf-v2 {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 8px;
 }
 .snapshot-context-v2 {
   display: grid;
-  grid-template-columns: repeat(4, minmax(140px, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 8px;
 }
-.snapshot-context-v2 .full {
-  grid-column: span 4;
-}
+.snapshot-col-span-2 { grid-column: span 2; }
+.snapshot-col-span-3 { grid-column: span 3; }
+.snapshot-col-span-4 { grid-column: span 4; }
+.snapshot-col-span-5 { grid-column: span 5; }
 .snapshot-io-row-v2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -671,7 +674,8 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   .snapshot-settings-head-v2 { grid-template-columns: 1fr; }
   .snapshot-fields-v2 { grid-template-columns: repeat(4, 1fr); }
   .snapshot-context-v2 { grid-template-columns: repeat(2, 1fr); }
-  .snapshot-context-v2 .full { grid-column: span 2; }
+  .snapshot-context-v2 > div,
+  .snapshot-tf-v2 > div { grid-column: span 1 !important; }
   .snapshot-template-row-v2 { grid-template-columns: 1fr 1fr auto; }
   .snapshot-capture-inline-v2 { grid-template-columns: 1fr; align-items: start; }
   .snapshot-io-row-v2 { grid-template-columns: 1fr; }
@@ -680,4 +684,5 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   .snapshot-template-row-v2 { grid-template-columns: 1fr; }
   .snapshot-fields-v2 { grid-template-columns: repeat(2, 1fr); }
   .snapshot-tf-v2 { grid-template-columns: 1fr; }
+  .snapshot-tf-v2 > div { grid-column: span 1 !important; }
 }
