@@ -169,12 +169,42 @@ function extractJsonCandidate(textRaw) {
   let s = text.replace(/^\s*`+json\s*/i, "").replace(/^\s*```json\s*/i, "").replace(/\s*```\s*$/i, "").trim();
   const fenced = s.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   if (fenced?.[1]) s = fenced[1].trim();
-  const firstObj = s.indexOf("{");
-  const lastObj = s.lastIndexOf("}");
-  if (firstObj >= 0 && lastObj > firstObj) return s.slice(firstObj, lastObj + 1);
-  const firstArr = s.indexOf("[");
-  const lastArr = s.lastIndexOf("]");
-  if (firstArr >= 0 && lastArr > firstArr) return s.slice(firstArr, lastArr + 1);
+  const findBalanced = (str, openChar, closeChar) => {
+    const start = str.indexOf(openChar);
+    if (start < 0) return "";
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < str.length; i += 1) {
+      const ch = str[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (ch === "\"") inString = false;
+        continue;
+      }
+      if (ch === "\"") {
+        inString = true;
+        continue;
+      }
+      if (ch === openChar) depth += 1;
+      if (ch === closeChar) {
+        depth -= 1;
+        if (depth === 0) return str.slice(start, i + 1);
+      }
+    }
+    return "";
+  };
+  const obj = findBalanced(s, "{", "}");
+  if (obj) return obj;
+  const arr = findBalanced(s, "[", "]");
+  if (arr) return arr;
   return s;
 }
 
@@ -359,7 +389,11 @@ export default function ChartSnapshotsPage() {
 
   const promptText = useMemo(() => buildPrompt(cfg), [cfg]);
   const jsonConfigText = useMemo(() => buildJsonConfig(cfg), [cfg]);
-  const responseText = useMemo(() => buildFriendlyResponse(analysisParsed), [analysisParsed]);
+  const effectiveParsed = useMemo(
+    () => analysisParsed || tryParseJsonLoose(analysisJson) || tryParseJsonLoose(analysisRaw),
+    [analysisParsed, analysisJson, analysisRaw],
+  );
+  const responseText = useMemo(() => buildFriendlyResponse(effectiveParsed), [effectiveParsed]);
 
   const setCfgField = (key, value) => setCfg((prev) => ({ ...prev, [key]: value }));
 
@@ -558,7 +592,7 @@ export default function ChartSnapshotsPage() {
     setAddingSignal(true);
     setStatus({ type: "", text: "" });
     try {
-      let parsed = analysisParsed;
+      let parsed = effectiveParsed;
       if (!parsed && analysisJson) parsed = JSON.parse(analysisJson);
       if (!parsed && analysisRaw) parsed = tryParseJsonLoose(analysisRaw);
       const signals = extractSignalsFromAnalysis(parsed, {
@@ -900,7 +934,7 @@ export default function ChartSnapshotsPage() {
           ) : null}
 
           <div className="snapshot-actions-under-v2">
-            <button className="primary-button" type="button" onClick={addToSignal} disabled={addingSignal || (!analysisParsed && !analysisJson && !tryParseJsonLoose(analysisRaw))}>{addingSignal ? "Adding..." : "Add Signal"}</button>
+            <button className="primary-button" type="button" onClick={addToSignal} disabled={addingSignal || !effectiveParsed}>{addingSignal ? "Adding..." : "Add Signal"}</button>
           </div>
         </section>
       </section>
