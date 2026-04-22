@@ -1084,16 +1084,29 @@ async function captureTradingViewSnapshotsBatch(opts = {}) {
     .filter(Boolean)
     .slice(0, 10);
   const timeframes = normalized.length ? normalized : ["15m", "4h", "1D"];
+  const requestedConcurrency = Math.max(1, Math.min(3, Math.floor(asNum(opts.captureConcurrency, asNum(process.env.SNAPSHOT_CAPTURE_CONCURRENCY, 2)))));
+  const concurrency = Math.min(requestedConcurrency, timeframes.length);
   const browser = await playwright.chromium.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
   });
   try {
-    const items = [];
-    for (const tf of timeframes) {
-      const one = await captureTradingViewSnapshotWithBrowser(browser, { ...opts, timeframe: tf, tf });
-      items.push(one);
+    const items = new Array(timeframes.length);
+    let cursor = 0;
+
+    async function worker() {
+      while (true) {
+        const idx = cursor;
+        cursor += 1;
+        if (idx >= timeframes.length) return;
+        const tf = timeframes[idx];
+        const one = await captureTradingViewSnapshotWithBrowser(browser, { ...opts, timeframe: tf, tf });
+        items[idx] = one;
+      }
     }
+
+    const workers = Array.from({ length: concurrency }, () => worker());
+    await Promise.all(workers);
     return items;
   } finally {
     await browser.close();
