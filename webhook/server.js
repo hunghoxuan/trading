@@ -3114,7 +3114,8 @@ function mt5NormalizeAction(payload) {
 }
 
 function mt5NormalizeSymbol(payload) {
-  const symbol = String(payload.symbol || "").trim().toUpperCase();
+  const raw = String(payload.symbol || "").trim().toUpperCase();
+  const symbol = raw.includes(":") ? raw.split(":").slice(1).join(":").trim().toUpperCase() : raw;
   if (!symbol) {
     throw new Error("symbol is required");
   }
@@ -3244,6 +3245,42 @@ function normalizeSymbolForTwelve(rawSymbol) {
     return `${compact.slice(0, -3)}/USD`;
   }
   return compact;
+}
+
+async function resolveTwelveSymbol(rawSymbol, apiKey = "") {
+  const base = String(rawSymbol || "").trim().toUpperCase();
+  if (!base) return "";
+  const noProvider = base.includes(":") ? base.split(":").slice(1).join(":").trim().toUpperCase() : base;
+  const normalized = normalizeSymbolForTwelve(noProvider);
+  const compact = noProvider.replace(/[^A-Z0-9]/g, "");
+  const candidates = [];
+  const add = (v) => {
+    const s = String(v || "").trim().toUpperCase();
+    if (!s) return;
+    if (!candidates.includes(s)) candidates.push(s);
+  };
+  add(normalized);
+  add(compact);
+  if (/^[A-Z]{6}$/.test(compact)) add(`${compact.slice(0, 3)}/${compact.slice(3)}`);
+  if (/^[A-Z]{3,5}USD$/.test(compact)) add(`${compact.slice(0, -3)}/USD`);
+
+  // Try Twelve symbol search to pick a provider-accepted symbol variant.
+  try {
+    const searchUrl = `https://api.twelvedata.com/symbol_search?symbol=${encodeURIComponent(noProvider)}${apiKey ? `&apikey=${encodeURIComponent(apiKey)}` : ""}`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const res = await fetch(searchUrl, { signal: ctrl.signal });
+    clearTimeout(timer);
+    const out = await res.json().catch(() => ({}));
+    const arr = Array.isArray(out?.data) ? out.data : [];
+    for (const row of arr) {
+      add(row?.symbol);
+    }
+  } catch {
+    // ignore and fallback to static candidates
+  }
+
+  return candidates[0] || normalized || compact;
 }
 
 function timeframeToTwelve(tfRaw) {
@@ -3381,23 +3418,50 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
   const twelveKey = String(keys.TWELVE_DATA_API_KEY || CFG.twelveDataApiKey || "").trim();
   if (!twelveKey) return { provider: "twelvedata", status: "skipped", reason: "TWELVE_DATA_API_KEY missing" };
 
-  const tvSymbol = normalizeSymbolForTwelve(symbol);
+  const tvSymbol = await resolveTwelveSymbol(symbol, twelveKey);
   if (!tvSymbol) return { provider: "twelvedata", status: "skipped", reason: "invalid symbol" };
   const interval = timeframeToTwelve(timeframe);
   const outputsize = parseSnapshotBarsLimit(payload);
-  const endpoint = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(tvSymbol)}&interval=${encodeURIComponent(interval)}&outputsize=${outputsize}&timezone=UTC&order=ASC&apikey=${encodeURIComponent(twelveKey)}`;
+  const primaryCandidates = [tvSymbol];
+  const rawNoProvider = String(symbol || "").trim().toUpperCase().includes(":")
+    ? String(symbol || "").trim().toUpperCase().split(":").slice(1).join(":").trim().toUpperCase()
+    : String(symbol || "").trim().toUpperCase();
+  const normalizedFallback = normalizeSymbolForTwelve(rawNoProvider);
+  if (normalizedFallback && !primaryCandidates.includes(normalizedFallback)) primaryCandidates.push(normalizedFallback);
+  const compactFallback = rawNoProvider.replace(/[^A-Z0-9]/g, "");
+  if (compactFallback && !primaryCandidates.includes(compactFallback)) primaryCandidates.push(compactFallback);
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 12000);
+  const timer = setTimeout(() => ctrl.abort(), 14000);
   try {
-    const res = await fetch(endpoint, { signal: ctrl.signal });
-    const txt = await res.text();
     let data = {};
-    try { data = JSON.parse(txt); } catch {}
-    if (!res.ok) {
-      return { provider: "twelvedata", status: "error", reason: `http_${res.status}` };
+    let usedSymbol = tvSymbol;
+    let lastError = "";
+    for (const candidate of primaryCandidates) {
+      const endpoint = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(candidate)}&interval=${encodeURIComponent(interval)}&outputsize=${outputsize}&timezone=UTC&order=ASC&apikey=${encodeURIComponent(twelveKey)}`;
+      const res = await fetch(endpoint, { signal: ctrl.signal });
+      const txt = await res.text();
+      let parsed = {};
+      try { parsed = JSON.parse(txt); } catch {}
+      if (!res.ok) {
+        lastError = `http_${res.status}`;
+        continue;
+      }
+      if (String(parsed?.status || "").toLowerCase() === "error") {
+        lastError = String(parsed?.message || "provider error");
+        continue;
+      }
+      const vals = Array.isArray(parsed?.values) ? parsed.values : [];
+      if (!vals.length) {
+        lastError = "empty values";
+        continue;
+      }
+      data = parsed;
+      usedSymbol = candidate;
+      lastError = "";
+      break;
     }
-    if (String(data?.status || "").toLowerCase() === "error") {
-      return { provider: "twelvedata", status: "error", reason: String(data?.message || "provider error") };
+    if (!data || !Array.isArray(data?.values) || !data.values.length) {
+      return { provider: "twelvedata", status: "error", reason: lastError || "provider error", normalized_symbol: tvSymbol };
     }
     const values = Array.isArray(data?.values) ? data.values : [];
     const bars = values
@@ -3418,7 +3482,7 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
       provider: "twelvedata",
       status: "ok",
       symbol: String(symbol || "").toUpperCase(),
-      normalized_symbol: tvSymbol,
+      normalized_symbol: usedSymbol,
       timeframe: String(timeframe || ""),
       interval,
       fetched_at: new Date().toISOString(),
