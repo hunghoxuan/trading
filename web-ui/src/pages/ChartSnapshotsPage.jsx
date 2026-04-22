@@ -163,6 +163,31 @@ function normalizeNoteForStorage(v) {
   }
 }
 
+function extractJsonCandidate(textRaw) {
+  const text = String(textRaw || "").trim();
+  if (!text) return "";
+  let s = text.replace(/^\s*`+json\s*/i, "").replace(/^\s*```json\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+  const fenced = s.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced?.[1]) s = fenced[1].trim();
+  const firstObj = s.indexOf("{");
+  const lastObj = s.lastIndexOf("}");
+  if (firstObj >= 0 && lastObj > firstObj) return s.slice(firstObj, lastObj + 1);
+  const firstArr = s.indexOf("[");
+  const lastArr = s.lastIndexOf("]");
+  if (firstArr >= 0 && lastArr > firstArr) return s.slice(firstArr, lastArr + 1);
+  return s;
+}
+
+function tryParseJsonLoose(textRaw) {
+  const candidate = extractJsonCandidate(textRaw);
+  if (!candidate) return null;
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    return null;
+  }
+}
+
 function buildPrompt(cfg) {
   const context = [];
   if (cfg.htfbias) context.push(`htf_bias_override: "${cfg.htfbias}"`);
@@ -370,9 +395,10 @@ export default function ChartSnapshotsPage() {
       const out = await api.chartSnapshotsAnalyze(payload);
       const raw = String(out?.raw_response || "");
       setAnalysisRaw(raw);
-      if (out?.parsed_json) {
-        setAnalysisParsed(out.parsed_json);
-        setAnalysisJson(JSON.stringify(out.parsed_json, null, 2));
+      const parsed = out?.parsed_json || tryParseJsonLoose(raw);
+      if (parsed && typeof parsed === "object") {
+        setAnalysisParsed(parsed);
+        setAnalysisJson(JSON.stringify(parsed, null, 2));
       }
       setUsedFiles(Array.isArray(out?.used_files) ? out.used_files : []);
       if (!files.length) setAnalysisFilesDisplay(Array.isArray(out?.used_files) ? out.used_files : []);
@@ -534,6 +560,7 @@ export default function ChartSnapshotsPage() {
     try {
       let parsed = analysisParsed;
       if (!parsed && analysisJson) parsed = JSON.parse(analysisJson);
+      if (!parsed && analysisRaw) parsed = tryParseJsonLoose(analysisRaw);
       const signals = extractSignalsFromAnalysis(parsed, {
         symbol: tvSymbol,
         timeframe,
@@ -881,7 +908,7 @@ export default function ChartSnapshotsPage() {
           ) : null}
 
           <div className="snapshot-actions-under-v2">
-            <button className="primary-button" type="button" onClick={addToSignal} disabled={addingSignal || (!analysisJson && !analysisParsed)}>{addingSignal ? "Adding..." : "Add Signal"}</button>
+            <button className="primary-button" type="button" onClick={addToSignal} disabled={addingSignal || (!analysisParsed && !analysisJson && !tryParseJsonLoose(analysisRaw))}>{addingSignal ? "Adding..." : "Add Signal"}</button>
           </div>
         </section>
       </section>
