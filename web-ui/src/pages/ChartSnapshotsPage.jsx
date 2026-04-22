@@ -169,6 +169,24 @@ function parsePdZoneBounds(zoneRaw) {
   return { low: null, high: null };
 }
 
+function normalizeTfLabelToLower(tfRaw) {
+  const tf = String(tfRaw || "").trim().toLowerCase();
+  if (!tf) return "15m";
+  if (/^\d+$/.test(tf)) return `${tf}m`;
+  if (tf.endsWith("m") || tf.endsWith("h") || tf.endsWith("d") || tf.endsWith("w")) return tf;
+  return tf;
+}
+
+function liveTfToTradingViewInterval(tfRaw) {
+  const s = String(tfRaw || "").toUpperCase();
+  if (s === "W1") return "W";
+  if (s === "D1") return "D";
+  if (s === "4H") return "240";
+  if (s === "2H") return "120";
+  if (s === "1H") return "60";
+  return "15";
+}
+
 function extractPositionFromAnalysis(parsed) {
   const plan = parsed?.trade_plan && typeof parsed.trade_plan === "object" ? parsed.trade_plan : {};
   const entry = parseNum(plan.entry ?? parsed?.entry ?? parsed?.price);
@@ -525,7 +543,6 @@ export default function ChartSnapshotsPage() {
   const [templateName, setTemplateName] = useState("");
 
   const [provider, setProvider] = useState("ICMARKETS");
-  const [timeframe, setTimeframe] = useState("15m");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -549,9 +566,11 @@ export default function ChartSnapshotsPage() {
   const [analysisFilesDisplay, setAnalysisFilesDisplay] = useState([]);
   const [position, setPosition] = useState({ entry: "", tp: "", sl: "", rr: "", note: "" });
   const [barsCache, setBarsCache] = useState({});
-  const [barsCacheKey, setBarsCacheKey] = useState("");
   const [barsLoading, setBarsLoading] = useState(false);
-  const [liveTf, setLiveTf] = useState("15");
+  const [liveTf, setLiveTf] = useState("D1");
+  const [promptDraft, setPromptDraft] = useState(() => buildPrompt(DEFAULT_CONFIG));
+  const [promptEdited, setPromptEdited] = useState(false);
+  const [guideDraft, setGuideDraft] = useState(GUIDE_TEXT);
   const liteChartRef = useRef(null);
   const liteChartApiRef = useRef(null);
 
@@ -562,10 +581,15 @@ export default function ChartSnapshotsPage() {
   }, [cfg.symbol, provider]);
 
   const promptText = useMemo(() => buildPrompt(cfg), [cfg]);
+  const timeframe = useMemo(() => normalizeTfLabelToLower(cfg.exec_tfs?.[0] || "15m"), [cfg.exec_tfs]);
   const jsonConfigText = useMemo(() => buildJsonConfig(cfg), [cfg]);
   const effectiveParsed = useMemo(
     () => enrichParsedAnalysis(analysisRaw, analysisParsed || tryParseJsonLoose(analysisJson) || tryParseJsonLoose(analysisRaw)),
     [analysisParsed, analysisJson, analysisRaw],
+  );
+  const hasResponse = useMemo(
+    () => Boolean((analysisRaw || "").trim() || (analysisJson || "").trim() || (effectiveParsed && typeof effectiveParsed === "object")),
+    [analysisRaw, analysisJson, effectiveParsed],
   );
   const responseText = useMemo(() => buildFriendlyResponse(effectiveParsed), [effectiveParsed]);
   const canAddSignal = useMemo(
@@ -605,7 +629,6 @@ export default function ChartSnapshotsPage() {
     const cacheKey = `${sym}|${tf}|${bars}`;
     if (!sym) return null;
     if (barsCache[cacheKey]) {
-      setBarsCacheKey(cacheKey);
       return barsCache[cacheKey];
     }
     setBarsLoading(true);
@@ -614,7 +637,6 @@ export default function ChartSnapshotsPage() {
       const snap = out?.snapshot && typeof out.snapshot === "object" ? out.snapshot : null;
       if (snap) {
         setBarsCache((prev) => ({ ...prev, [cacheKey]: snap }));
-        setBarsCacheKey(cacheKey);
       }
       return snap;
     } catch {
@@ -635,7 +657,7 @@ export default function ChartSnapshotsPage() {
     try {
       const payload = {
         model: "claude-sonnet-4-0",
-        prompt: promptText,
+        prompt: promptDraft || promptText,
       };
       if (Array.isArray(files) && files.length) payload.files = files;
       const out = await api.chartSnapshotsAnalyze(payload);
@@ -913,6 +935,7 @@ export default function ChartSnapshotsPage() {
     setTemplateId(id);
     if (id === DEFAULT_TEMPLATE_ID) {
       setCfg({ ...DEFAULT_CONFIG });
+      setPromptEdited(false);
       setTemplateName("");
       setStatus({ type: "success", text: "Default template loaded." });
       return;
@@ -920,6 +943,7 @@ export default function ChartSnapshotsPage() {
     const found = templates.find((x) => x.id === id);
     if (!found?.config) return;
     setCfg(normalizeTemplateConfig(found.config));
+    setPromptEdited(false);
     setStatus({ type: "success", text: `Template loaded: ${found.name}` });
   };
 
@@ -996,6 +1020,10 @@ export default function ChartSnapshotsPage() {
     if (!effectiveParsed || typeof effectiveParsed !== "object") return;
     setPosition(extractPositionFromAnalysis(effectiveParsed));
   }, [effectiveParsed]);
+
+  useEffect(() => {
+    if (!promptEdited) setPromptDraft(promptText);
+  }, [promptText, promptEdited]);
 
   const chartFiles = (analysisFilesDisplay && analysisFilesDisplay.length ? analysisFilesDisplay : usedFiles).map((x) => String(x || "").trim()).filter(Boolean);
   const chartPdArrays = useMemo(() => {
@@ -1135,6 +1163,28 @@ export default function ChartSnapshotsPage() {
             </button>
           ))}
         </div>
+        <div className="snapshot-live-card-v3">
+          <div className="snapshot-live-head-v3">
+            <span className="minor-text">TradingView Live</span>
+            <div className="snapshot-tag-wrap-v2">
+              {["W1", "D1", "4H", "2H", "1H"].map((tf) => (
+                <button
+                  key={tf}
+                  type="button"
+                  className={`secondary-button snapshot-tag-v2 ${liveTf === tf ? "active" : ""}`}
+                  onClick={() => setLiveTf(tf)}
+                >
+                  {tf}
+                </button>
+              ))}
+            </div>
+          </div>
+          <iframe
+            title="live-chart"
+            className="snapshot-live-iframe-v3"
+            src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTfToTradingViewInterval(liveTf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+          />
+        </div>
         <div className="snapshot-gallery-head-v2">
           <span className="panel-label" style={{ margin: 0 }}>Snapshots ({items.length})</span>
           <div className="snapshot-bulk-actions-v2">
@@ -1162,12 +1212,26 @@ export default function ChartSnapshotsPage() {
       </section>
 
       <section className="panel snapshot-col-v3 snapshot-col-settings-v3">
+        <div className="panel snapshot-control-card-v3">
+          <div className="snapshot-capture-inline-v2 snapshot-capture-inline-v3">
+            <label className="minor-text">Snapshots TFs</label>
+            <div className="snapshot-tag-wrap-v2">
+              {SNAPSHOT_TF_OPTIONS.map((tf) => (
+                <button key={tf} type="button" className={`secondary-button snapshot-tag-v2 ${snapshotTfs.includes(tf) ? "active" : ""}`} onClick={() => setSnapshotTfs((prev) => toggleArrayValue(prev, tf))}>{tf}</button>
+              ))}
+            </div>
+            <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>{capturing ? "Snapshots..." : "Snapshots"}</button>
+            {actionStatus.action === "capture" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
+            <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
+            {actionStatus.action === "analyze" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
+          </div>
+        </div>
         <div className="snapshot-tabs-v2">
           <button type="button" className={`secondary-button ${settingsTab === "settings" ? "active" : ""}`} onClick={() => setSettingsTab("settings")}>Settings</button>
           <button type="button" className={`secondary-button ${settingsTab === "prompt" ? "active" : ""}`} onClick={() => setSettingsTab("prompt")}>Prompt</button>
           <button type="button" className={`secondary-button ${settingsTab === "json" ? "active" : ""}`} onClick={() => setSettingsTab("json")}>JSON Config</button>
           <button type="button" className={`secondary-button ${settingsTab === "guide" ? "active" : ""}`} onClick={() => setSettingsTab("guide")}>Guide</button>
-          <span className="minor-text" style={{ marginLeft: "auto" }}>{promptText.length} chars</span>
+          <span className="minor-text" style={{ marginLeft: "auto" }}>{(promptDraft || "").length} chars</span>
         </div>
 
         {settingsTab === "settings" ? (
@@ -1190,9 +1254,7 @@ export default function ChartSnapshotsPage() {
               <div><label className="minor-text">Sessions</label><select value={cfg.session} onChange={(e) => setCfgField("session", e.target.value)}><option>Any</option><option>London</option><option>New York</option><option>Asian</option><option>London+NY</option></select></div>
               <div><label className="minor-text">MinRR</label><input type="number" min="0.5" step="0.5" value={cfg.rr} onChange={(e) => setCfgField("rr", e.target.value)} /></div>
               <div><label className="minor-text">Max Risk</label><input type="number" min="0.1" step="0.1" value={cfg.risk} onChange={(e) => setCfgField("risk", e.target.value)} /></div>
-              <div><label className="minor-text">Lookback</label><input type="number" min="50" max="5000" value={cfg.lookbackBars} onChange={(e) => setCfgField("lookbackBars", e.target.value)} /></div>
               <div><label className="minor-text">Provider</label><input value={provider} onChange={(e) => setProvider(e.target.value)} /></div>
-              <div><label className="minor-text">TF</label><input value={timeframe} onChange={(e) => setTimeframe(e.target.value)} /></div>
             </div>
             <div>
               <label className="minor-text">Strategy (multi-select)</label>
@@ -1210,41 +1272,34 @@ export default function ChartSnapshotsPage() {
             <div className="snapshot-context-v2">
               <div className="snapshot-col-span-2"><label className="minor-text">HTF Bias</label><select value={cfg.htfbias} onChange={(e) => setCfgField("htfbias", e.target.value)}><option value="">Auto</option><option>Bullish</option><option>Bearish</option><option>Ranging</option></select></div>
               <div className="snapshot-col-span-2"><label className="minor-text">Direction</label><select value={cfg.dir} onChange={(e) => setCfgField("dir", e.target.value)}><option>Direction: Both</option><option>Direction: Bias</option><option>Long only</option><option>Short only</option></select></div>
-              <div className="snapshot-col-span-4"><label className="minor-text">Key Level</label><input value={cfg.keylevel} onChange={(e) => setCfgField("keylevel", e.target.value)} placeholder="e.g. 3300 resistance" /></div>
               <div className="snapshot-col-span-2"><label className="minor-text">News</label><select value={cfg.news} onChange={(e) => setCfgField("news", e.target.value)}><option value="">None</option><option>High-impact today</option><option>NFP / FOMC week</option><option>Earnings release</option></select></div>
-              <div className="snapshot-col-span-2"><label className="minor-text">Notes</label><input value={cfg.notes} onChange={(e) => setCfgField("notes", e.target.value)} placeholder="Notes / extra context" /></div>
+              <div className="snapshot-col-span-12"><label className="minor-text">Notes</label><input value={cfg.notes} onChange={(e) => setCfgField("notes", e.target.value)} placeholder="Notes / extra context" /></div>
             </div>
           </section>
         ) : null}
-        {settingsTab === "prompt" ? <textarea className="snapshot-mono-v2" rows={30} value={promptText} readOnly disabled /> : null}
-        {settingsTab === "json" ? <textarea className="snapshot-mono-v2" rows={30} value={jsonConfigText} readOnly disabled /> : null}
-        {settingsTab === "guide" ? <textarea className="snapshot-mono-v2" rows={30} value={GUIDE_TEXT} readOnly disabled /> : null}
+        {settingsTab === "prompt" ? (
+          <>
+            <div className="minor-text">Prompt is the exact instruction sent to AI. You can customize it before Analyze.</div>
+            <textarea className="snapshot-mono-v2" rows={30} value={promptDraft} onChange={(e) => { setPromptDraft(e.target.value); setPromptEdited(true); }} />
+          </>
+        ) : null}
+        {settingsTab === "json" ? (
+          <>
+            <div className="minor-text">JSON Config is a machine-friendly snapshot of current settings/timeframes used to generate prompt and analysis context.</div>
+            <textarea className="snapshot-mono-v2" rows={30} value={jsonConfigText} readOnly disabled />
+          </>
+        ) : null}
+        {settingsTab === "guide" ? (
+          <>
+            <div className="minor-text">Guide is internal reference notes/checklist for your team. It is editable for documentation.</div>
+            <textarea className="snapshot-mono-v2" rows={30} value={guideDraft} onChange={(e) => setGuideDraft(e.target.value)} />
+          </>
+        ) : null}
       </section>
 
       <section className="panel snapshot-col-v3 snapshot-col-position-v3">
-        <div className="snapshot-capture-inline-v2 snapshot-capture-inline-v3">
-          <label className="minor-text">Snapshots TFs</label>
-          <div className="snapshot-tag-wrap-v2">
-            {SNAPSHOT_TF_OPTIONS.map((tf) => (
-              <button key={tf} type="button" className={`secondary-button snapshot-tag-v2 ${snapshotTfs.includes(tf) ? "active" : ""}`} onClick={() => setSnapshotTfs((prev) => toggleArrayValue(prev, tf))}>{tf}</button>
-            ))}
-          </div>
-          <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>{capturing ? "Snapshots..." : "Snapshots"}</button>
-          {actionStatus.action === "capture" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
-          <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
-          {actionStatus.action === "analyze" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
-        </div>
-
-        <div className="snapshot-position-form-v3">
-          <div><label className="minor-text">Entry</label><input value={position.entry} onChange={(e) => updatePositionField("entry", e.target.value)} /></div>
-          <div><label className="minor-text">TP</label><input value={position.tp} onChange={(e) => updatePositionField("tp", e.target.value)} /></div>
-          <div><label className="minor-text">SL</label><input value={position.sl} onChange={(e) => updatePositionField("sl", e.target.value)} /></div>
-          <div><label className="minor-text">RR (auto)</label><input value={position.rr} onChange={(e) => updatePositionField("rr", e.target.value)} /></div>
-          <div className="snapshot-col-span-4"><label className="minor-text">Note</label><textarea rows={2} value={position.note} onChange={(e) => updatePositionField("note", e.target.value)} /></div>
-        </div>
-
         <div className="snapshot-tabs-v2">
-          <span className="panel-label" style={{ margin: 0 }}>Position</span>
+          <span className="panel-label" style={{ margin: 0 }}>Response</span>
           <button type="button" className={`secondary-button ${responseTab === "text" ? "active" : ""}`} onClick={() => setResponseTab("text")}>Text</button>
           <button type="button" className={`secondary-button ${responseTab === "raw" ? "active" : ""}`} onClick={() => setResponseTab("raw")}>Raw</button>
           <button type="button" className={`secondary-button ${responseTab === "bars" ? "active" : ""}`} onClick={() => setResponseTab("bars")}>Bars</button>
@@ -1260,23 +1315,6 @@ export default function ChartSnapshotsPage() {
               <div className="minor-text" style={{ marginBottom: 6 }}>Chart 1: Twelve + PD Arrays</div>
               <div ref={liteChartRef} className="snapshot-lite-chart-v3" />
               <div className="minor-text">{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
-            </div>
-            <div className="snapshot-live-card-v3">
-              <div className="snapshot-live-head-v3">
-                <span className="minor-text">Chart 2: TradingView Live</span>
-                <select value={liveTf} onChange={(e) => setLiveTf(e.target.value)}>
-                  <option value="5">5m</option>
-                  <option value="15">15m</option>
-                  <option value="60">1h</option>
-                  <option value="240">4h</option>
-                  <option value="D">1D</option>
-                </select>
-              </div>
-              <iframe
-                title="live-chart"
-                className="snapshot-live-iframe-v3"
-                src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTf)}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-              />
             </div>
             {chartFiles.length ? (
               <div className="snapshot-chart-grid-v2">
@@ -1298,10 +1336,17 @@ export default function ChartSnapshotsPage() {
           </div>
         ) : null}
 
-        <div className="snapshot-actions-under-v2">
-          <button className="primary-button" type="button" onClick={addToSignal} disabled={addingSignal || !canAddSignal}>{addingSignal ? "Adding..." : "Add Signal"}</button>
-          {actionStatus.action === "add" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
-        </div>
+        {hasResponse ? (
+          <div className="snapshot-response-footer-v3">
+            <div><label className="minor-text">Entry</label><input value={position.entry} onChange={(e) => updatePositionField("entry", e.target.value)} /></div>
+            <div><label className="minor-text">TP</label><input value={position.tp} onChange={(e) => updatePositionField("tp", e.target.value)} /></div>
+            <div><label className="minor-text">SL</label><input value={position.sl} onChange={(e) => updatePositionField("sl", e.target.value)} /></div>
+            <div className="snapshot-rr-label-v3"><span className="minor-text">RR</span><strong>{position.rr || "-"}</strong></div>
+            <div className="snapshot-note-field-v3"><label className="minor-text">Note</label><input value={position.note} onChange={(e) => updatePositionField("note", e.target.value)} /></div>
+            <button className="primary-button" type="button" onClick={addToSignal} disabled={addingSignal || !canAddSignal}>{addingSignal ? "Adding..." : "Add Signal"}</button>
+            {actionStatus.action === "add" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
+          </div>
+        ) : null}
       </section>
 
       {status.text ? (

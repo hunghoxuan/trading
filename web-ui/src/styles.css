@@ -460,6 +460,10 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .snapshot-col-position-v3 {
   min-height: calc(100vh - 150px);
 }
+.snapshot-control-card-v3 {
+  margin: 0;
+  padding: 10px;
+}
 .snapshot-capture-inline-v3 {
   grid-template-columns: auto minmax(220px, 1fr) auto minmax(120px, 1fr) auto minmax(120px, 1fr);
 }
@@ -496,10 +500,31 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 }
 .snapshot-live-iframe-v3 {
   width: 100%;
-  min-height: 330px;
+  min-height: 240px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #0b1220;
+}
+.snapshot-response-footer-v3 {
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: 120px 120px 120px 80px minmax(200px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+.snapshot-rr-label-v3 {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 34px;
+}
+.snapshot-rr-label-v3 strong {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.2;
+}
+.snapshot-note-field-v3 {
+  min-width: 160px;
 }
 .snapshot-settings-shell-v2 {
   display: grid;
@@ -605,6 +630,7 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .snapshot-col-span-3 { grid-column: span 3; }
 .snapshot-col-span-4 { grid-column: span 4; }
 .snapshot-col-span-5 { grid-column: span 5; }
+.snapshot-col-span-12 { grid-column: span 12; }
 .snapshot-io-row-v2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -748,6 +774,7 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   .snapshot-capture-inline-v2 { grid-template-columns: 1fr; align-items: start; }
   .snapshot-io-row-v2 { grid-template-columns: 1fr; }
   .snapshot-capture-inline-v3 { grid-template-columns: 1fr; }
+  .snapshot-response-footer-v3 { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 900px) {
   .snapshot-template-row-v2 { grid-template-columns: 1fr; }
@@ -755,4 +782,5 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   .snapshot-tf-v2 { grid-template-columns: 1fr; }
   .snapshot-tf-v2 > div { grid-column: span 1 !important; }
   .snapshot-position-form-v3 { grid-template-columns: 1fr 1fr; }
+  .snapshot-response-footer-v3 { grid-template-columns: 1fr; }
 }

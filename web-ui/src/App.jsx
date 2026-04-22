@@ -31,7 +31,9 @@ export default function App() {
     const p = String(location?.pathname || "");
     return p.startsWith("/logs")
       || p.startsWith("/db")
-      || p.startsWith("/users");
+      || p.startsWith("/users")
+      || p.startsWith("/snapshots")
+      || p.startsWith("/ai");
   }, [location?.pathname]);
 
   useEffect(() => {
@@ -93,7 +95,6 @@ export default function App() {
         </div>
         <nav>
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? "active" : "")}>Dashboard</NavLink>
-          <NavLink to="/ai" className={({ isActive }) => (isActive ? "active" : "")}>AI</NavLink>
           <NavLink to="/signals" className={({ isActive }) => (isActive ? "active" : "")}>Signals</NavLink>
           <NavLink to="/trades" className={({ isActive }) => (isActive ? "active" : "")}>Trades</NavLink>
 
@@ -122,6 +123,7 @@ export default function App() {
                 System
               </button>
               <div className="nav-dropdown-menu">
+                <NavLink to="/snapshots">Snapshots</NavLink>
                 <NavLink to="/logs">Logs</NavLink>
                 <NavLink to="/db">DB</NavLink>
                 <NavLink to="/users">Users</NavLink>
@@ -151,7 +153,8 @@ export default function App() {
           <Route path="/signals/:signalId" element={<SignalDetailPage />} />
           <Route path="/trades" element={<TradesPage />} />
           <Route path="/trades/:tradeId" element={<V2TradeDetailPage />} />
-          <Route path="/ai" element={<ChartSnapshotsPage />} />
+          <Route path="/snapshots" element={canAccessSystemPages ? <ChartSnapshotsPage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/ai" element={<Navigate to="/snapshots" replace />} />
           <Route path="/logs" element={canAccessSystemPages ? <LogsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/db" element={canAccessSystemPages ? <DatabasePage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/users" element={canAccessSystemPages ? <UsersPage authUser={authUser} /> : <Navigate to="/dashboard" replace />} />
