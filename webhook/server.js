@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.21-2034"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.22-0607"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -821,9 +821,7 @@ function snapshotTimestampToken(dateLike = Date.now()) {
   const dd = String(d.getUTCDate()).padStart(2, "0");
   const hh = String(d.getUTCHours()).padStart(2, "0");
   const mi = String(d.getUTCMinutes()).padStart(2, "0");
-  const ss = String(d.getUTCSeconds()).padStart(2, "0");
-  const ms = String(d.getUTCMilliseconds()).padStart(3, "0");
-  return `${yyyy}${mm}${dd}_${hh}${mi}${ss}${ms}`;
+  return `${yyyy}${mm}${dd}_${hh}_${mi}`;
 }
 
 function toTradingViewInterval(tfRaw) {
@@ -939,8 +937,17 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
   const jpgQuality = Math.max(20, Math.min(Number(opts.quality || 55) || 55, 95));
 
   const ts = Date.now();
-  const fileName = `${snapshotTimestampToken(ts)}_${sanitizeSnapshotFileToken(symbol)}_${sanitizeSnapshotFileToken(interval, "TF")}.${outFormat}`;
-  const outPath = path.join(CHART_SNAPSHOT_DIR, fileName);
+  const symbolToken = sanitizeSnapshotFileToken(symbol);
+  const tfToken = sanitizeSnapshotFileToken(interval, "TF");
+  const baseName = `${snapshotTimestampToken(ts)}_${symbolToken}_${tfToken}`;
+  let fileName = `${baseName}.${outFormat}`;
+  let outPath = path.join(CHART_SNAPSHOT_DIR, fileName);
+  let dupIdx = 1;
+  while (fs.existsSync(outPath) && dupIdx < 100) {
+    fileName = `${baseName}_${dupIdx}.${outFormat}`;
+    outPath = path.join(CHART_SNAPSHOT_DIR, fileName);
+    dupIdx += 1;
+  }
   const context = await browser.newContext({ viewport: { width: width + 24, height: height + 64 }, deviceScaleFactor: 1 });
   try {
     const page = await context.newPage();
@@ -6141,6 +6148,42 @@ const appHandler = async (req, res) => {
         .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
         .slice(0, limit);
       return json(res, 200, { ok: true, items: files });
+    } catch (error) {
+      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/chart/snapshots/delete") {
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      ensureChartSnapshotDir();
+      const body = await readJson(req);
+      const deleteAll = body?.all === true;
+      const requestedFiles = Array.isArray(body?.files)
+        ? body.files.map((x) => String(x || "").trim()).filter(Boolean)
+        : [];
+      const candidates = deleteAll
+        ? fs.readdirSync(CHART_SNAPSHOT_DIR).filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
+        : requestedFiles;
+      const deleted = [];
+      const skipped = [];
+      for (const fileNameRaw of candidates) {
+        const safeName = path.basename(String(fileNameRaw || ""));
+        if (!safeName || safeName !== fileNameRaw || !/\.(png|jpg|jpeg)$/i.test(safeName)) {
+          skipped.push(fileNameRaw);
+          continue;
+        }
+        const abs = path.join(CHART_SNAPSHOT_DIR, safeName);
+        if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+          skipped.push(safeName);
+          continue;
+        }
+        fs.unlinkSync(abs);
+        deleted.push(safeName);
+      }
+      return json(res, 200, { ok: true, deleted_count: deleted.length, deleted, skipped });
     } catch (error) {
       return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }

@@ -542,6 +542,7 @@ export const api = {
   chartSymbols: (q = "", provider = "ICMARKETS", limit = 20) =>
     get(`/v2/chart/symbols?q=${encodeURIComponent(q)}&provider=${encodeURIComponent(provider)}&limit=${encodeURIComponent(limit)}`),
   chartSnapshots: (limit = 30) => get(`/v2/chart/snapshots?limit=${encodeURIComponent(limit)}`),
+  chartSnapshotsDelete: (payload = {}) => post("/v2/chart/snapshots/delete", payload),
   getSettings: () => get("/v2/settings"),
   upsertSetting: (payload = {}) => post("/v2/settings", payload),
   deleteSetting: (type, name) => del(`/v2/settings/${encodeURIComponent(type)}/${encodeURIComponent(name)}`),
