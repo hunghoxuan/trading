@@ -507,7 +507,8 @@ export const api = {
     return get(`/mt5/trades/search?${q.toString()}`);
   },
   trade: (signalId) => get(`/mt5/trades/${encodeURIComponent(signalId)}`),
-  createTrade: (payload = {}) => post("/mt5/trades/create", payload),
+  createTrade: (payload = {}) => post("/v2/signals/create", payload),
+  createSignal: (payload = {}) => post("/v2/signals/create", payload),
   deleteTrades: (params) => post("/mt5/trades/delete", params),
   cancelTrades: (params) => post("/mt5/trades/cancel", params),
   renewTrades: (params) => post("/mt5/trades/renew", params),

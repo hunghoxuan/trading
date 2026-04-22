@@ -4946,7 +4946,7 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "POST" && url.pathname === "/mt5/trades/create") {
+  if (req.method === "POST" && (url.pathname === "/mt5/trades/create" || url.pathname === "/v2/signals/create")) {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     const sess = getUiSessionFromReq(req);
     if (!sess.ok) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
@@ -4981,7 +4981,7 @@ const appHandler = async (req, res) => {
         eventType: "UI_CREATE_TRADE",
         fallbackIdPrefix: "ui",
       });
-      return json(res, 200, { ok: true, trade: enqueue });
+      return json(res, 200, { ok: true, trade: enqueue, signal: enqueue });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });
