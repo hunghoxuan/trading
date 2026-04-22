@@ -1035,6 +1035,7 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
       await page.waitForTimeout(1800);
     }
     const root = page.locator("#tv-root");
+    await page.waitForTimeout(900);
     let shotOk = false;
     let lastShotErr = null;
     // Retry element screenshot once; Playwright can timeout waiting for "stable" element under load.
@@ -1065,6 +1066,30 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
       } else {
         await page.screenshot({ path: outPath, type: "jpeg", quality: jpgQuality, clip: box, animations: "disabled", timeout: 12000 });
       }
+    }
+
+    // Anti-blank safeguard: small files are often blank/failed iframe frames. Retry once with extra wait.
+    try {
+      const st1 = fs.statSync(outPath);
+      const minBytes = outFormat === "png" ? 16000 : 12000;
+      if (Number(st1.size || 0) < minBytes) {
+        await page.waitForTimeout(2200);
+        const box = await page.evaluate(() => {
+          const el = document.querySelector("#tv-root");
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          return { x: Math.max(0, Math.floor(r.left)), y: Math.max(0, Math.floor(r.top)), width: Math.max(1, Math.floor(r.width)), height: Math.max(1, Math.floor(r.height)) };
+        });
+        if (box) {
+          if (outFormat === "png") {
+            await page.screenshot({ path: outPath, type: "png", clip: box, animations: "disabled", timeout: 12000 });
+          } else {
+            await page.screenshot({ path: outPath, type: "jpeg", quality: jpgQuality, clip: box, animations: "disabled", timeout: 12000 });
+          }
+        }
+      }
+    } catch {
+      // ignore fallback failure
     }
   } finally {
     try { await context.close(); } catch {}
@@ -6282,6 +6307,31 @@ const appHandler = async (req, res) => {
         quality: body.quality,
       });
       return json(res, 200, { ok: true, items });
+    } catch (error) {
+      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/v2/chart/twelve/candles") {
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      const symbol = String(url.searchParams.get("symbol") || "").trim();
+      const timeframe = String(url.searchParams.get("timeframe") || url.searchParams.get("tf") || "15m").trim();
+      const bars = Math.max(50, Math.min(Number(url.searchParams.get("bars") || 300) || 300, 1000));
+      if (!symbol) return json(res, 400, { ok: false, error: "symbol is required" });
+      const userId = sess.user_id || CFG.mt5DefaultUserId;
+      const snapshot = await buildAnalysisSnapshotFromTwelve({
+        userId,
+        payload: { bars },
+        symbol,
+        timeframe,
+      });
+      if (String(snapshot?.status || "").toLowerCase() !== "ok") {
+        return json(res, 400, { ok: false, error: snapshot?.reason || "twelve_data_failed", snapshot });
+      }
+      return json(res, 200, { ok: true, snapshot });
     } catch (error) {
       return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }

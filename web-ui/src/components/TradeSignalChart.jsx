@@ -157,6 +157,7 @@ export const TradeSignalChart = ({
   const seriesRef = useRef(null);
   const socketRef = useRef(null);
   const [loading, setLoading] = useState(false);
+  const [dataSource, setDataSource] = useState("");
 
   // Derive constants outside of useEffect so they can be used in dependency array
   const binanceSymbol = mapSymbolToBinance(symbol);
@@ -209,18 +210,42 @@ export const TradeSignalChart = ({
 
     // 3. Fetch History + Start Live
     async function initData() {
-      const snapshot = extractAnalysisSnapshot(analysisSnapshot);
-      const snapshotBars = parseSnapshotBars(snapshot);
-      const hasSnapshotBars = snapshotBars.length > 0;
+      let snapshot = extractAnalysisSnapshot(analysisSnapshot);
+      let snapshotBars = parseSnapshotBars(snapshot);
+      let hasSnapshotBars = snapshotBars.length > 0;
       if (!binanceSymbol && !hasSnapshotBars) return;
       try {
         setLoading(true);
         let candles = [];
         if (historicalData && historicalData.length > 0) {
           candles = historicalData;
+          setDataSource("historical");
         } else if (hasSnapshotBars) {
           candles = snapshotBars;
+          setDataSource("snapshot");
         } else {
+          // Try Twelve Data on-demand (for old trades without stored snapshot)
+          try {
+            const r = await fetch(`/v2/chart/twelve/candles?symbol=${encodeURIComponent(symbol || "")}&timeframe=${encodeURIComponent(interval || "15m")}&bars=300`, {
+              credentials: "include",
+              cache: "no-store",
+            });
+            const j = await r.json().catch(() => ({}));
+            const snap = j?.snapshot && typeof j.snapshot === "object" ? j.snapshot : null;
+            const bars = parseSnapshotBars(snap);
+            if (r.ok && bars.length > 0) {
+              snapshot = snap;
+              snapshotBars = bars;
+              hasSnapshotBars = true;
+              candles = bars;
+              setDataSource("twelve");
+            }
+          } catch {
+            // continue to Binance fallback
+          }
+        }
+
+        if (!candles.length) {
           // If we have openedAt, we want to make sure we fetch enough data before it
           // Binance klines can take endTime (optional)
           const sParam = binanceSymbol || 'BTCUSDT'; 
@@ -248,6 +273,7 @@ export const TradeSignalChart = ({
             low: parseFloat(d[3]),
             close: parseFloat(d[4])
           }));
+          setDataSource("binance");
         }
 
         if (isMounted) {
@@ -415,9 +441,11 @@ export const TradeSignalChart = ({
       />
       <div style={{ padding: '8px', fontSize: '11px', color: '#8b949e', display: 'flex', justifyContent: 'space-between' }}>
         <span>{symbol} {binanceSymbol !== symbol ? `(mapped to ${binanceSymbol} on Binance)` : `(${interval})`} [{bInterval}]</span>
-        {analysisSnapshot?.status === "ok"
+        {(dataSource === "snapshot" || analysisSnapshot?.status === "ok")
           ? <span style={{ color: '#22c55e' }}>● Snapshot: TwelveData</span>
-          : (live && binanceSymbol && <span style={{ color: '#26a69a' }}>● Streaming (Binance)</span>)}
+          : dataSource === "twelve"
+            ? <span style={{ color: '#22c55e' }}>● TwelveData (on-demand)</span>
+            : (live && binanceSymbol && <span style={{ color: '#26a69a' }}>● Streaming (Binance)</span>)}
       </div>
     </div>
   );
