@@ -8,6 +8,9 @@ const EXEC_OPTIONS = ["1H", "30M", "15M", "5M"];
 const CONF_OPTIONS = ["5M", "3M", "1M"];
 const STRATEGY_OPTIONS = ["ICT", "SMC", "Price Action", "Wyckoff", "EMA Trend", "Breakout", "VWAP"];
 const SNAPSHOT_TF_OPTIONS = ["1D", "4h", "15m", "5m", "1h", "30m"];
+const DEFAULT_TEMPLATE_ID = "__default__";
+const SYMBOLS_SETTING_TYPE = "SYMBOLS";
+const SYMBOLS_SETTING_NAME = "WATCHLIST";
 
 const DEFAULT_CONFIG = {
   symbol: "UK100",
@@ -28,6 +31,15 @@ const DEFAULT_CONFIG = {
 };
 
 const GUIDE_TEXT = `FIELD GUIDE\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nSYMBOL: Trading instrument (XAUUSD, BTCUSDT, UK100)\nASSET_CLASS: Auto detect | Forex | Crypto | Index | Commodity | Stock\nSESSION: Preferred execution session\nMIN_RR: Minimum Reward:Risk gate\nMAX_RISK_PCT: % risk per setup\n\nTIMEFRAME ARRAY\nHTF_BIAS: trend and structure context\nEXECUTION: setup discovery timeframe\nCONFIRMATION: trigger timeframe\n\nCONFLUENCE GATE\nRequire at least 3 aligned factors before entry.`;
+const STRATEGY_CHECKLIST = {
+  ICT: ["Liquidity sweep", "BOS/CHoCH confirmed", "PD Array reaction", "Displacement candle", "Killzone/session alignment"],
+  SMC: ["Liquidity grab", "Structure break", "Order block mitigation", "Imbalance/FVG reaction", "HTF bias alignment"],
+  "Price Action": ["Trend context clear", "Key S/R reaction", "Candlestick confirmation", "RR >= target", "No major news conflict"],
+  Wyckoff: ["Phase identified", "Spring/Upthrust event", "Volume confirmation", "Sign of strength/weakness", "Markup/markdown continuation"],
+  "EMA Trend": ["EMA stack aligned", "Pullback to EMA zone", "Trend continuation candle", "Momentum confirmation", "Avoid chop/range"],
+  Breakout: ["Range clearly defined", "Valid breakout close", "Retest holds", "Volume expansion", "False-break risk checked"],
+  VWAP: ["Price vs VWAP bias", "VWAP reclaim/reject", "Session anchor context", "Confluence with S/R", "Risk controlled around VWAP"],
+};
 
 function normalizeTemplateConfig(raw) {
   const strategyValue = raw?.strategies || raw?.strategy || ["ICT"];
@@ -88,12 +100,32 @@ function parseSnapshotMeta(it) {
   const tfToken = String(hasDup ? rest[rest.length - 2] : rest[rest.length - 1]).toUpperCase();
   const symbolParts = rest.slice(0, hasDup ? -2 : -1);
   if (!symbolParts.length) return null;
+  const yyyy = Number(parts[0].slice(0, 4));
+  const mm = Number(parts[0].slice(4, 6));
+  const dd = Number(parts[0].slice(6, 8));
+  const hh = Number(parts[1]);
+  const mi = Number(parts[2]);
+  const tsFromName = Date.UTC(yyyy, Math.max(mm - 1, 0), dd, hh, mi, 0, 0);
   return {
     fileName,
     tfToken,
     symbolToken: symbolParts.join("_"),
-    createdAtMs: Date.parse(it?.created_at || "") || 0,
+    createdAtMs: Date.parse(it?.created_at || "") || tsFromName || 0,
   };
+}
+
+function intervalTokenToLabel(token) {
+  const t = String(token || "").toUpperCase();
+  if (t === "D") return "1D";
+  if (t === "W") return "1W";
+  if (t === "M") return "1M";
+  if (/^\d+$/.test(t)) {
+    const n = Number(t);
+    if (n < 60) return `${n}m`;
+    if (n % 60 === 0) return `${n / 60}h`;
+    return `${n}m`;
+  }
+  return t;
 }
 
 function sameUtcDay(aMs, bMs) {
@@ -149,7 +181,14 @@ function buildPrompt(cfg) {
     2,
   );
 
-  return `Act as a Senior Algo-Trader. Analyze the uploaded chart(s).\n\nSYMBOL: ${cfg.symbol}\nASSET_CLASS: ${cfg.asset}\nSTRATEGY: ${cfg.strategies.join(", ")}\nMIN_RR: ${cfg.rr}\nMAX_RISK_PCT: ${cfg.risk}%\n${context.length ? `\nCONTEXT:\n${context.map((x) => `  ${x}`).join("\n")}\n` : ""}\nTIMEFRAME_ARRAY:\n${tfJson}\n\nEXECUTION LOGIC:\n1. HTF Bias — establish bias on [${cfg.htf_tfs.join(", ")}].\n2. Execution layer — identify setup on [${cfg.exec_tfs.join(", ")}] using ${cfg.strategies.join(", ")}.\n3. Confirmation — wait for trigger on [${cfg.conf_tfs.join(", ")}].\n4. Confluence gate — entry only if 3+ factors align.\n5. RR gate — reject setup if RR < ${cfg.rr}.\n6. Return JSON only (no markdown).\n\nOUTPUT:\n{\n  "symbol": "",\n  "trade_setup": {"direction": "", "entry": null, "sl": null, "tp1": null, "tp2": null, "tp3": null, "rr": null, "status": ""},\n  "confluence_factors": [],\n  "risk_management": {},\n  "invalidation": "",\n  "confidence_pct": null,\n  "final_verdict": {}\n}`;
+  const checklistRules = cfg.strategies
+    .map((s) => {
+      const rules = STRATEGY_CHECKLIST[s] || [];
+      return `- ${s}: ${rules.join("; ")}`;
+    })
+    .join("\n");
+
+  return `Act as a Senior Algo-Trader. Analyze the uploaded chart(s).\n\nSYMBOL: ${cfg.symbol}\nASSET_CLASS: ${cfg.asset}\nSTRATEGY: ${cfg.strategies.join(", ")}\nMIN_RR: ${cfg.rr}\nMAX_RISK_PCT: ${cfg.risk}%\n${context.length ? `\nCONTEXT:\n${context.map((x) => `  ${x}`).join("\n")}\n` : ""}\nTIMEFRAME_ARRAY:\n${tfJson}\n\nCHECKLIST CONDITIONS BY STRATEGY:\n${checklistRules}\n\nEXECUTION LOGIC:\n1. HTF Bias — establish bias on [${cfg.htf_tfs.join(", ")}].\n2. Execution layer — identify setup on [${cfg.exec_tfs.join(", ")}] using ${cfg.strategies.join(", ")}.\n3. Confirmation — wait for trigger on [${cfg.conf_tfs.join(", ")}].\n4. Confluence gate — entry only if 3+ factors align.\n5. RR gate — reject setup if RR < ${cfg.rr}.\n6. Return JSON only (no markdown).\n\nOUTPUT:\n{\n  "symbol": "",\n  "profile": "scalping|daily|swing",\n  "trade_plan": {\n    "direction": "",\n    "entry": null,\n    "sl": null,\n    "tp1": null,\n    "tp2": null,\n    "tp3": null,\n    "rr": null,\n    "note": "Short overview of strategy, risk level, and recommendation."\n  },\n  "market_analysis": {\n    "bias": "",\n    "trend": "",\n    "pd_arrays": [\n      { "type": "OB|FVG|S/R|Liquidity", "timeframe": "", "zone": "", "status": "active|tested|broken" }\n    ],\n    "checklist": [\n      { "strategy": "", "condition": "", "checked": true, "note": "" }\n    ]\n  },\n  "risk_management": {},\n  "invalidation": "",\n  "confidence_pct": null,\n  "final_verdict": {}\n}`;
 }
 
 function buildJsonConfig(cfg) {
@@ -186,6 +225,9 @@ function extractSignalsFromAnalysis(parsed, fallback = {}) {
   if (parsed.trade_setup && typeof parsed.trade_setup === "object") {
     rows.push({ ...(parsed.trade_setup || {}), symbol: parsed.symbol || fallback.symbol });
   }
+  if (parsed.trade_plan && typeof parsed.trade_plan === "object") {
+    rows.push({ ...(parsed.trade_plan || {}), symbol: parsed.symbol || fallback.symbol });
+  }
   if (!rows.length) rows.push(parsed);
 
   return rows
@@ -213,32 +255,51 @@ function extractSignalsFromAnalysis(parsed, fallback = {}) {
 }
 
 function buildFriendlyResponse(parsed) {
-  if (!parsed || typeof parsed !== "object") return "No parsed JSON yet.";
-  const symbol = parsed?.symbol || parsed?.trade_setup?.symbol || "-";
-  const setup = parsed?.trade_setup || parsed;
-  const direction = setup?.direction || parsed?.direction || parsed?.side || "-";
-  const entry = setup?.entry ?? parsed?.entry;
-  const sl = setup?.sl ?? parsed?.sl;
-  const tp1 = setup?.tp1 ?? setup?.tp ?? parsed?.tp;
-  const rr = setup?.rr ?? parsed?.rr;
-  const conf = parsed?.confidence_pct ?? setup?.confidence_pct;
-  const factors = Array.isArray(parsed?.confluence_factors) ? parsed.confluence_factors : [];
-  return [
-    `Symbol: ${symbol}`,
-    `Direction: ${direction}`,
-    `Entry: ${entry ?? "-"}`,
-    `SL: ${sl ?? "-"}`,
-    `TP1: ${tp1 ?? "-"}`,
-    `RR: ${rr ?? "-"}`,
-    `Confidence: ${conf ?? "-"}`,
-    factors.length ? `Confluence: ${factors.join(", ")}` : "Confluence: -",
-  ].join("\n");
+  if (parsed === null || parsed === undefined) return "No parsed JSON yet.";
+  const lines = [];
+  const walk = (value, prefix = "", depth = 0) => {
+    const indent = "  ".repeat(depth);
+    if (value === null || value === undefined) {
+      lines.push(`${indent}${prefix}: -`);
+      return;
+    }
+    if (Array.isArray(value)) {
+      if (!value.length) {
+        lines.push(`${indent}${prefix}: []`);
+        return;
+      }
+      lines.push(`${indent}${prefix}:`);
+      value.forEach((item, idx) => {
+        if (item && typeof item === "object") {
+          lines.push(`${indent}  - [${idx + 1}]`);
+          walk(item, "", depth + 2);
+        } else {
+          lines.push(`${indent}  - ${String(item)}`);
+        }
+      });
+      return;
+    }
+    if (typeof value === "object") {
+      const entries = Object.entries(value);
+      if (!entries.length) {
+        lines.push(`${indent}${prefix}: {}`);
+        return;
+      }
+      if (prefix) lines.push(`${indent}${prefix}:`);
+      entries.forEach(([k, v]) => walk(v, k, prefix ? depth + 1 : depth));
+      return;
+    }
+    lines.push(`${indent}${prefix}: ${String(value)}`);
+  };
+  if (typeof parsed === "object") walk(parsed);
+  else lines.push(String(parsed));
+  return lines.join("\n");
 }
 
 export default function ChartSnapshotsPage() {
   const [cfg, setCfg] = useState(DEFAULT_CONFIG);
   const [templates, setTemplates] = useState(() => loadTemplates());
-  const [templateId, setTemplateId] = useState("");
+  const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID);
   const [templateName, setTemplateName] = useState("");
 
   const [provider, setProvider] = useState("ICMARKETS");
@@ -262,6 +323,8 @@ export default function ChartSnapshotsPage() {
   const [selectedFiles, setSelectedFiles] = useState(new Set());
   const [symbolOptions, setSymbolOptions] = useState([]);
   const [snapshotTfs, setSnapshotTfs] = useState(["1D", "4h", "15m", "5m"]);
+  const [watchlist, setWatchlist] = useState([]);
+  const [analysisFilesDisplay, setAnalysisFilesDisplay] = useState([]);
 
   const tvSymbol = useMemo(() => {
     const base = String(cfg.symbol || "").trim();
@@ -297,6 +360,7 @@ export default function ChartSnapshotsPage() {
     setAnalysisJson("");
     setAnalysisParsed(null);
     setUsedFiles([]);
+    setAnalysisFilesDisplay(Array.isArray(files) ? files : []);
     try {
       const payload = {
         model: "claude-sonnet-4-0",
@@ -311,6 +375,7 @@ export default function ChartSnapshotsPage() {
         setAnalysisJson(JSON.stringify(out.parsed_json, null, 2));
       }
       setUsedFiles(Array.isArray(out?.used_files) ? out.used_files : []);
+      if (!files.length) setAnalysisFilesDisplay(Array.isArray(out?.used_files) ? out.used_files : []);
       setResponseTab("text");
       setStatus({ type: "success", text: `Analyzed ${Array.isArray(out?.used_files) ? out.used_files.length : 0} screenshot(s).` });
     } catch (e) {
@@ -347,7 +412,14 @@ export default function ChartSnapshotsPage() {
       } else {
         await loadSnapshots();
       }
-      setStatus({ type: "success", text: `Captured ${created.length || tfs.length} snapshot(s).` });
+      const createdTfSet = new Set(created.map((x) => parseSnapshotMeta(x)?.tfToken).filter(Boolean));
+      const expectedTfSet = new Set(tfs.map((x) => toTradingViewInterval(x).toUpperCase()));
+      const missing = [...expectedTfSet].filter((tf) => !createdTfSet.has(tf));
+      if (missing.length) {
+        setStatus({ type: "warning", text: `Captured ${created.length} snapshot(s). Missing TF: ${missing.map(intervalTokenToLabel).join(", ")}` });
+      } else {
+        setStatus({ type: "success", text: `Captured ${created.length || tfs.length} snapshot(s).` });
+      }
     } catch (e) {
       setStatus({ type: "error", text: String(e?.message || e || "Snapshots failed.") });
     } finally {
@@ -497,10 +569,49 @@ export default function ChartSnapshotsPage() {
 
   const handleSelectTemplate = (id) => {
     setTemplateId(id);
+    if (id === DEFAULT_TEMPLATE_ID) {
+      setCfg({ ...DEFAULT_CONFIG });
+      setTemplateName("");
+      setStatus({ type: "success", text: "Default template loaded." });
+      return;
+    }
     const found = templates.find((x) => x.id === id);
     if (!found?.config) return;
     setCfg(normalizeTemplateConfig(found.config));
     setStatus({ type: "success", text: `Template loaded: ${found.name}` });
+  };
+
+  const loadWatchlist = async () => {
+    try {
+      const out = await api.getSettings();
+      const list = Array.isArray(out?.settings) ? out.settings : [];
+      const row = list.find((x) => String(x?.type || "").toUpperCase() === SYMBOLS_SETTING_TYPE && String(x?.name || "").toUpperCase() === SYMBOLS_SETTING_NAME);
+      const arr = Array.isArray(row?.data?.symbols) ? row.data.symbols : [];
+      setWatchlist([...new Set(arr.map((x) => String(x || "").trim()).filter(Boolean))]);
+    } catch {
+      setWatchlist([]);
+    }
+  };
+
+  const addCurrentSymbolToWatchlist = async () => {
+    const s = String(cfg.symbol || "").trim().toUpperCase();
+    if (!s) {
+      setStatus({ type: "warning", text: "Symbol is required." });
+      return;
+    }
+    const next = [...new Set([...watchlist, s])];
+    try {
+      await api.upsertSetting({
+        type: SYMBOLS_SETTING_TYPE,
+        name: SYMBOLS_SETTING_NAME,
+        data: { symbols: next },
+        status: "active",
+      });
+      setWatchlist(next);
+      setStatus({ type: "success", text: `Added to watchlist: ${s}` });
+    } catch (e) {
+      setStatus({ type: "error", text: String(e?.message || e || "Failed to save watchlist.") });
+    }
   };
 
   const toggleFile = (fileName) => {
@@ -515,6 +626,10 @@ export default function ChartSnapshotsPage() {
   useEffect(() => {
     loadSnapshots();
   }, [limit]);
+
+  useEffect(() => {
+    loadWatchlist();
+  }, []);
 
   useEffect(() => {
     const q = String(cfg.symbol || "").trim();
@@ -535,21 +650,46 @@ export default function ChartSnapshotsPage() {
     return () => window.clearTimeout(timer);
   }, [cfg.symbol, provider]);
 
+  const chartFiles = (analysisFilesDisplay && analysisFilesDisplay.length ? analysisFilesDisplay : usedFiles).map((x) => String(x || "").trim()).filter(Boolean);
+
   return (
     <section className="snapshot-builder-v2">
-      <section className="panel snapshot-settings-v2">
+      <section className="snapshot-settings-shell-v2">
+        <section className="panel snapshot-symbols-card-v2">
+          <div className="snapshot-symbols-title-v2">
+            <span className="panel-label" style={{ margin: 0 }}>Symbols</span>
+            <button className="secondary-button snapshot-plus-btn-v2" type="button" onClick={addCurrentSymbolToWatchlist} title="Add current symbol">+</button>
+          </div>
+          <input
+            list="tv-symbol-options"
+            value={cfg.symbol}
+            onChange={(e) => setCfgField("symbol", e.target.value)}
+            placeholder="Symbol (e.g. ICMARKETS:EURJF)"
+          />
+          <datalist id="tv-symbol-options">
+            {symbolOptions.map((opt) => <option key={opt} value={opt} />)}
+          </datalist>
+          <div className="snapshot-watchlist-v2">
+            {watchlist.length === 0 ? <span className="minor-text">No watchlist symbols yet.</span> : watchlist.map((s) => (
+              <button key={s} type="button" className={`secondary-button snapshot-tag-v2 ${String(cfg.symbol).toUpperCase() === s ? "active" : ""}`} onClick={() => setCfgField("symbol", s)}>
+                {s}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel snapshot-settings-v2">
         <div className="snapshot-settings-head-v2">
           <h2 className="page-title" style={{ margin: 0, fontSize: 22 }}>Settings</h2>
           <div className="snapshot-template-row-v2">
             <div className="snapshot-template-col-v2">
-              <label className="minor-text">Template</label>
-              <select value={templateId} onChange={(e) => handleSelectTemplate(e.target.value)}>
-                <option value="">Select template</option>
+              <select aria-label="Template" value={templateId} onChange={(e) => handleSelectTemplate(e.target.value)}>
+                <option value="">New Template</option>
+                <option value={DEFAULT_TEMPLATE_ID}>Default Template</option>
                 {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
             <div className="snapshot-template-col-v2">
-              <label className="minor-text">Template Name</label>
               <input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name" />
             </div>
             <button className="primary-button snapshot-template-save-btn-v2" type="button" onClick={saveTemplate}>Save</button>
@@ -557,13 +697,6 @@ export default function ChartSnapshotsPage() {
         </div>
 
         <div className="snapshot-fields-v2 compact">
-          <div>
-            <label className="minor-text">Symbol</label>
-            <input list="tv-symbol-options" value={cfg.symbol} onChange={(e) => setCfgField("symbol", e.target.value)} placeholder="UK100" />
-            <datalist id="tv-symbol-options">
-              {symbolOptions.map((opt) => <option key={opt} value={opt} />)}
-            </datalist>
-          </div>
           <div>
             <label className="minor-text">Assets</label>
             <select value={cfg.asset} onChange={(e) => setCfgField("asset", e.target.value)}>
@@ -687,6 +820,7 @@ export default function ChartSnapshotsPage() {
             <input value={cfg.notes} onChange={(e) => setCfgField("notes", e.target.value)} placeholder="Notes / extra context" />
           </div>
         </div>
+        </section>
       </section>
 
       <section className="snapshot-io-row-v2">
@@ -730,11 +864,19 @@ export default function ChartSnapshotsPage() {
           {responseTab === "raw" ? <textarea className="snapshot-mono-v2" rows={18} value={analysisRaw || analysisJson} onChange={(e) => setAnalysisRaw(e.target.value)} /> : null}
           {responseTab === "chart" ? (
             <div className="snapshot-chart-grid-v2">
-              {(usedFiles || []).length === 0 ? <div className="minor-text">No chart files from current analysis.</div> : usedFiles.map((f) => (
-                <a key={f} href={`/v2/chart/snapshots/${encodeURIComponent(f)}`} target="_blank" rel="noreferrer">
-                  <img src={`/v2/chart/snapshots/${encodeURIComponent(f)}`} alt={f} />
-                </a>
-              ))}
+              {chartFiles.length === 0 ? <div className="minor-text">No chart files from current analysis.</div> : chartFiles.map((f) => {
+                const meta = parseSnapshotMeta({ file_name: f }) || {};
+                return (
+                  <a key={f} className="snapshot-chart-card-v2" href={`/v2/chart/snapshots/${encodeURIComponent(f)}`} target="_blank" rel="noreferrer">
+                    <img src={`/v2/chart/snapshots/${encodeURIComponent(f)}`} alt={f} />
+                    <div className="snapshot-chart-meta-v2">
+                      <span>{meta?.symbolToken || "-"}</span>
+                      <span>{intervalTokenToLabel(meta?.tfToken || "-")}</span>
+                      <span>{formatCompactDateTime(meta?.createdAtMs || Date.now())}</span>
+                    </div>
+                  </a>
+                );
+              })}
             </div>
           ) : null}
 
