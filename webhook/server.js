@@ -3321,6 +3321,7 @@ function parseSnapshotPdArrays(payload = {}) {
       zone: x.zone,
       low: x.low ?? x.bottom ?? null,
       high: x.high ?? x.top ?? null,
+      bar_start: Number.isFinite(Number(x.bar_start)) ? Number(x.bar_start) : null,
       status: String(x.status || "").trim(),
       note: String(x.note || "").trim(),
     }));
@@ -3344,7 +3345,8 @@ function parseSnapshotKeyLevels(payload = {}) {
     if (typeof item === "object") {
       const name = String(item.name || item.label || item.type || "Key Level").slice(0, 40);
       const p = Number(item.price ?? item.level ?? item.value);
-      if (Number.isFinite(p)) out.push({ name, price: p, kind: String(item.kind || "generic") });
+      const barStart = Number(item.bar_start);
+      if (Number.isFinite(p)) out.push({ name, price: p, kind: String(item.kind || "generic"), bar_start: Number.isFinite(barStart) ? barStart : null });
     }
   };
   const keyLevels = payload?.key_levels;
@@ -5297,14 +5299,21 @@ const appHandler = async (req, res) => {
       const strategy = String(payload.strategy || (source === "ai" ? "ai" : "Manual")).trim();
       const effectiveUserId = uiEffectiveUserId(req, url, payload) || sess.user_id || CFG.mt5DefaultUserId;
       const rawPayload = payload && typeof payload === "object" ? { ...payload } : {};
-      const analysisSnapshot = await buildAnalysisSnapshotFromTwelve({
-        userId: effectiveUserId,
-        payload: rawPayload,
-        symbol: payload.symbol,
-        timeframe: timeframe || "15m",
-      }).catch(() => null);
-      if (analysisSnapshot && typeof analysisSnapshot === "object") {
-        rawPayload.analysis_snapshot = analysisSnapshot;
+      const existingSnapshot = rawPayload.analysis_snapshot && typeof rawPayload.analysis_snapshot === "object"
+        ? rawPayload.analysis_snapshot
+        : null;
+      if (existingSnapshot && String(existingSnapshot?.status || "").toLowerCase() === "ok" && Array.isArray(existingSnapshot?.bars) && existingSnapshot.bars.length) {
+        rawPayload.analysis_snapshot = existingSnapshot;
+      } else {
+        const analysisSnapshot = await buildAnalysisSnapshotFromTwelve({
+          userId: effectiveUserId,
+          payload: rawPayload,
+          symbol: payload.symbol,
+          timeframe: timeframe || "15m",
+        }).catch(() => null);
+        if (analysisSnapshot && typeof analysisSnapshot === "object") {
+          rawPayload.analysis_snapshot = analysisSnapshot;
+        }
       }
       const enqueue = await mt5EnqueueSignalFromPayload({
         id: payload.signal_id || payload.id || "",

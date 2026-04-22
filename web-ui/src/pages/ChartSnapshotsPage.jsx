@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createChart } from "lightweight-charts";
 import { api } from "../api";
 
 const STORAGE_KEY = "chart_prompt_builder_templates_v2";
@@ -151,6 +152,42 @@ function parseNum(value) {
   if (!m) return NaN;
   const n = Number(m[0]);
   return Number.isFinite(n) ? n : NaN;
+}
+
+function parsePdZoneBounds(zoneRaw) {
+  if (zoneRaw === null || zoneRaw === undefined) return { low: null, high: null };
+  if (typeof zoneRaw === "number" && Number.isFinite(zoneRaw)) return { low: zoneRaw, high: zoneRaw };
+  const txt = String(zoneRaw).trim();
+  if (!txt) return { low: null, high: null };
+  const nums = txt.match(/-?\d+(?:\.\d+)?/g) || [];
+  const a = nums[0] ? Number(nums[0]) : NaN;
+  const b = nums[1] ? Number(nums[1]) : NaN;
+  if (Number.isFinite(a) && Number.isFinite(b)) {
+    return { low: Math.min(a, b), high: Math.max(a, b) };
+  }
+  if (Number.isFinite(a)) return { low: a, high: a };
+  return { low: null, high: null };
+}
+
+function extractPositionFromAnalysis(parsed) {
+  const plan = parsed?.trade_plan && typeof parsed.trade_plan === "object" ? parsed.trade_plan : {};
+  const entry = parseNum(plan.entry ?? parsed?.entry ?? parsed?.price);
+  const sl = parseNum(plan.sl ?? parsed?.sl);
+  const tp = parseNum(plan.tp1 ?? plan.tp ?? parsed?.tp ?? parsed?.take_profit);
+  const rrRaw = parseNum(plan.rr ?? parsed?.rr);
+  let rr = Number.isFinite(rrRaw) ? rrRaw : null;
+  if (!Number.isFinite(rr) && Number.isFinite(entry) && Number.isFinite(sl) && Number.isFinite(tp)) {
+    const risk = Math.abs(entry - sl);
+    const reward = Math.abs(tp - entry);
+    if (risk > 0 && reward > 0) rr = Number((reward / risk).toFixed(2));
+  }
+  return {
+    entry: Number.isFinite(entry) ? String(entry) : "",
+    tp: Number.isFinite(tp) ? String(tp) : "",
+    sl: Number.isFinite(sl) ? String(sl) : "",
+    rr: Number.isFinite(rr) ? String(rr) : "",
+    note: String(plan.note || parsed?.invalidation || parsed?.note || "").trim(),
+  };
 }
 
 function normalizeSignalSymbol(symbolRaw) {
@@ -373,7 +410,7 @@ function buildPrompt(cfg) {
     })
     .join("\n");
 
-  return `Act as a Senior Algo-Trader. Analyze the uploaded chart(s).\n\nSYMBOL: ${cfg.symbol}\nASSET_CLASS: ${cfg.asset}\nSTRATEGY: ${cfg.strategies.join(", ")}\nMIN_RR: ${cfg.rr}\nMAX_RISK_PCT: ${cfg.risk}%\n${context.length ? `\nCONTEXT:\n${context.map((x) => `  ${x}`).join("\n")}\n` : ""}\nTIMEFRAME_ARRAY:\n${tfJson}\n\nCHECKLIST CONDITIONS BY STRATEGY:\n${checklistRules}\n\nEXECUTION LOGIC:\n1. HTF Bias — establish bias on [${cfg.htf_tfs.join(", ")}].\n2. Execution layer — identify setup on [${cfg.exec_tfs.join(", ")}] using ${cfg.strategies.join(", ")}.\n3. Confirmation — wait for trigger on [${cfg.conf_tfs.join(", ")}].\n4. Confluence gate — entry only if 3+ factors align.\n5. RR gate — reject setup if RR < ${cfg.rr}.\n6. Return JSON only (no markdown).\n\nOUTPUT:\n{\n  "symbol": "",\n  "profile": "scalping|daily|swing",\n  "trade_plan": {\n    "direction": "",\n    "entry": null,\n    "sl": null,\n    "tp1": null,\n    "tp2": null,\n    "tp3": null,\n    "rr": null,\n    "note": "Short overview of strategy, risk level, and recommendation."\n  },\n  "market_analysis": {\n    "bias": "",\n    "trend": "",\n    "pd_arrays": [\n      { "type": "OB|FVG|S/R|Liquidity", "timeframe": "", "zone": "", "status": "active|tested|broken" }\n    ],\n    "checklist": [\n      { "strategy": "", "condition": "", "checked": true, "note": "" }\n    ]\n  },\n  "risk_management": {},\n  "invalidation": "",\n  "confidence_pct": null,\n  "final_verdict": {}\n}`;
+  return `Act as a Senior Algo-Trader. Analyze the uploaded chart(s).\n\nSYMBOL: ${cfg.symbol}\nASSET_CLASS: ${cfg.asset}\nSTRATEGY: ${cfg.strategies.join(", ")}\nMIN_RR: ${cfg.rr}\nMAX_RISK_PCT: ${cfg.risk}%\n${context.length ? `\nCONTEXT:\n${context.map((x) => `  ${x}`).join("\n")}\n` : ""}\nTIMEFRAME_ARRAY:\n${tfJson}\n\nCHECKLIST CONDITIONS BY STRATEGY:\n${checklistRules}\n\nEXECUTION LOGIC:\n1. HTF Bias — establish bias on [${cfg.htf_tfs.join(", ")}].\n2. Execution layer — identify setup on [${cfg.exec_tfs.join(", ")}] using ${cfg.strategies.join(", ")}.\n3. Confirmation — wait for trigger on [${cfg.conf_tfs.join(", ")}].\n4. Confluence gate — entry only if 3+ factors align.\n5. RR gate — reject setup if RR < ${cfg.rr}.\n6. For every PD Array and every Key Level include bar_start (unix seconds) when possible.\n7. Return JSON only (no markdown).\n\nOUTPUT:\n{\n  "symbol": "",\n  "profile": "scalping|daily|swing",\n  "trade_plan": {\n    "direction": "",\n    "entry": null,\n    "sl": null,\n    "tp1": null,\n    "tp2": null,\n    "tp3": null,\n    "rr": null,\n    "note": "Short overview of strategy, risk level, and recommendation."\n  },\n  "market_analysis": {\n    "bias": "",\n    "trend": "",\n    "pd_arrays": [\n      { "type": "OB|FVG|S/R|Liquidity", "timeframe": "", "zone": "", "status": "active|tested|broken", "bar_start": null }\n    ],\n    "key_levels": [\n      { "name": "", "price": null, "type": "S/R|EQH|EQL|PD", "bar_start": null }\n    ],\n    "checklist": [\n      { "strategy": "", "condition": "", "checked": true, "note": "" }\n    ]\n  },\n  "risk_management": {},\n  "invalidation": "",\n  "confidence_pct": null,\n  "final_verdict": {}\n}`;
 }
 
 function buildJsonConfig(cfg) {
@@ -490,13 +527,12 @@ export default function ChartSnapshotsPage() {
   const [provider, setProvider] = useState("ICMARKETS");
   const [timeframe, setTimeframe] = useState("15m");
   const [items, setItems] = useState([]);
-  const [limit, setLimit] = useState(30);
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [addingSignal, setAddingSignal] = useState(false);
-  const [tab, setTab] = useState("prompt");
+  const [settingsTab, setSettingsTab] = useState("settings");
   const [responseTab, setResponseTab] = useState("text");
   const [status, setStatus] = useState({ type: "", text: "" });
   const [actionStatus, setActionStatus] = useState({ action: "", type: "", text: "" });
@@ -511,6 +547,13 @@ export default function ChartSnapshotsPage() {
   const [snapshotTfs, setSnapshotTfs] = useState(["1D", "4h", "15m", "5m"]);
   const [watchlist, setWatchlist] = useState([]);
   const [analysisFilesDisplay, setAnalysisFilesDisplay] = useState([]);
+  const [position, setPosition] = useState({ entry: "", tp: "", sl: "", rr: "", note: "" });
+  const [barsCache, setBarsCache] = useState({});
+  const [barsCacheKey, setBarsCacheKey] = useState("");
+  const [barsLoading, setBarsLoading] = useState(false);
+  const [liveTf, setLiveTf] = useState("15");
+  const liteChartRef = useRef(null);
+  const liteChartApiRef = useRef(null);
 
   const tvSymbol = useMemo(() => {
     const base = String(cfg.symbol || "").trim();
@@ -529,6 +572,12 @@ export default function ChartSnapshotsPage() {
     () => extractSignalsFromAnalysis(effectiveParsed, { symbol: tvSymbol, timeframe, strategy: cfg.strategies.join("+") || "ai" }).length > 0,
     [effectiveParsed, tvSymbol, timeframe, cfg.strategies],
   );
+  const normalizedSymbolForBars = useMemo(() => normalizeSignalSymbol(tvSymbol || cfg.symbol || ""), [tvSymbol, cfg.symbol]);
+  const currentBarsKey = useMemo(
+    () => `${normalizedSymbolForBars}|${timeframe}|${Number(cfg.lookbackBars || 300) || 300}`,
+    [normalizedSymbolForBars, timeframe, cfg.lookbackBars],
+  );
+  const currentBarsSnapshot = barsCache[currentBarsKey] || null;
 
   const setCfgField = (key, value) => setCfg((prev) => ({ ...prev, [key]: value }));
 
@@ -536,7 +585,7 @@ export default function ChartSnapshotsPage() {
     setLoading(true);
     setStatus({ type: "", text: "" });
     try {
-      const out = await api.chartSnapshots(limit);
+      const out = await api.chartSnapshots(60);
       const arr = Array.isArray(out?.items) ? out.items : [];
       setItems(arr);
       setSelectedFiles(new Set());
@@ -549,6 +598,30 @@ export default function ChartSnapshotsPage() {
 
   const setActionMessage = (action, type, text) => {
     setActionStatus({ action, type, text: String(text || "") });
+  };
+
+  const fetchBarsSnapshot = async (symbol, tf, bars) => {
+    const sym = normalizeSignalSymbol(symbol || "");
+    const cacheKey = `${sym}|${tf}|${bars}`;
+    if (!sym) return null;
+    if (barsCache[cacheKey]) {
+      setBarsCacheKey(cacheKey);
+      return barsCache[cacheKey];
+    }
+    setBarsLoading(true);
+    try {
+      const out = await api.chartTwelveCandles(sym, tf, bars);
+      const snap = out?.snapshot && typeof out.snapshot === "object" ? out.snapshot : null;
+      if (snap) {
+        setBarsCache((prev) => ({ ...prev, [cacheKey]: snap }));
+        setBarsCacheKey(cacheKey);
+      }
+      return snap;
+    } catch {
+      return null;
+    } finally {
+      setBarsLoading(false);
+    }
   };
 
   const analyzeFiles = async (files = []) => {
@@ -572,6 +645,9 @@ export default function ChartSnapshotsPage() {
       if (parsed && typeof parsed === "object") {
         setAnalysisParsed(parsed);
         setAnalysisJson(JSON.stringify(parsed, null, 2));
+        setPosition(extractPositionFromAnalysis(parsed));
+        const symbolForBars = normalizeSignalSymbol(parsed?.symbol || tvSymbol || cfg.symbol || "");
+        await fetchBarsSnapshot(symbolForBars, timeframe, Number(cfg.lookbackBars || 300) || 300);
       }
       setUsedFiles(Array.isArray(out?.used_files) ? out.used_files : []);
       if (!files.length) setAnalysisFilesDisplay(Array.isArray(out?.used_files) ? out.used_files : []);
@@ -611,7 +687,7 @@ export default function ChartSnapshotsPage() {
       });
       const created = Array.isArray(out?.items) ? out.items : [];
       if (created.length) {
-        setItems((prev) => [...created, ...prev].slice(0, limit));
+        setItems((prev) => [...created, ...prev].slice(0, 60));
       } else {
         await loadSnapshots();
       }
@@ -695,7 +771,7 @@ export default function ChartSnapshotsPage() {
       });
       const created = Array.isArray(out?.items) ? out.items : [];
       if (created.length) {
-        setItems((prev) => [...created, ...prev].slice(0, limit));
+        setItems((prev) => [...created, ...prev].slice(0, 60));
       } else {
         await loadSnapshots();
       }
@@ -741,6 +817,21 @@ export default function ChartSnapshotsPage() {
     await deleteSnapshots({ all: true });
   };
 
+  const updatePositionField = (key, value) => {
+    setPosition((prev) => {
+      const next = { ...prev, [key]: value };
+      const e = parseNum(next.entry);
+      const s = parseNum(next.sl);
+      const t = parseNum(next.tp);
+      if (Number.isFinite(e) && Number.isFinite(s) && Number.isFinite(t)) {
+        const risk = Math.abs(e - s);
+        const reward = Math.abs(t - e);
+        if (risk > 0 && reward > 0) next.rr = String(Number((reward / risk).toFixed(2)));
+      }
+      return next;
+    });
+  };
+
   const addToSignal = async () => {
     setAddingSignal(true);
     setStatus({ type: "", text: "" });
@@ -755,8 +846,29 @@ export default function ChartSnapshotsPage() {
       });
       if (!signals.length) throw new Error("No valid signal found in response JSON.");
       for (const payload of signals) {
+        const cachedSnapshot = currentBarsSnapshot && typeof currentBarsSnapshot === "object" ? currentBarsSnapshot : null;
+        const mergedPdArrays = Array.isArray(parsed?.market_analysis?.pd_arrays) ? parsed.market_analysis.pd_arrays : [];
+        const mergedKeyLevels = Array.isArray(parsed?.market_analysis?.key_levels) ? parsed.market_analysis.key_levels : [];
+        const analysisSnapshotPayload = cachedSnapshot
+          ? {
+              ...cachedSnapshot,
+              pd_arrays: mergedPdArrays,
+              key_levels: mergedKeyLevels,
+              summary: {
+                ...(cachedSnapshot.summary && typeof cachedSnapshot.summary === "object" ? cachedSnapshot.summary : {}),
+                profile: parsed?.profile || "",
+                bias: parsed?.market_analysis?.bias || "",
+                trend: parsed?.market_analysis?.trend || "",
+                note: position.note || parsed?.trade_plan?.note || "",
+              },
+            }
+          : undefined;
         const finalPayload = {
           ...payload,
+          entry: parseNum(position.entry) || payload.entry,
+          tp: parseNum(position.tp) || payload.tp,
+          sl: parseNum(position.sl) || payload.sl,
+          rr: parseNum(position.rr) || payload.rr,
           note: responseText || payload.note || "",
           profile: parsed?.profile || payload?.profile || "",
           trade_plan: parsed?.trade_plan && typeof parsed.trade_plan === "object" ? parsed.trade_plan : undefined,
@@ -765,6 +877,7 @@ export default function ChartSnapshotsPage() {
           invalidation: parsed?.invalidation ?? "",
           confidence_pct: parsed?.confidence_pct ?? null,
           final_verdict: parsed?.final_verdict && typeof parsed.final_verdict === "object" ? parsed.final_verdict : undefined,
+          analysis_snapshot: analysisSnapshotPayload,
         };
         await api.createTrade(finalPayload);
       }
@@ -854,7 +967,7 @@ export default function ChartSnapshotsPage() {
 
   useEffect(() => {
     loadSnapshots();
-  }, [limit]);
+  }, []);
 
   useEffect(() => {
     loadWatchlist();
@@ -879,281 +992,323 @@ export default function ChartSnapshotsPage() {
     return () => window.clearTimeout(timer);
   }, [cfg.symbol, provider]);
 
+  useEffect(() => {
+    if (!effectiveParsed || typeof effectiveParsed !== "object") return;
+    setPosition(extractPositionFromAnalysis(effectiveParsed));
+  }, [effectiveParsed]);
+
   const chartFiles = (analysisFilesDisplay && analysisFilesDisplay.length ? analysisFilesDisplay : usedFiles).map((x) => String(x || "").trim()).filter(Boolean);
+  const chartPdArrays = useMemo(() => {
+    const arr = Array.isArray(effectiveParsed?.market_analysis?.pd_arrays) ? effectiveParsed.market_analysis.pd_arrays : [];
+    return arr.map((x, idx) => {
+      const lowRaw = parseNum(x?.low);
+      const highRaw = parseNum(x?.high);
+      const zoneParsed = parsePdZoneBounds(x?.zone);
+      const low = Number.isFinite(lowRaw) ? lowRaw : zoneParsed.low;
+      const high = Number.isFinite(highRaw) ? highRaw : zoneParsed.high;
+      const startTs = Number(x?.bar_start);
+      return {
+        id: `${String(x?.type || "PD")}_${idx}`,
+        type: String(x?.type || "PD").trim(),
+        timeframe: String(x?.timeframe || "").trim(),
+        status: String(x?.status || "").trim(),
+        barStart: Number.isFinite(startTs) ? startTs : null,
+        low: Number.isFinite(low) ? low : null,
+        high: Number.isFinite(high) ? high : null,
+      };
+    }).filter((x) => Number.isFinite(x.low) || Number.isFinite(x.high));
+  }, [effectiveParsed]);
+
+  const chartKeyLevels = useMemo(() => {
+    const arr = Array.isArray(effectiveParsed?.market_analysis?.key_levels) ? effectiveParsed.market_analysis.key_levels : [];
+    return arr
+      .map((x, idx) => {
+        const p = parseNum(x?.price ?? x?.level ?? x?.value);
+        if (!Number.isFinite(p)) return null;
+        return {
+          id: `${String(x?.name || "KEY")}_${idx}`,
+          name: String(x?.name || x?.type || "Key Level"),
+          price: p,
+          barStart: Number.isFinite(Number(x?.bar_start)) ? Number(x.bar_start) : null,
+        };
+      })
+      .filter(Boolean);
+  }, [effectiveParsed]);
+
+  useEffect(() => {
+    if (!liteChartRef.current || responseTab !== "chart") return;
+    const snapshot = currentBarsSnapshot;
+    const bars = Array.isArray(snapshot?.bars) ? snapshot.bars : [];
+    if (!bars.length) return;
+
+    if (liteChartApiRef.current) {
+      liteChartApiRef.current.remove();
+      liteChartApiRef.current = null;
+    }
+
+    const chart = createChart(liteChartRef.current, {
+      width: Math.max(320, liteChartRef.current.clientWidth || 640),
+      height: 320,
+      layout: { background: { color: "transparent" }, textColor: "#b8c4de" },
+      grid: { vertLines: { color: "rgba(255,255,255,0.08)" }, horzLines: { color: "rgba(255,255,255,0.08)" } },
+      rightPriceScale: { borderColor: "rgba(255,255,255,0.1)" },
+      timeScale: { borderColor: "rgba(255,255,255,0.1)", timeVisible: true },
+      crosshair: { mode: 1 },
+    });
+    liteChartApiRef.current = chart;
+
+    const candles = chart.addCandlestickSeries({
+      upColor: "#1cc8b7",
+      downColor: "#ef5350",
+      borderVisible: false,
+      wickUpColor: "#1cc8b7",
+      wickDownColor: "#ef5350",
+    });
+    candles.setData(bars);
+
+    chartPdArrays.forEach((pd, idx) => {
+      const y = Number.isFinite(pd.high) ? pd.high : pd.low;
+      if (!Number.isFinite(y)) return;
+      const color = idx % 2 ? "rgba(255,193,7,0.8)" : "rgba(29,185,84,0.8)";
+      const line = chart.addLineSeries({ color, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+      line.setData([{ time: bars[0].time, value: y }, { time: bars[bars.length - 1].time, value: y }]);
+    });
+
+    chartKeyLevels.forEach((lvl) => {
+      const line = chart.addLineSeries({ color: "rgba(104,163,255,0.9)", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+      line.setData([{ time: bars[0].time, value: lvl.price }, { time: bars[bars.length - 1].time, value: lvl.price }]);
+    });
+
+    const entry = parseNum(position.entry);
+    const sl = parseNum(position.sl);
+    const tp = parseNum(position.tp);
+    const addTradeLine = (val, color) => {
+      if (!Number.isFinite(val)) return;
+      const line = chart.addLineSeries({ color, lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
+      line.setData([{ time: bars[0].time, value: val }, { time: bars[bars.length - 1].time, value: val }]);
+    };
+    addTradeLine(entry, "#33a0ff");
+    addTradeLine(sl, "#ef5350");
+    addTradeLine(tp, "#22c55e");
+
+    chart.timeScale().fitContent();
+
+    const onResize = () => {
+      if (!liteChartRef.current || !liteChartApiRef.current) return;
+      liteChartApiRef.current.applyOptions({ width: Math.max(320, liteChartRef.current.clientWidth || 640) });
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      if (liteChartApiRef.current) {
+        liteChartApiRef.current.remove();
+        liteChartApiRef.current = null;
+      }
+    };
+  }, [responseTab, currentBarsSnapshot, chartPdArrays, chartKeyLevels, position.entry, position.sl, position.tp]);
 
   return (
-    <section className="snapshot-builder-v2">
-      <section className="snapshot-settings-shell-v2">
-        <section className="panel snapshot-symbols-card-v2">
-          <div className="snapshot-symbols-title-v2">
-            <span className="panel-label" style={{ margin: 0 }}>Symbols</span>
-            <button className="secondary-button snapshot-plus-btn-v2" type="button" onClick={addCurrentSymbolToWatchlist} title="Add current symbol">+</button>
-          </div>
-          <input
-            list="tv-symbol-options"
-            value={cfg.symbol}
-            onChange={(e) => setCfgField("symbol", normalizeWatchSymbol(e.target.value))}
-            placeholder="Symbol (e.g. ICMARKETS:EURJF)"
-          />
-          <datalist id="tv-symbol-options">
-            {symbolOptions.map((opt) => <option key={opt} value={opt} />)}
-          </datalist>
-          <div className="snapshot-watchlist-v2">
-            {watchlist.length === 0 ? <span className="minor-text">No watchlist symbols yet.</span> : watchlist.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
-                onClick={() => setCfgField("symbol", normalizeWatchSymbol(s))}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="panel snapshot-settings-v2">
-        <div className="snapshot-settings-head-v2">
-          <h2 className="page-title" style={{ margin: 0, fontSize: 22 }}>Settings</h2>
-          <div className="snapshot-template-row-v2">
-            <div className="snapshot-template-col-v2">
-              <select aria-label="Template" value={templateId} onChange={(e) => handleSelectTemplate(e.target.value)}>
-                <option value="">New Template</option>
-                <option value={DEFAULT_TEMPLATE_ID}>Default Template</option>
-                {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </div>
-            <div className="snapshot-template-col-v2">
-              <input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name" />
-            </div>
-            <button className="primary-button snapshot-template-save-btn-v2" type="button" onClick={saveTemplate}>Save</button>
-          </div>
+    <section className="snapshot-builder-v2 snapshot-builder-v3">
+      <section className="panel snapshot-col-v3 snapshot-col-symbols-v3">
+        <div className="snapshot-symbols-title-v2">
+          <span className="panel-label" style={{ margin: 0 }}>Symbols</span>
+          <button className="secondary-button snapshot-plus-btn-v2" type="button" onClick={addCurrentSymbolToWatchlist} title="Add current symbol">+</button>
         </div>
-
-        <div className="snapshot-fields-v2 compact">
-          <div>
-            <label className="minor-text">Assets</label>
-            <select value={cfg.asset} onChange={(e) => setCfgField("asset", e.target.value)}>
-              <option>Auto detect</option>
-              <option>Commodity</option>
-              <option>Forex</option>
-              <option>Crypto</option>
-              <option>Index</option>
-              <option>Stock</option>
-            </select>
-          </div>
-          <div>
-            <label className="minor-text">Sessions</label>
-            <select value={cfg.session} onChange={(e) => setCfgField("session", e.target.value)}>
-              <option>Any</option>
-              <option>London</option>
-              <option>New York</option>
-              <option>Asian</option>
-              <option>London+NY</option>
-            </select>
-          </div>
-          <div>
-            <label className="minor-text">MinRR</label>
-            <input type="number" min="0.5" step="0.5" value={cfg.rr} onChange={(e) => setCfgField("rr", e.target.value)} />
-          </div>
-          <div>
-            <label className="minor-text">Max Risk</label>
-            <input type="number" min="0.1" step="0.1" value={cfg.risk} onChange={(e) => setCfgField("risk", e.target.value)} />
-          </div>
-          <div>
-            <label className="minor-text">Lookback</label>
-            <input type="number" min="50" max="5000" value={cfg.lookbackBars} onChange={(e) => setCfgField("lookbackBars", e.target.value)} />
-          </div>
+        <input
+          list="tv-symbol-options"
+          value={cfg.symbol}
+          onChange={(e) => setCfgField("symbol", normalizeWatchSymbol(e.target.value))}
+          placeholder="Symbol (e.g. EURUSD)"
+        />
+        <datalist id="tv-symbol-options">
+          {symbolOptions.map((opt) => <option key={opt} value={opt} />)}
+        </datalist>
+        <div className="snapshot-watchlist-v2">
+          {watchlist.length === 0 ? <span className="minor-text">No watchlist symbols yet.</span> : watchlist.map((s) => (
+            <button
+              key={s}
+              type="button"
+              className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
+              onClick={() => setCfgField("symbol", normalizeWatchSymbol(s))}
+            >
+              {s}
+            </button>
+          ))}
         </div>
-
-        <div>
-          <label className="minor-text">Strategy (multi-select)</label>
-          <div className="snapshot-tag-wrap-v2">
-            {STRATEGY_OPTIONS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className={`secondary-button snapshot-tag-v2 ${cfg.strategies.includes(s) ? "active" : ""}`}
-                onClick={() => setCfgField("strategies", toggleArrayValue(cfg.strategies, s))}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="snapshot-tf-v2">
-          <div className="snapshot-col-span-5">
-            <label className="minor-text">HTF Bias TFs</label>
-            <div className="snapshot-tag-wrap-v2">
-              {HTF_OPTIONS.map((tf) => (
-                <button key={tf} type="button" className={`secondary-button snapshot-tag-v2 ${cfg.htf_tfs.includes(tf) ? "active" : ""}`} onClick={() => setCfgField("htf_tfs", toggleArrayValue(cfg.htf_tfs, tf))}>{tf}</button>
-              ))}
-            </div>
-          </div>
-          <div className="snapshot-col-span-4">
-            <label className="minor-text">Execution TFs</label>
-            <div className="snapshot-tag-wrap-v2">
-              {EXEC_OPTIONS.map((tf) => (
-                <button key={tf} type="button" className={`secondary-button snapshot-tag-v2 ${cfg.exec_tfs.includes(tf) ? "active" : ""}`} onClick={() => setCfgField("exec_tfs", toggleArrayValue(cfg.exec_tfs, tf))}>{tf}</button>
-              ))}
-            </div>
-          </div>
-          <div className="snapshot-col-span-3">
-            <label className="minor-text">Confirmation TFs</label>
-            <div className="snapshot-tag-wrap-v2">
-              {CONF_OPTIONS.map((tf) => (
-                <button key={tf} type="button" className={`secondary-button snapshot-tag-v2 ${cfg.conf_tfs.includes(tf) ? "active" : ""}`} onClick={() => setCfgField("conf_tfs", toggleArrayValue(cfg.conf_tfs, tf))}>{tf}</button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="snapshot-context-v2">
-          <div className="snapshot-col-span-2">
-            <label className="minor-text">HTF Bias</label>
-            <select value={cfg.htfbias} onChange={(e) => setCfgField("htfbias", e.target.value)}>
-              <option value="">Auto</option>
-              <option>Bullish</option>
-              <option>Bearish</option>
-              <option>Ranging</option>
-            </select>
-          </div>
-          <div className="snapshot-col-span-2">
-            <label className="minor-text">Direction</label>
-            <select value={cfg.dir} onChange={(e) => setCfgField("dir", e.target.value)}>
-              <option>Direction: Both</option>
-              <option>Direction: Bias</option>
-              <option>Long only</option>
-              <option>Short only</option>
-            </select>
-          </div>
-          <div className="snapshot-col-span-4">
-            <label className="minor-text">Key Level</label>
-            <input value={cfg.keylevel} onChange={(e) => setCfgField("keylevel", e.target.value)} placeholder="e.g. 3300 resistance" />
-          </div>
-          <div className="snapshot-col-span-2">
-            <label className="minor-text">News</label>
-            <select value={cfg.news} onChange={(e) => setCfgField("news", e.target.value)}>
-              <option value="">None</option>
-              <option>High-impact today</option>
-              <option>NFP / FOMC week</option>
-              <option>Earnings release</option>
-            </select>
-          </div>
-          <div className="snapshot-col-span-2">
-            <label className="minor-text">Notes</label>
-            <input value={cfg.notes} onChange={(e) => setCfgField("notes", e.target.value)} placeholder="Notes / extra context" />
-          </div>
-        </div>
-        </section>
-      </section>
-
-      <section className="snapshot-io-row-v2">
-        <section className="panel snapshot-io-col-v2">
-          <div className="snapshot-tabs-v2">
-            <button type="button" className={`secondary-button ${tab === "prompt" ? "active" : ""}`} onClick={() => setTab("prompt")}>Prompt</button>
-            <button type="button" className={`secondary-button ${tab === "json" ? "active" : ""}`} onClick={() => setTab("json")}>JSON Config</button>
-            <button type="button" className={`secondary-button ${tab === "guide" ? "active" : ""}`} onClick={() => setTab("guide")}>Guide</button>
-            <span className="minor-text" style={{ marginLeft: "auto" }}>{promptText.length} chars</span>
-          </div>
-          {tab === "prompt" ? <textarea className="snapshot-mono-v2" rows={18} value={promptText} readOnly /> : null}
-          {tab === "json" ? <textarea className="snapshot-mono-v2" rows={18} value={jsonConfigText} readOnly /> : null}
-          {tab === "guide" ? <textarea className="snapshot-mono-v2" rows={18} value={GUIDE_TEXT} readOnly /> : null}
-          <div className="snapshot-capture-inline-v2">
-            <label className="minor-text">Snapshots TFs</label>
-            <div className="snapshot-tag-wrap-v2">
-              {SNAPSHOT_TF_OPTIONS.map((tf) => (
-                <button
-                  key={tf}
-                  type="button"
-                  className={`secondary-button snapshot-tag-v2 ${snapshotTfs.includes(tf) ? "active" : ""}`}
-                  onClick={() => setSnapshotTfs((prev) => toggleArrayValue(prev, tf))}
-                >
-                  {tf}
-                </button>
-              ))}
-            </div>
-            <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>{capturing ? "Snapshots..." : "Snapshots"}</button>
-            {actionStatus.action === "capture" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
-            <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
-            {actionStatus.action === "analyze" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
-          </div>
-        </section>
-
-        <section className="panel snapshot-io-col-v2">
-          <div className="snapshot-tabs-v2">
-            <button type="button" className={`secondary-button ${responseTab === "text" ? "active" : ""}`} onClick={() => setResponseTab("text")}>Text</button>
-            <button type="button" className={`secondary-button ${responseTab === "raw" ? "active" : ""}`} onClick={() => setResponseTab("raw")}>Raw</button>
-            <button type="button" className={`secondary-button ${responseTab === "chart" ? "active" : ""}`} onClick={() => setResponseTab("chart")}>Chart</button>
-          </div>
-
-          {responseTab === "text" ? <textarea className="snapshot-mono-v2" rows={18} value={responseText} readOnly /> : null}
-          {responseTab === "raw" ? <textarea className="snapshot-mono-v2" rows={18} value={analysisRaw || analysisJson} readOnly /> : null}
-          {responseTab === "chart" ? (
-            <div className="snapshot-chart-grid-v2">
-              {chartFiles.length === 0 ? <div className="minor-text">No chart files from current analysis.</div> : chartFiles.map((f) => {
-                const meta = parseSnapshotMeta({ file_name: f }) || {};
-                return (
-                  <a key={f} className="snapshot-chart-card-v2" href={`/v2/chart/snapshots/${encodeURIComponent(f)}`} target="_blank" rel="noreferrer">
-                    <img src={`/v2/chart/snapshots/${encodeURIComponent(f)}`} alt={f} />
-                    <div className="snapshot-chart-meta-v2">
-                      <span>{meta?.symbolToken || "-"}</span>
-                      <span>{intervalTokenToLabel(meta?.tfToken || "-")}</span>
-                      <span>{formatCompactDateTime(meta?.createdAtMs || Date.now())}</span>
-                    </div>
-                  </a>
-                );
-              })}
-            </div>
-          ) : null}
-
-          <div className="snapshot-actions-under-v2">
-            <button className="primary-button" type="button" onClick={addToSignal} disabled={addingSignal || !canAddSignal}>{addingSignal ? "Adding..." : "Add Signal"}</button>
-            {actionStatus.action === "add" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
-          </div>
-        </section>
-      </section>
-
-      <section className="panel">
         <div className="snapshot-gallery-head-v2">
           <span className="panel-label" style={{ margin: 0 }}>Snapshots ({items.length})</span>
           <div className="snapshot-bulk-actions-v2">
-            <input type="number" min={1} max={200} value={limit} onChange={(e) => setLimit(Math.max(1, Math.min(200, Number(e.target.value || 30))))} />
-            <button className="secondary-button" type="button" onClick={loadSnapshots} disabled={loading}>{loading ? "Refreshing..." : "Refresh"}</button>
             <button className="danger-button" type="button" onClick={deleteSelected} disabled={deleting}>{deleting ? "Deleting..." : "Delete Selected"}</button>
             <button className="danger-button" type="button" onClick={deleteAll} disabled={deleting}>{deleting ? "Deleting..." : "Delete All"}</button>
           </div>
         </div>
+        <div className="snapshot-gallery-v2 snapshot-gallery-v3">
+          {items.map((it) => (
+            <article key={it.id} className="snapshot-card-v2">
+              <label className="snapshot-select-v2">
+                <input type="checkbox" checked={selectedFiles.has(it.file_name)} onChange={() => toggleFile(it.file_name)} />
+              </label>
+              <button className="snapshot-delete-one-v2" type="button" onClick={() => deleteOne(it.file_name)} title="Delete">✕</button>
+              <a href={it.url} target="_blank" rel="noreferrer">
+                <img src={it.url} alt={it.file_name} />
+              </a>
+              <div className="snapshot-meta-v2">
+                <div className="snapshot-file-v2">{it.file_name}</div>
+                <div className="snapshot-time-v2">{formatCompactDateTime(it.created_at)}</div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
 
-        {status.text ? (
-          <div className={`form-message ${status.type === "error" ? "msg-error" : status.type === "warning" ? "msg-warning" : "msg-success"}`}>
-            {status.text}
+      <section className="panel snapshot-col-v3 snapshot-col-settings-v3">
+        <div className="snapshot-tabs-v2">
+          <button type="button" className={`secondary-button ${settingsTab === "settings" ? "active" : ""}`} onClick={() => setSettingsTab("settings")}>Settings</button>
+          <button type="button" className={`secondary-button ${settingsTab === "prompt" ? "active" : ""}`} onClick={() => setSettingsTab("prompt")}>Prompt</button>
+          <button type="button" className={`secondary-button ${settingsTab === "json" ? "active" : ""}`} onClick={() => setSettingsTab("json")}>JSON Config</button>
+          <button type="button" className={`secondary-button ${settingsTab === "guide" ? "active" : ""}`} onClick={() => setSettingsTab("guide")}>Guide</button>
+          <span className="minor-text" style={{ marginLeft: "auto" }}>{promptText.length} chars</span>
+        </div>
+
+        {settingsTab === "settings" ? (
+          <section className="snapshot-settings-v2">
+            <div className="snapshot-template-row-v2">
+              <div className="snapshot-template-col-v2">
+                <select aria-label="Template" value={templateId} onChange={(e) => handleSelectTemplate(e.target.value)}>
+                  <option value="">New Template</option>
+                  <option value={DEFAULT_TEMPLATE_ID}>Default Template</option>
+                  {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+              <div className="snapshot-template-col-v2">
+                <input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name" />
+              </div>
+              <button className="primary-button snapshot-template-save-btn-v2" type="button" onClick={saveTemplate}>Save</button>
+            </div>
+            <div className="snapshot-fields-v2 compact">
+              <div><label className="minor-text">Assets</label><select value={cfg.asset} onChange={(e) => setCfgField("asset", e.target.value)}><option>Auto detect</option><option>Commodity</option><option>Forex</option><option>Crypto</option><option>Index</option><option>Stock</option></select></div>
+              <div><label className="minor-text">Sessions</label><select value={cfg.session} onChange={(e) => setCfgField("session", e.target.value)}><option>Any</option><option>London</option><option>New York</option><option>Asian</option><option>London+NY</option></select></div>
+              <div><label className="minor-text">MinRR</label><input type="number" min="0.5" step="0.5" value={cfg.rr} onChange={(e) => setCfgField("rr", e.target.value)} /></div>
+              <div><label className="minor-text">Max Risk</label><input type="number" min="0.1" step="0.1" value={cfg.risk} onChange={(e) => setCfgField("risk", e.target.value)} /></div>
+              <div><label className="minor-text">Lookback</label><input type="number" min="50" max="5000" value={cfg.lookbackBars} onChange={(e) => setCfgField("lookbackBars", e.target.value)} /></div>
+              <div><label className="minor-text">Provider</label><input value={provider} onChange={(e) => setProvider(e.target.value)} /></div>
+              <div><label className="minor-text">TF</label><input value={timeframe} onChange={(e) => setTimeframe(e.target.value)} /></div>
+            </div>
+            <div>
+              <label className="minor-text">Strategy (multi-select)</label>
+              <div className="snapshot-tag-wrap-v2">
+                {STRATEGY_OPTIONS.map((s) => (
+                  <button key={s} type="button" className={`secondary-button snapshot-tag-v2 ${cfg.strategies.includes(s) ? "active" : ""}`} onClick={() => setCfgField("strategies", toggleArrayValue(cfg.strategies, s))}>{s}</button>
+                ))}
+              </div>
+            </div>
+            <div className="snapshot-tf-v2">
+              <div className="snapshot-col-span-5"><label className="minor-text">HTF Bias TFs</label><div className="snapshot-tag-wrap-v2">{HTF_OPTIONS.map((tf) => <button key={tf} type="button" className={`secondary-button snapshot-tag-v2 ${cfg.htf_tfs.includes(tf) ? "active" : ""}`} onClick={() => setCfgField("htf_tfs", toggleArrayValue(cfg.htf_tfs, tf))}>{tf}</button>)}</div></div>
+              <div className="snapshot-col-span-4"><label className="minor-text">Execution TFs</label><div className="snapshot-tag-wrap-v2">{EXEC_OPTIONS.map((tf) => <button key={tf} type="button" className={`secondary-button snapshot-tag-v2 ${cfg.exec_tfs.includes(tf) ? "active" : ""}`} onClick={() => setCfgField("exec_tfs", toggleArrayValue(cfg.exec_tfs, tf))}>{tf}</button>)}</div></div>
+              <div className="snapshot-col-span-3"><label className="minor-text">Confirmation TFs</label><div className="snapshot-tag-wrap-v2">{CONF_OPTIONS.map((tf) => <button key={tf} type="button" className={`secondary-button snapshot-tag-v2 ${cfg.conf_tfs.includes(tf) ? "active" : ""}`} onClick={() => setCfgField("conf_tfs", toggleArrayValue(cfg.conf_tfs, tf))}>{tf}</button>)}</div></div>
+            </div>
+            <div className="snapshot-context-v2">
+              <div className="snapshot-col-span-2"><label className="minor-text">HTF Bias</label><select value={cfg.htfbias} onChange={(e) => setCfgField("htfbias", e.target.value)}><option value="">Auto</option><option>Bullish</option><option>Bearish</option><option>Ranging</option></select></div>
+              <div className="snapshot-col-span-2"><label className="minor-text">Direction</label><select value={cfg.dir} onChange={(e) => setCfgField("dir", e.target.value)}><option>Direction: Both</option><option>Direction: Bias</option><option>Long only</option><option>Short only</option></select></div>
+              <div className="snapshot-col-span-4"><label className="minor-text">Key Level</label><input value={cfg.keylevel} onChange={(e) => setCfgField("keylevel", e.target.value)} placeholder="e.g. 3300 resistance" /></div>
+              <div className="snapshot-col-span-2"><label className="minor-text">News</label><select value={cfg.news} onChange={(e) => setCfgField("news", e.target.value)}><option value="">None</option><option>High-impact today</option><option>NFP / FOMC week</option><option>Earnings release</option></select></div>
+              <div className="snapshot-col-span-2"><label className="minor-text">Notes</label><input value={cfg.notes} onChange={(e) => setCfgField("notes", e.target.value)} placeholder="Notes / extra context" /></div>
+            </div>
+          </section>
+        ) : null}
+        {settingsTab === "prompt" ? <textarea className="snapshot-mono-v2" rows={30} value={promptText} readOnly disabled /> : null}
+        {settingsTab === "json" ? <textarea className="snapshot-mono-v2" rows={30} value={jsonConfigText} readOnly disabled /> : null}
+        {settingsTab === "guide" ? <textarea className="snapshot-mono-v2" rows={30} value={GUIDE_TEXT} readOnly disabled /> : null}
+      </section>
+
+      <section className="panel snapshot-col-v3 snapshot-col-position-v3">
+        <div className="snapshot-capture-inline-v2 snapshot-capture-inline-v3">
+          <label className="minor-text">Snapshots TFs</label>
+          <div className="snapshot-tag-wrap-v2">
+            {SNAPSHOT_TF_OPTIONS.map((tf) => (
+              <button key={tf} type="button" className={`secondary-button snapshot-tag-v2 ${snapshotTfs.includes(tf) ? "active" : ""}`} onClick={() => setSnapshotTfs((prev) => toggleArrayValue(prev, tf))}>{tf}</button>
+            ))}
+          </div>
+          <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>{capturing ? "Snapshots..." : "Snapshots"}</button>
+          {actionStatus.action === "capture" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
+          <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
+          {actionStatus.action === "analyze" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
+        </div>
+
+        <div className="snapshot-position-form-v3">
+          <div><label className="minor-text">Entry</label><input value={position.entry} onChange={(e) => updatePositionField("entry", e.target.value)} /></div>
+          <div><label className="minor-text">TP</label><input value={position.tp} onChange={(e) => updatePositionField("tp", e.target.value)} /></div>
+          <div><label className="minor-text">SL</label><input value={position.sl} onChange={(e) => updatePositionField("sl", e.target.value)} /></div>
+          <div><label className="minor-text">RR (auto)</label><input value={position.rr} onChange={(e) => updatePositionField("rr", e.target.value)} /></div>
+          <div className="snapshot-col-span-4"><label className="minor-text">Note</label><textarea rows={2} value={position.note} onChange={(e) => updatePositionField("note", e.target.value)} /></div>
+        </div>
+
+        <div className="snapshot-tabs-v2">
+          <span className="panel-label" style={{ margin: 0 }}>Position</span>
+          <button type="button" className={`secondary-button ${responseTab === "text" ? "active" : ""}`} onClick={() => setResponseTab("text")}>Text</button>
+          <button type="button" className={`secondary-button ${responseTab === "raw" ? "active" : ""}`} onClick={() => setResponseTab("raw")}>Raw</button>
+          <button type="button" className={`secondary-button ${responseTab === "bars" ? "active" : ""}`} onClick={() => setResponseTab("bars")}>Bars</button>
+          <button type="button" className={`secondary-button ${responseTab === "chart" ? "active" : ""}`} onClick={() => setResponseTab("chart")}>Chart</button>
+        </div>
+
+        {responseTab === "text" ? <textarea className="snapshot-mono-v2" rows={16} value={responseText} readOnly disabled /> : null}
+        {responseTab === "raw" ? <textarea className="snapshot-mono-v2" rows={16} value={analysisRaw || analysisJson} readOnly disabled /> : null}
+        {responseTab === "bars" ? <textarea className="snapshot-mono-v2" rows={16} value={JSON.stringify(currentBarsSnapshot || { status: "no_cached_bars" }, null, 2)} readOnly disabled /> : null}
+        {responseTab === "chart" ? (
+          <div className="snapshot-live-grid-v3">
+            <div className="snapshot-live-card-v3">
+              <div className="minor-text" style={{ marginBottom: 6 }}>Chart 1: Twelve + PD Arrays</div>
+              <div ref={liteChartRef} className="snapshot-lite-chart-v3" />
+              <div className="minor-text">{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
+            </div>
+            <div className="snapshot-live-card-v3">
+              <div className="snapshot-live-head-v3">
+                <span className="minor-text">Chart 2: TradingView Live</span>
+                <select value={liveTf} onChange={(e) => setLiveTf(e.target.value)}>
+                  <option value="5">5m</option>
+                  <option value="15">15m</option>
+                  <option value="60">1h</option>
+                  <option value="240">4h</option>
+                  <option value="D">1D</option>
+                </select>
+              </div>
+              <iframe
+                title="live-chart"
+                className="snapshot-live-iframe-v3"
+                src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTf)}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+              />
+            </div>
+            {chartFiles.length ? (
+              <div className="snapshot-chart-grid-v2">
+                {chartFiles.map((f) => {
+                  const meta = parseSnapshotMeta({ file_name: f }) || {};
+                  return (
+                    <a key={f} className="snapshot-chart-card-v2" href={`/v2/chart/snapshots/${encodeURIComponent(f)}`} target="_blank" rel="noreferrer">
+                      <img src={`/v2/chart/snapshots/${encodeURIComponent(f)}`} alt={f} />
+                      <div className="snapshot-chart-meta-v2">
+                        <span>{meta?.symbolToken || "-"}</span>
+                        <span>{intervalTokenToLabel(meta?.tfToken || "-")}</span>
+                        <span>{formatCompactDateTime(meta?.createdAtMs || Date.now())}</span>
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         ) : null}
 
-        {items.length === 0 ? (
-          <div className="minor-text">No snapshots yet.</div>
-        ) : (
-          <div className="snapshot-gallery-v2">
-            {items.map((it) => (
-              <article key={it.id} className="snapshot-card-v2">
-                <label className="snapshot-select-v2">
-                  <input type="checkbox" checked={selectedFiles.has(it.file_name)} onChange={() => toggleFile(it.file_name)} />
-                </label>
-                <button className="snapshot-delete-one-v2" type="button" onClick={() => deleteOne(it.file_name)} title="Delete">✕</button>
-                <a href={it.url} target="_blank" rel="noreferrer">
-                  <img src={it.url} alt={it.file_name} />
-                </a>
-                <div className="snapshot-meta-v2">
-                  <div className="snapshot-file-v2">{it.file_name}</div>
-                  <div className="snapshot-time-v2">{formatCompactDateTime(it.created_at)}</div>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
+        <div className="snapshot-actions-under-v2">
+          <button className="primary-button" type="button" onClick={addToSignal} disabled={addingSignal || !canAddSignal}>{addingSignal ? "Adding..." : "Add Signal"}</button>
+          {actionStatus.action === "add" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
+        </div>
       </section>
+
+      {status.text ? (
+        <div className={`form-message ${status.type === "error" ? "msg-error" : status.type === "warning" ? "msg-warning" : "msg-success"}`}>
+          {status.text}
+        </div>
+      ) : null}
     </section>
   );
 }
