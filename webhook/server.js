@@ -2780,13 +2780,6 @@ async function mt5InitBackend() {
     async archiveAccountV2(accountId) {
       const targetId = String(accountId || "").trim();
       if (!targetId) return { ok: false, error: "account_id is required" };
-      const openRes = await pool.query(`
-        SELECT COUNT(*)::int AS c
-        FROM trades
-        WHERE account_id = $1 AND execution_status IN ('PENDING','OPEN')
-      `, [targetId]);
-      const blocking = Number(openRes.rows?.[0]?.c || 0);
-      if (blocking > 0) return { ok: false, error: "account has open/pending trades", blocking_open_trades: blocking };
       const res = await pool.query(`
         UPDATE accounts
         SET status = 'ARCHIVED', updated_at = NOW()

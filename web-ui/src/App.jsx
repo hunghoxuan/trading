@@ -25,12 +25,11 @@ export default function App() {
   const canAccessSystemPages = String(authUser?.role || "").toLowerCase() === "system";
   const settingsMenuActive = useMemo(() => {
     const p = String(location?.pathname || "");
-    return p.startsWith("/profile") || p.startsWith("/settings") || p.startsWith("/accounts-v2");
+    return p.startsWith("/profile") || p.startsWith("/settings") || p.startsWith("/accounts-v2") || p.startsWith("/sources");
   }, [location?.pathname]);
   const systemMenuActive = useMemo(() => {
     const p = String(location?.pathname || "");
-    return p.startsWith("/sources")
-      || p.startsWith("/logs")
+    return p.startsWith("/logs")
       || p.startsWith("/db")
       || p.startsWith("/users");
   }, [location?.pathname]);
@@ -111,6 +110,7 @@ export default function App() {
               <NavLink to="/profile">Profile</NavLink>
               <NavLink to="/settings">Settings</NavLink>
               {canAccessSystemPages && <NavLink to="/accounts-v2">Accounts</NavLink>}
+              {canAccessSystemPages && <NavLink to="/sources">Sources</NavLink>}
             </div>
           </div>
           {canAccessSystemPages && (
@@ -122,7 +122,6 @@ export default function App() {
                 System
               </button>
               <div className="nav-dropdown-menu">
-                <NavLink to="/sources">Sources</NavLink>
                 <NavLink to="/logs">Logs</NavLink>
                 <NavLink to="/db">DB</NavLink>
                 <NavLink to="/users">Users</NavLink>

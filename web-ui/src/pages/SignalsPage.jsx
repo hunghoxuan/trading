@@ -290,6 +290,19 @@ export default function SignalsPage() {
     return out;
   }, [rows, sortKey, sortDir]);
 
+  const toggleSort = (key) => {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir(key === "status" ? "asc" : "desc");
+  };
+  const sortMarker = (key) => {
+    if (sortKey !== key) return "";
+    return sortDir === "asc" ? " ↑" : " ↓";
+  };
+
   const allSelected = sortedRows.length > 0 && sortedRows.every(r => selectedIds.has(r.signal_id));
 
   return (
@@ -353,15 +366,6 @@ export default function SignalsPage() {
           <select value={filter.range} onChange={(e) => setFilter(f => ({ ...f, range: e.target.value, page: 1 }))}>
             {RANGE_OPTIONS.map(r => <option key={r.val} value={r.val}>{r.lab}</option>)}
           </select>
-          <select value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
-            <option value="audit">Sort: Audit</option>
-            <option value="symbol">Sort: Symbol</option>
-            <option value="status">Sort: Status</option>
-          </select>
-          <select value={sortDir} onChange={(e) => setSortDir(e.target.value)}>
-            <option value="desc">DESC</option>
-            <option value="asc">ASC</option>
-          </select>
         </div>
 
         <div className="toolbar-group toolbar-bulk-action">
@@ -402,10 +406,10 @@ export default function SignalsPage() {
                       }}
                     />
                   </th>
-                  <th>SYMBOL</th>
+                  <th onClick={() => toggleSort("symbol")} style={{ cursor: "pointer" }}>SYMBOL{sortMarker("symbol")}</th>
                   <th>POSITION</th>
-                  <th>AUDIT</th>
-                  <th>STATUS</th>
+                  <th onClick={() => toggleSort("audit")} style={{ cursor: "pointer" }}>AUDIT{sortMarker("audit")}</th>
+                  <th onClick={() => toggleSort("status")} style={{ cursor: "pointer" }}>STATUS{sortMarker("status")}</th>
                 </tr>
               </thead>
               <tbody>
