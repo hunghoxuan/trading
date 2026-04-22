@@ -439,7 +439,8 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .snapshot-settings-v2 {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  padding: 14px;
 }
 .snapshot-template-row-v2 {
   display: grid;
@@ -455,14 +456,20 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .snapshot-fields-v2 {
   display: grid;
   grid-template-columns: repeat(8, minmax(120px, 1fr));
-  gap: 8px;
+  gap: 6px;
+}
+.snapshot-fields-v2.compact input,
+.snapshot-fields-v2.compact select {
+  padding: 6px 10px;
+  height: 34px;
+  font-size: 12px;
 }
 .snapshot-fields-v2 label,
 .snapshot-context-v2 label,
 .snapshot-template-row-v2 label,
 .snapshot-tf-v2 label {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 .snapshot-tag-wrap-v2 {
   display: flex;
@@ -483,12 +490,12 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .snapshot-tf-v2 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 6px;
 }
 .snapshot-context-v2 {
   display: grid;
   grid-template-columns: repeat(4, minmax(140px, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 .snapshot-context-v2 .full {
   grid-column: span 4;
@@ -517,6 +524,12 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .snapshot-actions-under-v2 {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
+}
+.snapshot-capture-row-v2 {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 .snapshot-chart-grid-v2 {
   display: grid;
@@ -533,8 +546,8 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 6px;
+  margin-bottom: 6px;
 }
 .snapshot-bulk-actions-v2 {
   display: flex;

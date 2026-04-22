@@ -7,6 +7,7 @@ const HTF_OPTIONS = ["W1", "D1", "4H", "2H", "1H"];
 const EXEC_OPTIONS = ["1H", "30M", "15M", "5M"];
 const CONF_OPTIONS = ["5M", "3M", "1M"];
 const STRATEGY_OPTIONS = ["ICT", "SMC", "Price Action", "Wyckoff", "EMA Trend", "Breakout", "VWAP"];
+const SNAPSHOT_TF_OPTIONS = ["1D", "4h", "15m", "5m", "1h", "30m"];
 
 const DEFAULT_CONFIG = {
   symbol: "UK100",
@@ -202,6 +203,7 @@ export default function ChartSnapshotsPage() {
   const [limit, setLimit] = useState(30);
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [capturing, setCapturing] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [addingSignal, setAddingSignal] = useState(false);
   const [tab, setTab] = useState("prompt");
@@ -215,6 +217,7 @@ export default function ChartSnapshotsPage() {
 
   const [selectedFiles, setSelectedFiles] = useState(new Set());
   const [symbolOptions, setSymbolOptions] = useState([]);
+  const [snapshotTfs, setSnapshotTfs] = useState(["1D", "4h", "15m", "5m"]);
 
   const tvSymbol = useMemo(() => {
     const base = String(cfg.symbol || "").trim();
@@ -270,6 +273,41 @@ export default function ChartSnapshotsPage() {
       setStatus({ type: "error", text: String(e?.message || e || "Analyze failed.") });
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const captureSnapshots = async () => {
+    if (!String(tvSymbol || "").trim()) {
+      setStatus({ type: "warning", text: "Symbol is required." });
+      return;
+    }
+    const tfs = [...new Set(snapshotTfs.map((x) => String(x || "").trim()).filter(Boolean))];
+    if (!tfs.length) {
+      setStatus({ type: "warning", text: "Select at least one timeframe." });
+      return;
+    }
+    setCapturing(true);
+    setStatus({ type: "", text: "" });
+    try {
+      const out = await api.chartSnapshotCreateBatch({
+        symbol: tvSymbol,
+        provider,
+        timeframes: tfs,
+        lookbackBars: Number(cfg.lookbackBars || 300),
+        format: "jpg",
+        quality: 55,
+      });
+      const created = Array.isArray(out?.items) ? out.items : [];
+      if (created.length) {
+        setItems((prev) => [...created, ...prev].slice(0, limit));
+      } else {
+        await loadSnapshots();
+      }
+      setStatus({ type: "success", text: `Captured ${created.length || tfs.length} snapshot(s).` });
+    } catch (e) {
+      setStatus({ type: "error", text: String(e?.message || e || "Snapshots failed.") });
+    } finally {
+      setCapturing(false);
     }
   };
 
@@ -413,7 +451,7 @@ export default function ChartSnapshotsPage() {
           </div>
         </div>
 
-        <div className="snapshot-fields-v2">
+        <div className="snapshot-fields-v2 compact">
           <div>
             <label className="minor-text">Symbol</label>
             <input list="tv-symbol-options" value={cfg.symbol} onChange={(e) => setCfgField("symbol", e.target.value)} placeholder="UK100" />
@@ -459,7 +497,7 @@ export default function ChartSnapshotsPage() {
             <input value={provider} onChange={(e) => setProvider(e.target.value)} />
           </div>
           <div>
-            <label className="minor-text">Timeframe</label>
+            <label className="minor-text">TF</label>
             <input value={timeframe} onChange={(e) => setTimeframe(e.target.value)} />
           </div>
         </div>
@@ -557,7 +595,23 @@ export default function ChartSnapshotsPage() {
           {tab === "prompt" ? <textarea className="snapshot-mono-v2" rows={18} value={promptText} readOnly /> : null}
           {tab === "json" ? <textarea className="snapshot-mono-v2" rows={18} value={jsonConfigText} readOnly /> : null}
           {tab === "guide" ? <textarea className="snapshot-mono-v2" rows={18} value={GUIDE_TEXT} readOnly /> : null}
+          <div className="snapshot-capture-row-v2">
+            <label className="minor-text">Snapshots TFs</label>
+            <div className="snapshot-tag-wrap-v2">
+              {SNAPSHOT_TF_OPTIONS.map((tf) => (
+                <button
+                  key={tf}
+                  type="button"
+                  className={`secondary-button snapshot-tag-v2 ${snapshotTfs.includes(tf) ? "active" : ""}`}
+                  onClick={() => setSnapshotTfs((prev) => toggleArrayValue(prev, tf))}
+                >
+                  {tf}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="snapshot-actions-under-v2">
+            <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>{capturing ? "Snapshots..." : "Snapshots"}</button>
             <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
           </div>
         </section>
@@ -593,7 +647,6 @@ export default function ChartSnapshotsPage() {
           <div className="snapshot-bulk-actions-v2">
             <input type="number" min={1} max={200} value={limit} onChange={(e) => setLimit(Math.max(1, Math.min(200, Number(e.target.value || 30))))} />
             <button className="secondary-button" type="button" onClick={loadSnapshots} disabled={loading}>{loading ? "Refreshing..." : "Refresh"}</button>
-            <button className="secondary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
             <button className="danger-button" type="button" onClick={deleteSelected} disabled={deleting}>{deleting ? "Deleting..." : "Delete Selected"}</button>
             <button className="danger-button" type="button" onClick={deleteAll} disabled={deleting}>{deleting ? "Deleting..." : "Delete All"}</button>
           </div>
