@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.22-0709"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.22-0758"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -92,6 +92,8 @@ const CFG = {
   httpsCaPath: envStr(process.env.HTTPS_CA_PATH),
   httpsRedirectHttp: asBool(process.env.HTTPS_REDIRECT_HTTP, true),
   signalApiKey: envStr(process.env.SIGNAL_API_KEY),
+  adminKey: envStr(process.env.ADMIN_KEY || process.env.SIGNAL_API_KEY),
+
 
   telegramBotToken: envStr(process.env.TELEGRAM_BOT_TOKEN),
   telegramChatId: envStr(process.env.TELEGRAM_CHAT_ID),
@@ -1030,10 +1032,36 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
       await page.waitForTimeout(1800);
     }
     const root = page.locator("#tv-root");
-    if (outFormat === "png") {
-      await root.screenshot({ path: outPath, type: "png" });
-    } else {
-      await root.screenshot({ path: outPath, type: "jpeg", quality: jpgQuality });
+    let shotOk = false;
+    let lastShotErr = null;
+    // Retry element screenshot once; Playwright can timeout waiting for "stable" element under load.
+    for (let i = 0; i < 2 && !shotOk; i += 1) {
+      try {
+        if (outFormat === "png") {
+          await root.screenshot({ path: outPath, type: "png", animations: "disabled", timeout: 12000 });
+        } else {
+          await root.screenshot({ path: outPath, type: "jpeg", quality: jpgQuality, animations: "disabled", timeout: 12000 });
+        }
+        shotOk = true;
+      } catch (e) {
+        lastShotErr = e;
+        await page.waitForTimeout(500);
+      }
+    }
+    if (!shotOk) {
+      // Fallback: clip from page screenshot (avoids locator stability checks/scroll actions).
+      const box = await page.evaluate(() => {
+        const el = document.querySelector("#tv-root");
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { x: Math.max(0, Math.floor(r.left)), y: Math.max(0, Math.floor(r.top)), width: Math.max(1, Math.floor(r.width)), height: Math.max(1, Math.floor(r.height)) };
+      });
+      if (!box) throw (lastShotErr || new Error("Chart root not found for screenshot"));
+      if (outFormat === "png") {
+        await page.screenshot({ path: outPath, type: "png", clip: box, animations: "disabled", timeout: 12000 });
+      } else {
+        await page.screenshot({ path: outPath, type: "jpeg", quality: jpgQuality, clip: box, animations: "disabled", timeout: 12000 });
+      }
     }
   } finally {
     try { await context.close(); } catch {}
@@ -4949,7 +4977,8 @@ const appHandler = async (req, res) => {
   if (req.method === "POST" && (url.pathname === "/mt5/trades/create" || url.pathname === "/v2/signals/create")) {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     const sess = getUiSessionFromReq(req);
-    if (!sess.ok) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    if (!requireAdminKey(req, res, url)) return;
+
     try {
       const payload = await readJson(req);
       const requestedSource = String(payload.source || "").trim().toLowerCase();
