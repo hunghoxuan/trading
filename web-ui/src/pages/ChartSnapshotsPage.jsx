@@ -58,6 +58,50 @@ function toggleArrayValue(arr, val) {
   return arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val];
 }
 
+function sanitizeSnapshotFileToken(value, fallback = "chart") {
+  const raw = String(value || fallback).trim().toUpperCase();
+  const token = raw.replace(/[^A-Z0-9_-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+  return token || fallback;
+}
+
+function toTradingViewInterval(tfRaw) {
+  const tf = String(tfRaw || "5").trim().toLowerCase();
+  if (!tf) return "5";
+  if (/^\d+$/.test(tf)) return tf;
+  if (tf.endsWith("m")) return tf.slice(0, -1) || "5";
+  if (tf.endsWith("h")) return String(Number(tf.slice(0, -1) || "1") * 60);
+  if (tf.endsWith("d")) return "D";
+  if (tf.endsWith("w")) return "W";
+  if (tf.endsWith("mo") || tf.endsWith("mth")) return "M";
+  return tf.toUpperCase();
+}
+
+function parseSnapshotMeta(it) {
+  const fileName = String(it?.file_name || "");
+  const base = fileName.replace(/\.(png|jpe?g)$/i, "");
+  const parts = base.split("_");
+  if (parts.length < 5) return null;
+  if (!/^\d{8}$/.test(parts[0]) || !/^\d{2}$/.test(parts[1]) || !/^\d{2}$/.test(parts[2])) return null;
+  const rest = parts.slice(3);
+  if (rest.length < 2) return null;
+  const hasDup = rest.length >= 3 && /^\d+$/.test(rest[rest.length - 1]);
+  const tfToken = String(hasDup ? rest[rest.length - 2] : rest[rest.length - 1]).toUpperCase();
+  const symbolParts = rest.slice(0, hasDup ? -2 : -1);
+  if (!symbolParts.length) return null;
+  return {
+    fileName,
+    tfToken,
+    symbolToken: symbolParts.join("_"),
+    createdAtMs: Date.parse(it?.created_at || "") || 0,
+  };
+}
+
+function sameUtcDay(aMs, bMs) {
+  const a = new Date(aMs);
+  const b = new Date(bMs);
+  return a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth() && a.getUTCDate() === b.getUTCDate();
+}
+
 function formatCompactDateTime(dateLike) {
   const d = new Date(dateLike || Date.now());
   if (!Number.isFinite(d.getTime())) return "-";
@@ -313,10 +357,72 @@ export default function ChartSnapshotsPage() {
 
   const analyzeSelected = async () => {
     const files = [...selectedFiles];
-    if (!files.length) {
-      setStatus({ type: "warning", text: "No screenshot selected. Analyze will use latest 3." });
+    if (files.length) {
+      await analyzeFiles(files);
+      return;
     }
-    await analyzeFiles(files);
+
+    const nowMs = Date.now();
+    const targetTfTokens = [...new Set(snapshotTfs.map((x) => toTradingViewInterval(x).toUpperCase()))];
+    const symbolRaw = String(cfg.symbol || "").trim().toUpperCase();
+    const providerRaw = String(provider || "").trim().toUpperCase();
+    const fullSymbol = symbolRaw.includes(":") ? symbolRaw : `${providerRaw}:${symbolRaw}`;
+    const symbolTokens = new Set(
+      [symbolRaw, fullSymbol, tvSymbol]
+        .map((x) => sanitizeSnapshotFileToken(x || ""))
+        .filter(Boolean),
+    );
+
+    const candidates = items
+      .map(parseSnapshotMeta)
+      .filter((x) => x && x.createdAtMs > 0)
+      .filter((x) => symbolTokens.has(x.symbolToken))
+      .filter((x) => targetTfTokens.includes(x.tfToken))
+      .filter((x) => sameUtcDay(x.createdAtMs, nowMs))
+      .filter((x) => Math.abs(nowMs - x.createdAtMs) <= 15 * 60 * 1000)
+      .sort((a, b) => b.createdAtMs - a.createdAtMs);
+
+    const byTf = new Map();
+    for (const c of candidates) {
+      if (!byTf.has(c.tfToken)) byTf.set(c.tfToken, c.fileName);
+    }
+    const matchedFiles = targetTfTokens.map((tf) => byTf.get(tf)).filter(Boolean);
+
+    if (matchedFiles.length === targetTfTokens.length && matchedFiles.length > 0) {
+      setStatus({ type: "success", text: `Using existing snapshots (${matchedFiles.length}) from last 15 minutes.` });
+      await analyzeFiles(matchedFiles);
+      return;
+    }
+
+    setStatus({ type: "warning", text: "No matching recent snapshots found. Capturing new snapshots first..." });
+    const tfs = [...new Set(snapshotTfs.map((x) => String(x || "").trim()).filter(Boolean))];
+    if (!String(tvSymbol || "").trim() || !tfs.length) {
+      setStatus({ type: "warning", text: "Symbol and at least one snapshot TF are required." });
+      return;
+    }
+    setCapturing(true);
+    try {
+      const out = await api.chartSnapshotCreateBatch({
+        symbol: tvSymbol,
+        provider,
+        timeframes: tfs,
+        lookbackBars: Number(cfg.lookbackBars || 300),
+        format: "jpg",
+        quality: 55,
+      });
+      const created = Array.isArray(out?.items) ? out.items : [];
+      if (created.length) {
+        setItems((prev) => [...created, ...prev].slice(0, limit));
+      } else {
+        await loadSnapshots();
+      }
+      const newFiles = created.map((x) => String(x?.file_name || "").trim()).filter(Boolean);
+      await analyzeFiles(newFiles);
+    } catch (e) {
+      setStatus({ type: "error", text: String(e?.message || e || "Snapshots failed before analyze.") });
+    } finally {
+      setCapturing(false);
+    }
   };
 
   const deleteSnapshots = async (opts = { all: false, files: [] }) => {

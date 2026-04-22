@@ -464,7 +464,7 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 }
 .snapshot-fields-v2 {
   display: grid;
-  grid-template-columns: repeat(8, minmax(118px, 1fr));
+  grid-template-columns: repeat(6, minmax(118px, 1fr));
   gap: 8px;
 }
 .snapshot-fields-v2.compact input,
