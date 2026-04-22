@@ -432,22 +432,21 @@ export default function ChartSnapshotsPage() {
   return (
     <section className="snapshot-builder-v2">
       <section className="panel snapshot-settings-v2">
-        <h2 className="page-title" style={{ margin: 0, fontSize: 22 }}>Settings</h2>
-
-        <div className="snapshot-template-row-v2">
-          <div>
-            <label className="minor-text">Template</label>
-            <select value={templateId} onChange={(e) => handleSelectTemplate(e.target.value)}>
-              <option value="">Select template</option>
-              {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </div>
-          <div className="snapshot-template-save-v2">
-            <div>
+        <div className="snapshot-settings-head-v2">
+          <h2 className="page-title" style={{ margin: 0, fontSize: 22 }}>Settings</h2>
+          <div className="snapshot-template-row-v2">
+            <div className="snapshot-template-col-v2">
+              <label className="minor-text">Template</label>
+              <select value={templateId} onChange={(e) => handleSelectTemplate(e.target.value)}>
+                <option value="">Select template</option>
+                {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div className="snapshot-template-col-v2">
               <label className="minor-text">Template Name</label>
               <input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name" />
             </div>
-            <button className="primary-button" type="button" onClick={saveTemplate}>Save</button>
+            <button className="primary-button snapshot-template-save-btn-v2" type="button" onClick={saveTemplate}>Save</button>
           </div>
         </div>
 
@@ -595,7 +594,7 @@ export default function ChartSnapshotsPage() {
           {tab === "prompt" ? <textarea className="snapshot-mono-v2" rows={18} value={promptText} readOnly /> : null}
           {tab === "json" ? <textarea className="snapshot-mono-v2" rows={18} value={jsonConfigText} readOnly /> : null}
           {tab === "guide" ? <textarea className="snapshot-mono-v2" rows={18} value={GUIDE_TEXT} readOnly /> : null}
-          <div className="snapshot-capture-row-v2">
+          <div className="snapshot-capture-inline-v2">
             <label className="minor-text">Snapshots TFs</label>
             <div className="snapshot-tag-wrap-v2">
               {SNAPSHOT_TF_OPTIONS.map((tf) => (
@@ -609,8 +608,6 @@ export default function ChartSnapshotsPage() {
                 </button>
               ))}
             </div>
-          </div>
-          <div className="snapshot-actions-under-v2">
             <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>{capturing ? "Snapshots..." : "Snapshots"}</button>
             <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
           </div>

@@ -439,24 +439,33 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .snapshot-settings-v2 {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   padding: 14px;
+}
+.snapshot-settings-head-v2 {
+  display: grid;
+  grid-template-columns: auto minmax(620px, 1fr);
+  align-items: end;
+  gap: 14px;
 }
 .snapshot-template-row-v2 {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(180px, 220px) minmax(220px, 1fr) auto;
   gap: 10px;
-}
-.snapshot-template-save-v2 {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
   align-items: end;
+}
+.snapshot-template-col-v2 {
+  min-width: 0;
+}
+.snapshot-template-save-btn-v2 {
+  height: 34px;
+  align-self: end;
+  white-space: nowrap;
 }
 .snapshot-fields-v2 {
   display: grid;
-  grid-template-columns: repeat(8, minmax(120px, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(8, minmax(118px, 1fr));
+  gap: 8px;
 }
 .snapshot-fields-v2.compact input,
 .snapshot-fields-v2.compact select {
@@ -526,10 +535,18 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   justify-content: flex-end;
   gap: 8px;
 }
-.snapshot-capture-row-v2 {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.snapshot-capture-inline-v2 {
+  display: grid;
+  grid-template-columns: auto minmax(280px, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+}
+.snapshot-capture-inline-v2 .minor-text {
+  margin: 0;
+  white-space: nowrap;
+}
+.snapshot-capture-inline-v2 .snapshot-tag-wrap-v2 {
+  min-width: 0;
 }
 .snapshot-chart-grid-v2 {
   display: grid;
@@ -610,13 +627,16 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   color: var(--muted);
 }
 @media (max-width: 1280px) {
+  .snapshot-settings-head-v2 { grid-template-columns: 1fr; }
   .snapshot-fields-v2 { grid-template-columns: repeat(4, 1fr); }
   .snapshot-context-v2 { grid-template-columns: repeat(2, 1fr); }
   .snapshot-context-v2 .full { grid-column: span 2; }
-  .snapshot-template-row-v2 { grid-template-columns: 1fr; }
+  .snapshot-template-row-v2 { grid-template-columns: 1fr 1fr auto; }
+  .snapshot-capture-inline-v2 { grid-template-columns: 1fr; align-items: start; }
   .snapshot-io-row-v2 { grid-template-columns: 1fr; }
 }
 @media (max-width: 900px) {
+  .snapshot-template-row-v2 { grid-template-columns: 1fr; }
   .snapshot-fields-v2 { grid-template-columns: repeat(2, 1fr); }
   .snapshot-tf-v2 { grid-template-columns: 1fr; }
 }
