@@ -751,7 +751,17 @@ export default function ChartSnapshotsPage() {
       });
       if (!signals.length) throw new Error("No valid signal found in response JSON.");
       for (const payload of signals) {
-        const finalPayload = { ...payload, note: responseText || payload.note || "" };
+        const finalPayload = {
+          ...payload,
+          note: responseText || payload.note || "",
+          profile: parsed?.profile || payload?.profile || "",
+          trade_plan: parsed?.trade_plan && typeof parsed.trade_plan === "object" ? parsed.trade_plan : undefined,
+          market_analysis: parsed?.market_analysis && typeof parsed.market_analysis === "object" ? parsed.market_analysis : undefined,
+          risk_management: parsed?.risk_management && typeof parsed.risk_management === "object" ? parsed.risk_management : undefined,
+          invalidation: parsed?.invalidation ?? "",
+          confidence_pct: parsed?.confidence_pct ?? null,
+          final_verdict: parsed?.final_verdict && typeof parsed.final_verdict === "object" ? parsed.final_verdict : undefined,
+        };
         await api.createTrade(finalPayload);
       }
       const msg = `Added ${signals.length} signal(s).`;

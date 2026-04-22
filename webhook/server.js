@@ -3264,6 +3264,59 @@ function parseSnapshotPdArrays(payload = {}) {
     }));
 }
 
+function parseSnapshotKeyLevels(payload = {}) {
+  const out = [];
+  const pushLevel = (item) => {
+    if (!item) return;
+    if (typeof item === "number") {
+      if (Number.isFinite(item)) out.push({ name: "Key Level", price: item, kind: "generic" });
+      return;
+    }
+    if (typeof item === "string") {
+      const nums = item.match(/-?\d+(?:\.\d+)?/g);
+      if (nums && nums[0] && Number.isFinite(Number(nums[0]))) {
+        out.push({ name: item.slice(0, 30), price: Number(nums[0]), kind: "generic" });
+      }
+      return;
+    }
+    if (typeof item === "object") {
+      const name = String(item.name || item.label || item.type || "Key Level").slice(0, 40);
+      const p = Number(item.price ?? item.level ?? item.value);
+      if (Number.isFinite(p)) out.push({ name, price: p, kind: String(item.kind || "generic") });
+    }
+  };
+  const keyLevels = payload?.key_levels;
+  if (Array.isArray(keyLevels)) keyLevels.forEach(pushLevel);
+  if (payload?.key_level) pushLevel(payload.key_level);
+  if (Array.isArray(payload?.risk_management?.key_levels)) payload.risk_management.key_levels.forEach(pushLevel);
+  const pd = parseSnapshotPdArrays(payload);
+  pd.forEach((x) => {
+    const low = Number(x.low);
+    const high = Number(x.high);
+    if (Number.isFinite(low)) out.push({ name: `${x.type || "PD"} low`, price: low, kind: "pd" });
+    if (Number.isFinite(high)) out.push({ name: `${x.type || "PD"} high`, price: high, kind: "pd" });
+  });
+  const dedup = new Map();
+  out.forEach((x) => {
+    if (!Number.isFinite(Number(x.price))) return;
+    const k = `${x.name}|${Number(x.price).toFixed(6)}`;
+    if (!dedup.has(k)) dedup.set(k, { ...x, price: Number(x.price) });
+  });
+  return [...dedup.values()].slice(0, 40);
+}
+
+function parseSnapshotChecklist(payload = {}) {
+  const arr = Array.isArray(payload?.market_analysis?.checklist) ? payload.market_analysis.checklist : [];
+  return arr
+    .map((x) => ({
+      strategy: String(x?.strategy || "").trim(),
+      condition: String(x?.condition || "").trim(),
+      checked: Boolean(x?.checked),
+      note: String(x?.note || "").trim(),
+    }))
+    .filter((x) => x.strategy || x.condition || x.note);
+}
+
 function parseSnapshotBarsLimit(payload = {}) {
   const n = Number(payload.lookbackBars ?? payload.lookback_bars ?? payload.bars ?? 300);
   if (!Number.isFinite(n)) return 300;
@@ -3351,6 +3404,16 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
       sl: Number.isFinite(Number(payload?.sl)) ? Number(payload?.sl) : null,
       tp: Number.isFinite(Number(payload?.tp)) ? Number(payload?.tp) : null,
       pd_arrays: parseSnapshotPdArrays(payload),
+      key_levels: parseSnapshotKeyLevels(payload),
+      summary: {
+        profile: String(payload?.profile || "").trim(),
+        bias: String(payload?.market_analysis?.bias || "").trim(),
+        trend: String(payload?.market_analysis?.trend || "").trim(),
+        confidence_pct: Number.isFinite(Number(payload?.confidence_pct)) ? Number(payload.confidence_pct) : null,
+        invalidation: String(payload?.invalidation || "").trim(),
+        note: String(payload?.trade_plan?.note || payload?.note || "").trim(),
+      },
+      checklist: parseSnapshotChecklist(payload),
     };
   } catch (error) {
     const reason = error?.name === "AbortError" ? "timeout" : String(error?.message || error || "fetch_failed");

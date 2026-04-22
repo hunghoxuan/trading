@@ -98,6 +98,43 @@ function pdColorByType(typeRaw) {
   return '#60a5fa';
 }
 
+function parseKeyLevels(snapshot) {
+  const arr = Array.isArray(snapshot?.key_levels) ? snapshot.key_levels : [];
+  return arr
+    .map((x) => {
+      const price = Number(x?.price ?? x?.level ?? x?.value);
+      if (!Number.isFinite(price)) return null;
+      return {
+        name: String(x?.name || x?.label || "Key").trim() || "Key",
+        price,
+        kind: String(x?.kind || "generic"),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+function buildSummaryTexts(snapshot) {
+  const s = snapshot?.summary && typeof snapshot.summary === "object" ? snapshot.summary : {};
+  const parts = [];
+  if (s.bias) parts.push(`Bias: ${s.bias}`);
+  if (s.trend) parts.push(`Trend: ${s.trend}`);
+  if (Number.isFinite(Number(s.confidence_pct))) parts.push(`Conf: ${Number(s.confidence_pct)}%`);
+  if (s.profile) parts.push(`Profile: ${s.profile}`);
+  const rows = [];
+  if (parts.length) rows.push(parts.join(" | "));
+  if (s.invalidation) rows.push(`Invalidation: ${String(s.invalidation).slice(0, 80)}`);
+  if (s.note) rows.push(String(s.note).slice(0, 110));
+  return rows.slice(0, 3);
+}
+
+function checklistText(snapshot) {
+  const arr = Array.isArray(snapshot?.checklist) ? snapshot.checklist : [];
+  const selected = arr.filter((x) => x?.checked).slice(0, 4).map((x) => `${x.strategy || "Rule"}:${x.condition || "ok"}`);
+  if (!selected.length) return "";
+  return `Checklist: ${selected.join(", ").slice(0, 140)}`;
+}
+
 function extractAnalysisSnapshot(analysisSnapshot) {
   if (analysisSnapshot && typeof analysisSnapshot === "object") return analysisSnapshot;
   return null;
@@ -216,7 +253,7 @@ export const TradeSignalChart = ({
         if (isMounted) {
           candleSeries.setData(candles);
 
-          // Add Markers for Open/Close
+          // Add Markers for Open/Close + Analysis text
           const markers = [];
           if (openedAt) {
             const openTs = Math.floor(new Date(openedAt).getTime() / 1000);
@@ -225,6 +262,23 @@ export const TradeSignalChart = ({
           if (closedAt) {
             const closeTs = Math.floor(new Date(closedAt).getTime() / 1000);
             markers.push({ time: closeTs, position: 'aboveBar', color: '#f68410', shape: 'arrowDown', text: 'END' });
+          }
+          const lastTs = candles.length ? Number(candles[candles.length - 1]?.time) : null;
+          if (Number.isFinite(lastTs) && snapshot && typeof snapshot === "object") {
+            const summaryRows = buildSummaryTexts(snapshot);
+            summaryRows.forEach((txt, idx) => {
+              markers.push({
+                time: lastTs,
+                position: idx % 2 === 0 ? 'aboveBar' : 'belowBar',
+                color: '#94a3b8',
+                shape: 'circle',
+                text: txt,
+              });
+            });
+            const chk = checklistText(snapshot);
+            if (chk) {
+              markers.push({ time: lastTs, position: 'belowBar', color: '#22c55e', shape: 'square', text: chk });
+            }
           }
           if (markers.length > 0) candleSeries.setMarkers(markers);
 
@@ -264,6 +318,20 @@ export const TradeSignalChart = ({
               }
             });
           }
+
+          // Draw key levels from analysis snapshot
+          const keyLevels = parseKeyLevels(snapshot);
+          keyLevels.forEach((k, idx) => {
+            const color = k.kind === "pd" ? '#64748b' : '#f97316';
+            candleSeries.createPriceLine({
+              price: k.price,
+              color,
+              lineWidth: 1,
+              lineStyle: 4,
+              axisLabelVisible: idx < 8,
+              title: idx < 8 ? `KEY ${k.name.slice(0, 18)}` : '',
+            });
+          });
 
           // Fit view to stored range first, then trade bounds
           const snapshotStart = Number(snapshot?.bar_start);
