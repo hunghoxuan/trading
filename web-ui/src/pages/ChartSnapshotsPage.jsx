@@ -1278,7 +1278,7 @@ export default function ChartSnapshotsPage() {
               <div className="snapshot-col-span-2"><label className="minor-text">HTF Bias</label><select value={cfg.htfbias} onChange={(e) => setCfgField("htfbias", e.target.value)}><option value="">Auto</option><option>Bullish</option><option>Bearish</option><option>Ranging</option></select></div>
               <div className="snapshot-col-span-2"><label className="minor-text">Direction</label><select value={cfg.dir} onChange={(e) => setCfgField("dir", e.target.value)}><option>Direction: Both</option><option>Direction: Bias</option><option>Long only</option><option>Short only</option></select></div>
               <div className="snapshot-col-span-2"><label className="minor-text">News</label><select value={cfg.news} onChange={(e) => setCfgField("news", e.target.value)}><option value="">None</option><option>High-impact today</option><option>NFP / FOMC week</option><option>Earnings release</option></select></div>
-              <div className="snapshot-col-span-12"><label className="minor-text">Notes</label><input value={cfg.notes} onChange={(e) => setCfgField("notes", e.target.value)} placeholder="Notes / extra context" /></div>
+              <div className="snapshot-col-span-12"><label className="minor-text">Notes</label><textarea className="snapshot-notes-textarea-v3" rows={4} value={cfg.notes} onChange={(e) => setCfgField("notes", e.target.value)} placeholder="Notes / extra context" /></div>
             </div>
           </section>
         ) : null}
@@ -1300,6 +1300,14 @@ export default function ChartSnapshotsPage() {
             <textarea className="snapshot-mono-v2" rows={30} value={guideDraft} onChange={(e) => setGuideDraft(e.target.value)} />
           </>
         ) : null}
+        <div className="panel snapshot-control-card-v3">
+          <div className="snapshot-capture-inline-v2 snapshot-capture-inline-v3">
+            <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>{capturing ? "Snapshots..." : "Snapshots"}</button>
+            <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
+            {actionStatus.action === "capture" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
+            {actionStatus.action === "analyze" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
+          </div>
+        </div>
       </section>
 
       <section className="panel snapshot-col-v3 snapshot-col-position-v3">
@@ -1345,27 +1353,13 @@ export default function ChartSnapshotsPage() {
         ) : null}
 
         <div className="snapshot-response-footer-v3">
-          <div><label className="minor-text">Entry</label><input value={position.entry} onChange={(e) => updatePositionField("entry", e.target.value)} /></div>
-          <div><label className="minor-text">TP</label><input value={position.tp} onChange={(e) => updatePositionField("tp", e.target.value)} /></div>
-          <div><label className="minor-text">SL</label><input value={position.sl} onChange={(e) => updatePositionField("sl", e.target.value)} /></div>
+          <div className="snapshot-footer-field-v3"><label className="minor-text">Entry</label><input value={position.entry} onChange={(e) => updatePositionField("entry", e.target.value)} /></div>
+          <div className="snapshot-footer-field-v3"><label className="minor-text">TP</label><input value={position.tp} onChange={(e) => updatePositionField("tp", e.target.value)} /></div>
+          <div className="snapshot-footer-field-v3"><label className="minor-text">SL</label><input value={position.sl} onChange={(e) => updatePositionField("sl", e.target.value)} /></div>
           <div className="snapshot-rr-label-v3"><span className="minor-text">RR</span><strong>{position.rr || "-"}</strong></div>
           <div className="snapshot-note-field-v3"><label className="minor-text">Note</label><input value={position.note} onChange={(e) => updatePositionField("note", e.target.value)} /></div>
-          <button className="primary-button" type="button" onClick={addToSignal} disabled={addingSignal || !canAddSignal}>{addingSignal ? "Adding..." : "Add Signal"}</button>
-          {actionStatus.action === "add" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
-        </div>
-        <div className="panel snapshot-control-card-v3">
-          <div className="snapshot-capture-inline-v2 snapshot-capture-inline-v3">
-            <label className="minor-text">Snapshots TFs</label>
-            <div className="snapshot-tag-wrap-v2">
-              {snapshotTfs.map((tf) => (
-                <span key={tf} className="secondary-button snapshot-tag-v2 active">{tf}</span>
-              ))}
-            </div>
-            <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>{capturing ? "Snapshots..." : "Snapshots"}</button>
-            {actionStatus.action === "capture" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
-            <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
-            {actionStatus.action === "analyze" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
-          </div>
+          <button className="primary-button snapshot-add-btn-v3" type="button" onClick={addToSignal} disabled={addingSignal || !canAddSignal}>{addingSignal ? "Adding..." : "Add Signal"}</button>
+          {actionStatus.action === "add" && actionStatus.text ? <span className={`minor-text snapshot-footer-msg-v3 ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
         </div>
       </section>
 

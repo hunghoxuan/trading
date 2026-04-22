@@ -465,7 +465,7 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   padding: 10px;
 }
 .snapshot-capture-inline-v3 {
-  grid-template-columns: auto minmax(220px, 1fr) auto auto auto;
+  grid-template-columns: auto auto minmax(160px, 1fr);
   gap: 10px;
 }
 .snapshot-position-form-v3 {
@@ -509,15 +509,21 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .snapshot-response-footer-v3 {
   margin-top: auto;
   display: grid;
-  grid-template-columns: repeat(3, minmax(90px, 1fr)) 80px minmax(180px, 1.6fr) auto;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 8px;
   align-items: end;
 }
+.snapshot-footer-field-v3 {
+  grid-column: span 2;
+  min-width: 0;
+}
 .snapshot-rr-label-v3 {
+  grid-column: span 1;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
   min-height: 34px;
+  min-width: 0;
 }
 .snapshot-rr-label-v3 strong {
   font-size: 14px;
@@ -525,7 +531,31 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   line-height: 1.2;
 }
 .snapshot-note-field-v3 {
-  min-width: 160px;
+  grid-column: span 4;
+  min-width: 0;
+}
+.snapshot-add-btn-v3 {
+  grid-column: span 1;
+  width: 100%;
+  min-height: 38px;
+}
+.snapshot-footer-msg-v3 {
+  grid-column: 1 / -1;
+}
+.snapshot-response-footer-v3 input {
+  width: 100%;
+}
+.snapshot-notes-textarea-v3 {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 13px;
+  outline: none;
+  width: 100%;
+  min-height: 86px;
+  resize: vertical;
 }
 .snapshot-settings-shell-v2 {
   display: grid;
@@ -775,13 +805,21 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   .snapshot-capture-inline-v2 { grid-template-columns: 1fr; align-items: start; }
   .snapshot-io-row-v2 { grid-template-columns: 1fr; }
   .snapshot-capture-inline-v3 { grid-template-columns: 1fr; }
-  .snapshot-response-footer-v3 { grid-template-columns: 1fr 1fr; }
+  .snapshot-response-footer-v3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .snapshot-footer-field-v3,
+  .snapshot-note-field-v3,
+  .snapshot-rr-label-v3,
+  .snapshot-add-btn-v3 { grid-column: span 1; }
 }
 @media (max-width: 900px) {
   .snapshot-template-row-v2 { grid-template-columns: 1fr; }
   .snapshot-fields-v2 { grid-template-columns: repeat(2, 1fr); }
   .snapshot-tf-v2 { grid-template-columns: 1fr; }
   .snapshot-tf-v2 > div { grid-column: span 1 !important; }
-  .snapshot-position-form-v3 { grid-template-columns: 1fr 1fr; }
+  .snapshot-position-form-v3 { grid-template-columns: 1fr; }
   .snapshot-response-footer-v3 { grid-template-columns: 1fr; }
+  .snapshot-footer-field-v3,
+  .snapshot-note-field-v3,
+  .snapshot-rr-label-v3,
+  .snapshot-add-btn-v3 { grid-column: span 1; }
 }
