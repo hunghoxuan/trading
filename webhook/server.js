@@ -3531,6 +3531,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   const chartTf = mt5TfToMinutes(payload.chart_tf ?? payload.chartTf ?? payload.chartTimeframe ?? payload.chart_tf_period);
   const entryModel = String(payload.entry_model ?? payload.entryModel ?? payload.model ?? payload.strategy ?? source ?? "").trim();
   const note = mt5BuildNote(payload);
+  const onlySignal = Boolean(payload.only_signal ?? payload.onlySignal ?? payload.raw_json?.only_signal ?? payload.raw_json?.onlySignal);
 
   const plannedEntry = asNum(payload.entry ?? payload.price, NaN);
   const rawJson = payload.raw_json || payload;
@@ -3579,7 +3580,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
     await mt5Log(signalId, "signals", { event_type: eventType, data: sanitizedPayload }, userId);
 
 
-    if (CFG.mt5V2DualWriteEnabled) {
+    if (CFG.mt5V2DualWriteEnabled && !onlySignal) {
       const sourceId = mt5SlugId(source, "tradingview");
       try {
         await mt5UpsertSourceV2({
@@ -3629,6 +3630,8 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
           error: error instanceof Error ? error.message : String(error)
         }, userId);
       }
+    } else if (onlySignal) {
+      await mt5Log(signalId, "signals", { event: "FANOUT_SKIPPED_ONLY_SIGNAL" }, userId);
     }
   }
 

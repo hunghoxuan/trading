@@ -502,7 +502,7 @@ function extractSignalsFromAnalysis(parsed, fallback = {}) {
         tf: String(s?.timeframe || fallback.timeframe || "15m").trim(),
         model: "ai_claude",
         entry_model: "ai_claude",
-        note: normalizeNoteForStorage(s?.note ?? s),
+        note: typeof s?.note === "string" ? s.note : "",
         source: "ai",
         strategy: String(fallback.strategy || "ai"),
       };
@@ -586,7 +586,6 @@ export default function ChartSnapshotsPage() {
   const [promptDraft, setPromptDraft] = useState(() => buildPrompt(DEFAULT_CONFIG));
   const [promptEdited, setPromptEdited] = useState(false);
   const [guideDraft, setGuideDraft] = useState(GUIDE_TEXT);
-  const [addTargetSignal, setAddTargetSignal] = useState(true);
   const [addTargetTrade, setAddTargetTrade] = useState(false);
   const liteChartRef = useRef(null);
   const liteChartApiRef = useRef(null);
@@ -886,9 +885,6 @@ export default function ChartSnapshotsPage() {
     setAddingSignal(true);
     setStatus({ type: "", text: "" });
     try {
-      if (!addTargetSignal && !addTargetTrade) {
-        throw new Error("Select Signal and/or Trade before Add.");
-      }
       let parsed = effectiveParsed;
       if (!parsed && analysisJson) parsed = JSON.parse(analysisJson);
       if (!parsed && analysisRaw) parsed = enrichParsedAnalysis(analysisRaw, tryParseJsonLoose(analysisRaw));
@@ -945,7 +941,8 @@ export default function ChartSnapshotsPage() {
           tp: parseNum(position.tp) || payload.tp,
           sl: parseNum(position.sl) || payload.sl,
           rr: parseNum(position.rr) || payload.rr,
-          note: responseText || payload.note || "",
+          note: String(position.note || payload.note || parsed?.trade_plan?.note || parsed?.note || "").trim(),
+          only_signal: !addTargetTrade,
           profile: parsed?.profile || payload?.profile || "",
           trade_plan: parsed?.trade_plan && typeof parsed.trade_plan === "object" ? parsed.trade_plan : undefined,
           market_analysis: parsed?.market_analysis && typeof parsed.market_analysis === "object" ? parsed.market_analysis : undefined,
@@ -955,20 +952,12 @@ export default function ChartSnapshotsPage() {
           final_verdict: parsed?.final_verdict && typeof parsed.final_verdict === "object" ? parsed.final_verdict : undefined,
           analysis_snapshot: analysisSnapshotPayload,
         };
-        if (addTargetSignal && addTargetTrade) {
-          // Current backend maps both to /v2/signals/create; avoid duplicate insert.
-          await api.createSignal(finalPayload);
-          createdCount += 1;
-        } else if (addTargetSignal) {
-          await api.createSignal(finalPayload);
-          createdCount += 1;
-        } else if (addTargetTrade) {
-          await api.createTrade(finalPayload);
-          createdCount += 1;
-        }
+        await api.createSignal(finalPayload);
+        createdCount += 1;
       }
-      const targetText = addTargetSignal && addTargetTrade ? "signal+trade" : addTargetSignal ? "signal" : "trade";
-      const msg = `Added ${createdCount} ${targetText}(s).`;
+      const msg = addTargetTrade
+        ? `Added ${createdCount} signal(s) and queued trade fanout.`
+        : `Added ${createdCount} signal(s) only.`;
       setStatus({ type: "success", text: msg });
       setActionMessage("add", "success", msg);
     } catch (e) {
@@ -1373,20 +1362,20 @@ export default function ChartSnapshotsPage() {
         ) : null}
 
         <div className="snapshot-response-footer-v3">
-          <div className="snapshot-footer-field-v3"><label className="minor-text">Entry</label><input value={position.entry} onChange={(e) => updatePositionField("entry", e.target.value)} /></div>
-          <div className="snapshot-footer-field-v3"><label className="minor-text">TP</label><input value={position.tp} onChange={(e) => updatePositionField("tp", e.target.value)} /></div>
-          <div className="snapshot-footer-field-v3"><label className="minor-text">SL</label><input value={position.sl} onChange={(e) => updatePositionField("sl", e.target.value)} /></div>
-          <div className="snapshot-rr-label-v3"><span className="minor-text">RR</span><strong>{position.rr || "-"}</strong></div>
-          <div className="snapshot-note-field-v3"><label className="minor-text">Note</label><input value={position.note} onChange={(e) => updatePositionField("note", e.target.value)} /></div>
-          <label className="minor-text" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" checked={addTargetSignal} onChange={(e) => setAddTargetSignal(e.target.checked)} />
-            Signal
-          </label>
-          <label className="minor-text" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" checked={addTargetTrade} onChange={(e) => setAddTargetTrade(e.target.checked)} />
-            Trade
-          </label>
-          <button className="primary-button snapshot-add-btn-v3" type="button" onClick={addBySelection} disabled={addingSignal || !canAddSignal}>{addingSignal ? "Adding..." : "Add"}</button>
+          <div className="snapshot-footer-row1-v3">
+            <div className="snapshot-footer-field-v3"><label className="minor-text">Entry</label><input value={position.entry} onChange={(e) => updatePositionField("entry", e.target.value)} /></div>
+            <div className="snapshot-footer-field-v3"><label className="minor-text">TP</label><input value={position.tp} onChange={(e) => updatePositionField("tp", e.target.value)} /></div>
+            <div className="snapshot-footer-field-v3"><label className="minor-text">SL</label><input value={position.sl} onChange={(e) => updatePositionField("sl", e.target.value)} /></div>
+            <div className="snapshot-footer-field-v3"><label className="minor-text">RR</label><input value={position.rr || ""} readOnly /></div>
+          </div>
+          <div className="snapshot-footer-row2-v3">
+            <div className="snapshot-note-field-v3"><label className="minor-text">Note</label><input value={position.note} onChange={(e) => updatePositionField("note", e.target.value)} /></div>
+            <label className="minor-text" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <input type="checkbox" checked={addTargetTrade} onChange={(e) => setAddTargetTrade(e.target.checked)} />
+              Trade
+            </label>
+            <button className="primary-button snapshot-add-btn-v3" type="button" onClick={addBySelection} disabled={addingSignal || !canAddSignal}>{addingSignal ? "Adding..." : "Add Signal"}</button>
+          </div>
           {actionStatus.action === "add" && actionStatus.text ? <span className={`minor-text snapshot-footer-msg-v3 ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
         </div>
       </section>
