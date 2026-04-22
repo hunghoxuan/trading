@@ -163,6 +163,10 @@ function normalizeSignalSymbol(symbolRaw) {
   return s;
 }
 
+function normalizeWatchSymbol(symbolRaw) {
+  return normalizeSignalSymbol(symbolRaw).replace(/\s+/g, "");
+}
+
 function normalizeNoteForStorage(v) {
   if (v === null || v === undefined) return "";
   if (typeof v === "string") return v;
@@ -812,14 +816,14 @@ export default function ChartSnapshotsPage() {
       const list = Array.isArray(out?.settings) ? out.settings : [];
       const row = list.find((x) => String(x?.type || "").toUpperCase() === SYMBOLS_SETTING_TYPE && String(x?.name || "").toUpperCase() === SYMBOLS_SETTING_NAME);
       const arr = Array.isArray(row?.data?.symbols) ? row.data.symbols : [];
-      setWatchlist([...new Set(arr.map((x) => String(x || "").trim()).filter(Boolean))]);
+      setWatchlist([...new Set(arr.map(normalizeWatchSymbol).filter(Boolean))]);
     } catch {
       setWatchlist([]);
     }
   };
 
   const addCurrentSymbolToWatchlist = async () => {
-    const s = String(cfg.symbol || "").trim().toUpperCase();
+    const s = normalizeWatchSymbol(cfg.symbol);
     if (!s) {
       setStatus({ type: "warning", text: "Symbol is required." });
       return;
@@ -888,7 +892,7 @@ export default function ChartSnapshotsPage() {
           <input
             list="tv-symbol-options"
             value={cfg.symbol}
-            onChange={(e) => setCfgField("symbol", e.target.value)}
+            onChange={(e) => setCfgField("symbol", normalizeWatchSymbol(e.target.value))}
             placeholder="Symbol (e.g. ICMARKETS:EURJF)"
           />
           <datalist id="tv-symbol-options">
@@ -896,7 +900,12 @@ export default function ChartSnapshotsPage() {
           </datalist>
           <div className="snapshot-watchlist-v2">
             {watchlist.length === 0 ? <span className="minor-text">No watchlist symbols yet.</span> : watchlist.map((s) => (
-              <button key={s} type="button" className={`secondary-button snapshot-tag-v2 ${String(cfg.symbol).toUpperCase() === s ? "active" : ""}`} onClick={() => setCfgField("symbol", s)}>
+              <button
+                key={s}
+                type="button"
+                className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
+                onClick={() => setCfgField("symbol", normalizeWatchSymbol(s))}
+              >
                 {s}
               </button>
             ))}
