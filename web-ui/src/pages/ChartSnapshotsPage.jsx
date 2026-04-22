@@ -8,7 +8,6 @@ const HTF_OPTIONS = ["W", "D", "4H"];
 const EXEC_OPTIONS = ["1H", "15M"];
 const CONF_OPTIONS = ["5M", "1M"];
 const STRATEGY_OPTIONS = ["ICT", "SMC", "Price Action", "Wyckoff", "EMA Trend", "Breakout", "VWAP"];
-const SNAPSHOT_TF_OPTIONS = ["1D", "4h", "15m", "5m", "1h", "30m"];
 const DEFAULT_TEMPLATE_ID = "__default__";
 const SYMBOLS_SETTING_TYPE = "SYMBOLS";
 const SYMBOLS_SETTING_NAME = "WATCHLIST";
@@ -21,9 +20,9 @@ const DEFAULT_CONFIG = {
   risk: "1",
   lookbackBars: "300",
   strategies: ["ICT"],
-  htf_tfs: ["W", "D", "4H"],
-  exec_tfs: ["1H", "15M"],
-  conf_tfs: ["5M", "1M"],
+  htf_tfs: ["D", "4H"],
+  exec_tfs: ["15M"],
+  conf_tfs: ["5M"],
   htfbias: "",
   dir: "Direction: Both",
   news: "",
@@ -185,6 +184,21 @@ function liveTfToTradingViewInterval(tfRaw) {
   if (s === "5M") return "5";
   if (s === "1M") return "1";
   return "15";
+}
+
+function configTfToSnapshotTf(tfRaw) {
+  const s = String(tfRaw || "").trim().toUpperCase();
+  if (s === "W" || s === "W1") return "1w";
+  if (s === "D" || s === "D1") return "1D";
+  if (s === "4H") return "4h";
+  if (s === "2H") return "2h";
+  if (s === "1H") return "1h";
+  if (s === "30M") return "30m";
+  if (s === "15M") return "15m";
+  if (s === "5M") return "5m";
+  if (s === "3M") return "3m";
+  if (s === "1M") return "1m";
+  return String(tfRaw || "").trim();
 }
 
 function extractPositionFromAnalysis(parsed) {
@@ -560,7 +574,6 @@ export default function ChartSnapshotsPage() {
 
   const [selectedFiles, setSelectedFiles] = useState(new Set());
   const [symbolOptions, setSymbolOptions] = useState([]);
-  const [snapshotTfs, setSnapshotTfs] = useState(["1D", "4h", "15m", "5m"]);
   const [watchlist, setWatchlist] = useState([]);
   const [analysisFilesDisplay, setAnalysisFilesDisplay] = useState([]);
   const [position, setPosition] = useState({ entry: "", tp: "", sl: "", rr: "", note: "" });
@@ -581,6 +594,10 @@ export default function ChartSnapshotsPage() {
 
   const promptText = useMemo(() => buildPrompt(cfg), [cfg]);
   const timeframe = useMemo(() => normalizeTfLabelToLower(cfg.exec_tfs?.[0] || "15m"), [cfg.exec_tfs]);
+  const snapshotTfs = useMemo(() => {
+    const all = [...(cfg.htf_tfs || []), ...(cfg.exec_tfs || []), ...(cfg.conf_tfs || [])];
+    return [...new Set(all.map(configTfToSnapshotTf).filter(Boolean))];
+  }, [cfg.htf_tfs, cfg.exec_tfs, cfg.conf_tfs]);
   const jsonConfigText = useMemo(() => buildJsonConfig(cfg), [cfg]);
   const effectiveParsed = useMemo(
     () => enrichParsedAnalysis(analysisRaw, analysisParsed || tryParseJsonLoose(analysisJson) || tryParseJsonLoose(analysisRaw)),
@@ -1283,20 +1300,6 @@ export default function ChartSnapshotsPage() {
             <textarea className="snapshot-mono-v2" rows={30} value={guideDraft} onChange={(e) => setGuideDraft(e.target.value)} />
           </>
         ) : null}
-        <div className="panel snapshot-control-card-v3">
-          <div className="snapshot-capture-inline-v2 snapshot-capture-inline-v3">
-            <label className="minor-text">Snapshots TFs</label>
-            <div className="snapshot-tag-wrap-v2">
-              {SNAPSHOT_TF_OPTIONS.map((tf) => (
-                <button key={tf} type="button" className={`secondary-button snapshot-tag-v2 ${snapshotTfs.includes(tf) ? "active" : ""}`} onClick={() => setSnapshotTfs((prev) => toggleArrayValue(prev, tf))}>{tf}</button>
-              ))}
-            </div>
-            <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>{capturing ? "Snapshots..." : "Snapshots"}</button>
-            {actionStatus.action === "capture" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
-            <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
-            {actionStatus.action === "analyze" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
-          </div>
-        </div>
       </section>
 
       <section className="panel snapshot-col-v3 snapshot-col-position-v3">
@@ -1349,6 +1352,20 @@ export default function ChartSnapshotsPage() {
           <div className="snapshot-note-field-v3"><label className="minor-text">Note</label><input value={position.note} onChange={(e) => updatePositionField("note", e.target.value)} /></div>
           <button className="primary-button" type="button" onClick={addToSignal} disabled={addingSignal || !canAddSignal}>{addingSignal ? "Adding..." : "Add Signal"}</button>
           {actionStatus.action === "add" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
+        </div>
+        <div className="panel snapshot-control-card-v3">
+          <div className="snapshot-capture-inline-v2 snapshot-capture-inline-v3">
+            <label className="minor-text">Snapshots TFs</label>
+            <div className="snapshot-tag-wrap-v2">
+              {snapshotTfs.map((tf) => (
+                <span key={tf} className="secondary-button snapshot-tag-v2 active">{tf}</span>
+              ))}
+            </div>
+            <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>{capturing ? "Snapshots..." : "Snapshots"}</button>
+            {actionStatus.action === "capture" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
+            <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
+            {actionStatus.action === "analyze" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
+          </div>
         </div>
       </section>
 

@@ -465,7 +465,8 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   padding: 10px;
 }
 .snapshot-capture-inline-v3 {
-  grid-template-columns: auto minmax(220px, 1fr) auto minmax(120px, 1fr) auto minmax(120px, 1fr);
+  grid-template-columns: auto minmax(220px, 1fr) auto auto auto;
+  gap: 10px;
 }
 .snapshot-position-form-v3 {
   display: grid;
@@ -508,7 +509,7 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .snapshot-response-footer-v3 {
   margin-top: auto;
   display: grid;
-  grid-template-columns: 120px 120px 120px 80px minmax(200px, 1fr) auto;
+  grid-template-columns: repeat(3, minmax(90px, 1fr)) 80px minmax(180px, 1.6fr) auto;
   gap: 8px;
   align-items: end;
 }
@@ -584,7 +585,7 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 }
 .snapshot-fields-v2 {
   display: grid;
-  grid-template-columns: repeat(6, minmax(118px, 1fr));
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
   gap: 8px;
 }
 .snapshot-fields-v2.compact input,
