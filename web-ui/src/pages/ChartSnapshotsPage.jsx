@@ -214,8 +214,124 @@ function tryParseJsonLoose(textRaw) {
   try {
     return JSON.parse(candidate);
   } catch {
-    return null;
+    // Fallback: repair common LLM JSON issues (raw newlines in strings, trailing commas)
+    try {
+      let repaired = "";
+      let inString = false;
+      let escaped = false;
+      for (let i = 0; i < candidate.length; i += 1) {
+        const ch = candidate[i];
+        if (inString) {
+          if (escaped) {
+            repaired += ch;
+            escaped = false;
+            continue;
+          }
+          if (ch === "\\") {
+            repaired += ch;
+            escaped = true;
+            continue;
+          }
+          if (ch === "\"") {
+            repaired += ch;
+            inString = false;
+            continue;
+          }
+          if (ch === "\n" || ch === "\r") {
+            repaired += " ";
+            continue;
+          }
+          repaired += ch;
+          continue;
+        }
+        if (ch === "\"") {
+          repaired += ch;
+          inString = true;
+          continue;
+        }
+        repaired += ch;
+      }
+      repaired = repaired.replace(/,\s*([}\]])/g, "$1");
+      return JSON.parse(repaired);
+    } catch {
+      return null;
+    }
   }
+}
+
+function parseTradePlanFromRaw(rawText) {
+  const raw = String(rawText || "");
+  if (!raw) return null;
+  const getString = (re) => {
+    const m = raw.match(re);
+    return m?.[1] ? String(m[1]).trim() : "";
+  };
+  const getNum = (re) => {
+    const m = raw.match(re);
+    if (!m?.[1]) return null;
+    const n = Number(String(m[1]).replace(/,/g, ""));
+    return Number.isFinite(n) ? n : null;
+  };
+  const symbol = getString(/"symbol"\s*:\s*"([^"]+)"/i);
+  const profile = getString(/"profile"\s*:\s*"([^"]+)"/i);
+  const tradePlanBlock = raw.match(/"trade_plan"\s*:\s*\{([\s\S]*?)\}\s*(?:,|\})/i)?.[1] || "";
+  if (!tradePlanBlock) return null;
+  const inPlan = (re) => {
+    const m = tradePlanBlock.match(re);
+    return m?.[1] ? String(m[1]).trim() : "";
+  };
+  const inPlanNum = (re) => {
+    const m = tradePlanBlock.match(re);
+    if (!m?.[1]) return null;
+    const n = Number(String(m[1]).replace(/,/g, ""));
+    return Number.isFinite(n) ? n : null;
+  };
+  const direction = inPlan(/"direction"\s*:\s*"([^"]+)"/i);
+  const entry = inPlanNum(/"entry"\s*:\s*(-?\d+(?:\.\d+)?)/i);
+  const sl = inPlanNum(/"sl"\s*:\s*(-?\d+(?:\.\d+)?)/i);
+  const tp1 = inPlanNum(/"tp1"\s*:\s*(-?\d+(?:\.\d+)?)/i);
+  const tp2 = inPlanNum(/"tp2"\s*:\s*(-?\d+(?:\.\d+)?)/i);
+  const tp3 = inPlanNum(/"tp3"\s*:\s*(-?\d+(?:\.\d+)?)/i);
+  const rr = inPlanNum(/"rr"\s*:\s*(-?\d+(?:\.\d+)?)/i);
+  const note = inPlan(/"note"\s*:\s*"([\s\S]*?)"/i);
+  if (!symbol && !direction && !Number.isFinite(entry)) return null;
+  return {
+    symbol: symbol || "",
+    profile: profile || "",
+    trade_plan: {
+      direction: direction || "",
+      entry,
+      sl,
+      tp1,
+      tp2,
+      tp3,
+      rr,
+      note: note || "",
+    },
+  };
+}
+
+function enrichParsedAnalysis(rawText, parsed) {
+  const fallback = parseTradePlanFromRaw(rawText);
+  if (!fallback) return parsed;
+  if (!parsed || typeof parsed !== "object") return fallback;
+  if (Array.isArray(parsed)) {
+    return {
+      ...fallback,
+      market_analysis: {
+        pd_arrays: parsed,
+      },
+    };
+  }
+  if (!parsed.trade_plan && fallback.trade_plan) {
+    return {
+      ...parsed,
+      symbol: parsed.symbol || fallback.symbol,
+      profile: parsed.profile || fallback.profile,
+      trade_plan: fallback.trade_plan,
+    };
+  }
+  return parsed;
 }
 
 function buildPrompt(cfg) {
@@ -390,10 +506,14 @@ export default function ChartSnapshotsPage() {
   const promptText = useMemo(() => buildPrompt(cfg), [cfg]);
   const jsonConfigText = useMemo(() => buildJsonConfig(cfg), [cfg]);
   const effectiveParsed = useMemo(
-    () => analysisParsed || tryParseJsonLoose(analysisJson) || tryParseJsonLoose(analysisRaw),
+    () => enrichParsedAnalysis(analysisRaw, analysisParsed || tryParseJsonLoose(analysisJson) || tryParseJsonLoose(analysisRaw)),
     [analysisParsed, analysisJson, analysisRaw],
   );
   const responseText = useMemo(() => buildFriendlyResponse(effectiveParsed), [effectiveParsed]);
+  const canAddSignal = useMemo(
+    () => extractSignalsFromAnalysis(effectiveParsed, { symbol: tvSymbol, timeframe, strategy: cfg.strategies.join("+") || "ai" }).length > 0,
+    [effectiveParsed, tvSymbol, timeframe, cfg.strategies],
+  );
 
   const setCfgField = (key, value) => setCfg((prev) => ({ ...prev, [key]: value }));
 
@@ -429,7 +549,7 @@ export default function ChartSnapshotsPage() {
       const out = await api.chartSnapshotsAnalyze(payload);
       const raw = String(out?.raw_response || "");
       setAnalysisRaw(raw);
-      const parsed = out?.parsed_json || tryParseJsonLoose(raw);
+      const parsed = enrichParsedAnalysis(raw, out?.parsed_json || tryParseJsonLoose(raw));
       if (parsed && typeof parsed === "object") {
         setAnalysisParsed(parsed);
         setAnalysisJson(JSON.stringify(parsed, null, 2));
@@ -594,7 +714,7 @@ export default function ChartSnapshotsPage() {
     try {
       let parsed = effectiveParsed;
       if (!parsed && analysisJson) parsed = JSON.parse(analysisJson);
-      if (!parsed && analysisRaw) parsed = tryParseJsonLoose(analysisRaw);
+      if (!parsed && analysisRaw) parsed = enrichParsedAnalysis(analysisRaw, tryParseJsonLoose(analysisRaw));
       const signals = extractSignalsFromAnalysis(parsed, {
         symbol: tvSymbol,
         timeframe,
@@ -934,7 +1054,7 @@ export default function ChartSnapshotsPage() {
           ) : null}
 
           <div className="snapshot-actions-under-v2">
-            <button className="primary-button" type="button" onClick={addToSignal} disabled={addingSignal || !effectiveParsed}>{addingSignal ? "Adding..." : "Add Signal"}</button>
+            <button className="primary-button" type="button" onClick={addToSignal} disabled={addingSignal || !canAddSignal}>{addingSignal ? "Adding..." : "Add Signal"}</button>
           </div>
         </section>
       </section>
