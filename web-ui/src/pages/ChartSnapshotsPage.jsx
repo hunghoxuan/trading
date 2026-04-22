@@ -203,6 +203,8 @@ function configTfToSnapshotTf(tfRaw) {
 
 function extractPositionFromAnalysis(parsed) {
   const plan = parsed?.trade_plan && typeof parsed.trade_plan === "object" ? parsed.trade_plan : {};
+  const directionRaw = String(plan.direction || parsed?.direction || "").trim().toUpperCase();
+  const direction = directionRaw.includes("SELL") ? "SELL" : directionRaw.includes("BUY") ? "BUY" : "";
   const entry = parseNum(plan.entry ?? parsed?.entry ?? parsed?.price);
   const sl = parseNum(plan.sl ?? parsed?.sl);
   const tp = parseNum(plan.tp1 ?? plan.tp ?? parsed?.tp ?? parsed?.take_profit);
@@ -214,6 +216,7 @@ function extractPositionFromAnalysis(parsed) {
     if (risk > 0 && reward > 0) rr = Number((reward / risk).toFixed(2));
   }
   return {
+    direction,
     entry: Number.isFinite(entry) ? String(entry) : "",
     tp: Number.isFinite(tp) ? String(tp) : "",
     sl: Number.isFinite(sl) ? String(sl) : "",
@@ -576,13 +579,15 @@ export default function ChartSnapshotsPage() {
   const [symbolOptions, setSymbolOptions] = useState([]);
   const [watchlist, setWatchlist] = useState([]);
   const [analysisFilesDisplay, setAnalysisFilesDisplay] = useState([]);
-  const [position, setPosition] = useState({ entry: "", tp: "", sl: "", rr: "", note: "" });
+  const [position, setPosition] = useState({ direction: "", entry: "", tp: "", sl: "", rr: "", note: "" });
   const [barsCache, setBarsCache] = useState({});
   const [barsLoading, setBarsLoading] = useState(false);
   const [liveTf, setLiveTf] = useState("D");
   const [promptDraft, setPromptDraft] = useState(() => buildPrompt(DEFAULT_CONFIG));
   const [promptEdited, setPromptEdited] = useState(false);
   const [guideDraft, setGuideDraft] = useState(GUIDE_TEXT);
+  const [addTargetSignal, setAddTargetSignal] = useState(true);
+  const [addTargetTrade, setAddTargetTrade] = useState(false);
   const liteChartRef = useRef(null);
   const liteChartApiRef = useRef(null);
 
@@ -877,10 +882,13 @@ export default function ChartSnapshotsPage() {
     });
   };
 
-  const addToSignal = async () => {
+  const addBySelection = async () => {
     setAddingSignal(true);
     setStatus({ type: "", text: "" });
     try {
+      if (!addTargetSignal && !addTargetTrade) {
+        throw new Error("Select Signal and/or Trade before Add.");
+      }
       let parsed = effectiveParsed;
       if (!parsed && analysisJson) parsed = JSON.parse(analysisJson);
       if (!parsed && analysisRaw) parsed = enrichParsedAnalysis(analysisRaw, tryParseJsonLoose(analysisRaw));
@@ -912,6 +920,7 @@ export default function ChartSnapshotsPage() {
           rr: parseNum(position.rr),
         });
       }
+      let createdCount = 0;
       for (const payload of signals) {
         const cachedSnapshot = currentBarsSnapshot && typeof currentBarsSnapshot === "object" ? currentBarsSnapshot : null;
         const mergedPdArrays = Array.isArray(parsed?.market_analysis?.pd_arrays) ? parsed.market_analysis.pd_arrays : [];
@@ -946,9 +955,20 @@ export default function ChartSnapshotsPage() {
           final_verdict: parsed?.final_verdict && typeof parsed.final_verdict === "object" ? parsed.final_verdict : undefined,
           analysis_snapshot: analysisSnapshotPayload,
         };
-        await api.createTrade(finalPayload);
+        if (addTargetSignal && addTargetTrade) {
+          // Current backend maps both to /v2/signals/create; avoid duplicate insert.
+          await api.createSignal(finalPayload);
+          createdCount += 1;
+        } else if (addTargetSignal) {
+          await api.createSignal(finalPayload);
+          createdCount += 1;
+        } else if (addTargetTrade) {
+          await api.createTrade(finalPayload);
+          createdCount += 1;
+        }
       }
-      const msg = `Added ${signals.length} signal(s).`;
+      const targetText = addTargetSignal && addTargetTrade ? "signal+trade" : addTargetSignal ? "signal" : "trade";
+      const msg = `Added ${createdCount} ${targetText}(s).`;
       setStatus({ type: "success", text: msg });
       setActionMessage("add", "success", msg);
     } catch (e) {
@@ -1358,7 +1378,15 @@ export default function ChartSnapshotsPage() {
           <div className="snapshot-footer-field-v3"><label className="minor-text">SL</label><input value={position.sl} onChange={(e) => updatePositionField("sl", e.target.value)} /></div>
           <div className="snapshot-rr-label-v3"><span className="minor-text">RR</span><strong>{position.rr || "-"}</strong></div>
           <div className="snapshot-note-field-v3"><label className="minor-text">Note</label><input value={position.note} onChange={(e) => updatePositionField("note", e.target.value)} /></div>
-          <button className="primary-button snapshot-add-btn-v3" type="button" onClick={addToSignal} disabled={addingSignal || !canAddSignal}>{addingSignal ? "Adding..." : "Add Signal"}</button>
+          <label className="minor-text" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={addTargetSignal} onChange={(e) => setAddTargetSignal(e.target.checked)} />
+            Signal
+          </label>
+          <label className="minor-text" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={addTargetTrade} onChange={(e) => setAddTargetTrade(e.target.checked)} />
+            Trade
+          </label>
+          <button className="primary-button snapshot-add-btn-v3" type="button" onClick={addBySelection} disabled={addingSignal || !canAddSignal}>{addingSignal ? "Adding..." : "Add"}</button>
           {actionStatus.action === "add" && actionStatus.text ? <span className={`minor-text snapshot-footer-msg-v3 ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
         </div>
       </section>
