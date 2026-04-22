@@ -4,9 +4,9 @@ import { api } from "../api";
 
 const STORAGE_KEY = "chart_prompt_builder_templates_v2";
 
-const HTF_OPTIONS = ["W1", "D1", "4H", "2H", "1H"];
-const EXEC_OPTIONS = ["1H", "30M", "15M", "5M"];
-const CONF_OPTIONS = ["5M", "3M", "1M"];
+const HTF_OPTIONS = ["W", "D", "4H"];
+const EXEC_OPTIONS = ["1H", "15M"];
+const CONF_OPTIONS = ["5M", "1M"];
 const STRATEGY_OPTIONS = ["ICT", "SMC", "Price Action", "Wyckoff", "EMA Trend", "Breakout", "VWAP"];
 const SNAPSHOT_TF_OPTIONS = ["1D", "4h", "15m", "5m", "1h", "30m"];
 const DEFAULT_TEMPLATE_ID = "__default__";
@@ -21,12 +21,11 @@ const DEFAULT_CONFIG = {
   risk: "1",
   lookbackBars: "300",
   strategies: ["ICT"],
-  htf_tfs: ["W1", "D1", "4H"],
-  exec_tfs: ["30M", "15M"],
+  htf_tfs: ["W", "D", "4H"],
+  exec_tfs: ["1H", "15M"],
   conf_tfs: ["5M", "1M"],
   htfbias: "",
   dir: "Direction: Both",
-  keylevel: "",
   news: "",
   notes: "",
 };
@@ -179,11 +178,12 @@ function normalizeTfLabelToLower(tfRaw) {
 
 function liveTfToTradingViewInterval(tfRaw) {
   const s = String(tfRaw || "").toUpperCase();
-  if (s === "W1") return "W";
-  if (s === "D1") return "D";
+  if (s === "W") return "W";
+  if (s === "D") return "D";
   if (s === "4H") return "240";
-  if (s === "2H") return "120";
-  if (s === "1H") return "60";
+  if (s === "15M") return "15";
+  if (s === "5M") return "5";
+  if (s === "1M") return "1";
   return "15";
 }
 
@@ -407,7 +407,6 @@ function buildPrompt(cfg) {
   const context = [];
   if (cfg.htfbias) context.push(`htf_bias_override: "${cfg.htfbias}"`);
   if (cfg.dir) context.push(`direction: "${cfg.dir}"`);
-  if (cfg.keylevel) context.push(`key_level: "${cfg.keylevel}"`);
   if (cfg.news) context.push(`news_risk: "${cfg.news}"`);
   if (cfg.session && cfg.session !== "Any") context.push(`session: "${cfg.session}"`);
   if (cfg.notes) context.push(`notes: "${cfg.notes}"`);
@@ -567,7 +566,7 @@ export default function ChartSnapshotsPage() {
   const [position, setPosition] = useState({ entry: "", tp: "", sl: "", rr: "", note: "" });
   const [barsCache, setBarsCache] = useState({});
   const [barsLoading, setBarsLoading] = useState(false);
-  const [liveTf, setLiveTf] = useState("D1");
+  const [liveTf, setLiveTf] = useState("D");
   const [promptDraft, setPromptDraft] = useState(() => buildPrompt(DEFAULT_CONFIG));
   const [promptEdited, setPromptEdited] = useState(false);
   const [guideDraft, setGuideDraft] = useState(GUIDE_TEXT);
@@ -593,8 +592,15 @@ export default function ChartSnapshotsPage() {
   );
   const responseText = useMemo(() => buildFriendlyResponse(effectiveParsed), [effectiveParsed]);
   const canAddSignal = useMemo(
-    () => extractSignalsFromAnalysis(effectiveParsed, { symbol: tvSymbol, timeframe, strategy: cfg.strategies.join("+") || "ai" }).length > 0,
-    [effectiveParsed, tvSymbol, timeframe, cfg.strategies],
+    () => {
+      const fromAi = extractSignalsFromAnalysis(effectiveParsed, { symbol: tvSymbol, timeframe, strategy: cfg.strategies.join("+") || "ai" }).length > 0;
+      if (fromAi) return true;
+      const entry = parseNum(position.entry);
+      const sl = parseNum(position.sl);
+      const tp = parseNum(position.tp);
+      return Boolean(normalizeSignalSymbol(tvSymbol || cfg.symbol || "")) && Number.isFinite(entry) && Number.isFinite(sl) && Number.isFinite(tp) && entry > 0 && sl > 0 && tp > 0;
+    },
+    [effectiveParsed, tvSymbol, timeframe, cfg.strategies, position.entry, position.sl, position.tp, cfg.symbol],
   );
   const normalizedSymbolForBars = useMemo(() => normalizeSignalSymbol(tvSymbol || cfg.symbol || ""), [tvSymbol, cfg.symbol]);
   const currentBarsKey = useMemo(
@@ -866,7 +872,29 @@ export default function ChartSnapshotsPage() {
         timeframe,
         strategy: cfg.strategies.join("+") || "ai",
       });
-      if (!signals.length) throw new Error("No valid signal found in response JSON.");
+      if (!signals.length) {
+        const symbolManual = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
+        const entry = parseNum(position.entry);
+        const sl = parseNum(position.sl);
+        const tp = parseNum(position.tp);
+        if (!symbolManual || !Number.isFinite(entry) || !Number.isFinite(sl) || !Number.isFinite(tp)) {
+          throw new Error("No valid signal found. Fill Entry/TP/SL or run Analyze first.");
+        }
+        signals.push({
+          symbol: symbolManual,
+          action: tp >= entry ? "BUY" : "SELL",
+          entry,
+          sl,
+          tp,
+          tf: timeframe,
+          model: "ai_claude",
+          entry_model: "ai_claude",
+          note: position.note || "",
+          source: "ai",
+          strategy: cfg.strategies.join("+") || "ai",
+          rr: parseNum(position.rr),
+        });
+      }
       for (const payload of signals) {
         const cachedSnapshot = currentBarsSnapshot && typeof currentBarsSnapshot === "object" ? currentBarsSnapshot : null;
         const mergedPdArrays = Array.isArray(parsed?.market_analysis?.pd_arrays) ? parsed.market_analysis.pd_arrays : [];
@@ -1165,9 +1193,8 @@ export default function ChartSnapshotsPage() {
         </div>
         <div className="snapshot-live-card-v3">
           <div className="snapshot-live-head-v3">
-            <span className="minor-text">TradingView Live</span>
             <div className="snapshot-tag-wrap-v2">
-              {["W1", "D1", "4H", "2H", "1H"].map((tf) => (
+              {["W", "D", "4H", "15m", "5m", "1m"].map((tf) => (
                 <button
                   key={tf}
                   type="button"
@@ -1185,47 +1212,9 @@ export default function ChartSnapshotsPage() {
             src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTfToTradingViewInterval(liveTf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
           />
         </div>
-        <div className="snapshot-gallery-head-v2">
-          <span className="panel-label" style={{ margin: 0 }}>Snapshots ({items.length})</span>
-          <div className="snapshot-bulk-actions-v2">
-            <button className="danger-button" type="button" onClick={deleteSelected} disabled={deleting}>{deleting ? "Deleting..." : "Delete Selected"}</button>
-            <button className="danger-button" type="button" onClick={deleteAll} disabled={deleting}>{deleting ? "Deleting..." : "Delete All"}</button>
-          </div>
-        </div>
-        <div className="snapshot-gallery-v2 snapshot-gallery-v3">
-          {items.map((it) => (
-            <article key={it.id} className="snapshot-card-v2">
-              <label className="snapshot-select-v2">
-                <input type="checkbox" checked={selectedFiles.has(it.file_name)} onChange={() => toggleFile(it.file_name)} />
-              </label>
-              <button className="snapshot-delete-one-v2" type="button" onClick={() => deleteOne(it.file_name)} title="Delete">✕</button>
-              <a href={it.url} target="_blank" rel="noreferrer">
-                <img src={it.url} alt={it.file_name} />
-              </a>
-              <div className="snapshot-meta-v2">
-                <div className="snapshot-file-v2">{it.file_name}</div>
-                <div className="snapshot-time-v2">{formatCompactDateTime(it.created_at)}</div>
-              </div>
-            </article>
-          ))}
-        </div>
       </section>
 
       <section className="panel snapshot-col-v3 snapshot-col-settings-v3">
-        <div className="panel snapshot-control-card-v3">
-          <div className="snapshot-capture-inline-v2 snapshot-capture-inline-v3">
-            <label className="minor-text">Snapshots TFs</label>
-            <div className="snapshot-tag-wrap-v2">
-              {SNAPSHOT_TF_OPTIONS.map((tf) => (
-                <button key={tf} type="button" className={`secondary-button snapshot-tag-v2 ${snapshotTfs.includes(tf) ? "active" : ""}`} onClick={() => setSnapshotTfs((prev) => toggleArrayValue(prev, tf))}>{tf}</button>
-              ))}
-            </div>
-            <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>{capturing ? "Snapshots..." : "Snapshots"}</button>
-            {actionStatus.action === "capture" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
-            <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
-            {actionStatus.action === "analyze" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
-          </div>
-        </div>
         <div className="snapshot-tabs-v2">
           <button type="button" className={`secondary-button ${settingsTab === "settings" ? "active" : ""}`} onClick={() => setSettingsTab("settings")}>Settings</button>
           <button type="button" className={`secondary-button ${settingsTab === "prompt" ? "active" : ""}`} onClick={() => setSettingsTab("prompt")}>Prompt</button>
@@ -1254,7 +1243,6 @@ export default function ChartSnapshotsPage() {
               <div><label className="minor-text">Sessions</label><select value={cfg.session} onChange={(e) => setCfgField("session", e.target.value)}><option>Any</option><option>London</option><option>New York</option><option>Asian</option><option>London+NY</option></select></div>
               <div><label className="minor-text">MinRR</label><input type="number" min="0.5" step="0.5" value={cfg.rr} onChange={(e) => setCfgField("rr", e.target.value)} /></div>
               <div><label className="minor-text">Max Risk</label><input type="number" min="0.1" step="0.1" value={cfg.risk} onChange={(e) => setCfgField("risk", e.target.value)} /></div>
-              <div><label className="minor-text">Provider</label><input value={provider} onChange={(e) => setProvider(e.target.value)} /></div>
             </div>
             <div>
               <label className="minor-text">Strategy (multi-select)</label>
@@ -1295,21 +1283,36 @@ export default function ChartSnapshotsPage() {
             <textarea className="snapshot-mono-v2" rows={30} value={guideDraft} onChange={(e) => setGuideDraft(e.target.value)} />
           </>
         ) : null}
+        <div className="panel snapshot-control-card-v3">
+          <div className="snapshot-capture-inline-v2 snapshot-capture-inline-v3">
+            <label className="minor-text">Snapshots TFs</label>
+            <div className="snapshot-tag-wrap-v2">
+              {SNAPSHOT_TF_OPTIONS.map((tf) => (
+                <button key={tf} type="button" className={`secondary-button snapshot-tag-v2 ${snapshotTfs.includes(tf) ? "active" : ""}`} onClick={() => setSnapshotTfs((prev) => toggleArrayValue(prev, tf))}>{tf}</button>
+              ))}
+            </div>
+            <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>{capturing ? "Snapshots..." : "Snapshots"}</button>
+            {actionStatus.action === "capture" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
+            <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
+            {actionStatus.action === "analyze" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
+          </div>
+        </div>
       </section>
 
       <section className="panel snapshot-col-v3 snapshot-col-position-v3">
-        <div className="snapshot-tabs-v2">
-          <span className="panel-label" style={{ margin: 0 }}>Response</span>
-          <button type="button" className={`secondary-button ${responseTab === "text" ? "active" : ""}`} onClick={() => setResponseTab("text")}>Text</button>
-          <button type="button" className={`secondary-button ${responseTab === "raw" ? "active" : ""}`} onClick={() => setResponseTab("raw")}>Raw</button>
-          <button type="button" className={`secondary-button ${responseTab === "bars" ? "active" : ""}`} onClick={() => setResponseTab("bars")}>Bars</button>
-          <button type="button" className={`secondary-button ${responseTab === "chart" ? "active" : ""}`} onClick={() => setResponseTab("chart")}>Chart</button>
-        </div>
-
-        {responseTab === "text" ? <textarea className="snapshot-mono-v2" rows={16} value={responseText} readOnly disabled /> : null}
-        {responseTab === "raw" ? <textarea className="snapshot-mono-v2" rows={16} value={analysisRaw || analysisJson} readOnly disabled /> : null}
-        {responseTab === "bars" ? <textarea className="snapshot-mono-v2" rows={16} value={JSON.stringify(currentBarsSnapshot || { status: "no_cached_bars" }, null, 2)} readOnly disabled /> : null}
-        {responseTab === "chart" ? (
+        {hasResponse ? (
+          <>
+            <div className="snapshot-tabs-v2">
+              <span className="panel-label" style={{ margin: 0 }}>Response</span>
+              <button type="button" className={`secondary-button ${responseTab === "text" ? "active" : ""}`} onClick={() => setResponseTab("text")}>Text</button>
+              <button type="button" className={`secondary-button ${responseTab === "raw" ? "active" : ""}`} onClick={() => setResponseTab("raw")}>Raw</button>
+              <button type="button" className={`secondary-button ${responseTab === "bars" ? "active" : ""}`} onClick={() => setResponseTab("bars")}>Bars</button>
+              <button type="button" className={`secondary-button ${responseTab === "chart" ? "active" : ""}`} onClick={() => setResponseTab("chart")}>Chart</button>
+            </div>
+            {responseTab === "text" ? <textarea className="snapshot-mono-v2" rows={16} value={responseText} readOnly disabled /> : null}
+            {responseTab === "raw" ? <textarea className="snapshot-mono-v2" rows={16} value={analysisRaw || analysisJson} readOnly disabled /> : null}
+            {responseTab === "bars" ? <textarea className="snapshot-mono-v2" rows={16} value={JSON.stringify(currentBarsSnapshot || { status: "no_cached_bars" }, null, 2)} readOnly disabled /> : null}
+            {responseTab === "chart" ? (
           <div className="snapshot-live-grid-v3">
             <div className="snapshot-live-card-v3">
               <div className="minor-text" style={{ marginBottom: 6 }}>Chart 1: Twelve + PD Arrays</div>
@@ -1334,19 +1337,19 @@ export default function ChartSnapshotsPage() {
               </div>
             ) : null}
           </div>
+            ) : null}
+          </>
         ) : null}
 
-        {hasResponse ? (
-          <div className="snapshot-response-footer-v3">
-            <div><label className="minor-text">Entry</label><input value={position.entry} onChange={(e) => updatePositionField("entry", e.target.value)} /></div>
-            <div><label className="minor-text">TP</label><input value={position.tp} onChange={(e) => updatePositionField("tp", e.target.value)} /></div>
-            <div><label className="minor-text">SL</label><input value={position.sl} onChange={(e) => updatePositionField("sl", e.target.value)} /></div>
-            <div className="snapshot-rr-label-v3"><span className="minor-text">RR</span><strong>{position.rr || "-"}</strong></div>
-            <div className="snapshot-note-field-v3"><label className="minor-text">Note</label><input value={position.note} onChange={(e) => updatePositionField("note", e.target.value)} /></div>
-            <button className="primary-button" type="button" onClick={addToSignal} disabled={addingSignal || !canAddSignal}>{addingSignal ? "Adding..." : "Add Signal"}</button>
-            {actionStatus.action === "add" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
-          </div>
-        ) : null}
+        <div className="snapshot-response-footer-v3">
+          <div><label className="minor-text">Entry</label><input value={position.entry} onChange={(e) => updatePositionField("entry", e.target.value)} /></div>
+          <div><label className="minor-text">TP</label><input value={position.tp} onChange={(e) => updatePositionField("tp", e.target.value)} /></div>
+          <div><label className="minor-text">SL</label><input value={position.sl} onChange={(e) => updatePositionField("sl", e.target.value)} /></div>
+          <div className="snapshot-rr-label-v3"><span className="minor-text">RR</span><strong>{position.rr || "-"}</strong></div>
+          <div className="snapshot-note-field-v3"><label className="minor-text">Note</label><input value={position.note} onChange={(e) => updatePositionField("note", e.target.value)} /></div>
+          <button className="primary-button" type="button" onClick={addToSignal} disabled={addingSignal || !canAddSignal}>{addingSignal ? "Adding..." : "Add Signal"}</button>
+          {actionStatus.action === "add" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
+        </div>
       </section>
 
       {status.text ? (

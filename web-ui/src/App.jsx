@@ -13,6 +13,7 @@ import SignalsPage from "./pages/SignalsPage";
 import SignalDetailPage from "./pages/SignalDetailPage";
 import V2TradeDetailPage from "./pages/V2TradeDetailPage";
 import ChartSnapshotsPage from "./pages/ChartSnapshotsPage";
+import SnapshotsPage from "./pages/SnapshotsPage";
 import { api } from "./api";
 import LoginPage from "./pages/LoginPage";
 
@@ -32,8 +33,7 @@ export default function App() {
     return p.startsWith("/logs")
       || p.startsWith("/db")
       || p.startsWith("/users")
-      || p.startsWith("/snapshots")
-      || p.startsWith("/ai");
+      || p.startsWith("/snapshots");
   }, [location?.pathname]);
 
   useEffect(() => {
@@ -95,6 +95,7 @@ export default function App() {
         </div>
         <nav>
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? "active" : "")}>Dashboard</NavLink>
+          <NavLink to="/ai" className={({ isActive }) => (isActive ? "active" : "")}>AI</NavLink>
           <NavLink to="/signals" className={({ isActive }) => (isActive ? "active" : "")}>Signals</NavLink>
           <NavLink to="/trades" className={({ isActive }) => (isActive ? "active" : "")}>Trades</NavLink>
 
@@ -153,8 +154,8 @@ export default function App() {
           <Route path="/signals/:signalId" element={<SignalDetailPage />} />
           <Route path="/trades" element={<TradesPage />} />
           <Route path="/trades/:tradeId" element={<V2TradeDetailPage />} />
-          <Route path="/snapshots" element={canAccessSystemPages ? <ChartSnapshotsPage /> : <Navigate to="/dashboard" replace />} />
-          <Route path="/ai" element={<Navigate to="/snapshots" replace />} />
+          <Route path="/ai" element={<ChartSnapshotsPage />} />
+          <Route path="/snapshots" element={canAccessSystemPages ? <SnapshotsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/logs" element={canAccessSystemPages ? <LogsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/db" element={canAccessSystemPages ? <DatabasePage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/users" element={canAccessSystemPages ? <UsersPage authUser={authUser} /> : <Navigate to="/dashboard" replace />} />
