@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.23-1250"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.23-1543"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
