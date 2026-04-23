@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../api";
+import { api, setRuntimeActiveUserId } from "../api";
 import UserDetailSection from "../components/UserDetailSection";
 
 const ROLE_OPTIONS = ["System", "Admin", "User", "Guest"];
@@ -295,7 +295,7 @@ export default function UsersPage({ authUser }) {
 
   function handleSwitchUser(e, u) {
     e.stopPropagation();
-    api.setRuntimeActiveUserId(u.user_id);
+    setRuntimeActiveUserId(u.user_id);
     window.location.reload();
   }
 
