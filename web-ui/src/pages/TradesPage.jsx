@@ -1,6 +1,6 @@
 import { api } from "../api";
-import { TradeSignalChart } from "../components/TradeSignalChart";
 import { useState, useMemo, useRef, useEffect } from "react";
+import { SignalDetailCard } from "../components/SignalDetailCard";
 
 const STATUS_OPTIONS = [
   { value: "", label: "ALL STATUSES" },
@@ -147,26 +147,6 @@ function tradeRiskSize(t) {
   if (entry == null || sl == null || vol == null) return null;
   const est = Math.abs(entry - sl) * vol;
   return Number.isFinite(est) ? est : null;
-}
-
-const DETAIL_TF_TABS = ["ENTRY", "W", "D", "4H", "15m", "5m", "1m"];
-
-function detailTabToTvInterval(tab) {
-  const t = String(tab || "").toUpperCase();
-  if (t === "W") return "W";
-  if (t === "D") return "D";
-  if (t === "4H") return "240";
-  if (t === "15M") return "15";
-  if (t === "5M") return "5";
-  if (t === "1M") return "1";
-  return "15";
-}
-
-function toTradingViewSymbol(raw) {
-  const s = String(raw || "").trim().toUpperCase();
-  if (!s) return "ICMARKETS:EURUSD";
-  if (s.includes(":")) return s;
-  return `ICMARKETS:${s.replace(/[^A-Z0-9]/g, "")}`;
 }
 
 export default function TradesPage() {
@@ -645,97 +625,95 @@ export default function TradesPage() {
           {!selectedTrade ? (
             <div className="empty-state">SELECT A TRADE TO INSPECT DETAILS</div>
           ) : (
-            <div className="stack-layout" style={{ gap: 14 }}>
-              {(() => {
-                const action = String(selectedTrade.action || selectedTrade.side || "-").toUpperCase();
-                const actionCls = action === "BUY" ? "side-buy" : "side-sell";
-                const st = statusUi(selectedTrade.execution_status);
-                const pnl = asNum(selectedTrade.pnl_realized);
-                const rr = calcRr(selectedTrade);
-                const showPnl = shouldShowPnl(selectedTrade.execution_status, pnl);
-                const riskSize = tradeRiskSize(selectedTrade);
-                const vol = asNum(selectedTrade.volume);
-                const updatedAt = fDateTime(selectedTrade.updated_at || selectedTrade.closed_at || selectedTrade.opened_at || selectedTrade.created_at);
-                const headerCols = "minmax(0, 1fr) minmax(0, 1.25fr) minmax(120px, 0.55fr)";
-                return (
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: headerCols, gap: 12, alignItems: "center" }}>
-                      <div className="cell-major" style={{ minWidth: 0 }}>
-                        <span className={actionCls}>{action}</span> {selectedTrade.symbol || "-"}
+            <>
+              <SignalDetailCard
+                header={(() => {
+                  const action = String(selectedTrade.action || selectedTrade.side || "-").toUpperCase();
+                  const actionCls = action === "BUY" ? "side-buy" : "side-sell";
+                  const st = statusUi(selectedTrade.execution_status);
+                  const pnl = asNum(selectedTrade.pnl_realized);
+                  const rr = calcRr(selectedTrade);
+                  const showPnl = shouldShowPnl(selectedTrade.execution_status, pnl);
+                  const riskSize = tradeRiskSize(selectedTrade);
+                  const vol = asNum(selectedTrade.volume);
+                  const updatedAt = fDateTime(selectedTrade.updated_at || selectedTrade.closed_at || selectedTrade.opened_at || selectedTrade.created_at);
+                  return {
+                    left: <><span className={actionCls}>{action}</span> {selectedTrade.symbol || "-"}</>,
+                    center: <>{selectedTrade.entry || "-"} {"→"} {selectedTrade.tp || "-"} / {selectedTrade.sl || "-"}</>,
+                    rightTop: showPnl
+                      ? <div className={pnl != null && pnl < 0 ? "money-neg" : "money-pos"} style={{ fontWeight: 800 }}>${pnl.toFixed(2)}</div>
+                      : <div className="minor-text">-</div>,
+                    leftMinor: updatedAt,
+                    centerMinor: `${rr != null ? rr.toFixed(2) : "-"} rr | ${vol != null ? vol : "-"} vol | ${riskSize != null ? `$${riskSize.toFixed(2)}` : "-"} rr size`,
+                    rightBottom: <span className={`badge ${st.cls}`}>{st.label}</span>,
+                  };
+                })()}
+                chart={{
+                  enabled: true,
+                  detailTfTab,
+                  onDetailTfTabChange: setDetailTfTab,
+                  iframeTitle: `trade-tv-${detailTfTab}`,
+                  symbol: selectedTrade.symbol,
+                  interval: selectedTrade.signal_tf || selectedTrade.chart_tf || "1h",
+                  live: true,
+                  entryPrice: asNum(selectedTrade.entry),
+                  slPrice: asNum(selectedTrade.sl),
+                  tpPrice: asNum(selectedTrade.tp),
+                  openedAt: selectedTrade.opened_at,
+                  closedAt: selectedTrade.closed_at,
+                  analysisSnapshot: (() => {
+                    const snap = selectedTrade?.metadata?.analysis_snapshot || selectedTrade?.raw_json?.analysis_snapshot;
+                    const mkt = selectedTrade?.metadata?.market_analysis || selectedTrade?.raw_json?.market_analysis;
+                    const pdArrays = (snap?.pd_arrays) || (mkt?.pd_arrays) || (selectedTrade?.raw_json?.pd_arrays) || [];
+                    const keyLevels = (snap?.key_levels) || (mkt?.key_levels) || [];
+                    if (snap) return { ...snap, pd_arrays: pdArrays, key_levels: keyLevels };
+                    if (pdArrays.length > 0) return { pd_arrays: pdArrays, key_levels: keyLevels };
+                    return null;
+                  })(),
+                }}
+                metaItems={[
+                  { label: "Chart TF", value: formatTimeframe(selectedTrade.chart_tf || "-") },
+                  { label: "Signal TF", value: formatTimeframe(selectedTrade.signal_tf || "-") },
+                  { label: "Source", value: selectedTrade.source_id || "-" },
+                  { label: "Entry Model", value: selectedTrade.entry_model || "-" },
+                  { label: "Trade ID", value: selectedTrade.trade_id || "-" },
+                  { label: "Broker Ticket", value: brokerTicketOf(selectedTrade) },
+                  { label: "Signal ID", value: selectedTrade.signal_id || "-" },
+                  { label: "Account", value: accountById.get(String(selectedTrade.account_id || ""))?.name || selectedTrade.account_id || "-" },
+                  { label: "Note", value: selectedTrade.note || "-", fullWidth: true },
+                ]}
+                history={{
+                  enabled: true,
+                  items: tradeEvents,
+                  scroll: true,
+                  renderItem: (ev, idx) => {
+                    const payload = ev?.metadata && typeof ev.metadata === "object" ? ev.metadata : {};
+                    const evType = String(payload.event || payload.event_type || ev.object_table || "LOG");
+                    const evTicket = String(
+                      payload.ticket ||
+                      payload.broker_trade_id ||
+                      payload.brokerTradeId ||
+                      payload.order_ticket ||
+                      ""
+                    ).trim();
+                    return (
+                      <div key={`${ev.log_id || idx}`} style={{ margin: "0 0 10px 0", paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                          <span className="panel-label" style={{ margin: 0 }}>{evType}</span>
+                          <span className="minor-text">{fDateTime(ev.created_at || ev.event_time)}</span>
+                        </div>
+                        {evTicket ? <div className="minor-text" style={{ marginBottom: 8 }}>Ticket: <strong>{evTicket}</strong></div> : null}
+                        <div className="json-table-wrapper">
+                          <pre className="minor-text" style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                            {JSON.stringify(payload || {}, null, 2)}
+                          </pre>
+                        </div>
                       </div>
-                      <div className="cell-major" style={{ minWidth: 0 }}>
-                        {selectedTrade.entry || "-"} {"→"} {selectedTrade.tp || "-"} / {selectedTrade.sl || "-"}
-                      </div>
-                      <div style={{ textAlign: "right", minWidth: 0 }}>
-                        {showPnl ? (
-                          <div className={pnl != null && pnl < 0 ? "money-neg" : "money-pos"} style={{ fontWeight: 800 }}>
-                            ${pnl.toFixed(2)}
-                          </div>
-                        ) : <div className="minor-text">-</div>}
-                      </div>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: headerCols, gap: 12, alignItems: "center" }}>
-                      <div className="minor-text" style={{ minWidth: 0 }}>{updatedAt}</div>
-                      <div className="minor-text" style={{ minWidth: 0 }}>
-                        {(rr != null ? rr.toFixed(2) : "-")} rr | {(vol != null ? vol : "-")} vol | {(riskSize != null ? `$${riskSize.toFixed(2)}` : "-")} rr size
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center", minWidth: 0 }}>
-                        <span className={`badge ${st.cls}`}>{st.label}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              <div>
-                <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-                  {DETAIL_TF_TABS.map((tab) => (
-                    <button key={tab} type="button" className={`secondary-button ${detailTfTab === tab ? "active" : ""}`} onClick={() => setDetailTfTab(tab)}>
-                      {tab}
-                    </button>
-                  ))}
-                </div>
-                {detailTfTab === "ENTRY" ? (
-                  <TradeSignalChart 
-                    symbol={selectedTrade.symbol}
-                    interval={selectedTrade.signal_tf || selectedTrade.chart_tf || "1h"}
-                    live={true}
-                    entryPrice={asNum(selectedTrade.entry)}
-                    slPrice={asNum(selectedTrade.sl)}
-                    tpPrice={asNum(selectedTrade.tp)}
-                    openedAt={selectedTrade.opened_at}
-                    closedAt={selectedTrade.closed_at}
-                    analysisSnapshot={(() => {
-                      const snap = selectedTrade?.metadata?.analysis_snapshot || selectedTrade?.raw_json?.analysis_snapshot;
-                      const mkt = selectedTrade?.metadata?.market_analysis || selectedTrade?.raw_json?.market_analysis;
-                      const pdArrays = (snap?.pd_arrays) || (mkt?.pd_arrays) || (selectedTrade?.raw_json?.pd_arrays) || [];
-                      const keyLevels = (snap?.key_levels) || (mkt?.key_levels) || [];
-                      if (snap) return { ...snap, pd_arrays: pdArrays, key_levels: keyLevels };
-                      if (pdArrays.length > 0) return { pd_arrays: pdArrays, key_levels: keyLevels };
-                      return null;
-                    })()}
-                  />
-                ) : (
-                  <iframe
-                    title={`trade-tv-${detailTfTab}`}
-                    style={{ width: "100%", height: 430, border: "1px solid var(--border)", borderRadius: 10, background: "var(--panel)" }}
-                    src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(toTradingViewSymbol(selectedTrade.symbol))}&interval=${encodeURIComponent(detailTabToTvInterval(detailTfTab))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-                  />
-                )}
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
-                <div><span className="minor-text">Chart TF</span><div>{formatTimeframe(selectedTrade.chart_tf || "-")}</div></div>
-                <div><span className="minor-text">Signal TF</span><div>{formatTimeframe(selectedTrade.signal_tf || "-")}</div></div>
-                <div><span className="minor-text">Source</span><div>{selectedTrade.source_id || "-"}</div></div>
-                <div><span className="minor-text">Entry Model</span><div>{selectedTrade.entry_model || "-"}</div></div>
-                <div><span className="minor-text">Trade ID</span><div>{selectedTrade.trade_id || "-"}</div></div>
-                <div><span className="minor-text">Broker Ticket</span><div>{brokerTicketOf(selectedTrade)}</div></div>
-                <div><span className="minor-text">Signal ID</span><div>{selectedTrade.signal_id || "-"}</div></div>
-                <div><span className="minor-text">Account</span><div>{accountById.get(String(selectedTrade.account_id || ""))?.name || selectedTrade.account_id || "-"}</div></div>
-                <div style={{ gridColumn: "1 / -1" }}><span className="minor-text">Note</span><div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{selectedTrade.note || "-"}</div></div>
-              </div>
-
+                    );
+                  },
+                }}
+                formatDateTime={fDateTime}
+              />
               {createMode ? (
                 <div className="panel" style={{ padding: 12 }}>
                   <div className="panel-label">CREATE TRADE</div>
@@ -756,39 +734,7 @@ export default function TradesPage() {
                   </div>
                 </div>
               ) : null}
-
-              <div style={{ maxHeight: 380, overflow: "auto", borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-                {tradeEvents.length === 0 ? (
-                  <div className="muted">No events.</div>
-                ) : tradeEvents.map((ev, idx) => {
-                  const payload = ev?.metadata && typeof ev.metadata === "object" ? ev.metadata : {};
-                  const evType = String(payload.event || payload.event_type || ev.object_table || "LOG");
-                  const evTicket = String(
-                    payload.ticket ||
-                    payload.broker_trade_id ||
-                    payload.brokerTradeId ||
-                    payload.order_ticket ||
-                    ""
-                  ).trim();
-                  return (
-                    <div key={`${ev.log_id || idx}`} style={{ margin: "0 0 10px 0", paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                        <span className="panel-label" style={{ margin: 0 }}>{evType}</span>
-                        <span className="minor-text">{fDateTime(ev.created_at || ev.event_time)}</span>
-                      </div>
-                      {evTicket ? (
-                        <div className="minor-text" style={{ marginBottom: 8 }}>Ticket: <strong>{evTicket}</strong></div>
-                      ) : null}
-                      <div className="json-table-wrapper">
-                        <pre className="minor-text" style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                          {JSON.stringify(payload || {}, null, 2)}
-                        </pre>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            </>
           )}
         </div>
       </div>

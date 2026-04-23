@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
-import { TradeSignalChart } from "../components/TradeSignalChart";
-import { TradePlanEditor } from "../components/TradePlanEditor";
+import { SignalDetailCard } from "../components/SignalDetailCard";
 
 const STATUS_OPTIONS = [
   { value: "", label: "ALL STATUSES" },
@@ -81,26 +80,6 @@ function statusUi(statusRaw) {
   if (s === "TP") return { cls: "TP", label: "TP" };
   if (s === "SL") return { cls: "SL", label: "SL" };
   return { cls: "OTHER", label: s || "UNKNOWN" };
-}
-
-const DETAIL_TF_TABS = ["ENTRY", "W", "D", "4H", "15m", "5m", "1m"];
-
-function detailTabToTvInterval(tab) {
-  const t = String(tab || "").toUpperCase();
-  if (t === "W") return "W";
-  if (t === "D") return "D";
-  if (t === "4H") return "240";
-  if (t === "15M") return "15";
-  if (t === "5M") return "5";
-  if (t === "1M") return "1";
-  return "15";
-}
-
-function toTradingViewSymbol(raw) {
-  const s = String(raw || "").trim().toUpperCase();
-  if (!s) return "ICMARKETS:EURUSD";
-  if (s.includes(":")) return s;
-  return `ICMARKETS:${s.replace(/[^A-Z0-9]/g, "")}`;
 }
 
 function calcRrFromSignal(s) {
@@ -757,173 +736,138 @@ export default function SignalsPage() {
           ) : !selectedSignal ? (
             <div className="empty-state minor-text">SELECT A SIGNAL TO INSPECT HISTORY</div>
           ) : (
-            <div className="trade-detail-content">
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, alignItems: "center", marginBottom: 14 }}>
-                <div style={{ display: "grid", gap: 8, width: "100%" }}>
-                  {(() => {
-                    const headerCols = "minmax(0, 1fr) minmax(0, 1.25fr) minmax(120px, 0.55fr)";
-                    return (
-                      <>
-                  <div style={{ display: "grid", gridTemplateColumns: headerCols, gap: 12, alignItems: "center" }}>
-                    <div className="cell-major" style={{ minWidth: 0 }}>
-                      <span className={String(selectedSignal.action || selectedSignal.side || "").toUpperCase() === "BUY" ? "side-buy" : "side-sell"}>
-                        {String(selectedSignal.action || selectedSignal.side || "-").toUpperCase()}
-                      </span> {selectedSignal.symbol || "-"}
-                    </div>
-                    <div className="cell-major" style={{ minWidth: 0 }}>
-                      {fPrice(selectedSignal.entry, selectedSignal.target_price || selectedSignal.entry_price)} {"→"} {fPrice(selectedSignal.tp)} / {fPrice(selectedSignal.sl)}
-                    </div>
-                    <div style={{ textAlign: "right", minWidth: 0 }}>
-                      {shouldShowPnl(selectedSignal.status, selectedSignal.pnl_money_realized) ? (
-                        <span className={asNum(selectedSignal.pnl_money_realized) < 0 ? "money-neg" : "money-pos"} style={{ fontWeight: 800 }}>
-                          ${Number(selectedSignal.pnl_money_realized).toFixed(2)}
-                        </span>
-                      ) : <span className="minor-text">-</span>}
-                    </div>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: headerCols, gap: 12, alignItems: "center" }}>
-                    <div className="minor-text" style={{ minWidth: 0 }}>{fDateTime(selectedSignal.updated_at || selectedSignal.closed_at || selectedSignal.opened_at || selectedSignal.created_at)}</div>
-                    <div className="minor-text" style={{ minWidth: 0 }}>
-                      {(() => {
-                        const rr = calcRrFromSignal(selectedSignal);
-                        const vol = asNum(selectedSignal.volume);
-                        const risk = signalRiskSize(selectedSignal, signalDetails);
-                        return `${rr != null ? rr.toFixed(2) : "-"} rr | ${vol != null ? vol : "-"} vol | ${risk != null ? `$${risk.toFixed(2)}` : "-"} rr size`;
-                      })()}
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center", minWidth: 0 }}>
-                      <span className={`badge ${statusUi(selectedSignal.status).cls}`}>{statusUi(selectedSignal.status).label}</span>
-                    </div>
-                  </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              <div className="snapshot-response-footer-v3" style={{ marginBottom: 14 }}>
-                <TradePlanEditor
-                  signalId={selectedSignal?.signal_id || null}
-                  tradeId={null}
-                  value={detailPlan}
-                  onChange={updateDetailPlanField}
-                  onReset={resetDetailPlanLocal}
-                  onSave={saveSelectedSignalPlan}
-                  onAddTrade={() => addTradeFromSignal(selectedSignal)}
-                  showSaveButton={true}
-                  showAddSignalButton={false}
-                  showAddTradeButton={true}
-                  showResetButton={true}
-                  saveLabel="Save Signal"
-                  busy={detailPlanBusy}
-                  error={detailPlanMsg.type === "error" ? detailPlanMsg.text : ""}
-                />
-                {detailPlanMsg.text && detailPlanMsg.type !== "error" ? <span className="minor-text msg-success">{detailPlanMsg.text}</span> : null}
-              </div>
-
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-                  {DETAIL_TF_TABS.map((tab) => (
-                    <button key={tab} type="button" className={`secondary-button ${detailTfTab === tab ? "active" : ""}`} onClick={() => setDetailTfTab(tab)}>
-                      {tab}
-                    </button>
-                  ))}
-                </div>
-                {detailTfTab === "ENTRY" ? (
-                  <TradeSignalChart
-                    symbol={selectedSignal.symbol}
-                    interval={selectedSignal.signal_tf || selectedSignal.chart_tf || "1h"}
-                    live={true}
-                    entryPrice={asNum(selectedSignal.entry || selectedSignal.target_price || selectedSignal.entry_price)}
-                    slPrice={asNum(selectedSignal.sl)}
-                    tpPrice={asNum(selectedSignal.tp)}
-                    analysisSnapshot={
-                      selectedSignal?.raw_json?.analysis_snapshot
-                        ? {
-                            ...selectedSignal.raw_json.analysis_snapshot,
-                            pd_arrays: (
-                              selectedSignal.raw_json.analysis_snapshot.pd_arrays ||
-                              selectedSignal.raw_json.market_analysis?.pd_arrays ||
-                              selectedSignal.raw_json.pd_arrays ||
-                              []
-                            ),
-                            key_levels: (
-                              selectedSignal.raw_json.analysis_snapshot.key_levels ||
-                              selectedSignal.raw_json.market_analysis?.key_levels ||
-                              []
-                            ),
-                          }
-                        : {
-                            pd_arrays: (
-                              selectedSignal.raw_json?.market_analysis?.pd_arrays ||
-                              selectedSignal.raw_json?.pd_arrays ||
-                              []
-                            ),
-                            key_levels: (
-                              selectedSignal.raw_json?.market_analysis?.key_levels ||
-                              []
-                            ),
-                          }
+            <SignalDetailCard
+              header={{
+                left: (
+                  <>
+                    <span className={String(selectedSignal.action || selectedSignal.side || "").toUpperCase() === "BUY" ? "side-buy" : "side-sell"}>
+                      {String(selectedSignal.action || selectedSignal.side || "-").toUpperCase()}
+                    </span>{" "}
+                    {selectedSignal.symbol || "-"}
+                  </>
+                ),
+                center: (
+                  <>
+                    {fPrice(selectedSignal.entry, selectedSignal.target_price || selectedSignal.entry_price)} {"→"} {fPrice(selectedSignal.tp)} / {fPrice(selectedSignal.sl)}
+                  </>
+                ),
+                rightTop: shouldShowPnl(selectedSignal.status, selectedSignal.pnl_money_realized) ? (
+                  <span className={asNum(selectedSignal.pnl_money_realized) < 0 ? "money-neg" : "money-pos"} style={{ fontWeight: 800 }}>
+                    ${Number(selectedSignal.pnl_money_realized).toFixed(2)}
+                  </span>
+                ) : <span className="minor-text">-</span>,
+                leftMinor: fDateTime(selectedSignal.updated_at || selectedSignal.closed_at || selectedSignal.opened_at || selectedSignal.created_at),
+                centerMinor: (() => {
+                  const rr = calcRrFromSignal(selectedSignal);
+                  const vol = asNum(selectedSignal.volume);
+                  const risk = signalRiskSize(selectedSignal, signalDetails);
+                  return `${rr != null ? rr.toFixed(2) : "-"} rr | ${vol != null ? vol : "-"} vol | ${risk != null ? `$${risk.toFixed(2)}` : "-"} rr size`;
+                })(),
+                rightBottom: <span className={`badge ${statusUi(selectedSignal.status).cls}`}>{statusUi(selectedSignal.status).label}</span>,
+              }}
+              tradePlan={{
+                enabled: true,
+                signalId: selectedSignal?.signal_id || null,
+                tradeId: null,
+                value: detailPlan,
+                onChange: updateDetailPlanField,
+                onReset: resetDetailPlanLocal,
+                onSave: saveSelectedSignalPlan,
+                onAddTrade: () => addTradeFromSignal(selectedSignal),
+                showSaveButton: true,
+                showAddSignalButton: false,
+                showAddTradeButton: true,
+                showResetButton: true,
+                saveLabel: "Save Signal",
+                busy: detailPlanBusy,
+                error: detailPlanMsg.type === "error" ? detailPlanMsg.text : "",
+                successMessage: detailPlanMsg.text && detailPlanMsg.type !== "error" ? detailPlanMsg.text : "",
+              }}
+              chart={{
+                enabled: true,
+                detailTfTab,
+                onDetailTfTabChange: setDetailTfTab,
+                iframeTitle: `signal-tv-${detailTfTab}`,
+                symbol: selectedSignal.symbol,
+                interval: selectedSignal.signal_tf || selectedSignal.chart_tf || "1h",
+                live: true,
+                entryPrice: asNum(detailPlan.entry) ?? asNum(selectedSignal.entry || selectedSignal.target_price || selectedSignal.entry_price),
+                slPrice: asNum(detailPlan.sl) ?? asNum(selectedSignal.sl),
+                tpPrice: asNum(detailPlan.tp) ?? asNum(selectedSignal.tp),
+                analysisSnapshot: selectedSignal?.raw_json?.analysis_snapshot
+                  ? {
+                      ...selectedSignal.raw_json.analysis_snapshot,
+                      pd_arrays: (
+                        selectedSignal.raw_json.analysis_snapshot.pd_arrays ||
+                        selectedSignal.raw_json.market_analysis?.pd_arrays ||
+                        selectedSignal.raw_json.pd_arrays ||
+                        []
+                      ),
+                      key_levels: (
+                        selectedSignal.raw_json.analysis_snapshot.key_levels ||
+                        selectedSignal.raw_json.market_analysis?.key_levels ||
+                        []
+                      ),
                     }
-                  />
-                ) : (
-                  <iframe
-                    title={`signal-tv-${detailTfTab}`}
-                    style={{ width: "100%", height: 430, border: "1px solid var(--border)", borderRadius: 10, background: "var(--panel)" }}
-                    src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(toTradingViewSymbol(selectedSignal.symbol))}&interval=${encodeURIComponent(detailTabToTvInterval(detailTfTab))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-                  />
-                )}
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10, marginBottom: 14 }}>
-                <div><span className="minor-text">Chart TF</span><div>{formatTimeframe(selectedSignal.chart_tf || "-")}</div></div>
-                <div><span className="minor-text">Signal TF</span><div>{formatTimeframe(selectedSignal.signal_tf || "-")}</div></div>
-                <div><span className="minor-text">Source</span><div>{selectedSignal.source || "-"}</div></div>
-                <div><span className="minor-text">Entry Model</span><div>{selectedSignal.entry_model || "-"}</div></div>
-                <div><span className="minor-text">Trade ID</span><div>{signalDetails?.trade?.trade_id || "-"}</div></div>
-                <div><span className="minor-text">Broker Ticket</span><div>{selectedSignal.ack_ticket || signalDetails?.trade?.broker_trade_id || "-"}</div></div>
-                <div><span className="minor-text">Signal ID</span><div>{selectedSignal.signal_id || "-"}</div></div>
-                <div><span className="minor-text">Account</span><div>{signalDetails?.trade?.account_id || "-"}</div></div>
-                <div style={{ gridColumn: "1 / -1" }}><span className="minor-text">Note</span><div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{selectedSignal.note || "-"}</div></div>
-              </div>
-
-              <div style={{ marginTop: '10px', borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-                {!(signalDetails?.events || signalDetails?.items) ? (
-                  <div className="loading">FETCHING TELEMETRY LOGS...</div>
-                ) : (
-                  <div className="stack-layout" style={{ gap: '10px' }}>
-                    {[...(signalDetails?.events || signalDetails?.items || [])].sort((a,b) => new Date(b.event_time || b.created_at || 0) - new Date(a.event_time || a.created_at || 0)).map((ev) => {
-                      let stTxt = "";
-                      let stCls = "OTHER";
-                      const payload = ev.payload_json || ev.metadata || {};
-                      const tType = String(ev.event_type || payload.event_type || payload.event || ev.type || "");
-                      if (tType.startsWith("EA_ACK_")) {
-                         const raw = tType.replace("EA_ACK_", "");
-                         stTxt = raw;
-                         stCls = statusUi(raw).cls;
-                      }
-                      
-                      return (
-                        <div key={`${ev.id || ev.event_id || ev.created_at || Math.random()}`} style={{ margin: "0 0 10px 0", paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span className="panel-label" style={{ margin: 0 }}>{tType || "EVENT"}</span>
-                              {stTxt && <span className={`badge ${stCls}`}>{stTxt}</span>}
-                            </div>
-                            <span className="minor-text">{fDateTime(ev.event_time || ev.created_at)}</span>
-                          </div>
-                          <div className="json-table-wrapper">
-                            <pre className="minor-text" style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                              {JSON.stringify(payload || {}, null, 2)}
-                            </pre>
-                          </div>
+                  : {
+                      pd_arrays: (
+                        selectedSignal.raw_json?.market_analysis?.pd_arrays ||
+                        selectedSignal.raw_json?.pd_arrays ||
+                        []
+                      ),
+                      key_levels: (
+                        selectedSignal.raw_json?.market_analysis?.key_levels ||
+                        []
+                      ),
+                    },
+              }}
+              metaItems={[
+                { label: "Chart TF", value: formatTimeframe(selectedSignal.chart_tf || "-") },
+                { label: "Signal TF", value: formatTimeframe(selectedSignal.signal_tf || "-") },
+                { label: "Source", value: selectedSignal.source || "-" },
+                { label: "Entry Model", value: selectedSignal.entry_model || "-" },
+                { label: "Trade ID", value: signalDetails?.trade?.trade_id || "-" },
+                { label: "Broker Ticket", value: selectedSignal.ack_ticket || signalDetails?.trade?.broker_trade_id || "-" },
+                { label: "Signal ID", value: selectedSignal.signal_id || "-" },
+                { label: "Account", value: signalDetails?.trade?.account_id || "-" },
+                { label: "Note", value: selectedSignal.note || "-", fullWidth: true },
+              ]}
+              history={{
+                enabled: true,
+                loading: !(signalDetails?.events || signalDetails?.items),
+                loadingText: "FETCHING TELEMETRY LOGS...",
+                items: [...(signalDetails?.events || signalDetails?.items || [])]
+                  .sort((a, b) => new Date(b.event_time || b.created_at || 0) - new Date(a.event_time || a.created_at || 0)),
+                renderItem: (ev, idx) => {
+                  let stTxt = "";
+                  let stCls = "OTHER";
+                  const payload = ev.payload_json || ev.metadata || {};
+                  const tType = String(ev.event_type || payload.event_type || payload.event || ev.type || "");
+                  if (tType.startsWith("EA_ACK_")) {
+                    const raw = tType.replace("EA_ACK_", "");
+                    stTxt = raw;
+                    stCls = statusUi(raw).cls;
+                  }
+                  return (
+                    <div key={`${ev.id || ev.event_id || ev.created_at || idx}`} style={{ margin: "0 0 10px 0", paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <span className="panel-label" style={{ margin: 0 }}>{tType || "EVENT"}</span>
+                          {stTxt ? <span className={`badge ${stCls}`}>{stTxt}</span> : null}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
+                        <span className="minor-text">{fDateTime(ev.event_time || ev.created_at)}</span>
+                      </div>
+                      <div className="json-table-wrapper">
+                        <pre className="minor-text" style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                          {JSON.stringify(payload || {}, null, 2)}
+                        </pre>
+                      </div>
+                    </div>
+                  );
+                },
+              }}
+              formatDateTime={fDateTime}
+            />
           )}
         </div>
       </div>

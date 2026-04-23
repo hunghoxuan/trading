@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createChart } from "lightweight-charts";
 import { api } from "../api";
-import { TradePlanEditor } from "../components/TradePlanEditor";
+import { SignalDetailCard } from "../components/SignalDetailCard";
 
 const STORAGE_KEY = "chart_prompt_builder_templates_v2";
 
@@ -1502,64 +1502,64 @@ export default function ChartSnapshotsPage() {
       </section>
 
       <section className="panel snapshot-col-v3 snapshot-col-position-v3">
-        {hasResponse ? (
-          <>
-            <div className="snapshot-tabs-v2">
-              <span className="panel-label" style={{ margin: 0 }}>Response</span>
-              <button type="button" className={`secondary-button ${responseTab === "text" ? "active" : ""}`} onClick={() => setResponseTab("text")}>Text</button>
-              <button type="button" className={`secondary-button ${responseTab === "raw" ? "active" : ""}`} onClick={() => setResponseTab("raw")}>Raw</button>
-              <button type="button" className={`secondary-button ${responseTab === "bars" ? "active" : ""}`} onClick={() => setResponseTab("bars")}>Bars</button>
-              <button type="button" className={`secondary-button ${responseTab === "chart" ? "active" : ""}`} onClick={() => setResponseTab("chart")}>Chart</button>
-            </div>
-            {responseTab === "text" ? <textarea className="snapshot-mono-v2" rows={16} value={responseText} readOnly disabled /> : null}
-            {responseTab === "raw" ? <textarea className="snapshot-mono-v2" rows={16} value={analysisRaw || analysisJson} readOnly disabled /> : null}
-            {responseTab === "bars" ? <textarea className="snapshot-mono-v2" rows={16} value={JSON.stringify(currentBarsSnapshot || { status: "no_cached_bars" }, null, 2)} readOnly disabled /> : null}
-            {responseTab === "chart" ? (
-          <div className="snapshot-live-grid-v3">
-            <div className="snapshot-live-card-v3">
-              <div className="minor-text" style={{ marginBottom: 6 }}>Chart 1: Twelve + PD Arrays</div>
-              <div ref={liteChartRef} className="snapshot-lite-chart-v3" />
-              <div className="minor-text">{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
-            </div>
-            {chartFiles.length ? (
-              <div className="snapshot-chart-grid-v2">
-                {chartFiles.map((f) => {
-                  const meta = parseSnapshotMeta({ file_name: f }) || {};
-                  return (
-                    <a key={f} className="snapshot-chart-card-v2" href={`/v2/chart/snapshots/${encodeURIComponent(f)}`} target="_blank" rel="noreferrer">
-                      <img src={`/v2/chart/snapshots/${encodeURIComponent(f)}`} alt={f} />
-                      <div className="snapshot-chart-meta-v2">
-                        <span>{intervalTokenToLabel(meta?.tfToken || "-")}</span>
-                      </div>
-                    </a>
-                  );
-                })}
+        <SignalDetailCard
+          response={{
+            enabled: true,
+            hasData: hasResponse,
+            tab: responseTab,
+            onTabChange: setResponseTab,
+            text: responseText,
+            raw: analysisRaw || analysisJson,
+            bars: JSON.stringify(currentBarsSnapshot || { status: "no_cached_bars" }, null, 2),
+            chartNode: (
+              <div className="snapshot-live-grid-v3">
+                <div className="snapshot-live-card-v3">
+                  <div className="minor-text" style={{ marginBottom: 6 }}>Chart 1: Twelve + PD Arrays</div>
+                  <div ref={liteChartRef} className="snapshot-lite-chart-v3" />
+                  <div className="minor-text">{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
+                </div>
+                {chartFiles.length ? (
+                  <div className="snapshot-chart-grid-v2">
+                    {chartFiles.map((f) => {
+                      const meta = parseSnapshotMeta({ file_name: f }) || {};
+                      return (
+                        <a key={f} className="snapshot-chart-card-v2" href={`/v2/chart/snapshots/${encodeURIComponent(f)}`} target="_blank" rel="noreferrer">
+                          <img src={`/v2/chart/snapshots/${encodeURIComponent(f)}`} alt={f} />
+                          <div className="snapshot-chart-meta-v2">
+                            <span>{intervalTokenToLabel(meta?.tfToken || "-")}</span>
+                          </div>
+                        </a>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
-            ) : null}
-          </>
+            ),
+          }}
+          tradePlan={{
+            enabled: true,
+            signalId: null,
+            tradeId: null,
+            value: position,
+            onChange: updatePositionField,
+            onAddSignal: () => addBySelection("signal"),
+            onAddTrade: () => addBySelection("trade"),
+            showSaveButton: false,
+            showAddSignalButton: true,
+            showAddTradeButton: true,
+            showResetButton: true,
+            onReset: resetPositionLocal,
+            busy: { signal: addingSignal, trade: addingSignal },
+            disabled: false,
+            error: !canAddSignal ? validatePosition(position) : "",
+            successMessage: actionStatus.action === "add" && actionStatus.text && actionStatus.type !== "error" && actionStatus.type !== "warning"
+              ? actionStatus.text
+              : "",
+          }}
+        />
+        {actionStatus.action === "add" && actionStatus.text && (actionStatus.type === "error" || actionStatus.type === "warning") ? (
+          <span className={`minor-text snapshot-footer-msg-v3 ${actionStatus.type === "error" ? "msg-error" : "msg-warning"}`}>{actionStatus.text}</span>
         ) : null}
-
-        <div className="snapshot-response-footer-v3">
-          <TradePlanEditor
-            signalId={null}
-            tradeId={null}
-            value={position}
-            onChange={updatePositionField}
-            onAddSignal={() => addBySelection("signal")}
-            onAddTrade={() => addBySelection("trade")}
-            showSaveButton={false}
-            showAddSignalButton={true}
-            showAddTradeButton={true}
-            showResetButton={true}
-            onReset={resetPositionLocal}
-            busy={{ signal: addingSignal, trade: addingSignal }}
-            disabled={false}
-            error={!canAddSignal ? validatePosition(position) : ""}
-          />
-          {actionStatus.action === "add" && actionStatus.text ? <span className={`minor-text snapshot-footer-msg-v3 ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
-        </div>
       </section>
 
       {status.text ? (
