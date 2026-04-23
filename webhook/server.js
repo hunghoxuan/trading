@@ -2291,6 +2291,7 @@ async function mt5InitBackend() {
        const now = mt5NowIso();
        const openedAt = payload.opened_at || payload.openedAt || null;
        const closedAt = payload.closed_at || payload.closedAt || null;
+       const isClosed = ["CLOSED", "TP", "SL", "CANCELLED"].includes(String(payload.execution_status || "").toUpperCase());
 
        const res = await pool.query(`
          UPDATE trades
@@ -2298,7 +2299,7 @@ async function mt5InitBackend() {
              execution_status = $1, 
              broker_trade_id = $2, 
              entry_exec = $3, 
-             pnl_realized = $4,
+             pnl_realized = CASE WHEN $10 = TRUE THEN $4 ELSE pnl_realized END,
              opened_at = COALESCE($5, opened_at, CASE WHEN $1 = 'OPEN' THEN $6 ELSE NULL END),
              closed_at = COALESCE($7, CASE WHEN $1 = 'CLOSED' THEN $6 ELSE NULL END), 
              updated_at = $6
@@ -2312,12 +2313,39 @@ async function mt5InitBackend() {
           now, 
           closedAt, 
           payload.trade_id, 
-          accountId
+          accountId,
+          isClosed
        ]);
        if (res.rowCount > 0) {
-         await this.log(payload.trade_id, 'trades', { event: 'ACK', status: payload.execution_status, pnl: payload.pnl_realized }, res.rows[0].user_id);
+         await this.log(payload.trade_id, 'trades', { event: 'ACK', status: payload.execution_status, pnl: isClosed ? payload.pnl_realized : null }, res.rows[0].user_id);
        }
        return { ok: res.rowCount > 0 };
+    },
+    async ackSignal(signalId, status, ticket, error, extra = {}) {
+      const s = String(status || "").toUpperCase();
+      const isClosed = ["CLOSED", "TP", "SL", "CANCELLED"].includes(s);
+      const res = await pool.query(`
+        UPDATE signals
+        SET status = $1, updated_at = NOW()
+        WHERE signal_id = $2
+        RETURNING user_id
+      `, [s, signalId]);
+      
+      // Also update associated trades if any
+      await pool.query(`
+        UPDATE trades
+        SET execution_status = $1,
+            broker_trade_id = COALESCE(NULLIF($3, ''), broker_trade_id),
+            pnl_realized = CASE WHEN $4 = TRUE THEN COALESCE($5, pnl_realized) ELSE pnl_realized END,
+            closed_at = CASE WHEN $4 = TRUE THEN NOW() ELSE closed_at END,
+            updated_at = NOW()
+        WHERE signal_id = $2
+      `, [s, signalId, ticket || '', isClosed, extra.pnl_money_realized ?? null]);
+
+      if (res.rowCount > 0) {
+        await this.log(signalId, 'signals', { event: 'EA_ACK', status: s, ticket, error }, res.rows[0].user_id);
+      }
+      return { ok: res.rowCount > 0 };
     },
     async brokerSyncV2(accountId, payload = {}) {
       const aid = String(accountId || "").trim();
@@ -2386,9 +2414,9 @@ async function mt5InitBackend() {
                   WHEN execution_status = 'OPEN' AND $1 = 'PENDING' THEN execution_status
                   ELSE $1
                 END,
-                pnl_realized = COALESCE($2, pnl_realized),
+                pnl_realized = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($2, pnl_realized) ELSE pnl_realized END,
                 opened_at = COALESCE($5, opened_at),
-                closed_at = COALESCE($6, CASE WHEN $1 IN ('CLOSED','CANCELLED') THEN NOW() ELSE closed_at END),
+                closed_at = COALESCE($6, CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN NOW() ELSE closed_at END),
                 updated_at = NOW()
             WHERE account_id = $3 AND broker_trade_id = $4
             RETURNING trade_id
@@ -2408,8 +2436,8 @@ async function mt5InitBackend() {
                   ELSE $1
                 END,
                 broker_trade_id = COALESCE(NULLIF($2, ''), broker_trade_id),
-                pnl_realized = COALESCE($3, pnl_realized),
-                closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED') THEN NOW() ELSE closed_at END,
+                pnl_realized = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($3, pnl_realized) ELSE pnl_realized END,
+                closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN NOW() ELSE closed_at END,
                 updated_at = NOW()
             WHERE trade_id = (
               SELECT trade_id
@@ -2439,8 +2467,8 @@ async function mt5InitBackend() {
                   ELSE $1
                 END,
                 broker_trade_id = COALESCE(NULLIF($2, ''), broker_trade_id),
-                pnl_realized = COALESCE($3, pnl_realized),
-                closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED') THEN NOW() ELSE closed_at END,
+                pnl_realized = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($3, pnl_realized) ELSE pnl_realized END,
+                closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN NOW() ELSE closed_at END,
                 updated_at = NOW()
             WHERE trade_id = (
               SELECT trade_id
@@ -3106,11 +3134,15 @@ async function mt5InitBackend() {
     async bulkAckSignals(updates) {
       let count = 0;
       for (const u of updates) {
+        const rawStatus = String(u?.status || "").trim().toUpperCase();
+        const isClosed = ["CLOSED", "TP", "SL", "CANCEL", "CANCELLED", "FAIL"].includes(rawStatus);
+        const pnlRaw = Number(u?.pnl);
+        const pnlVal = isClosed ? (Number.isFinite(pnlRaw) ? pnlRaw : 0) : 0;
         const res = await pool.query(`
           UPDATE signals 
           SET status = $1, ack_status = $2, ack_ticket = $3, pnl_money_realized = $4, updated_at = NOW() 
           WHERE signal_id = $5
-        `, [u.status, u.status, u.ticket, u.pnl, u.signal_id]);
+        `, [u.status, u.status, u.ticket, pnlVal, u.signal_id]);
         count += res.rowCount;
       }
       return { updated: count };
@@ -4400,23 +4432,23 @@ async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
 
 function mt5ComputeMetrics(rows) {
   const closed = rows.filter((r) => {
-    const s = mt5CanonicalStoredStatus(r.status);
-    return s === "TP" || s === "SL" || s === "FAIL" || s === "PLACED" || s === "CANCEL" || s === "EXPIRED";
+    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    return s === "CLOSED" || s === "TP" || s === "SL";
   });
-  const wins = rows.filter((r) => {
+  const wins = closed.filter((r) => {
     const pnl = Number(r.pnl_money_realized);
     return Number.isFinite(pnl) && pnl > 0;
   });
-  const losses = rows.filter((r) => {
+  const losses = closed.filter((r) => {
     const pnl = Number(r.pnl_money_realized);
     return Number.isFinite(pnl) && pnl < 0;
   });
-  const pnl = rows.reduce((acc, r) => {
+  const pnl = closed.reduce((acc, r) => {
     const v = Number(r.pnl_money_realized);
     return Number.isFinite(v) ? acc + v : acc;
   }, 0);
   return {
-    total_trades: rows.length,
+    total_trades: closed.length,
     closed_trades: closed.length,
     wins: wins.length,
     losses: losses.length,
@@ -4497,16 +4529,19 @@ function mt5ComputeTopWinrateRows(rows, keyPicker, { limit = 10, includeDirectio
       });
     }
     const st = map.get(key);
-    st.trades++;
-    if (status === "TP" || closeReason === "TP") st.wins++;
-    else if (status === "SL" || closeReason === "SL") st.losses++;
-    else if (Number.isFinite(pnl) && pnl > 0) st.wins++;
-    else if (Number.isFinite(pnl) && pnl < 0) st.losses++;
-    if (Number.isFinite(pnl)) st.pnl_total += pnl;
-    if (Number.isFinite(rr)) {
-      st.rr_sum += rr;
-      st.rr_count++;
-      st.rr_total = st.rr_sum; // the total RR is the sum
+    // DASHBOARD FILTER: Only count CLOSED/TP/SL for stats
+    if (status === "CLOSED" || status === "TP" || status === "SL" || closeReason === "TP" || closeReason === "SL") {
+      st.trades++;
+      if (status === "TP" || closeReason === "TP") st.wins++;
+      else if (status === "SL" || closeReason === "SL") st.losses++;
+      else if (Number.isFinite(pnl) && pnl > 0) st.wins++;
+      else if (Number.isFinite(pnl) && pnl < 0) st.losses++;
+      if (Number.isFinite(pnl)) st.pnl_total += pnl;
+      if (Number.isFinite(rr)) {
+        st.rr_sum += rr;
+        st.rr_count++;
+        st.rr_total = st.rr_sum; // the total RR is the sum
+      }
     }
   }
   let entries = [...map.values()];
@@ -4514,6 +4549,10 @@ function mt5ComputeTopWinrateRows(rows, keyPicker, { limit = 10, includeDirectio
     const closed = st.wins + st.losses;
     st.win_rate = closed > 0 ? (st.wins / closed) * 100 : 0;
   }
+  
+  // DASHBOARD FILTER: Do not display items with PnL=0 & WR = 0 & W=0 & L=0
+  entries = entries.filter(st => Math.abs(st.pnl_total) > 0.001 || st.win_rate > 0 || st.wins > 0 || st.losses > 0);
+
   entries.sort((a, b) => b.win_rate - a.win_rate || b.trades - a.trades || (a.key < b.key ? -1 : 1));
   if (limit > 0) entries = entries.slice(0, limit);
   return entries;
@@ -4536,10 +4575,10 @@ function mt5StrategyFromRow(row) {
 function mt5ComputeTradeMetrics(rows) {
   const all = Array.isArray(rows) ? rows : [];
   // Support both legacy signal status and v2 execution_status
+  // DASHBOARD FILTER: Only calculate by Closed (not Pending, new, filled)
   const trades = all.filter((r) => {
     const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
-    if (mt5IsTradeStatus(s)) return true;
-    return ["PENDING", "OPEN", "CLOSED", "REJECTED", "CANCEL", "CANCELLED"].includes(s);
+    return ["CLOSED", "TP", "SL"].includes(s);
   });
   
   const wins = trades.filter((r) => {
@@ -4570,16 +4609,9 @@ function mt5ComputeTradeMetrics(rows) {
   let sellPnl = 0;
   let winSumPnl = 0;
   let loseSumPnl = 0;
-  let countPending = 0;
-  let countFilled = 0;
-  let countClosed = 0;
-  
-  for (const r of all) {
-    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
-    if (s === "PENDING") countPending++;
-    else if (s === "FILLED") countFilled++;
-    else if (s === "PLACED" || s === "CLOSED") countClosed++;
-  }
+  const countPending = 0;
+  const countFilled = 0;
+  const countClosed = trades.length;
 
   for (const r of trades) {
     const pnl = Number(r?.pnl_realized ?? r?.pnl_money_realized ?? 0);
@@ -4604,7 +4636,7 @@ function mt5ComputeTradeMetrics(rows) {
   }, 0);
   
   return {
-    total_signals: all.length,
+    total_signals: trades.length,
     total_trades: trades.length,
     wins,
     losses,
@@ -5348,6 +5380,8 @@ const appHandler = async (req, res) => {
       const seriesBucket = range === "today" ? "hour" : "day";
       const seriesMap = new Map();
       for (const r of selectedRows) {
+        const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+        if (!["CLOSED", "TP", "SL"].includes(s)) continue;
         // Use unified PnL field (pnl_realized for trades, pnl_money_realized for signals)
         const pnl = Number(r.pnl_realized ?? r.pnl_money_realized);
         if (!Number.isFinite(pnl)) continue;
@@ -5416,6 +5450,8 @@ const appHandler = async (req, res) => {
       const bucket = period === "today" ? "hour" : "day";
       const map = new Map();
       for (const r of filtered) {
+        const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+        if (!["CLOSED", "TP", "SL"].includes(s)) continue;
         const pnl = Number(r.pnl_money_realized);
         if (!Number.isFinite(pnl)) continue;
         const d = new Date(r.closed_at || r.ack_at || r.created_at);
@@ -7374,7 +7410,6 @@ const appHandler = async (req, res) => {
       const b = await mt5Backend();
       if (b.brokerHeartbeatV2) {
         await b.brokerHeartbeatV2(accountId, {
-          balance: payload.balance,
           equity: payload.equity,
           free_margin: payload.free_margin || payload.margin,
           name: payload.account_name,
@@ -7383,7 +7418,7 @@ const appHandler = async (req, res) => {
         });
       }
 
-      console.log(`[MT5 Heartbeat] Account=${accountId} Bal=${payload.balance} Eq=${payload.equity}`);
+      console.log(`[MT5 Heartbeat] Account=${accountId} Eq=${payload.equity}`);
       return json(res, 200, { ok: true, message: "heartbeat_received" });
     } catch (err) {
       console.error("[Webhook] EA heartbeat error:", err);
