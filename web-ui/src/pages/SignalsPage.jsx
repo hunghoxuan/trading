@@ -218,6 +218,7 @@ export default function SignalsPage() {
   const inFlightRef = useRef(false);
   const [sortKey, setSortKey] = useState("audit");
   const [sortDir, setSortDir] = useState("desc");
+  const selectedSignalIdRef = useRef("");
 
   const [filter, setFilter] = useState({
     q: "",
@@ -262,9 +263,10 @@ export default function SignalsPage() {
       setPages(data.pages || 1);
       setError("");
       setLastRefreshAt(new Date());
-      if (selectedSignal?.signal_id) {
-        const refreshed = nextRows.find((x) => x.signal_id === selectedSignal.signal_id);
-        if (refreshed) setSelectedSignal(refreshed);
+      const selectedSignalId = String(selectedSignalIdRef.current || "").trim();
+      if (selectedSignalId) {
+        const exists = nextRows.some((x) => String(x?.signal_id || "") === selectedSignalId);
+        if (!exists) setSelectedSignal(null);
       }
     } catch (e) {
       setError(e?.message || "Failed to load signals");
@@ -445,6 +447,9 @@ export default function SignalsPage() {
       setDetailPlan({ direction: "BUY", trade_type: "limit", entry: "", tp: "", sl: "", rr: "", note: "" });
     }
   }, [selectedSignal]);
+  useEffect(() => {
+    selectedSignalIdRef.current = String(selectedSignal?.signal_id || "").trim();
+  }, [selectedSignal?.signal_id]);
 
   useEffect(() => { loadSymbols(); }, []);
   useEffect(() => { loadSignals(); }, [query]);
@@ -452,12 +457,9 @@ export default function SignalsPage() {
     const timer = window.setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       loadSignals();
-      if (selectedSignal?.signal_id) {
-        loadSignalDetail(selectedSignal.signal_id);
-      }
     }, AUTO_REFRESH_MS);
     return () => window.clearInterval(timer);
-  }, [query, selectedSignal?.signal_id]);
+  }, [query]);
 
   const sortedRows = useMemo(() => {
     const statusRankAsc = (v) => {
@@ -631,7 +633,11 @@ export default function SignalsPage() {
                     <tr 
                       key={t.signal_id} 
                       className={selectedSignal?.signal_id === t.signal_id ? "active" : ""}
-                      onClick={() => { setCreateMode(false); setSelectedSignal(t); }}
+                      onClick={() => {
+                        selectedSignalIdRef.current = String(t?.signal_id || "");
+                        setCreateMode(false);
+                        setSelectedSignal(t);
+                      }}
                     >
                       <td onClick={e => e.stopPropagation()}>
                         <input 
