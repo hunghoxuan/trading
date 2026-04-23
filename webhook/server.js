@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.23-2019"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.23-2036"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -2490,10 +2490,11 @@ async function mt5InitBackend() {
       return { inserted: (r.rowCount || 0) > 0 };
     },
     async fanoutSignalTradeV2(payload = {}) {
-      const signalId = String(payload.signal_id || "").trim();
+      const signalIdRaw = String(payload.signal_id || "").trim();
+      const signalId = signalIdRaw || null;
       const sourceId = String(payload.source_id || "").trim();
       const userId = String(payload.user_id || CFG.mt5DefaultUserId).trim();
-      if (!signalId || !sourceId || !userId) return { created: 0, account_ids: [] };
+      if (!sourceId || !userId) return { created: 0, account_ids: [] };
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
@@ -2518,7 +2519,7 @@ async function mt5InitBackend() {
           if ((ins.rowCount || 0) > 0) {
             created++; accountIds.push(aid);
             await client.query(`INSERT INTO logs (object_id, object_table, metadata, user_id) VALUES ($1,'trades',$2,$3)`, 
-              [tradeId, JSON.stringify({ event: 'SIGNAL_FANOUT', signal_id: signalId }), userId]);
+              [tradeId, JSON.stringify(signalId ? { event: 'SIGNAL_FANOUT', signal_id: signalId } : { event: 'DIRECT_TRADE_CREATE' }), userId]);
           }
         }
         await client.query("COMMIT");
@@ -5936,6 +5937,76 @@ const appHandler = async (req, res) => {
         fallbackIdPrefix: "ui",
       });
       return json(res, 200, { ok: true, trade: enqueue, signal: enqueue });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/trades/create") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    const sess = getUiSessionFromReq(req);
+    if (!requireAdminKey(req, res, url)) return;
+    try {
+      const payload = await readJson(req);
+      const requestedSource = String(payload.source || "").trim().toLowerCase();
+      const source = requestedSource === "ai" ? "ai" : "ui_manual";
+      const sourceId = mt5SlugId(source, "tradingview");
+      const effectiveUserId = uiEffectiveUserId(req, url, payload) || sess.user_id || CFG.mt5DefaultUserId;
+      const action = mt5NormalizeAction(payload);
+      const symbol = mt5NormalizeSymbol(payload);
+      const volume = mt5NormalizeVolume(payload);
+      const entryModel = String(payload.entry_model || payload.model || payload.strategy || "").trim() || null;
+      const signalTf = mt5TfToMinutes(payload.signal_tf ?? payload.signalTf ?? payload.sourceTf ?? payload.timeframe ?? payload.tf) || null;
+      const chartTf = mt5TfToMinutes(payload.chart_tf ?? payload.chartTf ?? payload.chartTimeframe ?? payload.chart_tf_period) || null;
+      const entry = asNum(payload.entry ?? payload.price, NaN);
+      const sl = asNum(payload.sl, NaN);
+      const tp = asNum(payload.tp, NaN);
+      const note = String(payload.note || "").trim();
+      const rawPayload = payload && typeof payload === "object" ? { ...payload } : {};
+      if (!symbol) return json(res, 400, { ok: false, error: "symbol is required" });
+      if (!Number.isFinite(entry) || !Number.isFinite(sl) || !Number.isFinite(tp)) {
+        return json(res, 400, { ok: false, error: "entry/sl/tp are required numeric values" });
+      }
+
+      await mt5UpsertSourceV2({
+        source_id: sourceId,
+        name: source,
+        kind: sourceId.includes("tv") ? "tv" : "api",
+        auth_mode: "token",
+        is_active: true,
+        metadata: {
+          migrated_from: "ui_trade_direct",
+          signal_source: source,
+        },
+      }).catch(() => null);
+
+      const fanout = await mt5FanoutSignalTradeV2({
+        signal_id: null,
+        source_id: sourceId,
+        user_id: effectiveUserId,
+        entry_model: entryModel,
+        signal_tf: signalTf,
+        chart_tf: chartTf,
+        symbol,
+        action: mt5MapActionToSide(action),
+        entry,
+        sl: Number.isFinite(sl) ? sl : null,
+        tp: Number.isFinite(tp) ? tp : null,
+        volume: volume ?? null,
+        note: note || null,
+        metadata: {
+          event_type: "UI_CREATE_TRADE_DIRECT",
+          order_type: payload.order_type || "limit",
+          signal_tf: signalTf,
+          chart_tf: chartTf,
+          provider: payload.provider || null,
+          analysis_snapshot: rawPayload?.analysis_snapshot && typeof rawPayload.analysis_snapshot === "object"
+            ? rawPayload.analysis_snapshot
+            : null,
+        },
+      });
+      return json(res, 200, { ok: true, created: fanout?.created || 0, account_ids: fanout?.account_ids || [] });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });

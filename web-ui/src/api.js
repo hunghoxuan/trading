@@ -542,6 +542,7 @@ export const api = {
   trade: (signalId) => get(`/mt5/trades/${encodeURIComponent(signalId)}`),
   createTrade: (payload = {}) => post("/v2/signals/create", payload),
   createSignal: (payload = {}) => post("/v2/signals/create", payload),
+  createTradeDirect: (payload = {}) => post("/v2/trades/create", payload),
   saveSignalTradePlan: (signalId, payload = {}) => post(`/v2/signals/${encodeURIComponent(signalId)}/trade-plan/save`, payload),
   createTradeFromSignal: (signalId, payload = {}) => post(`/v2/signals/${encodeURIComponent(signalId)}/trade`, payload),
   saveTradePlan: (tradeId, payload = {}) => post(`/v2/trades/${encodeURIComponent(tradeId)}/trade-plan/save`, payload),

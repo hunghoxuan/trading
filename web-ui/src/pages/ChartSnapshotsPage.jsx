@@ -259,7 +259,19 @@ function extractPositionFromAnalysis(parsed) {
     })[0] || {};
   const plan = bestPlan;
   const directionRaw = String(plan.direction || parsed?.direction || "").trim().toUpperCase();
-  const direction = directionRaw.includes("SELL") ? "SELL" : directionRaw.includes("BUY") ? "BUY" : "";
+  const direction = (
+    directionRaw.includes("SELL") ||
+    directionRaw.includes("SHORT") ||
+    directionRaw === "S"
+  )
+    ? "SELL"
+    : (
+      directionRaw.includes("BUY") ||
+      directionRaw.includes("LONG") ||
+      directionRaw === "B"
+    )
+      ? "BUY"
+      : "";
   const entry = parseNum(plan.entry ?? parsed?.entry ?? parsed?.price);
   const sl = parseNum(plan.sl ?? parsed?.sl);
   const tp = parseNum(plan.tp1 ?? plan.tp ?? parsed?.tp ?? parsed?.take_profit);
@@ -1129,11 +1141,15 @@ export default function ChartSnapshotsPage() {
           snapshot_files: chartFiles,
           analysis_snapshot: analysisSnapshotPayload,
         };
-        await api.createSignal(finalPayload);
+        if (mode === "trade") {
+          await api.createTradeDirect(finalPayload);
+        } else {
+          await api.createSignal(finalPayload);
+        }
         createdCount += 1;
       }
       const msg = mode === "trade"
-        ? `Added ${createdCount} signal(s) and queued trade fanout.`
+        ? `Added ${createdCount} trade request(s).`
         : `Added ${createdCount} signal(s) only.`;
       setStatus({ type: "success", text: msg });
       setActionMessage("add", "success", msg);
