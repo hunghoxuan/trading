@@ -1,4 +1,5 @@
 const DEFAULT_REMOTE_BASE = "http://139.59.211.192";
+const DEFAULT_API_TIMEOUT_MS = 30000;
 
 function normalizeApiBase(value) {
   const raw = String(value || "").trim();
@@ -116,7 +117,7 @@ async function get(path) {
 
   async function doFetch(url) {
     const ctrl = new AbortController();
-    const timer = window.setTimeout(() => ctrl.abort(), 12000);
+    const timer = window.setTimeout(() => ctrl.abort(), DEFAULT_API_TIMEOUT_MS);
     const activeUserId = getRuntimeActiveUserId();
     const headers = { "Cache-Control": "no-cache", Pragma: "no-cache" };
     if (API_KEY) headers["x-api-key"] = API_KEY;
@@ -130,7 +131,7 @@ async function get(path) {
       });
     } catch (err) {
       if (err?.name === "AbortError") {
-        throw new Error("Request timeout (12s). Check API URL and server status.");
+        throw new Error(`Request timeout (${Math.round(DEFAULT_API_TIMEOUT_MS / 1000)}s). Check API URL and server status.`);
       }
       throw err;
     } finally {
@@ -178,7 +179,7 @@ async function post(path, body = {}) {
 
   async function doFetch(url) {
     const ctrl = new AbortController();
-    const timer = window.setTimeout(() => ctrl.abort(), 12000);
+    const timer = window.setTimeout(() => ctrl.abort(), DEFAULT_API_TIMEOUT_MS);
     try {
       const activeUserId = getRuntimeActiveUserId();
       const headers = {
@@ -198,7 +199,7 @@ async function post(path, body = {}) {
       });
     } catch (err) {
       if (err?.name === "AbortError") {
-        throw new Error("Request timeout (12s). Check API URL and server status.");
+        throw new Error(`Request timeout (${Math.round(DEFAULT_API_TIMEOUT_MS / 1000)}s). Check API URL and server status.`);
       }
       throw err;
     } finally {
@@ -237,7 +238,7 @@ async function post(path, body = {}) {
   return data;
 }
 
-async function postWithTimeout(path, body = {}, timeoutMs = 12000) {
+async function postWithTimeout(path, body = {}, timeoutMs = DEFAULT_API_TIMEOUT_MS) {
   const API_KEY = runtimeApiKey();
   const base = runtimeApiBase();
   const primaryUrl = buildUrl(base, path);
@@ -312,7 +313,7 @@ async function put(path, body = {}) {
 
   async function doFetch(url) {
     const ctrl = new AbortController();
-    const timer = window.setTimeout(() => ctrl.abort(), 12000);
+    const timer = window.setTimeout(() => ctrl.abort(), DEFAULT_API_TIMEOUT_MS);
     try {
       const activeUserId = getRuntimeActiveUserId();
       const headers = {
@@ -329,7 +330,7 @@ async function put(path, body = {}) {
       });
     } catch (err) {
       if (err?.name === "AbortError") {
-        throw new Error("Request timeout (12s). Check API URL and server status.");
+        throw new Error(`Request timeout (${Math.round(DEFAULT_API_TIMEOUT_MS / 1000)}s). Check API URL and server status.`);
       }
       throw err;
     } finally {
@@ -376,7 +377,7 @@ async function del(path) {
 
   async function doFetch(url) {
     const ctrl = new AbortController();
-    const timer = window.setTimeout(() => ctrl.abort(), 12000);
+    const timer = window.setTimeout(() => ctrl.abort(), DEFAULT_API_TIMEOUT_MS);
     try {
       const activeUserId = getRuntimeActiveUserId();
       const headers = {};
@@ -389,7 +390,7 @@ async function del(path) {
         headers,
       });
     } catch (err) {
-      if (err?.name === "AbortError") throw new Error("Request timeout (12s). Check API URL and server status.");
+      if (err?.name === "AbortError") throw new Error(`Request timeout (${Math.round(DEFAULT_API_TIMEOUT_MS / 1000)}s). Check API URL and server status.`);
       throw err;
     } finally {
       window.clearTimeout(timer);
