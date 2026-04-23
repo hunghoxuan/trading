@@ -5,7 +5,7 @@ import UserDetailSection from "../components/UserDetailSection";
 const ROLE_OPTIONS = ["System", "Admin", "User", "Guest"];
 const ACCOUNT_STATUS_OPTIONS = ["ACTIVE", "INACTIVE"];
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
-const BULK_ACTIONS = ["", "Deactivate Selected User"];
+const BULK_ACTIONS = ["", "Deactivate Selected", "Delete Selected"];
 
 function byCreatedAsc(a, b) {
   const ad = String(a?.created_at || "");
@@ -58,6 +58,7 @@ export default function UsersPage({ authUser }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [detailMode, setDetailMode] = useState("view");
+  const [checkedUserIds, setCheckedUserIds] = useState(new Set());
 
   const [createUserForm, setCreateUserForm] = useState({ user_name: "", email: "", role: "User", password: "" });
   const [profileForm, setProfileForm] = useState({ user_name: "", email: "", role: "User", is_active: true, password: "" });
@@ -244,14 +245,58 @@ export default function UsersPage({ authUser }) {
 
   async function onApplyBulkAction() {
     if (!bulkAction) return;
-    if (!selectedUser) {
-      setPageAlert({ type: "warning", text: "Select a user first." });
+    if (checkedUserIds.size === 0) {
+      setPageAlert({ type: "warning", text: "Select at least one user." });
       return;
     }
-    if (bulkAction === "Deactivate Selected User") {
-      await onDeactivateUser();
+    const ids = Array.from(checkedUserIds);
+    if (!window.confirm(`Are you sure you want to ${bulkAction.toLowerCase()} ${ids.length} users?`)) return;
+    try {
+      setSaving(true);
+      for (const id of ids) {
+        if (bulkAction === "Deactivate Selected") {
+          await api.deactivateUser(id);
+        } else if (bulkAction === "Delete Selected") {
+          await api.deleteUser(id);
+        }
+      }
+      setPageAlert({ type: "success", text: `Successfully applied ${bulkAction} to ${ids.length} users.` });
+      setCheckedUserIds(new Set());
       setBulkAction("");
+      await loadUsers();
+      if (checkedUserIds.has(selectedUserId)) {
+        setDetail(null);
+        setSelectedUserId("");
+      }
+    } catch (e) {
+      setPageAlert({ type: "error", text: e?.message || "Failed bulk action" });
+    } finally {
+      setSaving(false);
+      window.setTimeout(() => setPageAlert(EMPTY_ALERT), 3000);
     }
+  }
+
+  function toggleCheck(id) {
+    setCheckedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleCheckAll() {
+    if (checkedUserIds.size === pageRows.length && pageRows.length > 0) {
+      setCheckedUserIds(new Set());
+    } else {
+      setCheckedUserIds(new Set(pageRows.map((u) => u.user_id)));
+    }
+  }
+
+  function handleSwitchUser(e, u) {
+    e.stopPropagation();
+    api.setRuntimeActiveUserId(u.user_id);
+    window.location.reload();
   }
 
   async function onSaveAccount() {
@@ -355,10 +400,14 @@ export default function UsersPage({ authUser }) {
             <table className="events-table">
               <thead>
                 <tr>
+                  <th style={{ width: 40 }}>
+                    <input type="checkbox" checked={pageRows.length > 0 && checkedUserIds.size === pageRows.length} onChange={toggleCheckAll} />
+                  </th>
                   <th>USER</th>
                   <th>EMAIL</th>
                   <th>ROLE</th>
                   <th>STATUS</th>
+                  {authUser?.role === "System" && <th style={{ textAlign: "right" }}>ACTIONS</th>}
                 </tr>
               </thead>
               <tbody>
@@ -370,6 +419,9 @@ export default function UsersPage({ authUser }) {
                     className={String(u.user_id) === String(selectedUserId) && detailMode !== "create" ? "active" : ""}
                     onClick={() => openViewMode(u.user_id)}
                   >
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={checkedUserIds.has(u.user_id)} onChange={() => toggleCheck(u.user_id)} />
+                    </td>
                     <td>
                       <div className="cell-wrap">
                         <div className="cell-major">{u.user_name || u.user_id}</div>
@@ -379,6 +431,13 @@ export default function UsersPage({ authUser }) {
                     <td className="cell-minor">{u.email || "-"}</td>
                     <td><span className="badge">{u.role || "User"}</span></td>
                     <td><span className={`badge ${u.is_active ? "ACTIVE" : "INACTIVE"}`}>{u.is_active ? "ACTIVE" : "INACTIVE"}</span></td>
+                    {authUser?.role === "System" && (
+                      <td style={{ textAlign: "right" }}>
+                        <button type="button" className="secondary-button" style={{ padding: "2px 8px", fontSize: "0.75rem" }} onClick={(e) => handleSwitchUser(e, u)}>
+                          Switch User
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

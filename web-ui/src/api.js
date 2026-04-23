@@ -60,6 +60,19 @@ export function setRuntimeApiKey(value) {
   localStorage.setItem("tvbridge_api_key", v);
 }
 
+export function getRuntimeActiveUserId() {
+  return (localStorage.getItem("tvbridge_active_user_id") || "").trim();
+}
+
+export function setRuntimeActiveUserId(value) {
+  const v = String(value || "").trim();
+  if (!v) {
+    localStorage.removeItem("tvbridge_active_user_id");
+    return;
+  }
+  localStorage.setItem("tvbridge_active_user_id", v);
+}
+
 export function getRuntimeApiBase() {
   return runtimeApiBase();
 }
@@ -104,9 +117,10 @@ async function get(path) {
   async function doFetch(url) {
     const ctrl = new AbortController();
     const timer = window.setTimeout(() => ctrl.abort(), 12000);
-    const headers = API_KEY
-      ? { "x-api-key": API_KEY, "Cache-Control": "no-cache", Pragma: "no-cache" }
-      : { "Cache-Control": "no-cache", Pragma: "no-cache" };
+    const activeUserId = getRuntimeActiveUserId();
+    const headers = { "Cache-Control": "no-cache", Pragma: "no-cache" };
+    if (API_KEY) headers["x-api-key"] = API_KEY;
+    if (activeUserId) headers["x-active-user-id"] = activeUserId;
     try {
       return await fetch(url, {
         signal: ctrl.signal,
@@ -166,17 +180,20 @@ async function post(path, body = {}) {
     const ctrl = new AbortController();
     const timer = window.setTimeout(() => ctrl.abort(), 12000);
     try {
+      const activeUserId = getRuntimeActiveUserId();
+      const headers = {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      };
+      if (API_KEY) headers["x-api-key"] = API_KEY;
+      if (activeUserId) headers["x-active-user-id"] = activeUserId;
       return await fetch(url, {
         method: "POST",
         signal: ctrl.signal,
         cache: "no-store",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-cache",
-          Pragma: "no-cache",
-          ...(API_KEY ? { "x-api-key": API_KEY } : {}),
-        },
+        headers,
         body: JSON.stringify(body || {}),
       });
     } catch (err) {
@@ -230,17 +247,20 @@ async function postWithTimeout(path, body = {}, timeoutMs = 12000) {
     const ctrl = new AbortController();
     const timer = window.setTimeout(() => ctrl.abort(), timeoutMs);
     try {
+      const activeUserId = getRuntimeActiveUserId();
+      const headers = {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      };
+      if (API_KEY) headers["x-api-key"] = API_KEY;
+      if (activeUserId) headers["x-active-user-id"] = activeUserId;
       return await fetch(url, {
         method: "POST",
         signal: ctrl.signal,
         cache: "no-store",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-cache",
-          Pragma: "no-cache",
-          ...(API_KEY ? { "x-api-key": API_KEY } : {}),
-        },
+        headers,
         body: JSON.stringify(body || {}),
       });
     } catch (err) {
@@ -294,14 +314,17 @@ async function put(path, body = {}) {
     const ctrl = new AbortController();
     const timer = window.setTimeout(() => ctrl.abort(), 12000);
     try {
+      const activeUserId = getRuntimeActiveUserId();
+      const headers = {
+        "Content-Type": "application/json",
+      };
+      if (API_KEY) headers["x-api-key"] = API_KEY;
+      if (activeUserId) headers["x-active-user-id"] = activeUserId;
       return await fetch(url, {
         method: "PUT",
         signal: ctrl.signal,
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(API_KEY ? { "x-api-key": API_KEY } : {}),
-        },
+        headers,
         body: JSON.stringify(body || {}),
       });
     } catch (err) {
@@ -355,11 +378,15 @@ async function del(path) {
     const ctrl = new AbortController();
     const timer = window.setTimeout(() => ctrl.abort(), 12000);
     try {
+      const activeUserId = getRuntimeActiveUserId();
+      const headers = {};
+      if (API_KEY) headers["x-api-key"] = API_KEY;
+      if (activeUserId) headers["x-active-user-id"] = activeUserId;
       return await fetch(url, {
         method: "DELETE",
         signal: ctrl.signal,
         credentials: "include",
-        headers: API_KEY ? { "x-api-key": API_KEY } : {},
+        headers,
       });
     } catch (err) {
       if (err?.name === "AbortError") throw new Error("Request timeout (12s). Check API URL and server status.");
@@ -405,10 +432,14 @@ async function downloadCsv(path, params = {}) {
     const ctrl = new AbortController();
     const timer = window.setTimeout(() => ctrl.abort(), 20000);
     try {
+      const activeUserId = getRuntimeActiveUserId();
+      const headers = {};
+      if (API_KEY) headers["x-api-key"] = API_KEY;
+      if (activeUserId) headers["x-active-user-id"] = activeUserId;
       return await fetch(url, {
         signal: ctrl.signal,
         credentials: "include",
-        headers: API_KEY ? { "x-api-key": API_KEY } : {},
+        headers,
       });
     } catch (err) {
       if (err?.name === "AbortError") {
@@ -453,6 +484,7 @@ export const api = {
   createUser: (payload = {}) => post("/auth/users", payload),
   updateUser: (userId, payload = {}) => put(`/auth/users/${encodeURIComponent(userId)}`, payload),
   deactivateUser: (userId) => post(`/auth/users/${encodeURIComponent(userId)}/deactivate`, {}),
+  deleteUser: (userId) => del(`/auth/users/${encodeURIComponent(userId)}`),
   userDetail: (userId) => get(`/auth/users/${encodeURIComponent(userId)}/detail`),
   createUserAccount: (userId, payload = {}) => post(`/auth/users/${encodeURIComponent(userId)}/accounts`, payload),
   updateUserAccount: (userId, accountId, payload = {}) => put(`/auth/users/${encodeURIComponent(userId)}/accounts/${encodeURIComponent(accountId)}`, payload),

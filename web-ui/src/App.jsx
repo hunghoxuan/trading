@@ -14,7 +14,7 @@ import SignalDetailPage from "./pages/SignalDetailPage";
 import V2TradeDetailPage from "./pages/V2TradeDetailPage";
 import ChartSnapshotsPage from "./pages/ChartSnapshotsPage";
 import SnapshotsPage from "./pages/SnapshotsPage";
-import { api } from "./api";
+import { api, getRuntimeActiveUserId, setRuntimeActiveUserId } from "./api";
 import LoginPage from "./pages/LoginPage";
 
 export default function App() {
@@ -92,6 +92,19 @@ export default function App() {
         <div className="brand">
           <span>📈 Trading</span>
           {serverVersion ? <span className="brand-version">v{serverVersion}</span> : null}
+          {getRuntimeActiveUserId() && (
+            <span style={{ marginLeft: 10, fontSize: "11px", color: "#f39c12" }}>
+              (Acting as {getRuntimeActiveUserId()})
+              <button 
+                type="button" 
+                onClick={() => { setRuntimeActiveUserId(""); window.location.reload(); }} 
+                className="secondary-button icon-button" 
+                style={{ marginLeft: 6, padding: "2px 6px" }}
+              >
+                ✖
+              </button>
+            </span>
+          )}
         </div>
         <nav>
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? "active" : "")}>Dashboard</NavLink>
