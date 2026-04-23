@@ -6,6 +6,12 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const { URL, URLSearchParams } = require("url");
+let createRedisClient = null;
+try {
+  ({ createClient: createRedisClient } = require("redis"));
+} catch {
+  createRedisClient = null;
+}
 
 function loadEnvFile() {
   const envPath = path.join(__dirname, ".env");
@@ -134,6 +140,8 @@ const CFG = {
   mt5PruneIntervalMinutes: asNum(process.env.MT5_PRUNE_INTERVAL_MINUTES, 60),
   twelveDataApiKey: envStr(process.env.TWELVE_DATA_API_KEY),
   mt5PostgresUrl: envStr(process.env.MT5_POSTGRES_URL) || envStr(process.env.POSTGRES_URL) || envStr(process.env.POSTGRE_URL),
+  redisEnabled: asBool(process.env.REDIS_ENABLED, true),
+  redisUrl: envStr(process.env.REDIS_URL, "redis://127.0.0.1:6379"),
   uiDistPath: path.resolve(__dirname, envStr(process.env.WEB_UI_DIST_PATH || process.env.WEBHOOK_UI_DIST_PATH, "../web-ui/dist")),
   landingDistPath: path.resolve(__dirname, envStr(process.env.WEB_LANDING_DIST_PATH, "../web")),
   uiAuthEnabled: asBool(process.env.UI_AUTH_ENABLED, true),
@@ -202,6 +210,8 @@ const UI_SESSIONS = new Map();
 const UI_ROLE_SYSTEM = "System";
 const MARKET_DATA_MEMORY_CACHE = new Map();
 const MARKET_DATA_MEMORY_MAX_KEYS = 500;
+let REDIS_CLIENT = null;
+let REDIS_CONNECTING = null;
 
 function nowUnixSec() {
   return Math.floor(Date.now() / 1000);
@@ -249,6 +259,10 @@ function marketDataMemoryKey(symbolNorm, tfNorm) {
   return `${symbolNorm}|${tfNorm}`;
 }
 
+function marketDataRedisKey(symbolNorm, tfNorm) {
+  return `market_data:${symbolNorm}:${tfNorm}:latest`;
+}
+
 function marketDataTtlSecByTf(tfNorm) {
   const sec = parseTfTokenToSeconds(tfNorm);
   if (sec <= 5 * 60) return 120;
@@ -281,6 +295,54 @@ function marketDataMemoryRead(symbolNorm, tfNorm, reqStart, reqEnd) {
   return null;
 }
 
+async function getRedisClient() {
+  if (!CFG.redisEnabled || !createRedisClient || !CFG.redisUrl) return null;
+  if (REDIS_CLIENT?.isOpen) return REDIS_CLIENT;
+  if (REDIS_CONNECTING) return REDIS_CONNECTING;
+  REDIS_CONNECTING = (async () => {
+    try {
+      const client = createRedisClient({ url: CFG.redisUrl });
+      client.on("error", (err) => {
+        const msg = err instanceof Error ? err.message : String(err || "unknown");
+        console.warn("[Redis] client error:", msg);
+      });
+      await client.connect();
+      REDIS_CLIENT = client;
+      return REDIS_CLIENT;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error || "connect_failed");
+      console.warn("[Redis] connect failed:", msg);
+      REDIS_CLIENT = null;
+      return null;
+    } finally {
+      REDIS_CONNECTING = null;
+    }
+  })();
+  return REDIS_CONNECTING;
+}
+
+async function marketDataRedisRead(symbolNorm, tfNorm, reqStart, reqEnd) {
+  const client = await getRedisClient();
+  if (!client) return null;
+  const key = marketDataRedisKey(symbolNorm, tfNorm);
+  const raw = await client.get(key).catch(() => "");
+  if (!raw) return null;
+  let data = null;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== "object" || !Array.isArray(data.bars) || !data.bars.length) return null;
+  const s = Number(data.bar_start);
+  const e = Number(data.bar_end);
+  if (!Number.isFinite(s) || !Number.isFinite(e)) return null;
+  if (s <= reqStart && e >= reqEnd) {
+    return data;
+  }
+  return null;
+}
+
 function marketDataMemoryWrite(symbolNorm, tfNorm, snapshot) {
   if (!snapshot || typeof snapshot !== "object") return;
   const s = Number(snapshot.bar_start);
@@ -300,6 +362,18 @@ function marketDataMemoryWrite(symbolNorm, tfNorm, snapshot) {
     const first = MARKET_DATA_MEMORY_CACHE.keys().next();
     if (!first.done) MARKET_DATA_MEMORY_CACHE.delete(first.value);
   }
+}
+
+async function marketDataRedisWrite(symbolNorm, tfNorm, snapshot) {
+  const s = Number(snapshot?.bar_start);
+  const e = Number(snapshot?.bar_end);
+  const bars = Array.isArray(snapshot?.bars) ? snapshot.bars : [];
+  if (!Number.isFinite(s) || !Number.isFinite(e) || !bars.length) return;
+  const client = await getRedisClient();
+  if (!client) return;
+  const ttl = marketDataTtlSecByTf(tfNorm);
+  const key = marketDataRedisKey(symbolNorm, tfNorm);
+  await client.setEx(key, ttl, JSON.stringify(snapshot)).catch(() => {});
 }
 
 async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
@@ -3746,6 +3820,11 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
   if (!symbolNorm) return { provider: "twelvedata", status: "skipped", reason: "invalid symbol" };
 
   if (!forceRefresh) {
+    const redisHit = await marketDataRedisRead(symbolNorm, tfNorm, reqRange.start, reqRange.end).catch(() => null);
+    if (redisHit) {
+      marketDataMemoryWrite(symbolNorm, tfNorm, redisHit);
+      return { ...redisHit, cache_source: "redis", symbol_norm: symbolNorm, tf_norm: tfNorm };
+    }
     const memHit = marketDataMemoryRead(symbolNorm, tfNorm, reqRange.start, reqRange.end);
     if (memHit) {
       return { ...memHit, cache_source: "memory", symbol_norm: symbolNorm, tf_norm: tfNorm };
@@ -3753,6 +3832,7 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
     const dbHit = await marketDataDbRead(symbolNorm, tfNorm, reqRange.start, reqRange.end).catch(() => null);
     if (dbHit && typeof dbHit === "object" && Array.isArray(dbHit.bars) && dbHit.bars.length) {
       marketDataMemoryWrite(symbolNorm, tfNorm, dbHit);
+      await marketDataRedisWrite(symbolNorm, tfNorm, dbHit).catch(() => {});
       return { ...dbHit, cache_source: "db", symbol_norm: symbolNorm, tf_norm: tfNorm };
     }
   }
@@ -3849,6 +3929,7 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
       checklist: parseSnapshotChecklist(payload),
     };
     marketDataMemoryWrite(symbolNorm, tfNorm, snapshot);
+    await marketDataRedisWrite(symbolNorm, tfNorm, snapshot).catch(() => {});
     await marketDataDbUpsert(symbolNorm, tfNorm, snapshot).catch(() => {});
     return snapshot;
   } catch (error) {
@@ -4816,8 +4897,25 @@ function mt5StrategyFromRow(row) {
 
 function mt5ComputeTradeMetrics(rows) {
   const all = Array.isArray(rows) ? rows : [];
-  // Support both legacy signal status and v2 execution_status
-  // DASHBOARD FILTER: Only calculate by Closed (not Pending, new, filled)
+
+  // Count by status tiers using all rows
+  // trades table uses: PENDING, OPEN, CLOSED, CANCELLED
+  const countPending = all.filter((r) => {
+    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    return ["PENDING", "NEW", "LOCKED", "START"].includes(s);
+  }).length;
+
+  const countFilled = all.filter((r) => {
+    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    return ["OPEN", "PLACED", "FILLED"].includes(s);
+  }).length;
+
+  const countClosed = all.filter((r) => {
+    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    return ["CLOSED", "TP", "SL", "CANCEL", "CANCELLED"].includes(s);
+  }).length;
+
+  // DASHBOARD FILTER: Only calculate PnL/WR/RR by Closed trades
   const trades = all.filter((r) => {
     const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
     return ["CLOSED", "TP", "SL"].includes(s);
@@ -4851,9 +4949,6 @@ function mt5ComputeTradeMetrics(rows) {
   let sellPnl = 0;
   let winSumPnl = 0;
   let loseSumPnl = 0;
-  const countPending = 0;
-  const countFilled = 0;
-  const countClosed = trades.length;
 
   for (const r of trades) {
     const pnl = Number(r?.pnl_realized ?? r?.pnl_money_realized ?? 0);
@@ -4865,7 +4960,6 @@ function mt5ComputeTradeMetrics(rows) {
   }
 
   const totalRr = rrRows.reduce((acc, r) => {
-    // Map V2 fields for R computation if needed
     const mapped = {
       ...r,
       price: r.entry ?? r.intent_entry ?? r.price,
@@ -4878,8 +4972,8 @@ function mt5ComputeTradeMetrics(rows) {
   }, 0);
   
   return {
-    total_signals: trades.length,
-    total_trades: trades.length,
+    total_signals: all.length,
+    total_trades: all.length,
     wins,
     losses,
     win_rate: winBase > 0 ? (wins / winBase) * 100 : 0,

@@ -11,7 +11,8 @@
     "test:remote": "bash ../scripts/test_remote_api.sh"
   },
   "dependencies": {
-    "pg": "^8.20.0"
+    "pg": "^8.20.0",
+    "redis": "^4.7.1"
   },
   "engines": {
     "node": ">=18"
