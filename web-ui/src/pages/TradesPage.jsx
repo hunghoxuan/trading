@@ -216,6 +216,7 @@ export default function TradesPage() {
   const [sortKey, setSortKey] = useState("audit");
   const [sortDir, setSortDir] = useState("desc");
   const inFlightRef = useRef(false);
+  const tradeEventsInFlightRef = useRef(false);
 
   const accountById = useMemo(() => {
     const map = new Map();
@@ -299,6 +300,8 @@ export default function TradesPage() {
       setTradeEvents([]);
       return;
     }
+    if (tradeEventsInFlightRef.current) return;
+    tradeEventsInFlightRef.current = true;
     try {
       const out = await api.v2TradeEvents(tradeId, 100);
       let items = Array.isArray(out?.items) ? out.items : [];
@@ -319,6 +322,8 @@ export default function TradesPage() {
       setTradeEvents(items);
     } catch {
       setTradeEvents([]);
+    } finally {
+      tradeEventsInFlightRef.current = false;
     }
   }
 
@@ -385,12 +390,9 @@ export default function TradesPage() {
     const timer = window.setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       loadTrades();
-      if (selectedTrade?.trade_id) {
-        loadTradeEvents(selectedTrade.trade_id);
-      }
     }, AUTO_REFRESH_MS);
     return () => window.clearInterval(timer);
-  }, [query, selectedTrade?.trade_id]);
+  }, [query]);
 
   const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(r.trade_id));
   const sortedRows = useMemo(() => {
@@ -692,7 +694,15 @@ export default function TradesPage() {
                     tpPrice={asNum(selectedTrade.tp)}
                     openedAt={selectedTrade.opened_at}
                     closedAt={selectedTrade.closed_at}
-                    analysisSnapshot={selectedTrade?.metadata?.analysis_snapshot || selectedTrade?.raw_json?.analysis_snapshot || null}
+                    analysisSnapshot={(() => {
+                      const snap = selectedTrade?.metadata?.analysis_snapshot || selectedTrade?.raw_json?.analysis_snapshot;
+                      const mkt = selectedTrade?.metadata?.market_analysis || selectedTrade?.raw_json?.market_analysis;
+                      const pdArrays = (snap?.pd_arrays) || (mkt?.pd_arrays) || (selectedTrade?.raw_json?.pd_arrays) || [];
+                      const keyLevels = (snap?.key_levels) || (mkt?.key_levels) || [];
+                      if (snap) return { ...snap, pd_arrays: pdArrays, key_levels: keyLevels };
+                      if (pdArrays.length > 0) return { pd_arrays: pdArrays, key_levels: keyLevels };
+                      return null;
+                    })()}
                   />
                 ) : (
                   <iframe
