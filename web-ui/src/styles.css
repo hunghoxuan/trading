@@ -521,12 +521,18 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 }
 .snapshot-footer-row2-v3 {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto;
+  grid-template-columns: minmax(140px, 180px) minmax(220px, 1fr) auto auto;
   gap: 10px;
   align-items: end;
 }
 .snapshot-footer-field-v3 {
   min-width: 0;
+}
+.snapshot-direction-field-v4 {
+  min-width: 0;
+}
+.snapshot-direction-field-v4 select {
+  width: 100%;
 }
 .snapshot-number-slider-v4 {
   width: 100%;
@@ -535,6 +541,11 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 }
 .snapshot-note-field-v3 {
   min-width: 0;
+}
+.snapshot-note-field-v3 textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
 }
 .snapshot-add-btn-v3 {
   width: auto;
@@ -720,7 +731,7 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 }
 .snapshot-chart-grid-v2 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   min-height: 140px;
 }
@@ -736,8 +747,8 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 }
 .snapshot-chart-meta-v2 {
   display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 8px;
+  grid-template-columns: 1fr;
+  gap: 2px;
   font-size: 10px;
   color: var(--muted);
 }
@@ -833,4 +844,5 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   .snapshot-position-form-v3 { grid-template-columns: 1fr; }
   .snapshot-footer-row1-v3 { grid-template-columns: 1fr; }
   .snapshot-footer-row2-v3 { grid-template-columns: 1fr; }
+  .snapshot-chart-grid-v2 { grid-template-columns: 1fr; }
 }

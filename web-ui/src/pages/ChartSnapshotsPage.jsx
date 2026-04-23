@@ -178,10 +178,20 @@ function formatCompactDateTime(dateLike) {
 
 function parseNum(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
-  const m = String(value ?? "").replace(/,/g, " ").match(/-?\d+(?:\.\d+)?/);
+  let raw = String(value ?? "").trim();
+  if (!raw) return NaN;
+  if (/^-?\d+,\d+$/.test(raw)) raw = raw.replace(",", ".");
+  else raw = raw.replace(/,/g, "");
+  const m = raw.match(/-?\d+(?:\.\d+)?/);
   if (!m) return NaN;
   const n = Number(m[0]);
   return Number.isFinite(n) ? n : NaN;
+}
+
+function formatNum3(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "";
+  return String(Math.round(n * 1000) / 1000);
 }
 
 function calcSliderMeta(valueRaw) {
@@ -273,10 +283,10 @@ function extractPositionFromAnalysis(parsed) {
   }
   return {
     direction,
-    entry: Number.isFinite(entry) ? String(entry) : "",
-    tp: Number.isFinite(tp) ? String(tp) : "",
-    sl: Number.isFinite(sl) ? String(sl) : "",
-    rr: Number.isFinite(rr) ? String(rr) : "",
+    entry: Number.isFinite(entry) ? formatNum3(entry) : "",
+    tp: Number.isFinite(tp) ? formatNum3(tp) : "",
+    sl: Number.isFinite(sl) ? formatNum3(sl) : "",
+    rr: Number.isFinite(rr) ? formatNum3(rr) : "",
     note: String(plan.note || parsed?.invalidation || parsed?.note || "").trim(),
   };
 }
@@ -645,6 +655,33 @@ function buildFriendlyResponse(parsed) {
   return lines.join("\n");
 }
 
+function validatePosition(pos = {}) {
+  const entry = parseNum(pos.entry);
+  const tp = parseNum(pos.tp);
+  const sl = parseNum(pos.sl);
+  const rr = parseNum(pos.rr);
+  const directionRaw = String(pos.direction || "").trim().toUpperCase();
+  const direction = directionRaw === "BUY" || directionRaw === "SELL"
+    ? directionRaw
+    : (Number.isFinite(entry) && Number.isFinite(tp) ? (tp >= entry ? "BUY" : "SELL") : "");
+
+  if (!Number.isFinite(entry) || !Number.isFinite(tp) || !Number.isFinite(sl)) {
+    return "Entry/TP/SL must be numeric values.";
+  }
+  if (Number.isFinite(rr) && (rr < 0.3 || rr > 5)) {
+    return "RR must be between 0.3 and 5.";
+  }
+  if (direction === "BUY") {
+    if (!(tp > entry)) return "For BUY, TP must be greater than Entry.";
+    if (!(sl < entry)) return "For BUY, SL must be lower than Entry.";
+  }
+  if (direction === "SELL") {
+    if (!(tp < entry)) return "For SELL, TP must be lower than Entry.";
+    if (!(sl > entry)) return "For SELL, SL must be greater than Entry.";
+  }
+  return "";
+}
+
 export default function ChartSnapshotsPage() {
   const [cfg, setCfg] = useState(DEFAULT_CONFIG);
   const [templates, setTemplates] = useState(() => loadTemplates());
@@ -710,12 +747,10 @@ export default function ChartSnapshotsPage() {
     () => {
       const fromAi = extractSignalsFromAnalysis(effectiveParsed, { symbol: tvSymbol, timeframe, strategy: cfg.strategies.join("+") || "ai" }).length > 0;
       if (fromAi) return true;
-      const entry = parseNum(position.entry);
-      const sl = parseNum(position.sl);
-      const tp = parseNum(position.tp);
-      return Boolean(normalizeSignalSymbol(tvSymbol || cfg.symbol || "")) && Number.isFinite(entry) && Number.isFinite(sl) && Number.isFinite(tp) && entry > 0 && sl > 0 && tp > 0;
+      const err = validatePosition(position);
+      return Boolean(normalizeSignalSymbol(tvSymbol || cfg.symbol || "")) && !err;
     },
-    [effectiveParsed, tvSymbol, timeframe, cfg.strategies, position.entry, position.sl, position.tp, cfg.symbol],
+    [effectiveParsed, tvSymbol, timeframe, cfg.strategies, position.entry, position.sl, position.tp, position.rr, position.direction, cfg.symbol],
   );
   const normalizedSymbolForBars = useMemo(() => normalizeSignalSymbol(tvSymbol || cfg.symbol || ""), [tvSymbol, cfg.symbol]);
   const currentBarsKey = useMemo(
@@ -981,7 +1016,11 @@ export default function ChartSnapshotsPage() {
 
   const updatePositionField = (key, value) => {
     setPosition((prev) => {
-      const next = { ...prev, [key]: value };
+      let normalizedValue = value;
+      if (["entry", "tp", "sl", "rr"].includes(key)) {
+        normalizedValue = String(value ?? "").replace(",", ".");
+      }
+      const next = { ...prev, [key]: normalizedValue };
       const e = parseNum(next.entry);
       const s = parseNum(next.sl);
       const t = parseNum(next.tp);
@@ -995,13 +1034,17 @@ export default function ChartSnapshotsPage() {
               ? (currentTp >= e ? 1 : -1)
               : (String(prev.direction || "").toUpperCase().includes("SELL") ? -1 : 1);
             const nextTp = e + dirSign * (risk * rrInput);
-            if (Number.isFinite(nextTp)) next.tp = String(Number(nextTp.toFixed(6)));
+            if (Number.isFinite(nextTp)) next.tp = formatNum3(nextTp);
           }
         }
       } else if (Number.isFinite(e) && Number.isFinite(s) && Number.isFinite(t)) {
         const risk = Math.abs(e - s);
         const reward = Math.abs(t - e);
-        if (risk > 0 && reward > 0) next.rr = String(Number((reward / risk).toFixed(2)));
+        if (risk > 0 && reward > 0) next.rr = formatNum3(reward / risk);
+      }
+      if (["entry", "tp", "sl", "rr"].includes(key)) {
+        const parsed = parseNum(next[key]);
+        next[key] = Number.isFinite(parsed) ? formatNum3(parsed) : "";
       }
       return next;
     });
@@ -1024,12 +1067,15 @@ export default function ChartSnapshotsPage() {
         const entry = parseNum(position.entry);
         const sl = parseNum(position.sl);
         const tp = parseNum(position.tp);
+        const validationErr = validatePosition(position);
         if (!symbolManual || !Number.isFinite(entry) || !Number.isFinite(sl) || !Number.isFinite(tp)) {
           throw new Error("No valid signal found. Fill Entry/TP/SL or run Analyze first.");
         }
+        if (validationErr) throw new Error(validationErr);
+        const dir = String(position.direction || "").trim().toUpperCase();
         signals.push({
           symbol: symbolManual,
-          action: tp >= entry ? "BUY" : "SELL",
+          action: dir === "BUY" || dir === "SELL" ? dir : (tp >= entry ? "BUY" : "SELL"),
           entry,
           sl,
           tp,
@@ -1042,8 +1088,11 @@ export default function ChartSnapshotsPage() {
           rr: parseNum(position.rr),
         });
       }
+      const validationErr = validatePosition(position);
+      if (validationErr) throw new Error(validationErr);
       let createdCount = 0;
       for (const payload of signals) {
+        const dir = String(position.direction || "").trim().toUpperCase();
         const cachedSnapshot = currentBarsSnapshot && typeof currentBarsSnapshot === "object" ? currentBarsSnapshot : null;
         const mergedPdArrays = Array.isArray(parsed?.market_analysis?.pd_arrays) ? parsed.market_analysis.pd_arrays : [];
         const mergedKeyLevels = Array.isArray(parsed?.market_analysis?.key_levels) ? parsed.market_analysis.key_levels : [];
@@ -1063,6 +1112,7 @@ export default function ChartSnapshotsPage() {
           : undefined;
         const finalPayload = {
           ...payload,
+          action: dir === "BUY" || dir === "SELL" ? dir : payload.action,
           entry: parseNum(position.entry) || payload.entry,
           tp: parseNum(position.tp) || payload.tp,
           sl: parseNum(position.sl) || payload.sl,
@@ -1479,9 +1529,7 @@ export default function ChartSnapshotsPage() {
                     <a key={f} className="snapshot-chart-card-v2" href={`/v2/chart/snapshots/${encodeURIComponent(f)}`} target="_blank" rel="noreferrer">
                       <img src={`/v2/chart/snapshots/${encodeURIComponent(f)}`} alt={f} />
                       <div className="snapshot-chart-meta-v2">
-                        <span>{meta?.symbolToken || "-"}</span>
                         <span>{intervalTokenToLabel(meta?.tfToken || "-")}</span>
-                        <span>{formatCompactDateTime(meta?.createdAtMs || Date.now())}</span>
                       </div>
                     </a>
                   );
@@ -1497,7 +1545,7 @@ export default function ChartSnapshotsPage() {
           <div className="snapshot-footer-row1-v3">
             <div className="snapshot-footer-field-v3">
               <label className="minor-text">Entry</label>
-              <input type="number" step="any" inputMode="decimal" value={position.entry} onChange={(e) => updatePositionField("entry", e.target.value)} />
+              <input type="number" step="0.001" inputMode="decimal" value={position.entry} onChange={(e) => updatePositionField("entry", e.target.value)} />
               {(() => {
                 const m = calcSliderMeta(position.entry);
                 return (
@@ -1516,7 +1564,7 @@ export default function ChartSnapshotsPage() {
             </div>
             <div className="snapshot-footer-field-v3">
               <label className="minor-text">TP</label>
-              <input type="number" step="any" inputMode="decimal" value={position.tp} onChange={(e) => updatePositionField("tp", e.target.value)} />
+              <input type="number" step="0.001" inputMode="decimal" value={position.tp} onChange={(e) => updatePositionField("tp", e.target.value)} />
               {(() => {
                 const m = calcSliderMeta(position.tp);
                 return (
@@ -1535,7 +1583,7 @@ export default function ChartSnapshotsPage() {
             </div>
             <div className="snapshot-footer-field-v3">
               <label className="minor-text">SL</label>
-              <input type="number" step="any" inputMode="decimal" value={position.sl} onChange={(e) => updatePositionField("sl", e.target.value)} />
+              <input type="number" step="0.001" inputMode="decimal" value={position.sl} onChange={(e) => updatePositionField("sl", e.target.value)} />
               {(() => {
                 const m = calcSliderMeta(position.sl);
                 return (
@@ -1554,7 +1602,7 @@ export default function ChartSnapshotsPage() {
             </div>
             <div className="snapshot-footer-field-v3">
               <label className="minor-text">RR</label>
-              <input type="number" step="any" inputMode="decimal" value={position.rr || ""} onChange={(e) => updatePositionField("rr", e.target.value)} />
+              <input type="number" step="0.001" inputMode="decimal" min="0.3" max="5" value={position.rr || ""} onChange={(e) => updatePositionField("rr", e.target.value)} />
               {(() => {
                 const m = calcSliderMeta(position.rr);
                 return (
@@ -1573,7 +1621,18 @@ export default function ChartSnapshotsPage() {
             </div>
           </div>
           <div className="snapshot-footer-row2-v3">
-            <div className="snapshot-note-field-v3"><label className="minor-text">Note</label><input value={position.note} onChange={(e) => updatePositionField("note", e.target.value)} /></div>
+            <div className="snapshot-direction-field-v4">
+              <label className="minor-text">Direction</label>
+              <select value={position.direction || ""} onChange={(e) => updatePositionField("direction", String(e.target.value || ""))}>
+                <option value="">Auto</option>
+                <option value="BUY">Buy</option>
+                <option value="SELL">Sell</option>
+              </select>
+            </div>
+            <div className="snapshot-note-field-v3">
+              <label className="minor-text">Note</label>
+              <textarea value={position.note} onChange={(e) => updatePositionField("note", e.target.value)} rows={3} />
+            </div>
             <label className="minor-text" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <input type="checkbox" checked={addTargetTrade} onChange={(e) => setAddTargetTrade(e.target.checked)} />
               Trade
