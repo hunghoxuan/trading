@@ -985,7 +985,20 @@ export default function ChartSnapshotsPage() {
       const e = parseNum(next.entry);
       const s = parseNum(next.sl);
       const t = parseNum(next.tp);
-      if (Number.isFinite(e) && Number.isFinite(s) && Number.isFinite(t)) {
+      const rrInput = parseNum(next.rr);
+      if (key === "rr") {
+        if (Number.isFinite(e) && Number.isFinite(s) && Number.isFinite(rrInput) && rrInput > 0) {
+          const risk = Math.abs(e - s);
+          if (risk > 0) {
+            const currentTp = parseNum(prev.tp);
+            const dirSign = Number.isFinite(currentTp)
+              ? (currentTp >= e ? 1 : -1)
+              : (String(prev.direction || "").toUpperCase().includes("SELL") ? -1 : 1);
+            const nextTp = e + dirSign * (risk * rrInput);
+            if (Number.isFinite(nextTp)) next.tp = String(Number(nextTp.toFixed(6)));
+          }
+        }
+      } else if (Number.isFinite(e) && Number.isFinite(s) && Number.isFinite(t)) {
         const risk = Math.abs(e - s);
         const reward = Math.abs(t - e);
         if (risk > 0 && reward > 0) next.rr = String(Number((reward / risk).toFixed(2)));
@@ -1539,7 +1552,25 @@ export default function ChartSnapshotsPage() {
                 );
               })()}
             </div>
-            <div className="snapshot-footer-field-v3"><label className="minor-text">RR</label><input value={position.rr || ""} readOnly /></div>
+            <div className="snapshot-footer-field-v3">
+              <label className="minor-text">RR</label>
+              <input type="number" step="any" inputMode="decimal" value={position.rr || ""} onChange={(e) => updatePositionField("rr", e.target.value)} />
+              {(() => {
+                const m = calcSliderMeta(position.rr);
+                return (
+                  <input
+                    className="snapshot-number-slider-v4"
+                    type="range"
+                    min={m.min}
+                    max={m.max}
+                    step={m.step}
+                    value={m.value}
+                    disabled={!m.enabled}
+                    onChange={(e) => updatePositionField("rr", String(e.target.value))}
+                  />
+                );
+              })()}
+            </div>
           </div>
           <div className="snapshot-footer-row2-v3">
             <div className="snapshot-note-field-v3"><label className="minor-text">Note</label><input value={position.note} onChange={(e) => updatePositionField("note", e.target.value)} /></div>
