@@ -436,6 +436,26 @@ async function uiReadAuthStateByEmail(emailRaw) {
   };
 }
 
+async function uiReadAuthStateByUserName(userNameRaw) {
+  const userName = String(userNameRaw || "").trim();
+  if (!userName) return null;
+  const b = await mt5Backend();
+  if (!b.getUiAuthUserByName) return null;
+  const row = await b.getUiAuthUserByName(userName);
+  if (!row) return null;
+  return {
+    user_id: String(row.user_id || CFG.mt5DefaultUserId),
+    email: normalizeEmail(row.email),
+    user_name: String(row.user_name || ""),
+    role: normalizeUserRole(row.role || UI_ROLE_SYSTEM),
+    is_active: normalizeUserActive(row.is_active, true),
+    password_salt: String(row.password_salt || ""),
+    password_hash: String(row.password_hash || ""),
+    updated_at: normalizeIsoTimestamp(row.updated_at, new Date().toISOString()),
+    created_at: normalizeIsoTimestamp(row.created_at, mt5NowIso()),
+  };
+}
+
 async function uiReadAuthStateByUserId(userIdRaw) {
   const userId = String(userIdRaw || "").trim();
   if (!userId) return null;
@@ -485,6 +505,11 @@ async function uiAuthUpdateProfile(sess, patch = {}) {
     return { ok: false, error: "Email is already used by another user" };
   }
 
+  const duplicateName = await uiReadAuthStateByUserName(nextName);
+  if (duplicateName && String(duplicateName.user_id || "") !== String(state.user_id || "")) {
+    return { ok: false, error: "Username is already taken" };
+  }
+
   const next = {
     user_id: String(state.user_id || CFG.mt5DefaultUserId),
     user_name: nextName,
@@ -515,8 +540,10 @@ async function uiCreateUser(payload = {}) {
   if (!userName) return { ok: false, error: "Username is required" };
   if (!isValidEmail(email)) return { ok: false, error: "Valid email is required" };
   if (password.length < 8) return { ok: false, error: "Password must be at least 8 characters" };
-  const duplicate = await uiReadAuthStateByEmail(email);
-  if (duplicate) return { ok: false, error: "Email is already used by another user" };
+  const duplicateEmail = await uiReadAuthStateByEmail(email);
+  if (duplicateEmail) return { ok: false, error: "Email is already used by another user" };
+  const duplicateName = await uiReadAuthStateByUserName(userName);
+  if (duplicateName) return { ok: false, error: "Username is already taken" };
   const userId = String(payload.user_id || crypto.randomUUID()).trim();
   const salt = makeSaltHex();
   const now = mt5NowIso();
@@ -552,6 +579,10 @@ async function uiUpdateUserById(userIdRaw, payload = {}) {
   if (duplicate && String(duplicate.user_id || "") !== userId) {
     return { ok: false, error: "Email is already used by another user" };
   }
+  const duplicateName = await uiReadAuthStateByUserName(nextName);
+  if (duplicateName && String(duplicateName.user_id || "") !== userId) {
+    return { ok: false, error: "Username is already taken" };
+  }
   const isDefaultUser = userId === String(CFG.mt5DefaultUserId);
   const password = payload.password === undefined ? "" : String(payload.password || "");
   if (payload.password !== undefined && password && password.length < 8) {
@@ -572,6 +603,14 @@ async function uiUpdateUserById(userIdRaw, payload = {}) {
   };
   await uiWriteAuthState(next);
   return { ok: true, user: uiPublicUserView(next) };
+}
+
+async function uiDeleteUserById(userIdRaw) {
+  const userId = String(userIdRaw || "").trim();
+  if (!userId) return { ok: false, error: "user_id is required" };
+  const b = await mt5Backend();
+  if (!b.deleteUiAuthUserById) return { ok: false, error: "User deletion is not supported by the current backend" };
+  return b.deleteUiAuthUserById(userId);
 }
 
 async function uiGetUserDetail(userIdRaw) {
@@ -3021,6 +3060,17 @@ async function mt5InitBackend() {
       `, [target]);
       return res.rows[0] || null;
     },
+    async getUiAuthUserByName(userName) {
+      const target = String(userName || "").trim();
+      if (!target) return null;
+      const res = await pool.query(`
+        SELECT user_id, user_name, email, role, is_active, password_salt, password_hash, updated_at, created_at
+        FROM users
+        WHERE lower(user_name) = lower($1)
+        LIMIT 1
+      `, [target]);
+      return res.rows[0] || null;
+    },
     async getUiAuthUserById(userId) {
       const target = String(userId || "").trim();
       if (!target) return null;
@@ -3031,6 +3081,27 @@ async function mt5InitBackend() {
         LIMIT 1
       `, [target]);
       return res.rows[0] || null;
+    },
+    async deleteUiAuthUserById(userId) {
+      const target = String(userId || "").trim();
+      if (!target) return { ok: false, error: "user_id is required" };
+      if (target === CFG.mt5DefaultUserId) return { ok: false, error: "Cannot delete system default user" };
+      
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        // Delete logs associated with user
+        await client.query("DELETE FROM logs WHERE user_id = $1", [target]);
+        // Delete user (cascades to accounts, trades, signals, settings, profiles)
+        const res = await client.query("DELETE FROM users WHERE user_id = $1 RETURNING user_id", [target]);
+        await client.query("COMMIT");
+        return { ok: res.rowCount > 0 };
+      } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+      } finally {
+        client.release();
+      }
     },
     async listUiUsers() {
       const res = await pool.query(`
@@ -3790,7 +3861,6 @@ function mt5CanonicalStoredStatus(value) {
     CLOSED_TP: "TP",
     CLOSED_SL: "SL",
     CLOSED_MANUAL: "CANCEL",
-    CLOSED: "PLACED",
     OK: "PLACED"
   };
   return legacyToCurrent[s] || s;
@@ -4785,9 +4855,10 @@ function uiEffectiveUserId(req, urlObj = null, payload = null) {
   const sess = getUiSessionFromReq(req);
   if (!sess.ok) return null;
   if (isSystemRole(sess.role)) {
-    // Admins can see specific users if requested
-    const target = (payload?.user_id ?? urlObj?.searchParams?.get("user_id") ?? "").trim();
-    return target || null;
+    // Admins can see specific users if requested via header, payload, or query
+    const target = (req.headers["x-active-user-id"] ?? payload?.user_id ?? urlObj?.searchParams?.get("user_id") ?? "").trim();
+    // Use target, or default to their own user_id if they want to act as themselves
+    return target || sess.user_id;
   }
   return sess.user_id;
 }
@@ -5166,6 +5237,27 @@ const appHandler = async (req, res) => {
         });
       }
       return json(res, 200, { ok: true, user: out.user });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "DELETE" && /^\/auth\/users\/[^/]+$/.test(url.pathname)) {
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const userId = decodeURIComponent(url.pathname.slice("/auth/users/".length));
+      if (!userId) return json(res, 400, { ok: false, error: "user_id is required" });
+      const out = await uiDeleteUserById(userId);
+      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to delete user" });
+      
+      // Logout active sessions for this user
+      for (const [token, session] of UI_SESSIONS.entries()) {
+        if (String(session?.user_id || "") === String(userId)) {
+          UI_SESSIONS.delete(token);
+        }
+      }
+      return json(res, 200, { ok: true, message: "User deleted successfully" });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });
