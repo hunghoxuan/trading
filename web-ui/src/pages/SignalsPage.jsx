@@ -113,6 +113,14 @@ function calcRrFromSignal(s) {
   return reward / risk;
 }
 
+function shouldShowPnl(statusRaw, pnlRaw) {
+  const status = String(statusRaw || "").toUpperCase();
+  const pnl = asNum(pnlRaw);
+  if (pnl == null) return false;
+  if (Math.abs(pnl) > 0.000001) return true;
+  return status === "CLOSED" || status === "CANCELLED" || status === "TP" || status === "SL";
+}
+
 export default function SignalsPage() {
   const [symbols, setSymbols] = useState([]);
   const [rows, setRows] = useState([]);
@@ -567,20 +575,33 @@ export default function SignalsPage() {
           ) : (
             <div className="trade-detail-content">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, alignItems: "center", marginBottom: 14 }}>
-                <div className="cell-major">
-                  <span className={String(selectedSignal.action || selectedSignal.side || "").toUpperCase() === "BUY" ? "side-buy" : "side-sell"}>
-                    {String(selectedSignal.action || selectedSignal.side || "-").toUpperCase()}
-                  </span> {selectedSignal.symbol || "-"}
-                </div>
-                <div className="cell-major">Entry: {fPrice(selectedSignal.entry, selectedSignal.target_price || selectedSignal.entry_price)}</div>
-                <div className="cell-major">
-                  TP/SL: {fPrice(selectedSignal.tp)} / {fPrice(selectedSignal.sl)} {(() => { const rr = calcRrFromSignal(selectedSignal); return rr != null ? `| ${rr.toFixed(2)} rr` : ""; })()}
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                  <span className={`badge ${statusUi(selectedSignal.status).cls}`}>{statusUi(selectedSignal.status).label}</span>
-                  <span className={asNum(selectedSignal.pnl_money_realized) < 0 ? "money-neg" : "money-pos"} style={{ fontWeight: 800 }}>
-                    {asNum(selectedSignal.pnl_money_realized) == null ? "-" : `$${Number(selectedSignal.pnl_money_realized).toFixed(2)}`}
-                  </span>
+                <div style={{ display: "grid", gap: 8, width: "100%" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr auto", gap: 12, alignItems: "center" }}>
+                    <div className="cell-major">
+                      <span className={String(selectedSignal.action || selectedSignal.side || "").toUpperCase() === "BUY" ? "side-buy" : "side-sell"}>
+                        {String(selectedSignal.action || selectedSignal.side || "-").toUpperCase()}
+                      </span> {selectedSignal.symbol || "-"}
+                    </div>
+                    <div className="minor-text" style={{ fontSize: 12 }}>
+                      {(selectedSignal.source || "-")} | {(selectedSignal.entry_model || "-")}
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      {shouldShowPnl(selectedSignal.status, selectedSignal.pnl_money_realized) ? (
+                        <span className={asNum(selectedSignal.pnl_money_realized) < 0 ? "money-neg" : "money-pos"} style={{ fontWeight: 800 }}>
+                          ${Number(selectedSignal.pnl_money_realized).toFixed(2)}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "center" }}>
+                    <div className="cell-major">Entry: {fPrice(selectedSignal.entry, selectedSignal.target_price || selectedSignal.entry_price)}</div>
+                    <div className="cell-major">
+                      TP/SL: {fPrice(selectedSignal.tp)} / {fPrice(selectedSignal.sl)} {(() => { const rr = calcRrFromSignal(selectedSignal); return rr != null ? `| ${rr.toFixed(2)} rr` : ""; })()}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>
+                      <span className={`badge ${statusUi(selectedSignal.status).cls}`}>{statusUi(selectedSignal.status).label}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 

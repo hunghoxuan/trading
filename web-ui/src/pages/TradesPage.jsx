@@ -129,6 +129,14 @@ function moneyRiskReward(t) {
   return { risk, reward: risk * rr };
 }
 
+function shouldShowPnl(statusRaw, pnlRaw) {
+  const status = String(statusRaw || "").toUpperCase();
+  const pnl = asNum(pnlRaw);
+  if (pnl == null) return false;
+  if (Math.abs(pnl) > 0.000001) return true;
+  return status === "CLOSED" || status === "CANCELLED" || status === "TP" || status === "SL";
+}
+
 const DETAIL_TF_TABS = ["ENTRY", "W", "D", "4H", "15m", "5m", "1m"];
 
 function detailTabToTvInterval(tab) {
@@ -620,19 +628,31 @@ export default function TradesPage() {
                 const pnl = asNum(selectedTrade.pnl_realized);
                 const acc = accountById.get(String(selectedTrade.account_id || ""));
                 const rr = calcRr(selectedTrade);
+                const showPnl = shouldShowPnl(selectedTrade.execution_status, pnl);
                 return (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, alignItems: "center" }}>
-                    <div className="cell-major">
-                      <span className={actionCls}>{action}</span> {selectedTrade.symbol || "-"}
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr auto", gap: 12, alignItems: "center" }}>
+                      <div className="cell-major">
+                        <span className={actionCls}>{action}</span> {selectedTrade.symbol || "-"}
+                      </div>
+                      <div className="minor-text" style={{ fontSize: 12 }}>
+                        {(selectedTrade.source_id || "-")} | {(selectedTrade.entry_model || "-")}
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        {showPnl ? (
+                          <div className={pnl != null && pnl < 0 ? "money-neg" : "money-pos"} style={{ fontWeight: 800 }}>
+                            ${pnl.toFixed(2)}
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className="cell-major">Entry: {selectedTrade.entry || "-"}</div>
-                    <div className="cell-major">TP/SL: {selectedTrade.tp || "-"} / {selectedTrade.sl || "-"} {rr != null ? `| ${rr.toFixed(2)} rr` : ""}</div>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                      <span className={`badge ${st.cls}`}>{st.label}</span>
-                      <span className={pnl != null && pnl < 0 ? "money-neg" : "money-pos"} style={{ fontWeight: 800 }}>
-                        {pnl == null ? "-" : `$${pnl.toFixed(2)}`}
-                      </span>
-                      <span className="minor-text">{acc?.name || selectedTrade.account_id || "-"}</span>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "center" }}>
+                      <div className="cell-major">Entry: {selectedTrade.entry || "-"}</div>
+                      <div className="cell-major">TP/SL: {selectedTrade.tp || "-"} / {selectedTrade.sl || "-"} {rr != null ? `| ${rr.toFixed(2)} rr` : ""}</div>
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>
+                        <span className={`badge ${st.cls}`}>{st.label}</span>
+                        <span className="minor-text">{acc?.name || selectedTrade.account_id || "-"}</span>
+                      </div>
                     </div>
                   </div>
                 );
