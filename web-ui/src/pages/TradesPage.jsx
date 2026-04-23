@@ -281,15 +281,12 @@ export default function TradesPage() {
       setPages(data.pages || 1);
       setError("");
       setLastRefreshAt(new Date());
+      // List-scope auto-refresh only: do not mutate currently selected detail row.
+      // Keep initial auto-select behavior only when nothing is selected yet.
       const selectedTradeId = String(selectedTradeIdRef.current || "").trim();
-      if (items.length > 0) {
-        if (!selectedTradeId) {
-          setSelectedTrade(items[0]);
-          selectedTradeIdRef.current = String(items[0]?.trade_id || "");
-        } else {
-          const nextSelected = items.find((x) => String(x?.trade_id || "") === selectedTradeId);
-          if (nextSelected) setSelectedTrade(nextSelected);
-        }
+      if (items.length > 0 && !selectedTradeId) {
+        setSelectedTrade(items[0]);
+        selectedTradeIdRef.current = String(items[0]?.trade_id || "");
       }
     } catch (e) {
       setError(e?.message || "Failed to load trades");
