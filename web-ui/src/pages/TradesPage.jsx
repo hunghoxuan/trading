@@ -217,6 +217,7 @@ export default function TradesPage() {
   const [sortDir, setSortDir] = useState("desc");
   const inFlightRef = useRef(false);
   const tradeEventsInFlightRef = useRef(false);
+  const selectedTradeIdRef = useRef("");
 
   const accountById = useMemo(() => {
     const map = new Map();
@@ -280,10 +281,13 @@ export default function TradesPage() {
       setPages(data.pages || 1);
       setError("");
       setLastRefreshAt(new Date());
+      const selectedTradeId = String(selectedTradeIdRef.current || "").trim();
       if (items.length > 0) {
-        if (!selectedTrade) setSelectedTrade(items[0]);
-        else {
-          const nextSelected = items.find((x) => x.trade_id === selectedTrade.trade_id);
+        if (!selectedTradeId) {
+          setSelectedTrade(items[0]);
+          selectedTradeIdRef.current = String(items[0]?.trade_id || "");
+        } else {
+          const nextSelected = items.find((x) => String(x?.trade_id || "") === selectedTradeId);
           if (nextSelected) setSelectedTrade(nextSelected);
         }
       }
@@ -382,6 +386,9 @@ export default function TradesPage() {
 
   useEffect(() => { loadMeta(); }, []);
   useEffect(() => { loadTrades(); }, [query]);
+  useEffect(() => {
+    selectedTradeIdRef.current = String(selectedTrade?.trade_id || "").trim();
+  }, [selectedTrade?.trade_id]);
   useEffect(() => {
     if (selectedTrade?.trade_id) loadTradeEvents(selectedTrade.trade_id);
     else setTradeEvents([]);
@@ -565,7 +572,14 @@ export default function TradesPage() {
                   const rrDisplay = asNum(t.rr_planned) ?? rr;
                   const timeValue = fDateTime(t.closed_at || t.opened_at || t.created_at);
                   return (
-                    <tr key={t.trade_id} className={selectedTrade?.trade_id === t.trade_id ? "active" : ""} onClick={() => setSelectedTrade(t)}>
+                    <tr
+                      key={t.trade_id}
+                      className={selectedTrade?.trade_id === t.trade_id ? "active" : ""}
+                      onClick={() => {
+                        selectedTradeIdRef.current = String(t?.trade_id || "");
+                        setSelectedTrade(t);
+                      }}
+                    >
                       <td onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
