@@ -513,7 +513,7 @@ export default function SignalsPage() {
                       <td>
                         <div className="cell-wrap">
                           <div className="cell-major">
-                            Entry: {fPrice(t.entry, t.target_price || t.entry_price)} → {fPrice(t.tp)} / {fPrice(t.sl)}
+                            {fPrice(t.entry, t.target_price || t.entry_price)} → {fPrice(t.tp)} / {fPrice(t.sl)}
                           </div>
                           <div className="cell-minor">
                             {(t.entry_model || "-")} | {formatTimeframe(t.chart_tf)} | {formatTimeframe(t.signal_tf)} | {(asNum(t.rr_planned) ?? 0).toFixed(2)} rr
@@ -599,29 +599,29 @@ export default function SignalsPage() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, alignItems: "center", marginBottom: 14 }}>
                 <div style={{ display: "grid", gap: 8, width: "100%" }}>
                   {(() => {
-                    const headerCols = "minmax(220px, 1fr) minmax(320px, 1.15fr) minmax(140px, auto)";
+                    const headerCols = "minmax(0, 1fr) minmax(0, 1.25fr) minmax(120px, 0.55fr)";
                     return (
                       <>
                   <div style={{ display: "grid", gridTemplateColumns: headerCols, gap: 12, alignItems: "center" }}>
-                    <div className="cell-major">
+                    <div className="cell-major" style={{ minWidth: 0 }}>
                       <span className={String(selectedSignal.action || selectedSignal.side || "").toUpperCase() === "BUY" ? "side-buy" : "side-sell"}>
                         {String(selectedSignal.action || selectedSignal.side || "-").toUpperCase()}
                       </span> {selectedSignal.symbol || "-"}
                     </div>
-                    <div className="cell-major">
-                      Entry: {fPrice(selectedSignal.entry, selectedSignal.target_price || selectedSignal.entry_price)} {"→"} {fPrice(selectedSignal.tp)} / {fPrice(selectedSignal.sl)}
+                    <div className="cell-major" style={{ minWidth: 0 }}>
+                      {fPrice(selectedSignal.entry, selectedSignal.target_price || selectedSignal.entry_price)} {"→"} {fPrice(selectedSignal.tp)} / {fPrice(selectedSignal.sl)}
                     </div>
-                    <div style={{ textAlign: "right" }}>
+                    <div style={{ textAlign: "right", minWidth: 0 }}>
                       {shouldShowPnl(selectedSignal.status, selectedSignal.pnl_money_realized) ? (
                         <span className={asNum(selectedSignal.pnl_money_realized) < 0 ? "money-neg" : "money-pos"} style={{ fontWeight: 800 }}>
                           ${Number(selectedSignal.pnl_money_realized).toFixed(2)}
                         </span>
-                      ) : null}
+                      ) : <span className="minor-text">-</span>}
                     </div>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: headerCols, gap: 12, alignItems: "center" }}>
-                    <div className="minor-text">{fDateTime(selectedSignal.updated_at || selectedSignal.closed_at || selectedSignal.opened_at || selectedSignal.created_at)}</div>
-                    <div className="minor-text">
+                    <div className="minor-text" style={{ minWidth: 0 }}>{fDateTime(selectedSignal.updated_at || selectedSignal.closed_at || selectedSignal.opened_at || selectedSignal.created_at)}</div>
+                    <div className="minor-text" style={{ minWidth: 0 }}>
                       {(() => {
                         const rr = calcRrFromSignal(selectedSignal);
                         const vol = asNum(selectedSignal.volume);
@@ -629,7 +629,7 @@ export default function SignalsPage() {
                         return `${rr != null ? rr.toFixed(2) : "-"} rr | ${vol != null ? vol : "-"} vol | ${risk != null ? `$${risk.toFixed(2)}` : "-"} rr size`;
                       })()}
                     </div>
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center", minWidth: 0 }}>
                       <span className={`badge ${statusUi(selectedSignal.status).cls}`}>{statusUi(selectedSignal.status).label}</span>
                     </div>
                   </div>

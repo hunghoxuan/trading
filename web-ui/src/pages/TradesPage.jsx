@@ -643,30 +643,30 @@ export default function TradesPage() {
                 const riskSize = tradeRiskSize(selectedTrade);
                 const vol = asNum(selectedTrade.volume);
                 const updatedAt = fDateTime(selectedTrade.updated_at || selectedTrade.closed_at || selectedTrade.opened_at || selectedTrade.created_at);
-                const headerCols = "minmax(220px, 1fr) minmax(320px, 1.15fr) minmax(140px, auto)";
+                const headerCols = "minmax(0, 1fr) minmax(0, 1.25fr) minmax(120px, 0.55fr)";
                 return (
                   <div style={{ display: "grid", gap: 8 }}>
                     <div style={{ display: "grid", gridTemplateColumns: headerCols, gap: 12, alignItems: "center" }}>
-                      <div className="cell-major">
+                      <div className="cell-major" style={{ minWidth: 0 }}>
                         <span className={actionCls}>{action}</span> {selectedTrade.symbol || "-"}
                       </div>
-                      <div className="cell-major">
-                        Entry: {selectedTrade.entry || "-"} {"→"} {selectedTrade.tp || "-"} / {selectedTrade.sl || "-"}
+                      <div className="cell-major" style={{ minWidth: 0 }}>
+                        {selectedTrade.entry || "-"} {"→"} {selectedTrade.tp || "-"} / {selectedTrade.sl || "-"}
                       </div>
-                      <div style={{ textAlign: "right" }}>
+                      <div style={{ textAlign: "right", minWidth: 0 }}>
                         {showPnl ? (
                           <div className={pnl != null && pnl < 0 ? "money-neg" : "money-pos"} style={{ fontWeight: 800 }}>
                             ${pnl.toFixed(2)}
                           </div>
-                        ) : null}
+                        ) : <div className="minor-text">-</div>}
                       </div>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: headerCols, gap: 12, alignItems: "center" }}>
-                      <div className="minor-text">{updatedAt}</div>
-                      <div className="minor-text">
+                      <div className="minor-text" style={{ minWidth: 0 }}>{updatedAt}</div>
+                      <div className="minor-text" style={{ minWidth: 0 }}>
                         {(rr != null ? rr.toFixed(2) : "-")} rr | {(vol != null ? vol : "-")} vol | {(riskSize != null ? `$${riskSize.toFixed(2)}` : "-")} rr size
                       </div>
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center", minWidth: 0 }}>
                         <span className={`badge ${st.cls}`}>{st.label}</span>
                       </div>
                     </div>
