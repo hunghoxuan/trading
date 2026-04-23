@@ -555,7 +555,7 @@ function extractSignalsFromAnalysis(parsed, fallback = {}) {
   if (parsed.trade_setup && typeof parsed.trade_setup === "object") {
     rows.push({ ...(parsed.trade_setup || {}), symbol: parsed.symbol || fallback.symbol });
   }
-  if (parsed.trade_plan && typeof parsed.trade_plan === "object") {
+  if (parsed.trade_plan && typeof parsed.trade_plan === "object" && !Array.isArray(parsed.trade_plan)) {
     rows.push({ ...(parsed.trade_plan || {}), symbol: parsed.symbol || fallback.symbol });
   }
   if (!rows.length) rows.push(parsed);
