@@ -18,16 +18,13 @@ function parseSnapshotBars(snapshot) {
 }
 
 function parsePdZoneBounds(item) {
-  const asNum = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  };
+  const asNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
   const lowRaw = asNum(item?.low ?? item?.bottom);
   const highRaw = asNum(item?.high ?? item?.top);
   if (lowRaw != null && highRaw != null) {
     return { low: Math.min(lowRaw, highRaw), high: Math.max(lowRaw, highRaw) };
   }
-  const zone = String(item?.zone || "").trim();
+  const zone = String(item?.zone || '').trim();
   if (!zone) return null;
   const nums = zone.match(/-?\d+(?:\.\d+)?/g);
   if (!nums || nums.length < 2) return null;
@@ -37,15 +34,6 @@ function parsePdZoneBounds(item) {
   return { low: Math.min(a, b), high: Math.max(a, b) };
 }
 
-function pdColorByType(typeRaw) {
-  const t = String(typeRaw || "").toUpperCase();
-  if (t.includes("OB")) return '#f59e0b';
-  if (t.includes("FVG")) return '#a78bfa';
-  if (t.includes("LIQ")) return '#ef4444';
-  if (t.includes("S/R") || t.includes("SR")) return '#22c55e';
-  return '#60a5fa';
-}
-
 function parseKeyLevels(snapshot) {
   const arr = Array.isArray(snapshot?.key_levels) ? snapshot.key_levels : [];
   return arr
@@ -53,9 +41,9 @@ function parseKeyLevels(snapshot) {
       const price = Number(x?.price ?? x?.level ?? x?.value);
       if (!Number.isFinite(price)) return null;
       return {
-        name: String(x?.name || x?.label || "Key").trim() || "Key",
+        name: String(x?.name || x?.label || 'Key').trim() || 'Key',
         price,
-        kind: String(x?.kind || "generic"),
+        kind: String(x?.kind || 'generic'),
       };
     })
     .filter(Boolean)
@@ -63,14 +51,14 @@ function parseKeyLevels(snapshot) {
 }
 
 function buildSummaryTexts(snapshot) {
-  const s = snapshot?.summary && typeof snapshot.summary === "object" ? snapshot.summary : {};
+  const s = snapshot?.summary && typeof snapshot.summary === 'object' ? snapshot.summary : {};
   const parts = [];
   if (s.bias) parts.push(`Bias: ${s.bias}`);
   if (s.trend) parts.push(`Trend: ${s.trend}`);
   if (Number.isFinite(Number(s.confidence_pct))) parts.push(`Conf: ${Number(s.confidence_pct)}%`);
   if (s.profile) parts.push(`Profile: ${s.profile}`);
   const rows = [];
-  if (parts.length) rows.push(parts.join(" | "));
+  if (parts.length) rows.push(parts.join(' | '));
   if (s.invalidation) rows.push(`Invalidation: ${String(s.invalidation).slice(0, 80)}`);
   if (s.note) rows.push(String(s.note).slice(0, 110));
   return rows.slice(0, 3);
@@ -78,15 +66,102 @@ function buildSummaryTexts(snapshot) {
 
 function checklistText(snapshot) {
   const arr = Array.isArray(snapshot?.checklist) ? snapshot.checklist : [];
-  const selected = arr.filter((x) => x?.checked).slice(0, 4).map((x) => `${x.strategy || "Rule"}:${x.condition || "ok"}`);
-  if (!selected.length) return "";
-  return `Checklist: ${selected.join(", ").slice(0, 140)}`;
+  const selected = arr.filter((x) => x?.checked).slice(0, 4).map((x) => `${x.strategy || 'Rule'}:${x.condition || 'ok'}`);
+  if (!selected.length) return '';
+  return `Checklist: ${selected.join(', ').slice(0, 140)}`;
 }
 
 function extractAnalysisSnapshot(analysisSnapshot) {
-  if (analysisSnapshot && typeof analysisSnapshot === "object") return analysisSnapshot;
+  if (analysisSnapshot && typeof analysisSnapshot === 'object') return analysisSnapshot;
   return null;
 }
+
+/**
+ * Lightweight Charts custom primitive that draws a filled semi-transparent rectangle
+ * between two price levels from bar_start to the last visible bar.
+ */
+class PdArrayBoxPrimitive {
+  constructor(barStartSec, priceLow, priceHigh, color) {
+    this._barStart = barStartSec; // unix seconds
+    this._priceLow = priceLow;
+    this._priceHigh = priceHigh;
+    this._color = color;
+    this._series = null;
+    this._chart = null;
+  }
+
+  attached({ series, chart }) {
+    this._series = series;
+    this._chart = chart;
+  }
+
+  detached() {
+    this._series = null;
+    this._chart = null;
+  }
+
+  updateAllViews() {}
+
+  priceAxisViews() { return []; }
+
+  paneViews() {
+    return [{
+      renderer: {
+        draw: (target) => {
+          if (!this._series || !this._chart) return;
+          target.useBitmapCoordinateSpace((scope) => {
+            const ctx = scope.context;
+            const r = scope.bitmapSize;
+            const ts = this._chart.timeScale();
+            const ps = this._series;
+
+            // Convert prices to y-pixels
+            const yHigh = ps.priceToCoordinate(this._priceHigh);
+            const yLow = ps.priceToCoordinate(this._priceLow);
+            if (yHigh == null || yLow == null) return;
+
+            // Convert bar_start time to x-pixel
+            const xStart = ts.timeToCoordinate(this._barStart);
+            if (xStart == null) return;
+
+            const pixelRatio = scope.horizontalPixelRatio || 1;
+            const pixelRatioY = scope.verticalPixelRatio || 1;
+
+            const x0 = Math.max(0, Math.round(xStart * pixelRatio));
+            const x1 = r.width;
+            const y0 = Math.round(Math.min(yHigh, yLow) * pixelRatioY);
+            const y1 = Math.round(Math.max(yHigh, yLow) * pixelRatioY);
+            const h = y1 - y0;
+            if (h <= 0 || x1 - x0 <= 0) return;
+
+            // Fill
+            ctx.save();
+            ctx.globalAlpha = 0.18;
+            ctx.fillStyle = this._color;
+            ctx.fillRect(x0, y0, x1 - x0, h);
+
+            // Border lines (top & bottom)
+            ctx.globalAlpha = 0.7;
+            ctx.strokeStyle = this._color;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y0);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x0, y1);
+            ctx.lineTo(x1, y1);
+            ctx.stroke();
+            ctx.restore();
+          });
+        },
+      },
+    }];
+  }
+}
+
+
+
 
 export const TradeSignalChart = ({ 
   symbol = 'BTCUSDT', 
@@ -223,56 +298,63 @@ export const TradeSignalChart = ({
           }
           if (markers.length > 0) candleSeries.setMarkers(markers);
 
-          // Draw PD Array overlays from stored analysis snapshot
+          // Draw PD Array overlays — boxes for active zones, colored by HTF tier
           const pdArrays = Array.isArray(snapshot?.pd_arrays) ? snapshot.pd_arrays : [];
-          if (pdArrays.length) {
-            pdArrays.slice(0, 30).forEach((pd, idx) => {
-              const bounds = parsePdZoneBounds(pd);
-              if (!bounds) return;
-              const color = pdColorByType(pd?.type);
-              candleSeries.createPriceLine({
-                price: bounds.high,
-                color,
-                lineWidth: 1,
-                lineStyle: 2,
-                axisLabelVisible: false,
-                title: `${String(pd?.type || "PD").toUpperCase()} ${String(pd?.timeframe || "").toUpperCase()}`.trim(),
-              });
-              candleSeries.createPriceLine({
-                price: bounds.low,
-                color,
-                lineWidth: 1,
-                lineStyle: 2,
-                axisLabelVisible: false,
-                title: "",
-              });
-              if (idx < 8) {
-                const mid = (bounds.high + bounds.low) / 2;
-                candleSeries.createPriceLine({
-                  price: mid,
-                  color,
-                  lineWidth: 1,
-                  lineStyle: 4,
-                  axisLabelVisible: false,
-                  title: "",
-                });
-              }
-            });
-          }
+          const htfTfs = Array.isArray(snapshot?.htf_tfs) ? snapshot.htf_tfs : [];
 
-          // Draw key levels from analysis snapshot
+          // Helper: normalize timeframe strings for comparison
+          const normTf = (v) => String(v || '').trim().toUpperCase().replace(/\s+/g, '');
+          const htf1 = normTf(htfTfs[0] || '');
+          const htf2 = normTf(htfTfs[1] || '');
+
+          const COLOR_HTF1 = '#f59e0b'; // yellow
+          const COLOR_HTF2 = '#a855f7'; // purple
+          const COLOR_DEFAULT = '#60a5fa'; // blue fallback
+
+          const lastBarTime = candles.length ? Number(candles[candles.length - 1]?.time) : null;
+
+          const activePdArrays = pdArrays.filter((pd) => {
+            const status = String(pd?.status || '').toLowerCase();
+            return status === 'active' || status === ''; // include if status missing
+          });
+
+          activePdArrays.slice(0, 40).forEach((pd) => {
+            const bounds = parsePdZoneBounds(pd);
+            if (!bounds) return;
+
+            // Determine color by which HTF tier the timeframe belongs to
+            const pdTf = normTf(pd?.timeframe || '');
+            let color = COLOR_DEFAULT;
+            if (htf1 && pdTf === htf1) color = COLOR_HTF1;
+            else if (htf2 && pdTf === htf2) color = COLOR_HTF2;
+            else if (htf1 && !htf2) color = COLOR_HTF1; // all are HTF1 if only one HTF
+
+            // bar_start: use provided value or fall back to first bar
+            const barStartRaw = Number(pd?.bar_start);
+            const barStart = Number.isFinite(barStartRaw) && barStartRaw > 0
+              ? barStartRaw
+              : (candles.length ? Number(candles[0]?.time) : null);
+
+            if (!barStart || !lastBarTime) return;
+
+            // Attach box primitive to the candle series
+            const primitive = new PdArrayBoxPrimitive(barStart, bounds.low, bounds.high, color);
+            candleSeries.attachPrimitive(primitive);
+          });
+
+          // Draw key levels as clean horizontal lines (no text)
           const keyLevels = parseKeyLevels(snapshot);
-          keyLevels.forEach((k, idx) => {
-            const color = k.kind === "pd" ? '#64748b' : '#f97316';
+          keyLevels.forEach((k) => {
             candleSeries.createPriceLine({
               price: k.price,
-              color,
+              color: '#f97316',
               lineWidth: 1,
               lineStyle: 4,
-              axisLabelVisible: idx < 8,
-              title: idx < 8 ? `KEY ${k.name.slice(0, 18)}` : '',
+              axisLabelVisible: false,
+              title: '',
             });
           });
+
 
           // Fit view to stored range first, then trade bounds
           const snapshotStart = Number(snapshot?.bar_start);

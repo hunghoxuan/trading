@@ -1101,6 +1101,7 @@ export default function ChartSnapshotsPage() {
               ...cachedSnapshot,
               pd_arrays: mergedPdArrays,
               key_levels: mergedKeyLevels,
+              htf_tfs: Array.isArray(tfConfig?.htf_tfs) ? tfConfig.htf_tfs : [],
               summary: {
                 ...(cachedSnapshot.summary && typeof cachedSnapshot.summary === "object" ? cachedSnapshot.summary : {}),
                 profile: payload?.profile || parsed?.profile || "",
@@ -1110,6 +1111,7 @@ export default function ChartSnapshotsPage() {
               },
             }
           : undefined;
+
         const finalPayload = {
           ...payload,
           action: dir === "BUY" || dir === "SELL" ? dir : payload.action,
