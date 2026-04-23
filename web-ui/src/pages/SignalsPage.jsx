@@ -371,6 +371,12 @@ export default function SignalsPage() {
     }
   }
 
+  function resetDetailPlanLocal() {
+    if (!selectedSignal) return;
+    setDetailPlan(extractTradePlanFromSignal(selectedSignal));
+    setDetailPlanMsg({ type: "", text: "" });
+  }
+
   async function onCreateSignal() {
     try {
       setBulkBusy(true);
@@ -795,11 +801,13 @@ export default function SignalsPage() {
                   tradeId={null}
                   value={detailPlan}
                   onChange={updateDetailPlanField}
+                  onReset={resetDetailPlanLocal}
                   onSave={saveSelectedSignalPlan}
                   onAddTrade={() => addTradeFromSignal(selectedSignal)}
                   showSaveButton={true}
                   showAddSignalButton={false}
                   showAddTradeButton={true}
+                  showResetButton={true}
                   saveLabel="Save Signal"
                   busy={detailPlanBusy}
                   error={detailPlanMsg.type === "error" ? detailPlanMsg.text : ""}

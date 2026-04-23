@@ -31,9 +31,11 @@ export function TradePlanEditor({
   onSave,
   onAddSignal,
   onAddTrade,
+  onReset,
   showSaveButton,
   showAddSignalButton,
   showAddTradeButton,
+  showResetButton = true,
   saveLabel,
   addSignalLabel = "+ Signal",
   addTradeLabel = "+ Trade",
@@ -57,6 +59,24 @@ export function TradePlanEditor({
 
   return (
     <div className={className}>
+      <div className="snapshot-footer-row0-v3">
+        <div className="snapshot-direction-field-v4">
+          <label className="minor-text">Direction</label>
+          <select value={value.direction || "BUY"} onChange={(e) => update("direction", String(e.target.value || ""))} disabled={controlsDisabled}>
+            {directionOptions.map((x) => (
+              <option key={x} value={x}>{x === "BUY" ? "Buy" : "Sell"}</option>
+            ))}
+          </select>
+        </div>
+        <div className="snapshot-direction-field-v4">
+          <label className="minor-text">Trade Type</label>
+          <select value={value.trade_type || "limit"} onChange={(e) => update("trade_type", String(e.target.value || "limit"))} disabled={controlsDisabled}>
+            <option value="limit">limit</option>
+            <option value="market">market</option>
+            <option value="stop">stop</option>
+          </select>
+        </div>
+      </div>
       <div className="snapshot-footer-row1-v3">
         <div className="snapshot-footer-field-v3">
           <label className="minor-text">Entry</label>
@@ -136,26 +156,15 @@ export function TradePlanEditor({
         </div>
       </div>
       <div className="snapshot-footer-row2-v3">
-        <div className="snapshot-direction-field-v4">
-          <label className="minor-text">Direction</label>
-          <select value={value.direction || "BUY"} onChange={(e) => update("direction", String(e.target.value || ""))} disabled={controlsDisabled}>
-            {directionOptions.map((x) => (
-              <option key={x} value={x}>{x === "BUY" ? "Buy" : "Sell"}</option>
-            ))}
-          </select>
-        </div>
-        <div className="snapshot-direction-field-v4">
-          <label className="minor-text">Trade Type</label>
-          <select value={value.trade_type || "limit"} onChange={(e) => update("trade_type", String(e.target.value || "limit"))} disabled={controlsDisabled}>
-            <option value="limit">limit</option>
-            <option value="market">market</option>
-            <option value="stop">stop</option>
-          </select>
-        </div>
         <div className="snapshot-note-field-v3">
           <label className="minor-text">Note</label>
-          <textarea value={value.note || ""} onChange={(e) => update("note", e.target.value)} rows={3} disabled={controlsDisabled} />
+          <textarea value={value.note || ""} onChange={(e) => update("note", e.target.value)} rows={1} disabled={controlsDisabled} />
         </div>
+        {showResetButton ? (
+          <button className="secondary-button snapshot-add-btn-v3" type="button" onClick={onReset} disabled={controlsDisabled || typeof onReset !== "function"}>
+            Reset
+          </button>
+        ) : null}
         {effectiveShowSave ? (
           <button className="secondary-button snapshot-add-btn-v3" type="button" onClick={onSave} disabled={controlsDisabled || typeof onSave !== "function"}>
             {busy?.save ? "Saving..." : resolvedSaveLabel}

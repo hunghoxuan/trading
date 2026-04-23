@@ -749,6 +749,13 @@ export default function ChartSnapshotsPage() {
   const currentBarsSnapshot = barsCache[currentBarsKey] || null;
 
   const setCfgField = (key, value) => setCfg((prev) => ({ ...prev, [key]: value }));
+  const resetPositionLocal = () => {
+    if (effectiveParsed && typeof effectiveParsed === "object") {
+      setPosition(extractPositionFromAnalysis(effectiveParsed));
+      return;
+    }
+    setPosition({ direction: "BUY", entry: "", tp: "", sl: "", rr: "", trade_type: "limit", note: "" });
+  };
   const setProfilePreset = (profileKey) => {
     const key = String(profileKey || "").trim().toLowerCase();
     const preset = PROFILE_PRESETS[key] || PROFILE_PRESETS.day;
@@ -1545,6 +1552,8 @@ export default function ChartSnapshotsPage() {
             showSaveButton={false}
             showAddSignalButton={true}
             showAddTradeButton={true}
+            showResetButton={true}
+            onReset={resetPositionLocal}
             busy={{ signal: addingSignal, trade: addingSignal }}
             disabled={false}
             error={!canAddSignal ? validatePosition(position) : ""}
