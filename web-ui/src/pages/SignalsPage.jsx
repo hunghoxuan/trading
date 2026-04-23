@@ -655,7 +655,34 @@ export default function SignalsPage() {
                     entryPrice={asNum(selectedSignal.entry || selectedSignal.target_price || selectedSignal.entry_price)}
                     slPrice={asNum(selectedSignal.sl)}
                     tpPrice={asNum(selectedSignal.tp)}
-                    analysisSnapshot={selectedSignal?.raw_json?.analysis_snapshot || null}
+                    analysisSnapshot={
+                      selectedSignal?.raw_json?.analysis_snapshot
+                        ? {
+                            ...selectedSignal.raw_json.analysis_snapshot,
+                            pd_arrays: (
+                              selectedSignal.raw_json.analysis_snapshot.pd_arrays ||
+                              selectedSignal.raw_json.market_analysis?.pd_arrays ||
+                              selectedSignal.raw_json.pd_arrays ||
+                              []
+                            ),
+                            key_levels: (
+                              selectedSignal.raw_json.analysis_snapshot.key_levels ||
+                              selectedSignal.raw_json.market_analysis?.key_levels ||
+                              []
+                            ),
+                          }
+                        : {
+                            pd_arrays: (
+                              selectedSignal.raw_json?.market_analysis?.pd_arrays ||
+                              selectedSignal.raw_json?.pd_arrays ||
+                              []
+                            ),
+                            key_levels: (
+                              selectedSignal.raw_json?.market_analysis?.key_levels ||
+                              []
+                            ),
+                          }
+                    }
                   />
                 ) : (
                   <iframe
