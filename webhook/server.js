@@ -3534,6 +3534,18 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   const onlySignal = Boolean(payload.only_signal ?? payload.onlySignal ?? payload.raw_json?.only_signal ?? payload.raw_json?.onlySignal);
 
   const plannedEntry = asNum(payload.entry ?? payload.price, NaN);
+  const plannedSl = asNum(payload.sl, NaN);
+  const plannedTp = asNum(payload.tp, NaN);
+  const duplicate = await mt5FindDuplicateSignal({
+    user_id: userId,
+    symbol,
+    entry: plannedEntry,
+    sl: plannedSl,
+    tp: plannedTp,
+  });
+  if (duplicate?.signal_id) {
+    throw new Error("Already added");
+  }
   const rawJson = payload.raw_json || payload;
   let rawJsonNormalized = {
     ...rawJson,
@@ -3752,6 +3764,39 @@ async function mt5PullAndLockSignalById(signalId) {
 async function mt5FindSignalById(signalId) {
   const b = await mt5Backend();
   return b.findSignalById(signalId);
+}
+
+async function mt5FindDuplicateSignal(payload = {}) {
+  const userId = String(payload.user_id || "").trim();
+  const symbol = String(payload.symbol || "").trim().toUpperCase();
+  const entry = Number(payload.entry);
+  const sl = Number(payload.sl);
+  const tp = Number(payload.tp);
+  if (!userId || !symbol || !Number.isFinite(entry) || !Number.isFinite(sl) || !Number.isFinite(tp)) return null;
+  const b = await mt5Backend();
+  if (!b?.query) return null;
+  const rows = await b.query(`
+    SELECT
+      signal_id,
+      raw_json->>'entry' AS entry_raw,
+      raw_json->>'price' AS price_raw,
+      raw_json->>'entry_price' AS entry_price_raw
+    FROM signals
+    WHERE user_id = $1
+      AND symbol = $2
+      AND sl IS NOT NULL
+      AND tp IS NOT NULL
+      AND ABS(sl - $3) <= 1e-8
+      AND ABS(tp - $4) <= 1e-8
+    ORDER BY created_at DESC
+    LIMIT 500
+  `, [userId, symbol, sl, tp]);
+  const EPS = 1e-8;
+  for (const row of rows.rows || []) {
+    const rowEntry = Number(row.entry_raw ?? row.price_raw ?? row.entry_price_raw);
+    if (Number.isFinite(rowEntry) && Math.abs(rowEntry - entry) <= EPS) return row;
+  }
+  return null;
 }
 
 async function mt5GetSignalByTicket(ticket) {
