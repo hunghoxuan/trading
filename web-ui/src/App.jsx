@@ -114,20 +114,6 @@ export default function App() {
 
           <div style={{ flex: 1 }} />
           
-          <div className="nav-dropdown">
-            <button
-              type="button"
-              className={`secondary-button nav-dropdown-trigger ${settingsMenuActive ? "active" : ""}`}
-            >
-              Settings
-            </button>
-            <div className="nav-dropdown-menu">
-              <NavLink to="/profile">Profile</NavLink>
-              <NavLink to="/settings">Settings</NavLink>
-              {canAccessSystemPages && <NavLink to="/accounts-v2">Accounts</NavLink>}
-              {canAccessSystemPages && <NavLink to="/sources">Sources</NavLink>}
-            </div>
-          </div>
           {canAccessSystemPages && (
             <div className="nav-dropdown">
               <button
@@ -144,6 +130,20 @@ export default function App() {
               </div>
             </div>
           )}
+          <div className="nav-dropdown">
+            <button
+              type="button"
+              className={`secondary-button nav-dropdown-trigger ${settingsMenuActive ? "active" : ""}`}
+            >
+              Settings
+            </button>
+            <div className="nav-dropdown-menu">
+              <NavLink to="/profile">Profile</NavLink>
+              <NavLink to="/settings">Settings</NavLink>
+              {canAccessSystemPages && <NavLink to="/accounts-v2">Accounts</NavLink>}
+              {canAccessSystemPages && <NavLink to="/sources">Sources</NavLink>}
+            </div>
+          </div>
           <button onClick={handleLogout} className="secondary-button" style={{ marginLeft: 8, padding: '4px 10px', fontSize: '11px' }}>Logout</button>
           <button 
              onClick={toggleTheme} 

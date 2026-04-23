@@ -30,7 +30,7 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
   const [pwdLoading, setPwdLoading] = useState(false);
   const [msg, setMsg] = useState("");
   const [profileForm, setProfileForm] = useState({
-    user_name: "",
+    name: "",
     email: "",
     role: "User",
     is_active: true,
@@ -75,7 +75,7 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
 
       if (prof?.user) {
         setProfileForm({
-          user_name: String(prof.user.user_name || ""),
+          name: String(prof.user.name || ""),
           email: String(prof.user.email || ""),
           role: String(prof.user.role || "User"),
           is_active: Boolean(prof.user.is_active),
@@ -125,10 +125,10 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
   }, [authUser?.user_id]);
 
   async function saveMyAccount() {
-    const name = String(profileForm.user_name || "").trim();
+    const name = String(profileForm.name || "").trim();
     const mail = String(profileForm.email || "").trim();
     if (!name || !mail) {
-      setMsg("Username and email are required.");
+      setMsg("Name and email are required.");
       return;
     }
     setProfileLoading(true);

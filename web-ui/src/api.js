@@ -479,7 +479,7 @@ async function downloadCsv(path, params = {}) {
 export const api = {
   authMe: () => get("/auth/me"),
   authProfile: () => get("/auth/profile"),
-  updateAuthProfile: (user_name, email) => put("/auth/profile", { user_name, email }),
+  updateAuthProfile: (name, email) => put("/auth/profile", { name, email }),
   listUsers: () => get("/auth/users"),
   createUser: (payload = {}) => post("/auth/users", payload),
   updateUser: (userId, payload = {}) => put(`/auth/users/${encodeURIComponent(userId)}`, payload),

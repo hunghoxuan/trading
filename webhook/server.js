@@ -80,7 +80,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.23-0952"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.23-1016"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -237,7 +237,7 @@ function isValidEmail(emailRaw) {
 function uiPublicUserView(user) {
   return {
     user_id: String(user?.user_id || ""),
-    user_name: String(user?.user_name || ""),
+    name: String(user?.name || ""),
     email: normalizeEmail(user?.email),
     role: normalizeUserRole(user?.role),
     is_active: normalizeUserActive(user?.is_active, true),
@@ -259,7 +259,7 @@ function uiPublicAccountView(row) {
   };
 }
 
-function fallbackUserNameFromEmail(emailRaw) {
+function fallbackNameFromEmail(emailRaw) {
   const email = normalizeEmail(emailRaw);
   if (!email) return "System";
   return String(email.split("@")[0] || "System");
@@ -381,7 +381,7 @@ function uiDefaultAuthState(emailOverride = "") {
   const email = normalizeEmail(emailOverride || CFG.uiBootstrapEmail);
   return {
     email,
-    user_name: fallbackUserNameFromEmail(email),
+    name: fallbackNameFromEmail(email),
     role: UI_ROLE_SYSTEM,
     is_active: true,
     password_salt: salt,
@@ -403,7 +403,7 @@ function parseLegacyUiAuthStateFromFile() {
     if (!email || !passwordSalt || !passwordHash) return null;
     return {
       email,
-      user_name: fallbackUserNameFromEmail(email),
+      name: fallbackNameFromEmail(email),
       role: UI_ROLE_SYSTEM,
       is_active: true,
       password_salt: passwordSalt,
@@ -426,7 +426,7 @@ async function uiReadAuthStateByEmail(emailRaw) {
   return {
     user_id: String(row.user_id || CFG.mt5DefaultUserId),
     email: normalizeEmail(row.email),
-    user_name: String(row.user_name || ""),
+    name: String(row.name || ""),
     role: normalizeUserRole(row.role || UI_ROLE_SYSTEM),
     is_active: normalizeUserActive(row.is_active, true),
     password_salt: String(row.password_salt || ""),
@@ -436,17 +436,17 @@ async function uiReadAuthStateByEmail(emailRaw) {
   };
 }
 
-async function uiReadAuthStateByUserName(userNameRaw) {
-  const userName = String(userNameRaw || "").trim();
-  if (!userName) return null;
+async function uiReadAuthStateByName(nameRaw) {
+  const name = String(nameRaw || "").trim();
+  if (!name) return null;
   const b = await mt5Backend();
   if (!b.getUiAuthUserByName) return null;
-  const row = await b.getUiAuthUserByName(userName);
+  const row = await b.getUiAuthUserByName(name);
   if (!row) return null;
   return {
     user_id: String(row.user_id || CFG.mt5DefaultUserId),
     email: normalizeEmail(row.email),
-    user_name: String(row.user_name || ""),
+    name: String(row.name || ""),
     role: normalizeUserRole(row.role || UI_ROLE_SYSTEM),
     is_active: normalizeUserActive(row.is_active, true),
     password_salt: String(row.password_salt || ""),
@@ -466,7 +466,7 @@ async function uiReadAuthStateByUserId(userIdRaw) {
   return {
     user_id: String(row.user_id || CFG.mt5DefaultUserId),
     email: normalizeEmail(row.email),
-    user_name: String(row.user_name || ""),
+    name: String(row.name || ""),
     role: normalizeUserRole(row.role || UI_ROLE_SYSTEM),
     is_active: normalizeUserActive(row.is_active, true),
     password_salt: String(row.password_salt || ""),
@@ -482,7 +482,7 @@ async function uiWriteAuthState(nextState) {
   await b.upsertUiAuthUser({
     user_id: String(nextState.user_id || CFG.mt5DefaultUserId),
     email: normalizeEmail(nextState.email),
-    user_name: String(nextState.user_name || fallbackUserNameFromEmail(nextState.email)),
+    name: String(nextState.name || fallbackNameFromEmail(nextState.email)),
     role: normalizeUserRole(nextState.role || UI_ROLE_SYSTEM),
     is_active: normalizeUserActive(nextState.is_active, true),
     password_salt: String(nextState.password_salt || ""),
@@ -495,9 +495,9 @@ async function uiWriteAuthState(nextState) {
 async function uiAuthUpdateProfile(sess, patch = {}) {
   const state = await uiReadAuthStateByUserId(sess.user_id) || await uiReadAuthStateByEmail(sess.email);
   if (!state) return { ok: false, error: "User not found" };
-  const nextName = String((patch.user_name ?? patch.userName ?? state.user_name ?? "")).trim();
+  const nextName = String((patch.name ?? patch.name ?? state.name ?? "")).trim();
   const nextEmail = normalizeEmail(patch.email ?? state.email);
-  if (!nextName) return { ok: false, error: "Username is required" };
+  if (!nextName) return { ok: false, error: "Name is required" };
   if (!isValidEmail(nextEmail)) return { ok: false, error: "Valid email is required" };
 
   const duplicate = await uiReadAuthStateByEmail(nextEmail);
@@ -505,14 +505,14 @@ async function uiAuthUpdateProfile(sess, patch = {}) {
     return { ok: false, error: "Email is already used by another user" };
   }
 
-  const duplicateName = await uiReadAuthStateByUserName(nextName);
+  const duplicateName = await uiReadAuthStateByName(nextName);
   if (duplicateName && String(duplicateName.user_id || "") !== String(state.user_id || "")) {
-    return { ok: false, error: "Username is already taken" };
+    return { ok: false, error: "Name is already taken" };
   }
 
   const next = {
     user_id: String(state.user_id || CFG.mt5DefaultUserId),
-    user_name: nextName,
+    name: nextName,
     email: nextEmail,
     role: normalizeUserRole(state.role || UI_ROLE_SYSTEM),
     is_active: normalizeUserActive(state.is_active, true),
@@ -533,23 +533,23 @@ async function uiListUsers() {
 }
 
 async function uiCreateUser(payload = {}) {
-  const userName = String(payload.user_name ?? payload.userName ?? "").trim();
+  const name = String(payload.name ?? payload.name ?? "").trim();
   const email = normalizeEmail(payload.email);
   const role = normalizeUserRole(payload.role || "User");
   const password = String(payload.password || "");
-  if (!userName) return { ok: false, error: "Username is required" };
+  if (!name) return { ok: false, error: "Name is required" };
   if (!isValidEmail(email)) return { ok: false, error: "Valid email is required" };
   if (password.length < 8) return { ok: false, error: "Password must be at least 8 characters" };
   const duplicateEmail = await uiReadAuthStateByEmail(email);
   if (duplicateEmail) return { ok: false, error: "Email is already used by another user" };
-  const duplicateName = await uiReadAuthStateByUserName(userName);
-  if (duplicateName) return { ok: false, error: "Username is already taken" };
+  const duplicateName = await uiReadAuthStateByName(name);
+  if (duplicateName) return { ok: false, error: "Name is already taken" };
   const userId = String(payload.user_id || crypto.randomUUID()).trim();
   const salt = makeSaltHex();
   const now = mt5NowIso();
   await uiWriteAuthState({
     user_id: userId,
-    user_name: userName,
+    name: name,
     email,
     role,
     is_active: true,
@@ -560,7 +560,7 @@ async function uiCreateUser(payload = {}) {
   });
   return {
     ok: true,
-    user: uiPublicUserView({ user_id: userId, user_name: userName, email, role, is_active: true, updated_at: now, created_at: now }),
+    user: uiPublicUserView({ user_id: userId, name: name, email, role, is_active: true, updated_at: now, created_at: now }),
   };
 }
 
@@ -569,19 +569,19 @@ async function uiUpdateUserById(userIdRaw, payload = {}) {
   if (!userId) return { ok: false, error: "user_id is required" };
   const current = await uiReadAuthStateByUserId(userId);
   if (!current) return { ok: false, error: "User not found" };
-  const nextName = String((payload.user_name ?? payload.userName ?? current.user_name ?? "")).trim();
+  const nextName = String((payload.name ?? payload.name ?? current.name ?? "")).trim();
   const nextEmail = normalizeEmail(payload.email ?? current.email);
   const nextRole = normalizeUserRole(payload.role ?? current.role);
   const nextActive = normalizeUserActive(payload.is_active ?? payload.isActive ?? current.is_active, true);
-  if (!nextName) return { ok: false, error: "Username is required" };
+  if (!nextName) return { ok: false, error: "Name is required" };
   if (!isValidEmail(nextEmail)) return { ok: false, error: "Valid email is required" };
   const duplicate = await uiReadAuthStateByEmail(nextEmail);
   if (duplicate && String(duplicate.user_id || "") !== userId) {
     return { ok: false, error: "Email is already used by another user" };
   }
-  const duplicateName = await uiReadAuthStateByUserName(nextName);
+  const duplicateName = await uiReadAuthStateByName(nextName);
   if (duplicateName && String(duplicateName.user_id || "") !== userId) {
-    return { ok: false, error: "Username is already taken" };
+    return { ok: false, error: "Name is already taken" };
   }
   const isDefaultUser = userId === String(CFG.mt5DefaultUserId);
   const password = payload.password === undefined ? "" : String(payload.password || "");
@@ -592,7 +592,7 @@ async function uiUpdateUserById(userIdRaw, payload = {}) {
   const hash = payload.password ? hashPassword(password, salt) : String(current.password_hash || "");
   const next = {
     user_id: userId,
-    user_name: nextName,
+    name: nextName,
     email: nextEmail,
     role: isDefaultUser ? UI_ROLE_SYSTEM : nextRole,
     is_active: isDefaultUser ? true : nextActive,
@@ -667,7 +667,7 @@ async function uiEnsureAuthBootstrap() {
   const legacy = parseLegacyUiAuthStateFromFile();
   const seed = legacy || uiDefaultAuthState(targetEmail);
   seed.user_id = String(seed.user_id || CFG.mt5DefaultUserId);
-  seed.user_name = String(seed.user_name || fallbackUserNameFromEmail(seed.email));
+  seed.name = String(seed.name || fallbackNameFromEmail(seed.email));
   seed.role = normalizeUserRole(seed.role || UI_ROLE_SYSTEM);
   seed.is_active = normalizeUserActive(seed.is_active, true);
   seed.created_at = String(seed.created_at || seed.updated_at || mt5NowIso());
@@ -708,13 +708,13 @@ function createUiSession(user) {
   const token = crypto.randomBytes(32).toString("hex");
   const email = normalizeEmail(user?.email || "");
   const userId = String(user?.user_id || CFG.mt5DefaultUserId);
-  const userName = String(user?.user_name || fallbackUserNameFromEmail(email));
+  const name = String(user?.name || fallbackNameFromEmail(email));
   const role = normalizeUserRole(user?.role || UI_ROLE_SYSTEM);
   const isActive = normalizeUserActive(user?.is_active, true);
   UI_SESSIONS.set(token, {
     email,
     user_id: userId,
-    user_name: userName,
+    name: name,
     role,
     is_active: isActive,
     created_at: nowUnixSec(),
@@ -730,30 +730,30 @@ function getUiSessionFromReq(req) {
       token: "",
       email: normalizeEmail(CFG.uiBootstrapEmail),
       user_id: CFG.mt5DefaultUserId,
-      user_name: fallbackUserNameFromEmail(CFG.uiBootstrapEmail),
+      name: fallbackNameFromEmail(CFG.uiBootstrapEmail),
       role: UI_ROLE_SYSTEM,
       is_active: true,
     };
   }
   const cookies = parseCookies(req);
   const token = String(cookies.tvb_session || "");
-  if (!token) return { ok: false, email: "", token: "", user_id: "", user_name: "", role: "", is_active: false };
+  if (!token) return { ok: false, email: "", token: "", user_id: "", name: "", role: "", is_active: false };
   const sess = UI_SESSIONS.get(token);
-  if (!sess) return { ok: false, email: "", token, user_id: "", user_name: "", role: "", is_active: false };
+  if (!sess) return { ok: false, email: "", token, user_id: "", name: "", role: "", is_active: false };
   if (Number(sess.expires_at || 0) <= nowUnixSec()) {
     UI_SESSIONS.delete(token);
-    return { ok: false, email: "", token, user_id: "", user_name: "", role: "", is_active: false };
+    return { ok: false, email: "", token, user_id: "", name: "", role: "", is_active: false };
   }
   if (!normalizeUserActive(sess.is_active, true)) {
     UI_SESSIONS.delete(token);
-    return { ok: false, email: "", token, user_id: "", user_name: "", role: "", is_active: false };
+    return { ok: false, email: "", token, user_id: "", name: "", role: "", is_active: false };
   }
   return {
     ok: true,
     token,
     email: normalizeEmail(sess.email),
     user_id: String(sess.user_id || CFG.mt5DefaultUserId),
-    user_name: String(sess.user_name || fallbackUserNameFromEmail(sess.email)),
+    name: String(sess.name || fallbackNameFromEmail(sess.email)),
     role: normalizeUserRole(sess.role || UI_ROLE_SYSTEM),
     is_active: true,
   };
@@ -769,7 +769,7 @@ async function uiAuthGetVerifiedUser(emailRaw, passwordRaw) {
   if (!timingSafeEqHex(actualHash, state.password_hash)) return null;
   return {
     user_id: String(state.user_id || CFG.mt5DefaultUserId),
-    user_name: String(state.user_name || fallbackUserNameFromEmail(state.email)),
+    name: String(state.name || fallbackNameFromEmail(state.email)),
     email: normalizeEmail(state.email),
     role: normalizeUserRole(state.role || UI_ROLE_SYSTEM),
     is_active: normalizeUserActive(state.is_active, true),
@@ -786,7 +786,7 @@ async function uiAuthChangePassword(emailRaw, currentPassword, newPassword) {
   const next = {
     user_id: String(state.user_id || CFG.mt5DefaultUserId),
     email: state.email,
-    user_name: String(state.user_name || fallbackUserNameFromEmail(state.email)),
+    name: String(state.name || fallbackNameFromEmail(state.email)),
     role: normalizeUserRole(state.role || UI_ROLE_SYSTEM),
     is_active: normalizeUserActive(state.is_active, true),
     password_salt: nextSalt,
@@ -2000,7 +2000,7 @@ async function mt5InitBackend() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       user_id TEXT PRIMARY KEY,
-      user_name TEXT,
+      name TEXT,
       email TEXT UNIQUE,
       password_hash TEXT,
       password_salt TEXT,
@@ -2149,6 +2149,9 @@ async function mt5InitBackend() {
     await pool.query(`DROP TABLE IF EXISTS ${t} CASCADE`).catch(() => {});
   }
 
+  // Migration: Rename user_name to name in users table if it exists
+  await pool.query(`ALTER TABLE users RENAME COLUMN user_name TO name`).catch(() => {});
+
   // Migration: Strip legacy columns from signals/trades that Postgres persists despite IF NOT EXISTS definitions
   const legacySigCols = [
     'risk_money_planned', 'pnl_money_realized', 'entry_price_exec', 'sl_exec', 'tp_exec', 
@@ -2225,7 +2228,7 @@ async function mt5InitBackend() {
       LIMIT 1
     )
     UPDATE users u
-    SET user_name = COALESCE(NULLIF(u.user_name, ''), split_part(legacy.email, '@', 1)),
+    SET name = COALESCE(NULLIF(u.name, ''), split_part(legacy.email, '@', 1)),
         email = lower(legacy.email),
         password_salt = legacy.password_salt,
         password_hash = legacy.password_hash,
@@ -3053,20 +3056,20 @@ async function mt5InitBackend() {
       const target = normalizeEmail(email);
       if (!target) return null;
       const res = await pool.query(`
-        SELECT user_id, user_name, email, role, is_active, password_salt, password_hash, updated_at, created_at
+        SELECT user_id, name, email, role, is_active, password_salt, password_hash, updated_at, created_at
         FROM users
         WHERE lower(email) = $1
         LIMIT 1
       `, [target]);
       return res.rows[0] || null;
     },
-    async getUiAuthUserByName(userName) {
-      const target = String(userName || "").trim();
+    async getUiAuthUserByName(name) {
+      const target = String(name || "").trim();
       if (!target) return null;
       const res = await pool.query(`
-        SELECT user_id, user_name, email, role, is_active, password_salt, password_hash, updated_at, created_at
+        SELECT user_id, name, email, role, is_active, password_salt, password_hash, updated_at, created_at
         FROM users
-        WHERE lower(user_name) = lower($1)
+        WHERE lower(name) = lower($1)
         LIMIT 1
       `, [target]);
       return res.rows[0] || null;
@@ -3075,7 +3078,7 @@ async function mt5InitBackend() {
       const target = String(userId || "").trim();
       if (!target) return null;
       const res = await pool.query(`
-        SELECT user_id, user_name, email, role, is_active, password_salt, password_hash, updated_at, created_at
+        SELECT user_id, name, email, role, is_active, password_salt, password_hash, updated_at, created_at
         FROM users
         WHERE user_id = $1
         LIMIT 1
@@ -3105,7 +3108,7 @@ async function mt5InitBackend() {
     },
     async listUiUsers() {
       const res = await pool.query(`
-        SELECT user_id, user_name, email, role, is_active, updated_at, created_at
+        SELECT user_id, name, email, role, is_active, updated_at, created_at
         FROM users
         ORDER BY created_at ASC, user_id ASC
       `);
@@ -3116,10 +3119,10 @@ async function mt5InitBackend() {
       if (!target) throw new Error("email is required");
       const userId = String(user?.user_id || CFG.mt5DefaultUserId);
       await pool.query(`
-        INSERT INTO users (user_id, user_name, email, role, is_active, password_salt, password_hash, updated_at, created_at)
+        INSERT INTO users (user_id, name, email, role, is_active, password_salt, password_hash, updated_at, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (user_id) DO UPDATE SET
-          user_name = EXCLUDED.user_name,
+          name = EXCLUDED.name,
           email = EXCLUDED.email,
           role = EXCLUDED.role,
           is_active = EXCLUDED.is_active,
@@ -3128,7 +3131,7 @@ async function mt5InitBackend() {
           updated_at = EXCLUDED.updated_at
       `, [
         userId,
-        String(user?.user_name || fallbackUserNameFromEmail(target)),
+        String(user?.name || fallbackNameFromEmail(target)),
         target,
         normalizeUserRole(user?.role || UI_ROLE_SYSTEM),
         normalizeUserActive(user?.is_active, true),
@@ -5070,7 +5073,7 @@ const appHandler = async (req, res) => {
       ok: true,
       user: {
         user_id: sess.user_id,
-        user_name: sess.user_name,
+        name: sess.name,
         email: sess.email,
         role: sess.role,
         is_active: normalizeUserActive(sess.is_active, true),
@@ -5087,7 +5090,7 @@ const appHandler = async (req, res) => {
       ok: true,
       user: {
         user_id: state.user_id,
-        user_name: state.user_name,
+        name: state.name,
         email: state.email,
         role: state.role,
         is_active: normalizeUserActive(state.is_active, true),
@@ -5107,7 +5110,7 @@ const appHandler = async (req, res) => {
         UI_SESSIONS.set(sess.token, {
           ...cur,
           email: out.user.email,
-          user_name: out.user.user_name,
+          name: out.user.name,
           role: out.user.role,
           user_id: out.user.user_id,
           is_active: normalizeUserActive(out.user.is_active, true),
@@ -5230,7 +5233,7 @@ const appHandler = async (req, res) => {
         }
         UI_SESSIONS.set(token, {
           ...session,
-          user_name: out.user.user_name,
+          name: out.user.name,
           email: out.user.email,
           role: out.user.role,
           is_active: normalizeUserActive(out.user.is_active, true),

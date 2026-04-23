@@ -28,6 +28,7 @@ After **every** completed task or phase, end your response with exactly this for
 - **Rule (Test & Deploy section):** Use checklist format like Sprint/Feature. Completed items checked (`[x]`), pending items unchecked (`[ ]`) and listed last.
 - **Rule (Build version visibility):** For each Test & Deploy item, include build version next to the item. Build version MUST be visually observable in UI (not only backend/internal constants).
 - **Rule (Automation default):** Always AUTO test and AUTO deploy when technically possible.
+- **Rule (Remote deploy default):** After making code changes, ALWAYS auto-remote deploy and run a live smoke check unless the user explicitly says not to deploy.
 - **Rule (Manual fallback):** If any step cannot be executed by the agent and requires user action, provide explicit step-by-step instructions.
 - **Rule (What's Next):** Always provide exactly 3 roadmap/feature options for the user to choose from.
 - **Rule (Version integrity):** You MUST report the real incremental version defined in code and make sure it maps to the version shown in UI. NEVER write "updated" or "local_version".

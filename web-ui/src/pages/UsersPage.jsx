@@ -60,8 +60,8 @@ export default function UsersPage({ authUser }) {
   const [detailMode, setDetailMode] = useState("view");
   const [checkedUserIds, setCheckedUserIds] = useState(new Set());
 
-  const [createUserForm, setCreateUserForm] = useState({ user_name: "", email: "", role: "User", password: "" });
-  const [profileForm, setProfileForm] = useState({ user_name: "", email: "", role: "User", is_active: true, password: "" });
+  const [createUserForm, setCreateUserForm] = useState({ name: "", email: "", role: "User", password: "" });
+  const [profileForm, setProfileForm] = useState({ name: "", email: "", role: "User", is_active: true, password: "" });
   const [accountForm, setAccountForm] = useState({ name: "", balance: "", status: ACCOUNT_STATUS_OPTIONS[0] });
   const [editingAccountId, setEditingAccountId] = useState("");
   const [accountFormOpen, setAccountFormOpen] = useState(false);
@@ -73,7 +73,7 @@ export default function UsersPage({ authUser }) {
         if (roleFilter && String(u.role || "") !== roleFilter) return false;
         if (!q) return true;
         return (
-          String(u.user_name || "").toLowerCase().includes(q) ||
+          String(u.name || "").toLowerCase().includes(q) ||
           String(u.email || "").toLowerCase().includes(q) ||
           String(u.user_id || "").toLowerCase().includes(q)
         );
@@ -114,7 +114,7 @@ export default function UsersPage({ authUser }) {
       setDetail(out);
       const user = out?.user || {};
       setProfileForm({
-        user_name: String(user.user_name || ""),
+        name: String(user.name || ""),
         email: String(user.email || ""),
         role: String(user.role || "User"),
         is_active: Boolean(user.is_active),
@@ -143,7 +143,7 @@ export default function UsersPage({ authUser }) {
     setDetailMode("create");
     setSelectedUserId("");
     setDetail(null);
-    setCreateUserForm({ user_name: "", email: "", role: "User", password: "" });
+    setCreateUserForm({ name: "", email: "", role: "User", password: "" });
     setPageAlert(EMPTY_ALERT);
     setCreateUserErrors({});
     setCreateUserAlert(EMPTY_ALERT);
@@ -161,13 +161,13 @@ export default function UsersPage({ authUser }) {
 
   async function onCreateUser() {
     const payload = {
-      user_name: String(createUserForm.user_name || "").trim(),
+      name: String(createUserForm.name || "").trim(),
       email: String(createUserForm.email || "").trim(),
       role: String(createUserForm.role || "User"),
       password: String(createUserForm.password || ""),
     };
     const nextErrors = {};
-    if (!payload.user_name) nextErrors.user_name = "Username is required.";
+    if (!payload.name) nextErrors.name = "Name is required.";
     if (!payload.email) nextErrors.email = "Email is required.";
     if (!payload.password) nextErrors.password = "Password is required.";
     if (Object.keys(nextErrors).length) {
@@ -195,14 +195,14 @@ export default function UsersPage({ authUser }) {
   async function onSaveProfile() {
     if (!selectedUser) return;
     const payload = {
-      user_name: String(profileForm.user_name || "").trim(),
+      name: String(profileForm.name || "").trim(),
       email: String(profileForm.email || "").trim(),
       role: String(profileForm.role || "User"),
       is_active: Boolean(profileForm.is_active),
     };
     if (profileForm.password) payload.password = String(profileForm.password || "");
     const nextErrors = {};
-    if (!payload.user_name) nextErrors.user_name = "Username is required.";
+    if (!payload.name) nextErrors.name = "Name is required.";
     if (!payload.email) nextErrors.email = "Email is required.";
     if (payload.password && payload.password.length < 8) nextErrors.password = "Password must be at least 8 characters.";
     if (Object.keys(nextErrors).length) {
@@ -228,7 +228,7 @@ export default function UsersPage({ authUser }) {
 
   async function onDeactivateUser() {
     if (!selectedUser) return;
-    if (!window.confirm(`Deactivate ${selectedUser.user_name || selectedUser.user_id}?`)) return;
+    if (!window.confirm(`Deactivate ${selectedUser.name || selectedUser.user_id}?`)) return;
     try {
       setSaving(true);
       await api.deactivateUser(selectedUser.user_id);
@@ -403,7 +403,7 @@ export default function UsersPage({ authUser }) {
                   <th style={{ width: 40 }}>
                     <input type="checkbox" checked={pageRows.length > 0 && checkedUserIds.size === pageRows.length} onChange={toggleCheckAll} />
                   </th>
-                  <th>USER</th>
+                  <th>NAME</th>
                   <th>EMAIL</th>
                   <th>ROLE</th>
                   <th>STATUS</th>
@@ -424,7 +424,7 @@ export default function UsersPage({ authUser }) {
                     </td>
                     <td>
                       <div className="cell-wrap">
-                        <div className="cell-major">{u.user_name || u.user_id}</div>
+                        <div className="cell-major">{u.name || u.user_id}</div>
                         <div className="cell-minor">{u.user_id}</div>
                       </div>
                     </td>

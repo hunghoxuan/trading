@@ -32,7 +32,7 @@ export default function LoginPage({ onLogin }) {
             value={email}
             placeholder="Enter your email"
             onChange={(e) => setEmail(e.target.value)}
-            autoComplete="username"
+            autoComplete="email"
             required
             style={{ width: '100%' }}
           />

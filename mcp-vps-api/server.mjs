@@ -44,10 +44,14 @@ function sendJson(res, statusCode, payload) {
   res.end(body);
 }
 
-function setCorsHeaders(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+function setCorsHeaders(req, res) {
+  const origin = req.headers.origin || "*";
+  res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, MCP-Session-Id, Last-Event-Id");
+  res.setHeader("Access-Control-Expose-Headers", "Content-Type, Authorization, X-API-Key, MCP-Session-Id, Last-Event-Id");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Max-Age", "86400");
 }
 
 async function readJsonBody(req) {
@@ -238,7 +242,7 @@ async function runStdio() {
   const server = buildMcpServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.log("MCP server running on stdio transport.");
+  console.error("MCP server running on stdio transport.");
 }
 
 function createHttpServer() {
@@ -278,13 +282,16 @@ function createHttpServer() {
   };
 
   const mcpHttpHandler = async (req, res) => {
-    setCorsHeaders(res);
-    const requestUrl = new URL(req.url || "/", "http://localhost");
+    setCorsHeaders(req, res);
+    const requestUrl = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+    
     if (req.method === "OPTIONS") {
       res.writeHead(204);
       res.end();
       return;
     }
+
+    console.error(`[MCP] ${req.method} ${requestUrl.pathname} (Session: ${getReqHeader(req, "mcp-session-id") || "none"})`);
 
     if (requestUrl.pathname === "/health") {
       sendJson(res, 200, {
@@ -313,9 +320,10 @@ function createHttpServer() {
       }
 
       if (req.method === "GET" || req.method === "DELETE") {
-        const sessionId = String(getReqHeader(req, "mcp-session-id") || "");
+        const sessionId = String(getReqHeader(req, "mcp-session-id") || requestUrl.searchParams.get("sessionId") || requestUrl.searchParams.get("mcp-session-id") || "");
         if (!sessionId || !sessions.has(sessionId)) {
-          sendJson(res, 400, { ok: false, error: "Invalid or missing session ID." });
+          console.error(`[MCP] Session not found: ${sessionId}`);
+          sendJson(res, 404, { ok: false, error: "Session not found." });
           return;
         }
         const session = sessions.get(sessionId);
@@ -342,7 +350,7 @@ function createHttpServer() {
 
   listener.listen(MCP_PORT, MCP_HOST, () => {
     const proto = canUseHttps ? "https" : "http";
-    console.log(`MCP server listening on ${proto}://${MCP_HOST}:${MCP_PORT}/mcp`);
+    console.error(`MCP server listening on ${proto}://${MCP_HOST}:${MCP_PORT}/mcp`);
   });
 }
 

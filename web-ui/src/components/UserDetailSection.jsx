@@ -27,13 +27,13 @@ export default function UserDetailSection({
       <div className="panel-label">{title}</div>
       <div className="stack-layout" style={{ gap: 10 }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <div className="minor-text">Username</div>
+          <div className="minor-text">Name</div>
           <input 
-            value={form.user_name || ""} 
-            onChange={(e) => setForm((p) => ({ ...p, user_name: e.target.value }))} 
+            value={form.name || ""} 
+            onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} 
             style={{ width: '100%', maxWidth: '400px' }}
           />
-          {fieldErrors.user_name ? <div className="field-validation msg-error">{fieldErrors.user_name}</div> : null}
+          {fieldErrors.name ? <div className="field-validation msg-error">{fieldErrors.name}</div> : null}
         </label>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
