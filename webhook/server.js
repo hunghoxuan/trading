@@ -200,9 +200,139 @@ function json(res, statusCode, data) {
 
 const UI_SESSIONS = new Map();
 const UI_ROLE_SYSTEM = "System";
+const MARKET_DATA_MEMORY_CACHE = new Map();
+const MARKET_DATA_MEMORY_MAX_KEYS = 500;
 
 function nowUnixSec() {
   return Math.floor(Date.now() / 1000);
+}
+
+function normalizeMarketDataSymbol(rawSymbol) {
+  const base = String(rawSymbol || "").trim().toUpperCase();
+  if (!base) return "";
+  const noProvider = base.includes(":") ? base.split(":").slice(1).join(":").trim().toUpperCase() : base;
+  return noProvider.replace(/[^A-Z0-9]/g, "");
+}
+
+function normalizeMarketDataTf(tfRaw) {
+  const interval = String(timeframeToTwelve(tfRaw || "15m") || "15min").trim().toLowerCase();
+  return interval || "15min";
+}
+
+function parseTfTokenToSeconds(tfToken) {
+  const s = String(tfToken || "").trim().toLowerCase();
+  if (!s) return 60;
+  const m = s.match(/^(\d+)\s*(min|m|hour|h|day|d|week|w|month|mo)$/i);
+  if (m) {
+    const v = Math.max(1, Number(m[1]) || 1);
+    const unit = m[2].toLowerCase();
+    if (unit === "min" || unit === "m") return v * 60;
+    if (unit === "hour" || unit === "h") return v * 3600;
+    if (unit === "day" || unit === "d") return v * 86400;
+    if (unit === "week" || unit === "w") return v * 86400 * 7;
+    return v * 86400 * 30;
+  }
+  const n = Number(s.replace(/[^\d]/g, ""));
+  if (Number.isFinite(n) && n > 0) return n * 60;
+  return 60;
+}
+
+function estimateRequestedBarsRange({ tfNorm, bars, nowSec = nowUnixSec() }) {
+  const sec = Math.max(60, parseTfTokenToSeconds(tfNorm));
+  const count = Math.max(1, Number(bars) || 300);
+  const alignedEnd = Math.floor(Math.max(1, nowSec) / sec) * sec;
+  const start = alignedEnd - ((count - 1) * sec);
+  return { start, end: alignedEnd, sec };
+}
+
+function marketDataMemoryKey(symbolNorm, tfNorm) {
+  return `${symbolNorm}|${tfNorm}`;
+}
+
+function marketDataTtlSecByTf(tfNorm) {
+  const sec = parseTfTokenToSeconds(tfNorm);
+  if (sec <= 5 * 60) return 120;
+  if (sec <= 15 * 60) return 300;
+  if (sec <= 60 * 60) return 900;
+  if (sec <= 4 * 60 * 60) return 3600;
+  return 6 * 3600;
+}
+
+function marketDataMemoryRead(symbolNorm, tfNorm, reqStart, reqEnd) {
+  const key = marketDataMemoryKey(symbolNorm, tfNorm);
+  const now = Date.now();
+  const arr = Array.isArray(MARKET_DATA_MEMORY_CACHE.get(key)) ? MARKET_DATA_MEMORY_CACHE.get(key) : [];
+  if (!arr.length) return null;
+  const alive = arr.filter((x) => Number(x?.expires_at_ms || 0) > now);
+  if (alive.length !== arr.length) {
+    if (alive.length) MARKET_DATA_MEMORY_CACHE.set(key, alive);
+    else MARKET_DATA_MEMORY_CACHE.delete(key);
+  }
+  for (const item of alive) {
+    const data = item?.data && typeof item.data === "object" ? item.data : null;
+    if (!data) continue;
+    const s = Number(data?.bar_start);
+    const e = Number(data?.bar_end);
+    if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
+    if (s <= reqStart && e >= reqEnd) {
+      return JSON.parse(JSON.stringify(data));
+    }
+  }
+  return null;
+}
+
+function marketDataMemoryWrite(symbolNorm, tfNorm, snapshot) {
+  if (!snapshot || typeof snapshot !== "object") return;
+  const s = Number(snapshot.bar_start);
+  const e = Number(snapshot.bar_end);
+  const bars = Array.isArray(snapshot.bars) ? snapshot.bars : [];
+  if (!Number.isFinite(s) || !Number.isFinite(e) || !bars.length) return;
+  const key = marketDataMemoryKey(symbolNorm, tfNorm);
+  const arr = Array.isArray(MARKET_DATA_MEMORY_CACHE.get(key)) ? MARKET_DATA_MEMORY_CACHE.get(key) : [];
+  const ttlMs = marketDataTtlSecByTf(tfNorm) * 1000;
+  const kept = arr.filter((x) => {
+    const d = x?.data || {};
+    return !(Number(d?.bar_start) === s && Number(d?.bar_end) === e);
+  });
+  kept.unshift({ data: JSON.parse(JSON.stringify(snapshot)), expires_at_ms: Date.now() + ttlMs });
+  MARKET_DATA_MEMORY_CACHE.set(key, kept.slice(0, 8));
+  if (MARKET_DATA_MEMORY_CACHE.size > MARKET_DATA_MEMORY_MAX_KEYS) {
+    const first = MARKET_DATA_MEMORY_CACHE.keys().next();
+    if (!first.done) MARKET_DATA_MEMORY_CACHE.delete(first.value);
+  }
+}
+
+async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
+  const db = await mt5InitBackend();
+  const res = await db.query(
+    `SELECT data
+       FROM market_data
+      WHERE symbol = $1
+        AND tf = $2
+        AND bar_start <= $3
+        AND bar_end >= $4
+      ORDER BY updated_at DESC
+      LIMIT 1`,
+    [symbolNorm, tfNorm, reqStart, reqEnd],
+  );
+  const row = res.rows?.[0];
+  if (!row || !row.data || typeof row.data !== "object") return null;
+  return row.data;
+}
+
+async function marketDataDbUpsert(symbolNorm, tfNorm, snapshot) {
+  const s = Number(snapshot?.bar_start);
+  const e = Number(snapshot?.bar_end);
+  const bars = Array.isArray(snapshot?.bars) ? snapshot.bars : [];
+  if (!Number.isFinite(s) || !Number.isFinite(e) || !bars.length) return;
+  const db = await mt5InitBackend();
+  await db.query(
+    `INSERT INTO market_data (symbol, tf, bar_start, bar_end, data, updated_at)
+     VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
+     ON CONFLICT (symbol, tf, bar_start, bar_end)
+     DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+    [symbolNorm, tfNorm, s, e, JSON.stringify(snapshot)],
+  );
 }
 
 function normalizeEmail(emailRaw) {
@@ -2127,6 +2257,21 @@ async function mt5InitBackend() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS market_data (
+      id BIGSERIAL PRIMARY KEY,
+      symbol TEXT NOT NULL,
+      tf TEXT NOT NULL,
+      bar_start BIGINT NOT NULL,
+      bar_end BIGINT NOT NULL,
+      data JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT market_data_symbol_tf_range_key UNIQUE (symbol, tf, bar_start, bar_end)
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_market_data_symbol_tf_bar ON market_data(symbol, tf, bar_start, bar_end)`).catch(() => {});
   
   // Migration: Merge legacy events into unified logs and drop old tables
   try {
@@ -3592,6 +3737,26 @@ async function loadUserApiKeysMap(userId) {
 }
 
 async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, timeframe }) {
+  const outputsize = parseSnapshotBarsLimit(payload);
+  const forceRefresh = asBool(payload?.force_refresh ?? payload?.forceRefresh ?? false, false);
+  const symbolNorm = normalizeMarketDataSymbol(symbol);
+  const tfNorm = normalizeMarketDataTf(timeframe);
+  const reqRange = estimateRequestedBarsRange({ tfNorm, bars: outputsize });
+
+  if (!symbolNorm) return { provider: "twelvedata", status: "skipped", reason: "invalid symbol" };
+
+  if (!forceRefresh) {
+    const memHit = marketDataMemoryRead(symbolNorm, tfNorm, reqRange.start, reqRange.end);
+    if (memHit) {
+      return { ...memHit, cache_source: "memory", symbol_norm: symbolNorm, tf_norm: tfNorm };
+    }
+    const dbHit = await marketDataDbRead(symbolNorm, tfNorm, reqRange.start, reqRange.end).catch(() => null);
+    if (dbHit && typeof dbHit === "object" && Array.isArray(dbHit.bars) && dbHit.bars.length) {
+      marketDataMemoryWrite(symbolNorm, tfNorm, dbHit);
+      return { ...dbHit, cache_source: "db", symbol_norm: symbolNorm, tf_norm: tfNorm };
+    }
+  }
+
   const keys = await loadUserApiKeysMap(userId).catch(() => ({}));
   const twelveKey = String(keys.TWELVE_DATA_API_KEY || CFG.twelveDataApiKey || "").trim();
   if (!twelveKey) return { provider: "twelvedata", status: "skipped", reason: "TWELVE_DATA_API_KEY missing" };
@@ -3599,7 +3764,6 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
   const tvSymbol = await resolveTwelveSymbol(symbol, twelveKey);
   if (!tvSymbol) return { provider: "twelvedata", status: "skipped", reason: "invalid symbol" };
   const interval = timeframeToTwelve(timeframe);
-  const outputsize = parseSnapshotBarsLimit(payload);
   const primaryCandidates = [tvSymbol];
   const rawNoProvider = String(symbol || "").trim().toUpperCase().includes(":")
     ? String(symbol || "").trim().toUpperCase().split(":").slice(1).join(":").trim().toUpperCase()
@@ -3656,12 +3820,14 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
       .sort((a, b) => a.time - b.time);
     const barStart = bars.length ? bars[0].time : null;
     const barEnd = bars.length ? bars[bars.length - 1].time : null;
-    return {
+    const snapshot = {
       provider: "twelvedata",
       status: "ok",
       symbol: String(symbol || "").toUpperCase(),
+      symbol_norm: symbolNorm,
       normalized_symbol: usedSymbol,
       timeframe: String(timeframe || ""),
+      tf_norm: tfNorm,
       interval,
       fetched_at: new Date().toISOString(),
       bar_start: barStart,
@@ -3682,6 +3848,9 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
       },
       checklist: parseSnapshotChecklist(payload),
     };
+    marketDataMemoryWrite(symbolNorm, tfNorm, snapshot);
+    await marketDataDbUpsert(symbolNorm, tfNorm, snapshot).catch(() => {});
+    return snapshot;
   } catch (error) {
     const reason = error?.name === "AbortError" ? "timeout" : String(error?.message || error || "fetch_failed");
     return { provider: "twelvedata", status: "error", reason };
@@ -6733,11 +6902,12 @@ const appHandler = async (req, res) => {
       const symbol = String(url.searchParams.get("symbol") || "").trim();
       const timeframe = String(url.searchParams.get("timeframe") || url.searchParams.get("tf") || "15m").trim();
       const bars = Math.max(50, Math.min(Number(url.searchParams.get("bars") || 300) || 300, 1000));
+      const forceRefresh = asBool(url.searchParams.get("refresh"), false);
       if (!symbol) return json(res, 400, { ok: false, error: "symbol is required" });
       const userId = sess.user_id || CFG.mt5DefaultUserId;
       const snapshot = await buildAnalysisSnapshotFromTwelve({
         userId,
-        payload: { bars },
+        payload: { bars, force_refresh: forceRefresh },
         symbol,
         timeframe,
       });
