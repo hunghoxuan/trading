@@ -4,13 +4,37 @@ import { api } from "../api";
 
 const STORAGE_KEY = "chart_prompt_builder_templates_v2";
 
-const HTF_OPTIONS = ["W", "D", "4H"];
-const EXEC_OPTIONS = ["1H", "15M"];
-const CONF_OPTIONS = ["5M", "1M"];
 const STRATEGY_OPTIONS = ["ICT", "SMC", "Price Action", "Wyckoff", "EMA Trend", "Breakout", "VWAP"];
 const DEFAULT_TEMPLATE_ID = "__default__";
 const SYMBOLS_SETTING_TYPE = "SYMBOLS";
 const SYMBOLS_SETTING_NAME = "WATCHLIST";
+
+const PROFILE_PRESETS = {
+  position: {
+    label: "Position (1M / 1W / 1D)",
+    htf_tfs: ["1M"],
+    exec_tfs: ["1W"],
+    conf_tfs: ["1D"],
+  },
+  swing: {
+    label: "Swing (W / D / 1H)",
+    htf_tfs: ["W"],
+    exec_tfs: ["D"],
+    conf_tfs: ["1H"],
+  },
+  day: {
+    label: "Daily (D+4H / 15M / 5M)",
+    htf_tfs: ["D", "4H"],
+    exec_tfs: ["15M"],
+    conf_tfs: ["5M"],
+  },
+  scalper: {
+    label: "Scalping (1H / 5M / 1M)",
+    htf_tfs: ["1H"],
+    exec_tfs: ["5M"],
+    conf_tfs: ["1M"],
+  },
+};
 
 const DEFAULT_CONFIG = {
   symbol: "UK100",
@@ -20,9 +44,10 @@ const DEFAULT_CONFIG = {
   risk: "1",
   lookbackBars: "300",
   strategies: ["ICT"],
-  htf_tfs: ["D", "4H"],
-  exec_tfs: ["15M"],
-  conf_tfs: ["5M"],
+  profile: "day",
+  htf_tfs: [...PROFILE_PRESETS.day.htf_tfs],
+  exec_tfs: [...PROFILE_PRESETS.day.exec_tfs],
+  conf_tfs: [...PROFILE_PRESETS.day.conf_tfs],
   htfbias: "",
   dir: "Direction: Both",
   news: "",
@@ -43,9 +68,16 @@ const STRATEGY_CHECKLIST = {
 function normalizeTemplateConfig(raw) {
   const strategyValue = raw?.strategies || raw?.strategy || ["ICT"];
   const strategies = Array.isArray(strategyValue) ? strategyValue : [String(strategyValue || "ICT")];
+  const profileRaw = String(raw?.profile || "").trim().toLowerCase();
+  const profile = PROFILE_PRESETS[profileRaw] ? profileRaw : DEFAULT_CONFIG.profile;
+  const preset = PROFILE_PRESETS[profile] || PROFILE_PRESETS.day;
   return {
     ...DEFAULT_CONFIG,
     ...(raw || {}),
+    profile,
+    htf_tfs: Array.isArray(raw?.htf_tfs) && raw.htf_tfs.length ? raw.htf_tfs : [...preset.htf_tfs],
+    exec_tfs: Array.isArray(raw?.exec_tfs) && raw.exec_tfs.length ? raw.exec_tfs : [...preset.exec_tfs],
+    conf_tfs: Array.isArray(raw?.conf_tfs) && raw.conf_tfs.length ? raw.conf_tfs : [...preset.conf_tfs],
     strategies: [...new Set(strategies.map((x) => String(x || "").trim()).filter(Boolean))],
   };
 }
@@ -202,7 +234,19 @@ function configTfToSnapshotTf(tfRaw) {
 }
 
 function extractPositionFromAnalysis(parsed) {
-  const plan = parsed?.trade_plan && typeof parsed.trade_plan === "object" ? parsed.trade_plan : {};
+  const tradePlans = [];
+  if (Array.isArray(parsed?.trade_plan)) tradePlans.push(...parsed.trade_plan);
+  if (parsed?.trade_plan && typeof parsed.trade_plan === "object" && !Array.isArray(parsed.trade_plan)) tradePlans.push(parsed.trade_plan);
+  if (!tradePlans.length && parsed?.trade_setup && typeof parsed.trade_setup === "object") tradePlans.push(parsed.trade_setup);
+  if (!tradePlans.length && parsed && typeof parsed === "object") tradePlans.push(parsed);
+  const bestPlan = tradePlans
+    .map((x) => ({ ...(x || {}), confidence_pct: parseNum(x?.confidence_pct) }))
+    .sort((a, b) => {
+      const ac = Number.isFinite(a.confidence_pct) ? a.confidence_pct : -1;
+      const bc = Number.isFinite(b.confidence_pct) ? b.confidence_pct : -1;
+      return bc - ac;
+    })[0] || {};
+  const plan = bestPlan;
   const directionRaw = String(plan.direction || parsed?.direction || "").trim().toUpperCase();
   const direction = directionRaw.includes("SELL") ? "SELL" : directionRaw.includes("BUY") ? "BUY" : "";
   const entry = parseNum(plan.entry ?? parsed?.entry ?? parsed?.price);
@@ -360,7 +404,10 @@ function parseTradePlanFromRaw(rawText) {
   };
   const symbol = getString(/"symbol"\s*:\s*"([^"]+)"/i);
   const profile = getString(/"profile"\s*:\s*"([^"]+)"/i);
-  const tradePlanBlock = raw.match(/"trade_plan"\s*:\s*\{([\s\S]*?)\}\s*(?:,|\})/i)?.[1] || "";
+  let tradePlanBlock = raw.match(/"trade_plan"\s*:\s*\{([\s\S]*?)\}\s*(?:,|\})/i)?.[1] || "";
+  if (!tradePlanBlock) {
+    tradePlanBlock = raw.match(/"trade_plan"\s*:\s*\[\s*\{([\s\S]*?)\}\s*(?:,|\])/i)?.[1] || "";
+  }
   if (!tradePlanBlock) return null;
   const inPlan = (re) => {
     const m = tradePlanBlock.match(re);
@@ -392,6 +439,10 @@ function parseTradePlanFromRaw(rawText) {
       tp2,
       tp3,
       rr,
+      type: inPlan(/"type"\s*:\s*"([^"]+)"/i),
+      strategy: inPlan(/"strategy"\s*:\s*"([^"]+)"/i),
+      entry_model: inPlan(/"entry_model"\s*:\s*"([^"]+)"/i),
+      confidence_pct: inPlanNum(/"confidence_pct"\s*:\s*(-?\d+(?:\.\d+)?)/i),
       note: note || "",
     },
   };
@@ -420,7 +471,27 @@ function enrichParsedAnalysis(rawText, parsed) {
   return parsed;
 }
 
+function getEffectiveTfConfig(cfg) {
+  const profileKey = String(cfg?.profile || "").trim().toLowerCase();
+  const preset = PROFILE_PRESETS[profileKey] || PROFILE_PRESETS.day;
+  return {
+    profile: PROFILE_PRESETS[profileKey] ? profileKey : "day",
+    htf_tfs: Array.isArray(cfg?.htf_tfs) && cfg.htf_tfs.length ? cfg.htf_tfs : [...preset.htf_tfs],
+    exec_tfs: Array.isArray(cfg?.exec_tfs) && cfg.exec_tfs.length ? cfg.exec_tfs : [...preset.exec_tfs],
+    conf_tfs: Array.isArray(cfg?.conf_tfs) && cfg.conf_tfs.length ? cfg.conf_tfs : [...preset.conf_tfs],
+  };
+}
+
 function buildPrompt(cfg) {
+  const tfConfig = getEffectiveTfConfig(cfg);
+  const profileLabel = {
+    position: "position",
+    swing: "swing",
+    day: "daily",
+    scalper: "scalping",
+  }[tfConfig.profile] || "daily";
+  const symbol = String(cfg.symbol || "UK100").trim() || "UK100";
+  const strategy = cfg.strategies.join(", ") || "ICT";
   const context = [];
   if (cfg.htfbias) context.push(`htf_bias_override: "${cfg.htfbias}"`);
   if (cfg.dir) context.push(`direction: "${cfg.dir}"`);
@@ -429,31 +500,33 @@ function buildPrompt(cfg) {
   if (cfg.notes) context.push(`notes: "${cfg.notes}"`);
   const tfJson = JSON.stringify(
     {
-      htf_bias_tfs: cfg.htf_tfs,
-      execution_tf: cfg.exec_tfs,
-      confirmation_tf: cfg.conf_tfs,
+      htf_bias_tfs: tfConfig.htf_tfs,
+      execution_tf: tfConfig.exec_tfs,
+      confirmation_tf: tfConfig.conf_tfs,
     },
     null,
     2,
   );
 
-  const checklistRules = cfg.strategies
+  const checklistRules = (cfg.strategies.length ? cfg.strategies : ["ICT"])
     .map((s) => {
       const rules = STRATEGY_CHECKLIST[s] || [];
       return `- ${s}: ${rules.join("; ")}`;
     })
     .join("\n");
 
-  return `Act as a Senior Algo-Trader. Analyze the uploaded chart(s).\n\nSYMBOL: ${cfg.symbol}\nASSET_CLASS: ${cfg.asset}\nSTRATEGY: ${cfg.strategies.join(", ")}\nMIN_RR: ${cfg.rr}\nMAX_RISK_PCT: ${cfg.risk}%\n${context.length ? `\nCONTEXT:\n${context.map((x) => `  ${x}`).join("\n")}\n` : ""}\nTIMEFRAME_ARRAY:\n${tfJson}\n\nCHECKLIST CONDITIONS BY STRATEGY:\n${checklistRules}\n\nEXECUTION LOGIC:\n1. HTF Bias — establish bias on [${cfg.htf_tfs.join(", ")}].\n2. Execution layer — identify setup on [${cfg.exec_tfs.join(", ")}] using ${cfg.strategies.join(", ")}.\n3. Confirmation — wait for trigger on [${cfg.conf_tfs.join(", ")}].\n4. Confluence gate — entry only if 3+ factors align.\n5. RR gate — reject setup if RR < ${cfg.rr}.\n6. For every PD Array and every Key Level include bar_start (unix seconds) when possible.\n7. Return JSON only (no markdown).\n\nOUTPUT:\n{\n  "symbol": "",\n  "profile": "scalping|daily|swing",\n  "trade_plan": {\n    "direction": "",\n    "entry": null,\n    "sl": null,\n    "tp1": null,\n    "tp2": null,\n    "tp3": null,\n    "rr": null,\n    "note": "Short overview of strategy, risk level, and recommendation."\n  },\n  "market_analysis": {\n    "bias": "",\n    "trend": "",\n    "pd_arrays": [\n      { "type": "OB|FVG|S/R|Liquidity", "timeframe": "", "zone": "", "status": "active|tested|broken", "bar_start": null }\n    ],\n    "key_levels": [\n      { "name": "", "price": null, "type": "S/R|EQH|EQL|PD", "bar_start": null }\n    ],\n    "checklist": [\n      { "strategy": "", "condition": "", "checked": true, "note": "" }\n    ]\n  },\n  "risk_management": {},\n  "invalidation": "",\n  "confidence_pct": null,\n  "final_verdict": {}\n}`;
+  return `Act as a Senior Algo-Trader. Analyze the uploaded chart(s).\n\nSYMBOL: ${symbol}\nASSET_CLASS: ${cfg.asset}\nSTRATEGY: ${strategy}\nMIN_RR: ${cfg.rr}\nMAX_RISK_PCT: ${cfg.risk}%\n${context.length ? `\nCONTEXT:\n${context.map((x) => `  ${x}`).join("\n")}\n` : ""}\nTIMEFRAME_ARRAY:\n${tfJson}\n\nCHECKLIST CONDITIONS BY STRATEGY:\n${checklistRules}\n\nEXECUTION LOGIC:\n1. Context First: HTF Bias — establish bias on [${tfConfig.htf_tfs.join(", ")}]. If HTF alignment is absent, prioritize dominant trend.\n2. Execution layer — identify setup on [${tfConfig.exec_tfs.join(", ")}] using ${strategy}.\n3. Confirmation — wait for trigger on [${tfConfig.conf_tfs.join(", ")}].\n4. Constraint Check: Execute entry ONLY if high-probability confluence exists.\n5. RR gate — reject setup if RR < ${cfg.rr}.\n6. For every PD Array and every Key Level include bar_start (unix seconds) when possible.\n7. Return JSON only (no markdown).\n8. Can return array of trade_plan if there are more than one possible plan (high probability), compare by confidence_pct.\n9. Can return empty trade_plan if no valid trade or trade is too risky.\n\nOUTPUT:\n{\n  "symbol": "",\n  "trade_plan": [\n    {\n      "direction": "",\n      "profile": "position|swing|daily|scalping",\n      "entry": null,\n      "sl": null,\n      "tp1": null,\n      "tp2": null,\n      "tp3": null,\n      "rr": null,\n      "type": "limit|stop|market",\n      "invalidation": "",\n      "strategy": "",\n      "entry_model": "",\n      "confidence_pct": null,\n      "note": "Very short, concise words/sentences about how decision is made."\n    }\n  ],\n  "market_analysis": {\n    "bias": "",\n    "trend": "",\n    "pd_arrays": [\n      { "type": "OB|FVG|S/R|Liquidity", "timeframe": "", "zone": "", "status": "active|tested|broken", "bar_start": null }\n    ],\n    "key_levels": [\n      { "name": "", "price": null, "type": "S/R|EQH|EQL|PD", "bar_start": null }\n    ],\n    "checklist": [\n      { "strategy": "", "condition": "", "checked": true, "note": "" }\n    ]\n  }\n}\n\nSELECTED_PROFILE: ${profileLabel}`;
 }
 
 function buildJsonConfig(cfg) {
+  const tfConfig = getEffectiveTfConfig(cfg);
   return JSON.stringify(
     {
       version: "2.0",
       saved_at: new Date().toISOString(),
       config: {
         symbol: cfg.symbol,
+        profile: tfConfig.profile,
         asset_class: cfg.asset,
         strategies: cfg.strategies,
         session: cfg.session,
@@ -461,9 +534,9 @@ function buildJsonConfig(cfg) {
         max_risk_pct: Number(cfg.risk),
         lookback_bars: Number(cfg.lookbackBars),
         timeframe_array: {
-          htf_bias_tfs: cfg.htf_tfs,
-          execution_tf: cfg.exec_tfs,
-          confirmation_tf: cfg.conf_tfs,
+          htf_bias_tfs: tfConfig.htf_tfs,
+          execution_tf: tfConfig.exec_tfs,
+          confirmation_tf: tfConfig.conf_tfs,
         },
       },
     },
@@ -478,6 +551,7 @@ function extractSignalsFromAnalysis(parsed, fallback = {}) {
   if (Array.isArray(parsed)) rows.push(...parsed);
   if (Array.isArray(parsed.signals)) rows.push(...parsed.signals);
   if (Array.isArray(parsed.trade_setups)) rows.push(...parsed.trade_setups);
+  if (Array.isArray(parsed.trade_plan)) rows.push(...parsed.trade_plan.map((x) => ({ ...(x || {}), symbol: parsed.symbol || fallback.symbol })));
   if (parsed.trade_setup && typeof parsed.trade_setup === "object") {
     rows.push({ ...(parsed.trade_setup || {}), symbol: parsed.symbol || fallback.symbol });
   }
@@ -493,6 +567,8 @@ function extractSignalsFromAnalysis(parsed, fallback = {}) {
       const entry = parseNum(s?.entry ?? s?.price ?? s?.entry_price);
       const sl = parseNum(s?.sl ?? s?.stop_loss);
       const tp = parseNum(s?.tp ?? s?.take_profit ?? s?.tp1 ?? s?.target);
+      const strategy = String(s?.strategy || fallback.strategy || "ai").trim();
+      const entryModel = String(s?.entry_model || s?.model || "ai_claude").trim() || "ai_claude";
       return {
         symbol: normalizeSignalSymbol(s?.symbol || fallback.symbol || ""),
         action,
@@ -500,11 +576,16 @@ function extractSignalsFromAnalysis(parsed, fallback = {}) {
         sl,
         tp,
         tf: String(s?.timeframe || fallback.timeframe || "15m").trim(),
-        model: "ai_claude",
-        entry_model: "ai_claude",
+        model: entryModel,
+        entry_model: entryModel,
+        order_type: String(s?.type || s?.order_type || "limit").trim().toLowerCase(),
         note: typeof s?.note === "string" ? s.note : "",
         source: "ai",
-        strategy: String(fallback.strategy || "ai"),
+        strategy,
+        rr: parseNum(s?.rr),
+        profile: String(s?.profile || parsed?.profile || "").trim(),
+        confidence_pct: parseNum(s?.confidence_pct),
+        invalidation: String(s?.invalidation || parsed?.invalidation || "").trim(),
       };
     })
     .filter((x) => x.symbol && Number.isFinite(x.entry) && Number.isFinite(x.sl) && Number.isFinite(x.tp) && x.entry > 0 && x.sl > 0 && x.tp > 0);
@@ -589,6 +670,7 @@ export default function ChartSnapshotsPage() {
   const [addTargetTrade, setAddTargetTrade] = useState(false);
   const liteChartRef = useRef(null);
   const liteChartApiRef = useRef(null);
+  const tfConfig = useMemo(() => getEffectiveTfConfig(cfg), [cfg]);
 
   const tvSymbol = useMemo(() => {
     const base = String(cfg.symbol || "").trim();
@@ -597,11 +679,11 @@ export default function ChartSnapshotsPage() {
   }, [cfg.symbol, provider]);
 
   const promptText = useMemo(() => buildPrompt(cfg), [cfg]);
-  const timeframe = useMemo(() => normalizeTfLabelToLower(cfg.exec_tfs?.[0] || "15m"), [cfg.exec_tfs]);
+  const timeframe = useMemo(() => normalizeTfLabelToLower(tfConfig.exec_tfs?.[0] || "15m"), [tfConfig.exec_tfs]);
   const snapshotTfs = useMemo(() => {
-    const all = [...(cfg.htf_tfs || []), ...(cfg.exec_tfs || []), ...(cfg.conf_tfs || [])];
+    const all = [...(tfConfig.htf_tfs || []), ...(tfConfig.exec_tfs || []), ...(tfConfig.conf_tfs || [])];
     return [...new Set(all.map(configTfToSnapshotTf).filter(Boolean))];
-  }, [cfg.htf_tfs, cfg.exec_tfs, cfg.conf_tfs]);
+  }, [tfConfig.htf_tfs, tfConfig.exec_tfs, tfConfig.conf_tfs]);
   const jsonConfigText = useMemo(() => buildJsonConfig(cfg), [cfg]);
   const effectiveParsed = useMemo(
     () => enrichParsedAnalysis(analysisRaw, analysisParsed || tryParseJsonLoose(analysisJson) || tryParseJsonLoose(analysisRaw)),
@@ -631,6 +713,17 @@ export default function ChartSnapshotsPage() {
   const currentBarsSnapshot = barsCache[currentBarsKey] || null;
 
   const setCfgField = (key, value) => setCfg((prev) => ({ ...prev, [key]: value }));
+  const setProfilePreset = (profileKey) => {
+    const key = String(profileKey || "").trim().toLowerCase();
+    const preset = PROFILE_PRESETS[key] || PROFILE_PRESETS.day;
+    setCfg((prev) => ({
+      ...prev,
+      profile: PROFILE_PRESETS[key] ? key : "day",
+      htf_tfs: [...preset.htf_tfs],
+      exec_tfs: [...preset.exec_tfs],
+      conf_tfs: [...preset.conf_tfs],
+    }));
+  };
 
   const loadSnapshots = async () => {
     setLoading(true);
@@ -682,9 +775,17 @@ export default function ChartSnapshotsPage() {
     setUsedFiles([]);
     setAnalysisFilesDisplay(Array.isArray(files) ? files : []);
     try {
+      const basePrompt = String(promptDraft || promptText || "").trim();
+      const composedPrompt = [
+        basePrompt,
+        "JSON_CONFIG:",
+        jsonConfigText,
+        "GUIDE:",
+        String(guideDraft || "").trim(),
+      ].filter(Boolean).join("\n\n");
       const payload = {
         model: "claude-sonnet-4-0",
-        prompt: promptDraft || promptText,
+        prompt: composedPrompt,
       };
       if (Array.isArray(files) && files.length) payload.files = files;
       const out = await api.chartSnapshotsAnalyze(payload);
@@ -928,10 +1029,10 @@ export default function ChartSnapshotsPage() {
               key_levels: mergedKeyLevels,
               summary: {
                 ...(cachedSnapshot.summary && typeof cachedSnapshot.summary === "object" ? cachedSnapshot.summary : {}),
-                profile: parsed?.profile || "",
+                profile: payload?.profile || parsed?.profile || "",
                 bias: parsed?.market_analysis?.bias || "",
                 trend: parsed?.market_analysis?.trend || "",
-                note: position.note || parsed?.trade_plan?.note || "",
+                note: position.note || payload.note || "",
               },
             }
           : undefined;
@@ -941,14 +1042,14 @@ export default function ChartSnapshotsPage() {
           tp: parseNum(position.tp) || payload.tp,
           sl: parseNum(position.sl) || payload.sl,
           rr: parseNum(position.rr) || payload.rr,
-          note: String(position.note || payload.note || parsed?.trade_plan?.note || parsed?.note || "").trim(),
+          note: String(position.note || payload.note || parsed?.note || "").trim(),
           only_signal: !addTargetTrade,
-          profile: parsed?.profile || payload?.profile || "",
-          trade_plan: parsed?.trade_plan && typeof parsed.trade_plan === "object" ? parsed.trade_plan : undefined,
+          profile: payload?.profile || parsed?.profile || "",
+          trade_plan: parsed?.trade_plan && typeof parsed.trade_plan === "object" ? parsed.trade_plan : (Array.isArray(parsed?.trade_plan) ? parsed.trade_plan : undefined),
           market_analysis: parsed?.market_analysis && typeof parsed.market_analysis === "object" ? parsed.market_analysis : undefined,
           risk_management: parsed?.risk_management && typeof parsed.risk_management === "object" ? parsed.risk_management : undefined,
-          invalidation: parsed?.invalidation ?? "",
-          confidence_pct: parsed?.confidence_pct ?? null,
+          invalidation: payload?.invalidation || parsed?.invalidation || "",
+          confidence_pct: Number.isFinite(payload?.confidence_pct) ? payload.confidence_pct : (parsed?.confidence_pct ?? null),
           final_verdict: parsed?.final_verdict && typeof parsed.final_verdict === "object" ? parsed.final_verdict : undefined,
           analysis_snapshot: analysisSnapshotPayload,
         };
@@ -1269,6 +1370,15 @@ export default function ChartSnapshotsPage() {
               <div><label className="minor-text">Sessions</label><select value={cfg.session} onChange={(e) => setCfgField("session", e.target.value)}><option>Any</option><option>London</option><option>New York</option><option>Asian</option><option>London+NY</option></select></div>
               <div><label className="minor-text">MinRR</label><input type="number" min="0.5" step="0.5" value={cfg.rr} onChange={(e) => setCfgField("rr", e.target.value)} /></div>
               <div><label className="minor-text">Max Risk</label><input type="number" min="0.1" step="0.1" value={cfg.risk} onChange={(e) => setCfgField("risk", e.target.value)} /></div>
+              <div className="snapshot-col-span-2">
+                <label className="minor-text">Profile</label>
+                <select value={cfg.profile || "day"} onChange={(e) => setProfilePreset(e.target.value)}>
+                  <option value="position">{PROFILE_PRESETS.position.label}</option>
+                  <option value="swing">{PROFILE_PRESETS.swing.label}</option>
+                  <option value="day">{PROFILE_PRESETS.day.label}</option>
+                  <option value="scalper">{PROFILE_PRESETS.scalper.label}</option>
+                </select>
+              </div>
             </div>
             <div>
               <label className="minor-text">Strategy (multi-select)</label>
@@ -1279,9 +1389,18 @@ export default function ChartSnapshotsPage() {
               </div>
             </div>
             <div className="snapshot-tf-v2">
-              <div className="snapshot-col-span-5"><label className="minor-text">HTF Bias TFs</label><div className="snapshot-tag-wrap-v2">{HTF_OPTIONS.map((tf) => <button key={tf} type="button" className={`secondary-button snapshot-tag-v2 ${cfg.htf_tfs.includes(tf) ? "active" : ""}`} onClick={() => setCfgField("htf_tfs", toggleArrayValue(cfg.htf_tfs, tf))}>{tf}</button>)}</div></div>
-              <div className="snapshot-col-span-4"><label className="minor-text">Execution TFs</label><div className="snapshot-tag-wrap-v2">{EXEC_OPTIONS.map((tf) => <button key={tf} type="button" className={`secondary-button snapshot-tag-v2 ${cfg.exec_tfs.includes(tf) ? "active" : ""}`} onClick={() => setCfgField("exec_tfs", toggleArrayValue(cfg.exec_tfs, tf))}>{tf}</button>)}</div></div>
-              <div className="snapshot-col-span-3"><label className="minor-text">Confirmation TFs</label><div className="snapshot-tag-wrap-v2">{CONF_OPTIONS.map((tf) => <button key={tf} type="button" className={`secondary-button snapshot-tag-v2 ${cfg.conf_tfs.includes(tf) ? "active" : ""}`} onClick={() => setCfgField("conf_tfs", toggleArrayValue(cfg.conf_tfs, tf))}>{tf}</button>)}</div></div>
+              <div className="snapshot-col-span-4">
+                <label className="minor-text">HTF Bias TF</label>
+                <div className="snapshot-tf-pill-v3">{tfConfig.htf_tfs.join(", ")}</div>
+              </div>
+              <div className="snapshot-col-span-4">
+                <label className="minor-text">Execution TF</label>
+                <div className="snapshot-tf-pill-v3">{tfConfig.exec_tfs.join(", ")}</div>
+              </div>
+              <div className="snapshot-col-span-4">
+                <label className="minor-text">Confirmation TF</label>
+                <div className="snapshot-tf-pill-v3">{tfConfig.conf_tfs.join(", ")}</div>
+              </div>
             </div>
             <div className="snapshot-context-v2">
               <div className="snapshot-col-span-2"><label className="minor-text">HTF Bias</label><select value={cfg.htfbias} onChange={(e) => setCfgField("htfbias", e.target.value)}><option value="">Auto</option><option>Bullish</option><option>Bearish</option><option>Ranging</option></select></div>
@@ -1293,19 +1412,19 @@ export default function ChartSnapshotsPage() {
         ) : null}
         {settingsTab === "prompt" ? (
           <>
-            <div className="minor-text">Prompt is the exact instruction sent to AI. You can customize it before Analyze.</div>
+            <div className="minor-text">Prompt is the main instruction sent to AI on Analyze.</div>
             <textarea className="snapshot-mono-v2" rows={30} value={promptDraft} onChange={(e) => { setPromptDraft(e.target.value); setPromptEdited(true); }} />
           </>
         ) : null}
         {settingsTab === "json" ? (
           <>
-            <div className="minor-text">JSON Config is a machine-friendly snapshot of current settings/timeframes used to generate prompt and analysis context.</div>
+            <div className="minor-text">JSON Config is included in Analyze request as structured context (Prompt + JSON Config + Guide).</div>
             <textarea className="snapshot-mono-v2" rows={30} value={jsonConfigText} readOnly disabled />
           </>
         ) : null}
         {settingsTab === "guide" ? (
           <>
-            <div className="minor-text">Guide is internal reference notes/checklist for your team. It is editable for documentation.</div>
+            <div className="minor-text">Guide is editable and included in Analyze request as additional instructions/checklist context.</div>
             <textarea className="snapshot-mono-v2" rows={30} value={guideDraft} onChange={(e) => setGuideDraft(e.target.value)} />
           </>
         ) : null}

@@ -648,6 +648,16 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 8px;
 }
+.snapshot-tf-pill-v3 {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  font-size: 12px;
+}
 .snapshot-context-v2 {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
