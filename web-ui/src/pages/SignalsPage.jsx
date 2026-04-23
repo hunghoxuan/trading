@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { TradeSignalChart } from "../components/TradeSignalChart";
+import { TradePlanEditor } from "../components/TradePlanEditor";
 
 const STATUS_OPTIONS = [
   { value: "", label: "ALL STATUSES" },
@@ -143,6 +144,46 @@ function signalRiskSize(s, details) {
   return Number.isFinite(est) ? est : null;
 }
 
+function formatNum3(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "";
+  return String(Number(n.toFixed(3)));
+}
+
+function extractTradePlanFromSignal(signal = {}) {
+  const raw = signal?.raw_json && typeof signal.raw_json === "object" ? signal.raw_json : {};
+  const tradePlan = raw?.trade_plan && typeof raw.trade_plan === "object" && !Array.isArray(raw.trade_plan) ? raw.trade_plan : {};
+  const sideRaw = String(signal?.action || signal?.side || tradePlan?.direction || "").toUpperCase();
+  return {
+    direction: sideRaw.includes("SELL") ? "SELL" : "BUY",
+    trade_type: String(tradePlan?.type || raw?.order_type || "limit").toLowerCase(),
+    entry: formatNum3(asNum(signal?.entry || signal?.target_price || signal?.entry_price) ?? asNum(raw?.entry ?? raw?.price) ?? NaN),
+    tp: formatNum3(asNum(signal?.tp || signal?.tp_price) ?? asNum(tradePlan?.tp1 ?? tradePlan?.tp) ?? NaN),
+    sl: formatNum3(asNum(signal?.sl || signal?.sl_price) ?? asNum(tradePlan?.sl) ?? NaN),
+    rr: formatNum3(asNum(signal?.rr_planned) ?? asNum(tradePlan?.rr) ?? calcRrFromSignal(signal) ?? NaN),
+    note: String(tradePlan?.note || signal?.note || "").trim(),
+  };
+}
+
+function validateTradePlan(plan = {}) {
+  const entry = asNum(plan.entry);
+  const tp = asNum(plan.tp);
+  const sl = asNum(plan.sl);
+  const rr = asNum(plan.rr);
+  const direction = String(plan.direction || "").trim().toUpperCase();
+  if (!["BUY", "SELL"].includes(direction)) return "Direction must be Buy or Sell.";
+  if (entry == null || tp == null || sl == null) return "Entry/TP/SL must be numeric values.";
+  if (rr != null && (rr < 0.3 || rr > 5)) return "RR must be between 0.3 and 5.";
+  if (direction === "BUY") {
+    if (!(tp > entry)) return "For BUY, TP must be greater than Entry.";
+    if (!(sl < entry)) return "For BUY, SL must be lower than Entry.";
+  } else if (direction === "SELL") {
+    if (!(tp < entry)) return "For SELL, TP must be lower than Entry.";
+    if (!(sl > entry)) return "For SELL, SL must be greater than Entry.";
+  }
+  return "";
+}
+
 export default function SignalsPage() {
   const [symbols, setSymbols] = useState([]);
   const [rows, setRows] = useState([]);
@@ -160,6 +201,9 @@ export default function SignalsPage() {
   const [createMsg, setCreateMsg] = useState("");
   const [detailTfTab, setDetailTfTab] = useState("ENTRY");
   const [lastRefreshAt, setLastRefreshAt] = useState(null);
+  const [detailPlan, setDetailPlan] = useState({ direction: "BUY", trade_type: "limit", entry: "", tp: "", sl: "", rr: "", note: "" });
+  const [detailPlanBusy, setDetailPlanBusy] = useState({ save: false, trade: false, signal: false });
+  const [detailPlanMsg, setDetailPlanMsg] = useState({ type: "", text: "" });
   const [createForm, setCreateForm] = useState({
     action: "BUY",
     symbol: "",
@@ -239,6 +283,94 @@ export default function SignalsPage() {
     }
   }
 
+  const updateDetailPlanField = (key, rawValue) => {
+    setDetailPlan((prev) => {
+      const value = ["entry", "tp", "sl", "rr"].includes(key) ? String(rawValue ?? "").replace(",", ".") : rawValue;
+      const next = { ...prev, [key]: value };
+      const entry = asNum(next.entry);
+      const sl = asNum(next.sl);
+      const tp = asNum(next.tp);
+      const rrInput = asNum(next.rr);
+      if (key === "rr") {
+        if (entry != null && sl != null && rrInput != null && rrInput > 0) {
+          const risk = Math.abs(entry - sl);
+          if (risk > 0) {
+            const dir = String(next.direction || "BUY").toUpperCase();
+            const sign = dir === "SELL" ? -1 : 1;
+            next.tp = formatNum3(entry + sign * (risk * rrInput));
+          }
+        }
+      } else if (entry != null && sl != null && tp != null) {
+        const risk = Math.abs(entry - sl);
+        const reward = Math.abs(tp - entry);
+        if (risk > 0 && reward > 0) next.rr = formatNum3(reward / risk);
+      }
+      if (["entry", "tp", "sl", "rr"].includes(key)) {
+        const parsed = asNum(next[key]);
+        next[key] = parsed != null ? formatNum3(parsed) : "";
+      }
+      return next;
+    });
+  };
+
+  async function saveSelectedSignalPlan() {
+    if (!selectedSignal?.signal_id) return;
+    const err = validateTradePlan(detailPlan);
+    if (err) {
+      setDetailPlanMsg({ type: "error", text: err });
+      return;
+    }
+    try {
+      setDetailPlanBusy((p) => ({ ...p, save: true }));
+      await api.saveSignalTradePlan(selectedSignal.signal_id, {
+        direction: detailPlan.direction,
+        trade_type: detailPlan.trade_type,
+        entry: asNum(detailPlan.entry),
+        tp: asNum(detailPlan.tp),
+        sl: asNum(detailPlan.sl),
+        rr: asNum(detailPlan.rr),
+        note: detailPlan.note,
+      });
+      await loadSignals();
+      await loadSignalDetail(selectedSignal.signal_id);
+      setDetailPlanMsg({ type: "success", text: "Signal plan saved." });
+    } catch (e) {
+      setDetailPlanMsg({ type: "error", text: String(e?.message || e || "Failed to save signal plan.") });
+    } finally {
+      setDetailPlanBusy((p) => ({ ...p, save: false }));
+    }
+  }
+
+  async function addTradeFromSignal(signal) {
+    const targetSignalId = String(signal?.signal_id || selectedSignal?.signal_id || "").trim();
+    if (!targetSignalId) return;
+    const err = validateTradePlan(detailPlan);
+    if (signal?.signal_id === selectedSignal?.signal_id && err) {
+      setDetailPlanMsg({ type: "error", text: err });
+      return;
+    }
+    const plan = signal?.signal_id === selectedSignal?.signal_id ? detailPlan : extractTradePlanFromSignal(signal);
+    try {
+      setDetailPlanBusy((p) => ({ ...p, trade: true }));
+      await api.createTradeFromSignal(targetSignalId, {
+        direction: plan.direction,
+        trade_type: plan.trade_type,
+        entry: asNum(plan.entry),
+        tp: asNum(plan.tp),
+        sl: asNum(plan.sl),
+        rr: asNum(plan.rr),
+        note: plan.note,
+      });
+      setDetailPlanMsg({ type: "success", text: "Trade queued from signal." });
+    } catch (e) {
+      const msg = String(e?.message || e || "Failed to add trade from signal.");
+      setDetailPlanMsg({ type: "error", text: msg });
+      setError(msg);
+    } finally {
+      setDetailPlanBusy((p) => ({ ...p, trade: false }));
+    }
+  }
+
   async function onCreateSignal() {
     try {
       setBulkBusy(true);
@@ -298,8 +430,14 @@ export default function SignalsPage() {
   }
 
   useEffect(() => {
-    if (selectedSignal) loadSignalDetail(selectedSignal.signal_id);
-    else setSignalDetails(null);
+    if (selectedSignal) {
+      loadSignalDetail(selectedSignal.signal_id);
+      setDetailPlan(extractTradePlanFromSignal(selectedSignal));
+      setDetailPlanMsg({ type: "", text: "" });
+    } else {
+      setSignalDetails(null);
+      setDetailPlan({ direction: "BUY", trade_type: "limit", entry: "", tp: "", sl: "", rr: "", note: "" });
+    }
   }, [selectedSignal]);
 
   useEffect(() => { loadSymbols(); }, []);
@@ -530,6 +668,18 @@ export default function SignalsPage() {
                         <div className="cell-wrap">
                           <div className="cell-major"><span className={`badge ${status.cls} badge-fixed`}>{status.label}</span></div>
                           <PnlDisplay value={t.pnl_money_realized} />
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            style={{ marginTop: 6, width: "fit-content" }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addTradeFromSignal(t);
+                            }}
+                            disabled={detailPlanBusy.trade}
+                          >
+                            + Trade
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -637,6 +787,24 @@ export default function SignalsPage() {
                     );
                   })()}
                 </div>
+              </div>
+
+              <div className="snapshot-response-footer-v3" style={{ marginBottom: 14 }}>
+                <TradePlanEditor
+                  signalId={selectedSignal?.signal_id || null}
+                  tradeId={null}
+                  value={detailPlan}
+                  onChange={updateDetailPlanField}
+                  onSave={saveSelectedSignalPlan}
+                  onAddTrade={() => addTradeFromSignal(selectedSignal)}
+                  showSaveButton={true}
+                  showAddSignalButton={false}
+                  showAddTradeButton={true}
+                  saveLabel="Save Signal"
+                  busy={detailPlanBusy}
+                  error={detailPlanMsg.type === "error" ? detailPlanMsg.text : ""}
+                />
+                {detailPlanMsg.text && detailPlanMsg.type !== "error" ? <span className="minor-text msg-success">{detailPlanMsg.text}</span> : null}
               </div>
 
               <div style={{ marginBottom: 14 }}>

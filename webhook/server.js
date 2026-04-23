@@ -7412,6 +7412,183 @@ const appHandler = async (req, res) => {
     }
   }
 
+  if (req.method === "POST" && /^\/v2\/signals\/[^/]+\/trade-plan\/save$/.test(url.pathname)) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    let payload = {};
+    try { payload = await readJson(req); } catch {}
+    if (!requireAdminKey(req, res, url, payload)) return;
+    try {
+      const m = url.pathname.match(/^\/v2\/signals\/([^/]+)\/trade-plan\/save$/);
+      const signalId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!signalId) return json(res, 400, { ok: false, error: "signal_id is required" });
+      const userId = uiEffectiveUserId(req, url, payload);
+      const sideRaw = String(payload.direction || payload.side || "").trim().toUpperCase();
+      const side = sideRaw.includes("SELL") ? "SELL" : (sideRaw.includes("BUY") ? "BUY" : null);
+      const sl = asNum(payload.sl, NaN);
+      const tp = asNum(payload.tp, NaN);
+      const rr = asNum(payload.rr, NaN);
+      const entry = asNum(payload.entry ?? payload.price, NaN);
+      const tradeType = String(payload.trade_type || payload.order_type || "limit").trim().toLowerCase();
+      const note = String(payload.note || "").trim();
+      const rawPatch = {};
+      if (Number.isFinite(entry)) {
+        rawPatch.entry = entry;
+        rawPatch.price = entry;
+      }
+      rawPatch.order_type = ["limit", "market", "stop"].includes(tradeType) ? tradeType : "limit";
+      rawPatch.trade_plan = {
+        direction: side || null,
+        entry: Number.isFinite(entry) ? entry : null,
+        sl: Number.isFinite(sl) ? sl : null,
+        tp1: Number.isFinite(tp) ? tp : null,
+        rr: Number.isFinite(rr) ? rr : null,
+        type: rawPatch.order_type,
+        note: note || null,
+      };
+      const b = await mt5Backend();
+      const params = [
+        side,
+        Number.isFinite(sl) ? sl : null,
+        Number.isFinite(tp) ? tp : null,
+        Number.isFinite(rr) ? rr : null,
+        note || null,
+        JSON.stringify(rawPatch || {}),
+        signalId,
+        userId || null,
+      ];
+      const whereUser = userId ? "AND user_id = $8" : "";
+      const resUpd = await b.query(`
+        UPDATE signals
+        SET side = COALESCE($1, side),
+            sl = COALESCE($2, sl),
+            tp = COALESCE($3, tp),
+            rr_planned = COALESCE($4, rr_planned),
+            note = COALESCE($5, note),
+            raw_json = COALESCE(raw_json, '{}'::jsonb) || $6::jsonb,
+            updated_at = NOW()
+        WHERE signal_id = $7
+        ${whereUser}
+        RETURNING *
+      `, userId ? params : params.slice(0, 7));
+      const row = resUpd.rows?.[0];
+      if (!row) return json(res, 404, { ok: false, error: "signal not found" });
+      await mt5Log(signalId, "signals", { event_type: "SIGNAL_TRADE_PLAN_SAVED", data: rawPatch }, row.user_id || userId || CFG.mt5DefaultUserId);
+      return json(res, 200, { ok: true, item: mt5MapDbRow(row) });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && /^\/v2\/signals\/[^/]+\/trade$/.test(url.pathname)) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    let payload = {};
+    try { payload = await readJson(req); } catch {}
+    if (!requireAdminKey(req, res, url, payload)) return;
+    try {
+      const m = url.pathname.match(/^\/v2\/signals\/([^/]+)\/trade$/);
+      const signalId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!signalId) return json(res, 400, { ok: false, error: "signal_id is required" });
+      const userId = uiEffectiveUserId(req, url, payload);
+      const b = await mt5Backend();
+      const whereUser = userId ? "AND user_id = $2" : "";
+      const signalRes = await b.query(`
+        SELECT * FROM signals WHERE signal_id = $1 ${whereUser} LIMIT 1
+      `, userId ? [signalId, userId] : [signalId]);
+      const signal = signalRes.rows?.[0];
+      if (!signal) return json(res, 404, { ok: false, error: "signal not found" });
+      const raw = signal.raw_json && typeof signal.raw_json === "object" ? signal.raw_json : {};
+      const sideRaw = String(payload.direction || payload.side || signal.side || "").trim().toUpperCase();
+      const side = sideRaw.includes("SELL") ? "SELL" : "BUY";
+      const entry = asNum(payload.entry ?? payload.price ?? raw.entry ?? raw.price, NaN);
+      const sl = asNum(payload.sl ?? signal.sl, NaN);
+      const tp = asNum(payload.tp ?? signal.tp, NaN);
+      const rr = asNum(payload.rr ?? signal.rr_planned, NaN);
+      const note = String(payload.note || signal.note || "").trim();
+      const tradeType = String(payload.trade_type || payload.order_type || raw.order_type || "limit").trim().toLowerCase();
+      const sourceId = String(signal.source_id || mt5SlugId(signal.source || "signal", "signal")).trim();
+      const fanout = await mt5FanoutSignalTradeV2({
+        signal_id: signalId,
+        source_id: sourceId,
+        user_id: signal.user_id || userId || CFG.mt5DefaultUserId,
+        entry_model: signal.entry_model || null,
+        signal_tf: signal.signal_tf || null,
+        chart_tf: signal.chart_tf || null,
+        symbol: signal.symbol,
+        action: side,
+        entry: Number.isFinite(entry) ? entry : null,
+        sl: Number.isFinite(sl) ? sl : null,
+        tp: Number.isFinite(tp) ? tp : null,
+        volume: asNum(payload.volume ?? raw.volume, NaN) || null,
+        note: note || null,
+        metadata: {
+          event_type: "SIGNAL_CREATE_TRADE",
+          order_type: ["limit", "market", "stop"].includes(tradeType) ? tradeType : "limit",
+          rr_planned: Number.isFinite(rr) ? rr : null,
+          manual_trade_create: true,
+        },
+      });
+      await mt5Log(signalId, "signals", { event_type: "SIGNAL_CREATE_TRADE", data: { created: fanout?.created || 0 } }, signal.user_id || userId || CFG.mt5DefaultUserId);
+      return json(res, 200, { ok: true, signal_id: signalId, created: fanout?.created || 0, account_ids: fanout?.account_ids || [] });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && /^\/v2\/trades\/[^/]+\/trade-plan\/save$/.test(url.pathname)) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    let payload = {};
+    try { payload = await readJson(req); } catch {}
+    if (!requireAdminKey(req, res, url, payload)) return;
+    try {
+      const m = url.pathname.match(/^\/v2\/trades\/([^/]+)\/trade-plan\/save$/);
+      const tradeId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!tradeId) return json(res, 400, { ok: false, error: "trade_id is required" });
+      const userId = uiEffectiveUserId(req, url, payload);
+      const sideRaw = String(payload.direction || payload.side || "").trim().toUpperCase();
+      const side = sideRaw.includes("SELL") ? "SELL" : (sideRaw.includes("BUY") ? "BUY" : null);
+      const entry = asNum(payload.entry ?? payload.price, NaN);
+      const sl = asNum(payload.sl, NaN);
+      const tp = asNum(payload.tp, NaN);
+      const rr = asNum(payload.rr, NaN);
+      const tradeType = String(payload.trade_type || payload.order_type || "limit").trim().toLowerCase();
+      const note = String(payload.note || "").trim();
+      const metaPatch = {
+        order_type: ["limit", "market", "stop"].includes(tradeType) ? tradeType : "limit",
+        rr_planned: Number.isFinite(rr) ? rr : null,
+      };
+      const params = [
+        side,
+        Number.isFinite(entry) ? entry : null,
+        Number.isFinite(sl) ? sl : null,
+        Number.isFinite(tp) ? tp : null,
+        note || null,
+        JSON.stringify(metaPatch || {}),
+        tradeId,
+        userId || null,
+      ];
+      const whereUser = userId ? "AND user_id = $8" : "";
+      const resUpd = await (await mt5Backend()).query(`
+        UPDATE trades
+        SET action = COALESCE($1, action),
+            entry = COALESCE($2, entry),
+            sl = COALESCE($3, sl),
+            tp = COALESCE($4, tp),
+            note = COALESCE($5, note),
+            metadata = COALESCE(metadata, '{}'::jsonb) || $6::jsonb,
+            updated_at = NOW()
+        WHERE trade_id = $7
+        ${whereUser}
+        RETURNING *
+      `, userId ? params : params.slice(0, 7));
+      const row = resUpd.rows?.[0];
+      if (!row) return json(res, 404, { ok: false, error: "trade not found" });
+      await mt5Log(tradeId, "trades", { event_type: "TRADE_PLAN_SAVED", data: metaPatch }, row.user_id || userId || CFG.mt5DefaultUserId);
+      return json(res, 200, { ok: true, item: row });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   if (req.method === "POST" && url.pathname === "/v2/sources") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
