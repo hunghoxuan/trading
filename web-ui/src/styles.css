@@ -528,6 +528,11 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .snapshot-footer-field-v3 {
   min-width: 0;
 }
+.snapshot-number-slider-v4 {
+  width: 100%;
+  margin-top: 6px;
+  accent-color: var(--accent);
+}
 .snapshot-note-field-v3 {
   min-width: 0;
 }
@@ -568,6 +573,12 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+.snapshot-symbol-row-v4 {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
 }
 .snapshot-plus-btn-v2 {
   min-width: 28px;

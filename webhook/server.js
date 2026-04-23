@@ -1176,6 +1176,60 @@ function snapshotMimeByFileName(fileName) {
   return "";
 }
 
+function normalizeSnapshotFileName(fileNameRaw) {
+  const raw = String(fileNameRaw || "").trim();
+  if (!raw) return "";
+  const safe = path.basename(raw);
+  if (!safe || safe !== raw) return "";
+  if (!/\.(png|jpe?g)$/i.test(safe)) return "";
+  return safe;
+}
+
+function collectSnapshotFilesFromValue(value, out = new Set(), depth = 0) {
+  if (depth > 7 || value === null || value === undefined) return out;
+  if (typeof value === "string") {
+    const safe = normalizeSnapshotFileName(value);
+    if (safe) out.add(safe);
+    return out;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectSnapshotFilesFromValue(item, out, depth + 1);
+    return out;
+  }
+  if (typeof value === "object") {
+    const obj = value;
+    const focusedKeys = ["files", "used_files", "snapshot_files", "analysis_files", "images", "screenshots"];
+    for (const k of focusedKeys) {
+      if (Object.prototype.hasOwnProperty.call(obj, k)) collectSnapshotFilesFromValue(obj[k], out, depth + 1);
+    }
+    // Also scan nested structures to support legacy payload shapes.
+    for (const v of Object.values(obj)) {
+      if (v && typeof v === "object") collectSnapshotFilesFromValue(v, out, depth + 1);
+    }
+    return out;
+  }
+  return out;
+}
+
+function deleteSnapshotFilesByName(fileNames = []) {
+  ensureChartSnapshotDir();
+  let deleted = 0;
+  for (const fileNameRaw of fileNames || []) {
+    const safe = normalizeSnapshotFileName(fileNameRaw);
+    if (!safe) continue;
+    const abs = path.join(CHART_SNAPSHOT_DIR, safe);
+    try {
+      if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
+        fs.unlinkSync(abs);
+        deleted += 1;
+      }
+    } catch {
+      // best effort cleanup
+    }
+  }
+  return deleted;
+}
+
 function extractJsonFromAiText(rawText) {
   const raw = String(rawText || "");
   let clean = raw.trim();
@@ -2528,8 +2582,16 @@ async function mt5InitBackend() {
         const delRes = await pool.query(`
           DELETE FROM trades
           ${where}
+          RETURNING trade_id, signal_id
         `, params);
-        return { ok: true, updated: Number(delRes.rowCount || 0), action: act };
+        const rows = delRes.rows || [];
+        return {
+          ok: true,
+          updated: Number(delRes.rowCount || 0),
+          action: act,
+          trade_ids: rows.map((r) => String(r?.trade_id || "")).filter(Boolean),
+          signal_ids: rows.map((r) => String(r?.signal_id || "")).filter(Boolean),
+        };
       }
       const res = await pool.query(`
         UPDATE trades
@@ -2538,8 +2600,16 @@ async function mt5InitBackend() {
             closed_at = COALESCE(closed_at, NOW()),
             updated_at = NOW()
         ${where}
+        RETURNING trade_id, signal_id
       `, params);
-      return { ok: true, updated: Number(res.rowCount || 0), action: act };
+      const rows = res.rows || [];
+      return {
+        ok: true,
+        updated: Number(res.rowCount || 0),
+        action: act,
+        trade_ids: rows.map((r) => String(r?.trade_id || "")).filter(Boolean),
+        signal_ids: rows.map((r) => String(r?.signal_id || "")).filter(Boolean),
+      };
     },
     async listLogs(filters = {}, limit = 200, offset = 0) {
       const clauses = []; const params = [];
@@ -3812,6 +3882,91 @@ async function mt5AckSignal(signalId, status, ticket, error, extra = {}) {
 async function mt5ListSignals(limit, statusFilter) {
   const b = await mt5Backend();
   return b.listSignals(limit, statusFilter);
+}
+
+async function mt5CleanupSignalTradeArtifacts({ signalRows = [], tradeRows = [], signalIds = [], tradeIds = [] } = {}) {
+  const sigIdSet = new Set((Array.isArray(signalIds) ? signalIds : []).map((x) => String(x || "").trim()).filter(Boolean));
+  const trdIdSet = new Set((Array.isArray(tradeIds) ? tradeIds : []).map((x) => String(x || "").trim()).filter(Boolean));
+  const signalRowsArr = Array.isArray(signalRows) ? signalRows : [];
+  const tradeRowsArr = Array.isArray(tradeRows) ? tradeRows : [];
+
+  for (const row of signalRowsArr) {
+    const sid = String(row?.signal_id || "").trim();
+    if (sid) sigIdSet.add(sid);
+  }
+  for (const row of tradeRowsArr) {
+    const tid = String(row?.trade_id || "").trim();
+    const sid = String(row?.signal_id || "").trim();
+    if (tid) trdIdSet.add(tid);
+    if (sid) sigIdSet.add(sid);
+  }
+
+  const b = await mt5Backend();
+  if (!b?.query) return { logs_deleted: 0, files_deleted: 0 };
+
+  const signalIdList = [...sigIdSet];
+  const tradeIdList = [...trdIdSet];
+
+  const fileSet = new Set();
+  for (const row of signalRowsArr) {
+    collectSnapshotFilesFromValue(row?.raw_json, fileSet);
+  }
+  for (const row of tradeRowsArr) {
+    collectSnapshotFilesFromValue(row?.metadata, fileSet);
+  }
+
+  if (signalIdList.length > 0) {
+    try {
+      const res = await b.query(`SELECT raw_json FROM signals WHERE signal_id = ANY($1::text[])`, [signalIdList]);
+      for (const row of res.rows || []) collectSnapshotFilesFromValue(row?.raw_json, fileSet);
+    } catch {
+      // ignore fetch failure; continue best effort
+    }
+    try {
+      const res = await b.query(`SELECT trade_id FROM trades WHERE signal_id = ANY($1::text[])`, [signalIdList]);
+      for (const row of res.rows || []) {
+        const tid = String(row?.trade_id || "").trim();
+        if (tid) trdIdSet.add(tid);
+      }
+    } catch {
+      // ignore fetch failure
+    }
+  }
+
+  const allTradeIds = [...trdIdSet];
+  if (allTradeIds.length > 0) {
+    try {
+      const res = await b.query(`SELECT metadata FROM trades WHERE trade_id = ANY($1::text[])`, [allTradeIds]);
+      for (const row of res.rows || []) collectSnapshotFilesFromValue(row?.metadata, fileSet);
+    } catch {
+      // ignore fetch failure
+    }
+  }
+
+  const filesDeleted = deleteSnapshotFilesByName([...fileSet]);
+
+  const where = [];
+  const params = [];
+  if (signalIdList.length > 0) {
+    params.push(signalIdList);
+    const p = `$${params.length}::text[]`;
+    where.push(`object_id = ANY(${p})`);
+    where.push(`(metadata->>'signal_id') = ANY(${p})`);
+  }
+  if (allTradeIds.length > 0) {
+    params.push(allTradeIds);
+    const p = `$${params.length}::text[]`;
+    where.push(`object_id = ANY(${p})`);
+    where.push(`(metadata->>'trade_id') = ANY(${p})`);
+  }
+
+  let logsDeleted = 0;
+  if (where.length > 0) {
+    const del = await b.query(`DELETE FROM logs WHERE ${where.join(" OR ")}`, params);
+    logsDeleted = Number(del?.rowCount || 0);
+  }
+
+  return { logs_deleted: logsDeleted, files_deleted: filesDeleted };
 }
 
 async function mt5AppendSignalEvent(signalId, eventType, payload = {}) {
@@ -5401,9 +5556,12 @@ const appHandler = async (req, res) => {
       const { rows, filters, limit } = await mt5GetFilteredTrades(url, payload, 50000);
       const ids = rows.map((r) => String(r.signal_id || "")).filter(Boolean);
       const removed = await mt5DeleteSignalsByIds(ids);
+      const cleanup = await mt5CleanupSignalTradeArtifacts({ signalRows: rows, signalIds: ids });
       return json(res, 200, {
         ok: true,
         deleted: removed.deleted || 0,
+        logs_deleted: cleanup.logs_deleted || 0,
+        files_deleted: cleanup.files_deleted || 0,
         matched: ids.length,
         filters,
         scanned_limit: limit,
@@ -5422,6 +5580,7 @@ const appHandler = async (req, res) => {
       const { rows, filters, limit } = await mt5GetFilteredTrades(url, payload, 50000);
       const ids = rows.map((r) => String(r.signal_id || "")).filter(Boolean);
       const updated = await mt5CancelSignalsByIds(ids);
+      const cleanup = await mt5CleanupSignalTradeArtifacts({ signalRows: rows, signalIds: ids });
       for (const signalId of (updated.updated_ids || [])) {
         await mt5AppendSignalEvent(signalId, "MANUAL_CANCEL", {
           via: "ui_bulk_cancel",
@@ -5430,6 +5589,8 @@ const appHandler = async (req, res) => {
       return json(res, 200, {
         ok: true,
         updated: updated.updated || 0,
+        logs_deleted: cleanup.logs_deleted || 0,
+        files_deleted: cleanup.files_deleted || 0,
         matched: ids.length,
         filters,
         scanned_limit: limit,
@@ -6834,6 +6995,14 @@ const appHandler = async (req, res) => {
         q: payload.q || "",
       };
       const out = await mt5BulkActionTradesV2(action, filters);
+      if (out?.ok && (action === "cancel_all" || action === "delete_all")) {
+        const cleanup = await mt5CleanupSignalTradeArtifacts({
+          signalIds: Array.isArray(out.signal_ids) ? out.signal_ids : [],
+          tradeIds: Array.isArray(out.trade_ids) ? out.trade_ids : [],
+        });
+        out.logs_deleted = cleanup.logs_deleted || 0;
+        out.files_deleted = cleanup.files_deleted || 0;
+      }
       return json(res, out?.ok ? 200 : 400, out);
     } catch (error) {
       return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });

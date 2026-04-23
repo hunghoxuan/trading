@@ -184,6 +184,18 @@ function parseNum(value) {
   return Number.isFinite(n) ? n : NaN;
 }
 
+function calcSliderMeta(valueRaw) {
+  const val = parseNum(valueRaw);
+  if (!Number.isFinite(val)) {
+    return { enabled: false, min: 0, max: 1, step: 0.01, value: 0 };
+  }
+  const spread = Math.max(Math.abs(val) * 0.03, 0.01);
+  const min = val - spread;
+  const max = val + spread;
+  const step = Math.max(spread / 200, 0.0001);
+  return { enabled: true, min, max, step, value: val };
+}
+
 function parsePdZoneBounds(zoneRaw) {
   if (zoneRaw === null || zoneRaw === undefined) return { low: null, high: null };
   if (typeof zoneRaw === "number" && Number.isFinite(zoneRaw)) return { low: zoneRaw, high: zoneRaw };
@@ -1051,6 +1063,7 @@ export default function ChartSnapshotsPage() {
           invalidation: payload?.invalidation || parsed?.invalidation || "",
           confidence_pct: Number.isFinite(payload?.confidence_pct) ? payload.confidence_pct : (parsed?.confidence_pct ?? null),
           final_verdict: parsed?.final_verdict && typeof parsed.final_verdict === "object" ? parsed.final_verdict : undefined,
+          snapshot_files: chartFiles,
           analysis_snapshot: analysisSnapshotPayload,
         };
         await api.createSignal(finalPayload);
@@ -1295,14 +1308,16 @@ export default function ChartSnapshotsPage() {
       <section className="panel snapshot-col-v3 snapshot-col-symbols-v3">
         <div className="snapshot-symbols-title-v2">
           <span className="panel-label" style={{ margin: 0 }}>Symbols</span>
+        </div>
+        <div className="snapshot-symbol-row-v4">
+          <input
+            list="tv-symbol-options"
+            value={cfg.symbol}
+            onChange={(e) => setCfgField("symbol", normalizeWatchSymbol(e.target.value))}
+            placeholder="Symbol (e.g. EURUSD)"
+          />
           <button className="secondary-button snapshot-plus-btn-v2" type="button" onClick={addCurrentSymbolToWatchlist} title="Add current symbol">+</button>
         </div>
-        <input
-          list="tv-symbol-options"
-          value={cfg.symbol}
-          onChange={(e) => setCfgField("symbol", normalizeWatchSymbol(e.target.value))}
-          placeholder="Symbol (e.g. EURUSD)"
-        />
         <datalist id="tv-symbol-options">
           {symbolOptions.map((opt) => <option key={opt} value={opt} />)}
         </datalist>
@@ -1369,9 +1384,8 @@ export default function ChartSnapshotsPage() {
               <div><label className="minor-text">Assets</label><select value={cfg.asset} onChange={(e) => setCfgField("asset", e.target.value)}><option>Auto detect</option><option>Commodity</option><option>Forex</option><option>Crypto</option><option>Index</option><option>Stock</option></select></div>
               <div><label className="minor-text">Sessions</label><select value={cfg.session} onChange={(e) => setCfgField("session", e.target.value)}><option>Any</option><option>London</option><option>New York</option><option>Asian</option><option>London+NY</option></select></div>
               <div><label className="minor-text">MinRR</label><input type="number" min="0.5" step="0.5" value={cfg.rr} onChange={(e) => setCfgField("rr", e.target.value)} /></div>
-              <div><label className="minor-text">Max Risk</label><input type="number" min="0.1" step="0.1" value={cfg.risk} onChange={(e) => setCfgField("risk", e.target.value)} /></div>
               <div className="snapshot-col-span-2">
-                <label className="minor-text">Profile</label>
+                <label className="minor-text">Bias / Execution / Confirm TFs</label>
                 <select value={cfg.profile || "day"} onChange={(e) => setProfilePreset(e.target.value)}>
                   <option value="position">{PROFILE_PRESETS.position.label}</option>
                   <option value="swing">{PROFILE_PRESETS.swing.label}</option>
@@ -1386,20 +1400,6 @@ export default function ChartSnapshotsPage() {
                 {STRATEGY_OPTIONS.map((s) => (
                   <button key={s} type="button" className={`secondary-button snapshot-tag-v2 ${cfg.strategies.includes(s) ? "active" : ""}`} onClick={() => setCfgField("strategies", toggleArrayValue(cfg.strategies, s))}>{s}</button>
                 ))}
-              </div>
-            </div>
-            <div className="snapshot-tf-v2">
-              <div className="snapshot-col-span-4">
-                <label className="minor-text">HTF Bias TF</label>
-                <div className="snapshot-tf-pill-v3">{tfConfig.htf_tfs.join(", ")}</div>
-              </div>
-              <div className="snapshot-col-span-4">
-                <label className="minor-text">Execution TF</label>
-                <div className="snapshot-tf-pill-v3">{tfConfig.exec_tfs.join(", ")}</div>
-              </div>
-              <div className="snapshot-col-span-4">
-                <label className="minor-text">Confirmation TF</label>
-                <div className="snapshot-tf-pill-v3">{tfConfig.conf_tfs.join(", ")}</div>
               </div>
             </div>
             <div className="snapshot-context-v2">
@@ -1482,9 +1482,63 @@ export default function ChartSnapshotsPage() {
 
         <div className="snapshot-response-footer-v3">
           <div className="snapshot-footer-row1-v3">
-            <div className="snapshot-footer-field-v3"><label className="minor-text">Entry</label><input value={position.entry} onChange={(e) => updatePositionField("entry", e.target.value)} /></div>
-            <div className="snapshot-footer-field-v3"><label className="minor-text">TP</label><input value={position.tp} onChange={(e) => updatePositionField("tp", e.target.value)} /></div>
-            <div className="snapshot-footer-field-v3"><label className="minor-text">SL</label><input value={position.sl} onChange={(e) => updatePositionField("sl", e.target.value)} /></div>
+            <div className="snapshot-footer-field-v3">
+              <label className="minor-text">Entry</label>
+              <input type="number" step="any" inputMode="decimal" value={position.entry} onChange={(e) => updatePositionField("entry", e.target.value)} />
+              {(() => {
+                const m = calcSliderMeta(position.entry);
+                return (
+                  <input
+                    className="snapshot-number-slider-v4"
+                    type="range"
+                    min={m.min}
+                    max={m.max}
+                    step={m.step}
+                    value={m.value}
+                    disabled={!m.enabled}
+                    onChange={(e) => updatePositionField("entry", String(e.target.value))}
+                  />
+                );
+              })()}
+            </div>
+            <div className="snapshot-footer-field-v3">
+              <label className="minor-text">TP</label>
+              <input type="number" step="any" inputMode="decimal" value={position.tp} onChange={(e) => updatePositionField("tp", e.target.value)} />
+              {(() => {
+                const m = calcSliderMeta(position.tp);
+                return (
+                  <input
+                    className="snapshot-number-slider-v4"
+                    type="range"
+                    min={m.min}
+                    max={m.max}
+                    step={m.step}
+                    value={m.value}
+                    disabled={!m.enabled}
+                    onChange={(e) => updatePositionField("tp", String(e.target.value))}
+                  />
+                );
+              })()}
+            </div>
+            <div className="snapshot-footer-field-v3">
+              <label className="minor-text">SL</label>
+              <input type="number" step="any" inputMode="decimal" value={position.sl} onChange={(e) => updatePositionField("sl", e.target.value)} />
+              {(() => {
+                const m = calcSliderMeta(position.sl);
+                return (
+                  <input
+                    className="snapshot-number-slider-v4"
+                    type="range"
+                    min={m.min}
+                    max={m.max}
+                    step={m.step}
+                    value={m.value}
+                    disabled={!m.enabled}
+                    onChange={(e) => updatePositionField("sl", String(e.target.value))}
+                  />
+                );
+              })()}
+            </div>
             <div className="snapshot-footer-field-v3"><label className="minor-text">RR</label><input value={position.rr || ""} readOnly /></div>
           </div>
           <div className="snapshot-footer-row2-v3">
