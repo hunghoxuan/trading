@@ -219,15 +219,6 @@ export const TradeSignalChart = ({
     chartRef.current = chart;
     seriesRef.current = candleSeries;
 
-    // 2. Add Price Lines
-    const asNum = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
-    const ep = asNum(entryPrice);
-    const sp = asNum(slPrice);
-    const tp = asNum(tpPrice);
-
-    if (ep) candleSeries.createPriceLine({ price: ep, color: '#2196f3', lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title: 'ENTRY' });
-    if (sp) candleSeries.createPriceLine({ price: sp, color: '#ef5350', lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'SL' });
-    if (tp) candleSeries.createPriceLine({ price: tp, color: '#26a69a', lineWidth: 2, lineStyle: 1, axisLabelVisible: true, title: 'TP' });
 
     // 3. Fetch History + Start Live
     async function initData() {
@@ -272,81 +263,120 @@ export const TradeSignalChart = ({
         if (isMounted) {
           candleSeries.setData(candles);
 
-          // Add Markers for Open/Close + Analysis text
+          // --- MARKERS: only open/close arrows, NO text overlays ---
           const markers = [];
           if (openedAt) {
             const openTs = Math.floor(new Date(openedAt).getTime() / 1000);
-            markers.push({ time: openTs, position: 'belowBar', color: '#2196f3', shape: 'arrowUp', text: 'START' });
+            markers.push({ time: openTs, position: 'belowBar', color: '#2196f3', shape: 'arrowUp', text: '' });
           }
           if (closedAt) {
             const closeTs = Math.floor(new Date(closedAt).getTime() / 1000);
-            markers.push({ time: closeTs, position: 'aboveBar', color: '#f68410', shape: 'arrowDown', text: 'END' });
-          }
-          const lastTs = candles.length ? Number(candles[candles.length - 1]?.time) : null;
-          if (Number.isFinite(lastTs) && snapshot && typeof snapshot === "object") {
-            const summaryRows = buildSummaryTexts(snapshot);
-            summaryRows.forEach((txt, idx) => {
-              markers.push({
-                time: lastTs,
-                position: idx % 2 === 0 ? 'aboveBar' : 'belowBar',
-                color: '#94a3b8',
-                shape: 'circle',
-                text: txt,
-              });
-            });
-            const chk = checklistText(snapshot);
-            if (chk) {
-              markers.push({ time: lastTs, position: 'belowBar', color: '#22c55e', shape: 'square', text: chk });
-            }
+            markers.push({ time: closeTs, position: 'aboveBar', color: '#f68410', shape: 'arrowDown', text: '' });
           }
           if (markers.length > 0) candleSeries.setMarkers(markers);
 
-          // Draw PD Array overlays — boxes for active zones, colored by HTF tier
-          const pdArrays = Array.isArray(snapshot?.pd_arrays) ? snapshot.pd_arrays : [];
-          const htfTfs = Array.isArray(snapshot?.htf_tfs) ? snapshot.htf_tfs : [];
+          // --- ENTRY / TP / SL as colored zone boxes ---
+          const asNum = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
+          const ep = asNum(entryPrice);
+          const sp = asNum(slPrice);
+          const tp = asNum(tpPrice);
+          const tradeOpenTs = openedAt ? Math.floor(new Date(openedAt).getTime() / 1000) : null;
+          const lastBarTs = candles.length ? Number(candles[candles.length - 1]?.time) : null;
+          const boxAnchorTs = tradeOpenTs || (candles.length ? Number(candles[0]?.time) : null);
 
-          // Helper: normalize timeframe strings for comparison
+          // Entry line (solid)
+          if (ep) candleSeries.createPriceLine({ price: ep, color: '#2196f3', lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title: 'ENTRY' });
+          if (sp) candleSeries.createPriceLine({ price: sp, color: '#ef5350', lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'SL' });
+          if (tp) candleSeries.createPriceLine({ price: tp, color: '#26a69a', lineWidth: 2, lineStyle: 1, axisLabelVisible: true, title: 'TP' });
+
+          // Entry → TP zone box (green)
+          if (ep && tp && boxAnchorTs) {
+            const entryTpPrimitive = new PdArrayBoxPrimitive(boxAnchorTs, Math.min(ep, tp), Math.max(ep, tp), '#26a69a');
+            candleSeries.attachPrimitive(entryTpPrimitive);
+          }
+          // Entry → SL zone box (red)
+          if (ep && sp && boxAnchorTs) {
+            const entrySlPrimitive = new PdArrayBoxPrimitive(boxAnchorTs, Math.min(ep, sp), Math.max(ep, sp), '#ef5350');
+            candleSeries.attachPrimitive(entrySlPrimitive);
+          }
+
+          // --- PD ARRAYS as boxes ---
+          // Support both old signal format (nested under market_analysis) and new (top-level)
+          const rawPdArrays =
+            Array.isArray(snapshot?.pd_arrays) ? snapshot.pd_arrays :
+            Array.isArray(snapshot?.market_analysis?.pd_arrays) ? snapshot.market_analysis.pd_arrays :
+            [];
+
+          // HTF tfs from snapshot or fall back to timeframe magnitude ordering
+          const htfTfsRaw = Array.isArray(snapshot?.htf_tfs) ? snapshot.htf_tfs : [];
           const normTf = (v) => String(v || '').trim().toUpperCase().replace(/\s+/g, '');
-          const htf1 = normTf(htfTfs[0] || '');
-          const htf2 = normTf(htfTfs[1] || '');
 
-          const COLOR_HTF1 = '#f59e0b'; // yellow
-          const COLOR_HTF2 = '#a855f7'; // purple
-          const COLOR_DEFAULT = '#60a5fa'; // blue fallback
+          // Color by TF magnitude when htf_tfs not stored:
+          // D/W/M → yellow (HTF1), 4H/1H/2H → purple (HTF2), else blue
+          const tfToMagnitudeMinutes = (tf) => {
+            const t = normTf(tf);
+            if (t === 'M' || t === '1M' || t === 'MN') return 43200;
+            if (t === 'W' || t === '1W') return 10080;
+            if (t === 'D' || t === '1D') return 1440;
+            if (t === '4H') return 240;
+            if (t === '2H') return 120;
+            if (t === '1H') return 60;
+            if (t === '30M') return 30;
+            if (t === '15M') return 15;
+            if (t === '5M') return 5;
+            if (t === '1M') return 1;
+            const m = t.match(/^(\d+)M$/);
+            if (m) return Number(m[1]);
+            const h = t.match(/^(\d+)H$/);
+            if (h) return Number(h[1]) * 60;
+            return 15;
+          };
 
-          const lastBarTime = candles.length ? Number(candles[candles.length - 1]?.time) : null;
+          const COLOR_HTF1 = '#f59e0b';  // yellow
+          const COLOR_HTF2 = '#a855f7';  // purple
+          const COLOR_EXEC  = '#60a5fa'; // blue
 
-          const activePdArrays = pdArrays.filter((pd) => {
-            const status = String(pd?.status || '').toLowerCase();
-            return status === 'active' || status === ''; // include if status missing
+          const colorForTf = (pdTf) => {
+            if (htfTfsRaw.length > 0) {
+              // Use stored htf_tfs list
+              if (normTf(htfTfsRaw[0]) === normTf(pdTf)) return COLOR_HTF1;
+              if (htfTfsRaw.length > 1 && normTf(htfTfsRaw[1]) === normTf(pdTf)) return COLOR_HTF2;
+              return COLOR_EXEC;
+            }
+            // Fallback: color by magnitude
+            const mag = tfToMagnitudeMinutes(pdTf);
+            if (mag >= 1440) return COLOR_HTF1;   // D and above → yellow
+            if (mag >= 60)   return COLOR_HTF2;   // 1H–4H → purple
+            return COLOR_EXEC;                    // sub-hour → blue
+          };
+
+          const activePdArrays = rawPdArrays.filter((pd) => {
+            const status = String(pd?.status || '').toLowerCase().trim();
+            return status === 'active' || status === '';
           });
 
-          activePdArrays.slice(0, 40).forEach((pd) => {
+          activePdArrays.slice(0, 50).forEach((pd) => {
             const bounds = parsePdZoneBounds(pd);
-            if (!bounds) return;
+            if (!bounds || bounds.low == null || bounds.high == null) return;
+            if (bounds.low === bounds.high) return; // skip degenerate
 
-            // Determine color by which HTF tier the timeframe belongs to
-            const pdTf = normTf(pd?.timeframe || '');
-            let color = COLOR_DEFAULT;
-            if (htf1 && pdTf === htf1) color = COLOR_HTF1;
-            else if (htf2 && pdTf === htf2) color = COLOR_HTF2;
-            else if (htf1 && !htf2) color = COLOR_HTF1; // all are HTF1 if only one HTF
+            const color = colorForTf(pd?.timeframe || '');
 
-            // bar_start: use provided value or fall back to first bar
             const barStartRaw = Number(pd?.bar_start);
-            const barStart = Number.isFinite(barStartRaw) && barStartRaw > 0
+            const barStart = Number.isFinite(barStartRaw) && barStartRaw > 100000
               ? barStartRaw
               : (candles.length ? Number(candles[0]?.time) : null);
 
-            if (!barStart || !lastBarTime) return;
+            if (!barStart) return;
 
-            // Attach box primitive to the candle series
             const primitive = new PdArrayBoxPrimitive(barStart, bounds.low, bounds.high, color);
             candleSeries.attachPrimitive(primitive);
           });
 
-          // Draw key levels as clean horizontal lines (no text)
-          const keyLevels = parseKeyLevels(snapshot);
+          // --- KEY LEVELS as orange dotted lines ---
+          const keyLevels = parseKeyLevels(snapshot?.key_levels
+            ? snapshot
+            : (snapshot?.market_analysis ? snapshot.market_analysis : snapshot));
           keyLevels.forEach((k) => {
             candleSeries.createPriceLine({
               price: k.price,
@@ -358,30 +388,20 @@ export const TradeSignalChart = ({
             });
           });
 
-
-          // Fit view to stored range first, then trade bounds
+          // --- FIT VIEW ---
           const snapshotStart = Number(snapshot?.bar_start);
           const snapshotEnd = Number(snapshot?.bar_end);
           if (Number.isFinite(snapshotStart) && Number.isFinite(snapshotEnd) && snapshotEnd > snapshotStart) {
             const dur = snapshotEnd - snapshotStart;
-            chart.timeScale().setVisibleRange({
-              from: snapshotStart - (dur * 0.06),
-              to: snapshotEnd + (dur * 0.06),
-            });
+            chart.timeScale().setVisibleRange({ from: snapshotStart - (dur * 0.06), to: snapshotEnd + (dur * 0.06) });
           } else if (openedAt && closedAt) {
             const rangeStart = Math.floor(new Date(openedAt).getTime() / 1000);
             const rangeEnd = Math.floor(new Date(closedAt).getTime() / 1000);
-            // Add 10% padding
             const dur = rangeEnd - rangeStart;
-            chart.timeScale().setVisibleRange({
-               from: rangeStart - (dur * 0.2),
-               to: rangeEnd + (dur * 0.2)
-            });
-          } else if (openedAt) {
-             const rangeStart = Math.floor(new Date(openedAt).getTime() / 1000);
-             chart.timeScale().scrollToPosition(0, false); // Scroll to latest but we might want to center on start
+            chart.timeScale().setVisibleRange({ from: rangeStart - (dur * 0.2), to: rangeEnd + (dur * 0.2) });
           }
         }
+
       } catch (err) {
         console.error("Chart data fetch failed:", err);
       } finally {
