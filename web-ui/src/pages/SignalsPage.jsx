@@ -82,6 +82,37 @@ function statusUi(statusRaw) {
   return { cls: "OTHER", label: s || "UNKNOWN" };
 }
 
+const DETAIL_TF_TABS = ["ENTRY", "W", "D", "4H", "15m", "5m", "1m"];
+
+function detailTabToTvInterval(tab) {
+  const t = String(tab || "").toUpperCase();
+  if (t === "W") return "W";
+  if (t === "D") return "D";
+  if (t === "4H") return "240";
+  if (t === "15M") return "15";
+  if (t === "5M") return "5";
+  if (t === "1M") return "1";
+  return "15";
+}
+
+function toTradingViewSymbol(raw) {
+  const s = String(raw || "").trim().toUpperCase();
+  if (!s) return "ICMARKETS:EURUSD";
+  if (s.includes(":")) return s;
+  return `ICMARKETS:${s.replace(/[^A-Z0-9]/g, "")}`;
+}
+
+function calcRrFromSignal(s) {
+  const entry = asNum(s?.entry || s?.target_price || s?.entry_price);
+  const sl = asNum(s?.sl || s?.sl_price);
+  const tp = asNum(s?.tp || s?.tp_price);
+  if (entry == null || sl == null || tp == null) return null;
+  const risk = Math.abs(entry - sl);
+  const reward = Math.abs(tp - entry);
+  if (!risk) return null;
+  return reward / risk;
+}
+
 export default function SignalsPage() {
   const [symbols, setSymbols] = useState([]);
   const [rows, setRows] = useState([]);
@@ -97,6 +128,7 @@ export default function SignalsPage() {
   const [advFilters, setAdvFilters] = useState({ sources: [], entry_models: [], chart_tfs: [], signal_tfs: [] });
   const [createMode, setCreateMode] = useState(false);
   const [createMsg, setCreateMsg] = useState("");
+  const [detailTfTab, setDetailTfTab] = useState("ENTRY");
   const [lastRefreshAt, setLastRefreshAt] = useState(null);
   const [createForm, setCreateForm] = useState({
     action: "BUY",
@@ -534,53 +566,64 @@ export default function SignalsPage() {
             <div className="empty-state minor-text">SELECT A SIGNAL TO INSPECT HISTORY</div>
           ) : (
             <div className="trade-detail-content">
-              <div className="detail-header" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between' }}>
-                <div>
-                  <h2 style={{ margin: 0 }}>
-                    <span className={String(selectedSignal.action || selectedSignal.side || '').toUpperCase() === 'BUY' ? 'side-buy' : 'side-sell'} style={{ fontSize: '24px' }}>
-                      {String(selectedSignal.action || selectedSignal.side || '-').toUpperCase()}
-                    </span> 
-                    {" "}{selectedSignal.symbol}
-                  </h2>
-                  <div className="cell-minor" style={{ marginTop: '4px' }}>{selectedSignal.signal_id}</div>
-                  <div className="cell-minor" style={{ marginTop: '4px', fontWeight: 800, color: 'var(--primary)' }}>
-                    {selectedSignal.source} | {selectedSignal.entry_model} | {formatTimeframe(selectedSignal.chart_tf)} | {formatTimeframe(selectedSignal.signal_tf)}
-                  </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, alignItems: "center", marginBottom: 14 }}>
+                <div className="cell-major">
+                  <span className={String(selectedSignal.action || selectedSignal.side || "").toUpperCase() === "BUY" ? "side-buy" : "side-sell"}>
+                    {String(selectedSignal.action || selectedSignal.side || "-").toUpperCase()}
+                  </span> {selectedSignal.symbol || "-"}
                 </div>
-                <div className={`badge ${statusUi(selectedSignal.status).cls}`} style={{ height: 'fit-content', padding: '6px 14px' }}>
-                  {statusUi(selectedSignal.status).label}
+                <div className="cell-major">Entry: {fPrice(selectedSignal.entry, selectedSignal.target_price || selectedSignal.entry_price)}</div>
+                <div className="cell-major">
+                  TP/SL: {fPrice(selectedSignal.tp)} / {fPrice(selectedSignal.sl)} {(() => { const rr = calcRrFromSignal(selectedSignal); return rr != null ? `| ${rr.toFixed(2)} rr` : ""; })()}
                 </div>
-              </div>
-
-              <div className="panel" style={{ padding: 12, marginBottom: 12 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 8 }}>
-                  <div><span className="minor-text">Signal ID</span><div>{selectedSignal.signal_id || "-"}</div></div>
-                  <div><span className="minor-text">Source</span><div>{selectedSignal.source || "-"}</div></div>
-                  <div><span className="minor-text">Entry Model</span><div>{selectedSignal.entry_model || "-"}</div></div>
-                  <div><span className="minor-text">Chart TF</span><div>{formatTimeframe(selectedSignal.chart_tf || "-")}</div></div>
-                  <div><span className="minor-text">Signal TF</span><div>{formatTimeframe(selectedSignal.signal_tf || "-")}</div></div>
-                  <div><span className="minor-text">Entry</span><div>{fPrice(selectedSignal.entry, selectedSignal.target_price || selectedSignal.entry_price)}</div></div>
-                  <div><span className="minor-text">TP/SL</span><div>{fPrice(selectedSignal.tp)} / {fPrice(selectedSignal.sl)}</div></div>
-                  <div><span className="minor-text">Volume</span><div>{selectedSignal.volume || "-"}</div></div>
-                  <div><span className="minor-text">Note</span><div>{selectedSignal.note || "-"}</div></div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                  <span className={`badge ${statusUi(selectedSignal.status).cls}`}>{statusUi(selectedSignal.status).label}</span>
+                  <span className={asNum(selectedSignal.pnl_money_realized) < 0 ? "money-neg" : "money-pos"} style={{ fontWeight: 800 }}>
+                    {asNum(selectedSignal.pnl_money_realized) == null ? "-" : `$${Number(selectedSignal.pnl_money_realized).toFixed(2)}`}
+                  </span>
                 </div>
               </div>
 
-              <div className="panel" style={{ padding: 12 }}>
-                <div style={{ color: "#94a3b8", fontSize: "11px", marginBottom: "8px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Market View</div>
-                <TradeSignalChart 
-                   symbol={selectedSignal.symbol} 
-                   interval={selectedSignal.signal_tf || selectedSignal.chart_tf || "1h"}
-                   live={true}
-                   entryPrice={asNum(selectedSignal.entry || selectedSignal.target_price || selectedSignal.entry_price)}
-                   slPrice={asNum(selectedSignal.sl)}
-                   tpPrice={asNum(selectedSignal.tp)}
-                   analysisSnapshot={selectedSignal?.raw_json?.analysis_snapshot || null}
-                />
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                  {DETAIL_TF_TABS.map((tab) => (
+                    <button key={tab} type="button" className={`secondary-button ${detailTfTab === tab ? "active" : ""}`} onClick={() => setDetailTfTab(tab)}>
+                      {tab}
+                    </button>
+                  ))}
+                </div>
+                {detailTfTab === "ENTRY" ? (
+                  <TradeSignalChart
+                    symbol={selectedSignal.symbol}
+                    interval={selectedSignal.signal_tf || selectedSignal.chart_tf || "1h"}
+                    live={true}
+                    entryPrice={asNum(selectedSignal.entry || selectedSignal.target_price || selectedSignal.entry_price)}
+                    slPrice={asNum(selectedSignal.sl)}
+                    tpPrice={asNum(selectedSignal.tp)}
+                    analysisSnapshot={selectedSignal?.raw_json?.analysis_snapshot || null}
+                  />
+                ) : (
+                  <iframe
+                    title={`signal-tv-${detailTfTab}`}
+                    style={{ width: "100%", height: 430, border: "1px solid var(--border)", borderRadius: 10, background: "var(--panel)" }}
+                    src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(toTradingViewSymbol(selectedSignal.symbol))}&interval=${encodeURIComponent(detailTabToTvInterval(detailTfTab))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+                  />
+                )}
               </div>
 
-              <div style={{ marginTop: '20px' }}>
-                <div className="panel-label">HISTORY</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10, marginBottom: 14 }}>
+                <div><span className="minor-text">Chart TF</span><div>{formatTimeframe(selectedSignal.chart_tf || "-")}</div></div>
+                <div><span className="minor-text">Signal TF</span><div>{formatTimeframe(selectedSignal.signal_tf || "-")}</div></div>
+                <div><span className="minor-text">Source</span><div>{selectedSignal.source || "-"}</div></div>
+                <div><span className="minor-text">Entry Model</span><div>{selectedSignal.entry_model || "-"}</div></div>
+                <div><span className="minor-text">Trade ID</span><div>{signalDetails?.trade?.trade_id || "-"}</div></div>
+                <div><span className="minor-text">Broker Ticket</span><div>{selectedSignal.ack_ticket || signalDetails?.trade?.broker_trade_id || "-"}</div></div>
+                <div><span className="minor-text">Signal ID</span><div>{selectedSignal.signal_id || "-"}</div></div>
+                <div><span className="minor-text">Account</span><div>{signalDetails?.trade?.account_id || "-"}</div></div>
+                <div style={{ gridColumn: "1 / -1" }}><span className="minor-text">Note</span><div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{selectedSignal.note || "-"}</div></div>
+              </div>
+
+              <div style={{ marginTop: '10px', borderTop: "1px solid var(--border)", paddingTop: 10 }}>
                 {!(signalDetails?.events || signalDetails?.items) ? (
                   <div className="loading">FETCHING TELEMETRY LOGS...</div>
                 ) : (
@@ -597,7 +640,7 @@ export default function SignalsPage() {
                       }
                       
                       return (
-                        <div key={`${ev.id || ev.event_id || ev.created_at || Math.random()}`} className="panel" style={{ margin: 0, padding: '16px' }}>
+                        <div key={`${ev.id || ev.event_id || ev.created_at || Math.random()}`} style={{ margin: "0 0 10px 0", paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                               <span className="panel-label" style={{ margin: 0 }}>{tType || "EVENT"}</span>

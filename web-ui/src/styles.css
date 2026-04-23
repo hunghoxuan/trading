@@ -199,6 +199,10 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .secondary-button:hover {
   background: var(--accent-soft);
 }
+.secondary-button.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
 .danger-button { 
   background: transparent; 
   color: #ef4444; 
