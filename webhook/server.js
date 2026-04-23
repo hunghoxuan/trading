@@ -6242,15 +6242,7 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/mt5/ui") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!requireAdminKey(req, res, url)) return;
-    const body = mt5DashboardHtml();
-    res.writeHead(200, {
-      "Content-Type": "text/html; charset=utf-8",
-      "Content-Length": Buffer.byteLength(body),
-    });
-    res.end(body);
-    return;
+    return json(res, 404, { ok: false, error: "Not found" });
   }
 
   if (req.method === "GET" && url.pathname === "/mt5/ea/sync") {
