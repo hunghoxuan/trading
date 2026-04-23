@@ -643,9 +643,10 @@ export default function TradesPage() {
                 const riskSize = tradeRiskSize(selectedTrade);
                 const vol = asNum(selectedTrade.volume);
                 const updatedAt = fDateTime(selectedTrade.updated_at || selectedTrade.closed_at || selectedTrade.opened_at || selectedTrade.created_at);
+                const headerCols = "minmax(220px, 1fr) minmax(320px, 1.15fr) minmax(140px, auto)";
                 return (
                   <div style={{ display: "grid", gap: 8 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr auto", gap: 12, alignItems: "center" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: headerCols, gap: 12, alignItems: "center" }}>
                       <div className="cell-major">
                         <span className={actionCls}>{action}</span> {selectedTrade.symbol || "-"}
                       </div>
@@ -660,7 +661,7 @@ export default function TradesPage() {
                         ) : null}
                       </div>
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "center" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: headerCols, gap: 12, alignItems: "center" }}>
                       <div className="minor-text">{updatedAt}</div>
                       <div className="minor-text">
                         {(rr != null ? rr.toFixed(2) : "-")} rr | {(vol != null ? vol : "-")} vol | {(riskSize != null ? `$${riskSize.toFixed(2)}` : "-")} rr size

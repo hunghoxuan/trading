@@ -598,7 +598,11 @@ export default function SignalsPage() {
             <div className="trade-detail-content">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, alignItems: "center", marginBottom: 14 }}>
                 <div style={{ display: "grid", gap: 8, width: "100%" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr auto", gap: 12, alignItems: "center" }}>
+                  {(() => {
+                    const headerCols = "minmax(220px, 1fr) minmax(320px, 1.15fr) minmax(140px, auto)";
+                    return (
+                      <>
+                  <div style={{ display: "grid", gridTemplateColumns: headerCols, gap: 12, alignItems: "center" }}>
                     <div className="cell-major">
                       <span className={String(selectedSignal.action || selectedSignal.side || "").toUpperCase() === "BUY" ? "side-buy" : "side-sell"}>
                         {String(selectedSignal.action || selectedSignal.side || "-").toUpperCase()}
@@ -615,7 +619,7 @@ export default function SignalsPage() {
                       ) : null}
                     </div>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "center" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: headerCols, gap: 12, alignItems: "center" }}>
                     <div className="minor-text">{fDateTime(selectedSignal.updated_at || selectedSignal.closed_at || selectedSignal.opened_at || selectedSignal.created_at)}</div>
                     <div className="minor-text">
                       {(() => {
@@ -629,6 +633,9 @@ export default function SignalsPage() {
                       <span className={`badge ${statusUi(selectedSignal.status).cls}`}>{statusUi(selectedSignal.status).label}</span>
                     </div>
                   </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
