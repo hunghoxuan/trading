@@ -105,56 +105,59 @@ class PdArrayBoxPrimitive {
   priceAxisViews() { return []; }
 
   paneViews() {
+    const self = this;
     return [{
-      renderer: {
-        draw: (target) => {
-          if (!this._series || !this._chart) return;
-          target.useBitmapCoordinateSpace((scope) => {
-            const ctx = scope.context;
-            const r = scope.bitmapSize;
-            const ts = this._chart.timeScale();
-            const ps = this._series;
+      renderer() {
+        return {
+          draw: (target) => {
+            if (!self._series || !self._chart) return;
+            target.useBitmapCoordinateSpace((scope) => {
+              const ctx = scope.context;
+              const r = scope.bitmapSize;
+              const ts = self._chart.timeScale();
+              const ps = self._series;
 
-            // Convert prices to y-pixels
-            const yHigh = ps.priceToCoordinate(this._priceHigh);
-            const yLow = ps.priceToCoordinate(this._priceLow);
-            if (yHigh == null || yLow == null) return;
+              // Convert prices to y-pixels
+              const yHigh = ps.priceToCoordinate(self._priceHigh);
+              const yLow = ps.priceToCoordinate(self._priceLow);
+              if (yHigh == null || yLow == null) return;
 
-            // Convert bar_start time to x-pixel
-            const xStart = ts.timeToCoordinate(this._barStart);
-            if (xStart == null) return;
+              // Convert bar_start time to x-pixel
+              const xStart = ts.timeToCoordinate(self._barStart);
+              if (xStart == null) return;
 
-            const pixelRatio = scope.horizontalPixelRatio || 1;
-            const pixelRatioY = scope.verticalPixelRatio || 1;
+              const pixelRatio = scope.horizontalPixelRatio || 1;
+              const pixelRatioY = scope.verticalPixelRatio || 1;
 
-            const x0 = Math.max(0, Math.round(xStart * pixelRatio));
-            const x1 = r.width;
-            const y0 = Math.round(Math.min(yHigh, yLow) * pixelRatioY);
-            const y1 = Math.round(Math.max(yHigh, yLow) * pixelRatioY);
-            const h = y1 - y0;
-            if (h <= 0 || x1 - x0 <= 0) return;
+              const x0 = Math.max(0, Math.round(xStart * pixelRatio));
+              const x1 = r.width;
+              const y0 = Math.round(Math.min(yHigh, yLow) * pixelRatioY);
+              const y1 = Math.round(Math.max(yHigh, yLow) * pixelRatioY);
+              const h = y1 - y0;
+              if (h <= 0 || x1 - x0 <= 0) return;
 
-            // Fill
-            ctx.save();
-            ctx.globalAlpha = 0.18;
-            ctx.fillStyle = this._color;
-            ctx.fillRect(x0, y0, x1 - x0, h);
+              // Fill
+              ctx.save();
+              ctx.globalAlpha = 0.18;
+              ctx.fillStyle = self._color;
+              ctx.fillRect(x0, y0, x1 - x0, h);
 
-            // Border lines (top & bottom)
-            ctx.globalAlpha = 0.7;
-            ctx.strokeStyle = this._color;
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(x0, y0);
-            ctx.lineTo(x1, y0);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(x0, y1);
-            ctx.lineTo(x1, y1);
-            ctx.stroke();
-            ctx.restore();
-          });
-        },
+              // Border lines (top & bottom)
+              ctx.globalAlpha = 0.7;
+              ctx.strokeStyle = self._color;
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(x0, y0);
+              ctx.lineTo(x1, y0);
+              ctx.stroke();
+              ctx.beginPath();
+              ctx.moveTo(x0, y1);
+              ctx.lineTo(x1, y1);
+              ctx.stroke();
+              ctx.restore();
+            });
+          },
+        };
       },
     }];
   }
