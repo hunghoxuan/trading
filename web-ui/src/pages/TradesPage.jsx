@@ -1,6 +1,7 @@
 import { api } from "../api";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { SignalDetailCard } from "../components/SignalDetailCard";
+import { buildDetailHeader } from "../components/SignalDetailHeaderBuilder";
 
 const STATUS_OPTIONS = [
   { value: "", label: "ALL STATUSES" },
@@ -627,6 +628,7 @@ export default function TradesPage() {
           ) : (
             <>
               <SignalDetailCard
+                mode="trade"
                 header={(() => {
                   const action = String(selectedTrade.action || selectedTrade.side || "-").toUpperCase();
                   const actionCls = action === "BUY" ? "side-buy" : "side-sell";
@@ -637,16 +639,18 @@ export default function TradesPage() {
                   const riskSize = tradeRiskSize(selectedTrade);
                   const vol = asNum(selectedTrade.volume);
                   const updatedAt = fDateTime(selectedTrade.updated_at || selectedTrade.closed_at || selectedTrade.opened_at || selectedTrade.created_at);
-                  return {
-                    left: <><span className={actionCls}>{action}</span> {selectedTrade.symbol || "-"}</>,
-                    center: <>{selectedTrade.entry || "-"} {"→"} {selectedTrade.tp || "-"} / {selectedTrade.sl || "-"}</>,
-                    rightTop: showPnl
-                      ? <div className={pnl != null && pnl < 0 ? "money-neg" : "money-pos"} style={{ fontWeight: 800 }}>${pnl.toFixed(2)}</div>
-                      : <div className="minor-text">-</div>,
-                    leftMinor: updatedAt,
-                    centerMinor: `${rr != null ? rr.toFixed(2) : "-"} rr | ${vol != null ? vol : "-"} vol | ${riskSize != null ? `$${riskSize.toFixed(2)}` : "-"} rr size`,
-                    rightBottom: <span className={`badge ${st.cls}`}>{st.label}</span>,
-                  };
+                  return buildDetailHeader({
+                    side: action,
+                    symbol: selectedTrade.symbol || "-",
+                    sideClass: actionCls,
+                    positionText: `${selectedTrade.entry || "-"} → ${selectedTrade.tp || "-"} / ${selectedTrade.sl || "-"}`,
+                    showPnl,
+                    pnlText: `$${pnl != null ? pnl.toFixed(2) : "0.00"}`,
+                    pnlClassName: pnl != null && pnl < 0 ? "money-neg" : "money-pos",
+                    dateText: updatedAt,
+                    statsText: `${rr != null ? rr.toFixed(2) : "-"} rr | ${vol != null ? vol : "-"} vol | ${riskSize != null ? `$${riskSize.toFixed(2)}` : "-"} rr size`,
+                    statusNode: <span className={`badge ${st.cls}`}>{st.label}</span>,
+                  });
                 })()}
                 chart={{
                   enabled: true,

@@ -41,6 +41,7 @@ function defaultHistoryRenderer(item, idx, formatDateTime) {
 }
 
 export function SignalDetailCard({
+  mode = "generic",
   emptyText = "Select an item to inspect details.",
   showWhenEmpty = false,
   header = null,
@@ -88,7 +89,7 @@ export function SignalDetailCard({
       {response?.enabled && response?.hasData ? (
         <div style={{ marginBottom: 14 }}>
           <div className="snapshot-tabs-v2">
-            <span className="panel-label" style={{ margin: 0 }}>Response</span>
+            <span className="panel-label" style={{ margin: 0 }}>{response.label || "Response"}</span>
             <button type="button" className={`secondary-button ${response.tab === "text" ? "active" : ""}`} onClick={() => response.onTabChange?.("text")}>Text</button>
             <button type="button" className={`secondary-button ${response.tab === "raw" ? "active" : ""}`} onClick={() => response.onTabChange?.("raw")}>Raw</button>
             <button type="button" className={`secondary-button ${response.tab === "bars" ? "active" : ""}`} onClick={() => response.onTabChange?.("bars")}>Bars</button>
@@ -200,4 +201,3 @@ export function SignalDetailCard({
     </div>
   );
 }
-

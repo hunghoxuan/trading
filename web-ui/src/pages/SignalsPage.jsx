@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { SignalDetailCard } from "../components/SignalDetailCard";
+import { buildDetailHeader } from "../components/SignalDetailHeaderBuilder";
 
 const STATUS_OPTIONS = [
   { value: "", label: "ALL STATUSES" },
@@ -737,34 +738,24 @@ export default function SignalsPage() {
             <div className="empty-state minor-text">SELECT A SIGNAL TO INSPECT HISTORY</div>
           ) : (
             <SignalDetailCard
-              header={{
-                left: (
-                  <>
-                    <span className={String(selectedSignal.action || selectedSignal.side || "").toUpperCase() === "BUY" ? "side-buy" : "side-sell"}>
-                      {String(selectedSignal.action || selectedSignal.side || "-").toUpperCase()}
-                    </span>{" "}
-                    {selectedSignal.symbol || "-"}
-                  </>
-                ),
-                center: (
-                  <>
-                    {fPrice(selectedSignal.entry, selectedSignal.target_price || selectedSignal.entry_price)} {"→"} {fPrice(selectedSignal.tp)} / {fPrice(selectedSignal.sl)}
-                  </>
-                ),
-                rightTop: shouldShowPnl(selectedSignal.status, selectedSignal.pnl_money_realized) ? (
-                  <span className={asNum(selectedSignal.pnl_money_realized) < 0 ? "money-neg" : "money-pos"} style={{ fontWeight: 800 }}>
-                    ${Number(selectedSignal.pnl_money_realized).toFixed(2)}
-                  </span>
-                ) : <span className="minor-text">-</span>,
-                leftMinor: fDateTime(selectedSignal.updated_at || selectedSignal.closed_at || selectedSignal.opened_at || selectedSignal.created_at),
-                centerMinor: (() => {
+              mode="signal"
+              header={buildDetailHeader({
+                side: String(selectedSignal.action || selectedSignal.side || "-").toUpperCase(),
+                symbol: selectedSignal.symbol || "-",
+                sideClass: String(selectedSignal.action || selectedSignal.side || "").toUpperCase() === "BUY" ? "side-buy" : "side-sell",
+                positionText: `${fPrice(selectedSignal.entry, selectedSignal.target_price || selectedSignal.entry_price)} → ${fPrice(selectedSignal.tp)} / ${fPrice(selectedSignal.sl)}`,
+                showPnl: shouldShowPnl(selectedSignal.status, selectedSignal.pnl_money_realized),
+                pnlText: `$${Number(selectedSignal.pnl_money_realized || 0).toFixed(2)}`,
+                pnlClassName: asNum(selectedSignal.pnl_money_realized) < 0 ? "money-neg" : "money-pos",
+                dateText: fDateTime(selectedSignal.updated_at || selectedSignal.closed_at || selectedSignal.opened_at || selectedSignal.created_at),
+                statsText: (() => {
                   const rr = calcRrFromSignal(selectedSignal);
                   const vol = asNum(selectedSignal.volume);
                   const risk = signalRiskSize(selectedSignal, signalDetails);
                   return `${rr != null ? rr.toFixed(2) : "-"} rr | ${vol != null ? vol : "-"} vol | ${risk != null ? `$${risk.toFixed(2)}` : "-"} rr size`;
                 })(),
-                rightBottom: <span className={`badge ${statusUi(selectedSignal.status).cls}`}>{statusUi(selectedSignal.status).label}</span>,
-              }}
+                statusNode: <span className={`badge ${statusUi(selectedSignal.status).cls}`}>{statusUi(selectedSignal.status).label}</span>,
+              })}
               tradePlan={{
                 enabled: true,
                 signalId: selectedSignal?.signal_id || null,

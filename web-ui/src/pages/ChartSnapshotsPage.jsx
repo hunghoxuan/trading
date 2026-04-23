@@ -1503,9 +1503,11 @@ export default function ChartSnapshotsPage() {
 
       <section className="panel snapshot-col-v3 snapshot-col-position-v3">
         <SignalDetailCard
+          mode="ai"
           response={{
             enabled: true,
             hasData: hasResponse,
+            label: "Response",
             tab: responseTab,
             onTabChange: setResponseTab,
             text: responseText,
