@@ -121,6 +121,28 @@ function shouldShowPnl(statusRaw, pnlRaw) {
   return status === "CLOSED" || status === "CANCELLED" || status === "TP" || status === "SL";
 }
 
+function signalRiskSize(s, details) {
+  const cands = [
+    s?.risk_money_planned,
+    s?.risk_money_actual,
+    s?.raw_json?.risk_money,
+    s?.raw_json?.risk,
+    details?.trade?.metadata?.risk_money_actual,
+    details?.trade?.metadata?.risk_money,
+    details?.trade?.metadata?.risk_money_planned,
+  ];
+  for (const c of cands) {
+    const n = asNum(c);
+    if (n != null) return n;
+  }
+  const entry = asNum(s?.entry || s?.target_price || s?.entry_price);
+  const sl = asNum(s?.sl || s?.sl_price);
+  const vol = asNum(s?.volume);
+  if (entry == null || sl == null || vol == null) return null;
+  const est = Math.abs(entry - sl) * vol;
+  return Number.isFinite(est) ? est : null;
+}
+
 export default function SignalsPage() {
   const [symbols, setSymbols] = useState([]);
   const [rows, setRows] = useState([]);
@@ -582,8 +604,8 @@ export default function SignalsPage() {
                         {String(selectedSignal.action || selectedSignal.side || "-").toUpperCase()}
                       </span> {selectedSignal.symbol || "-"}
                     </div>
-                    <div className="minor-text" style={{ fontSize: 12 }}>
-                      {(selectedSignal.source || "-")} | {(selectedSignal.entry_model || "-")}
+                    <div className="cell-major">
+                      Entry: {fPrice(selectedSignal.entry, selectedSignal.target_price || selectedSignal.entry_price)} {"→"} {fPrice(selectedSignal.tp)} / {fPrice(selectedSignal.sl)}
                     </div>
                     <div style={{ textAlign: "right" }}>
                       {shouldShowPnl(selectedSignal.status, selectedSignal.pnl_money_realized) ? (
@@ -594,9 +616,14 @@ export default function SignalsPage() {
                     </div>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "center" }}>
-                    <div className="cell-major">Entry: {fPrice(selectedSignal.entry, selectedSignal.target_price || selectedSignal.entry_price)}</div>
-                    <div className="cell-major">
-                      TP/SL: {fPrice(selectedSignal.tp)} / {fPrice(selectedSignal.sl)} {(() => { const rr = calcRrFromSignal(selectedSignal); return rr != null ? `| ${rr.toFixed(2)} rr` : ""; })()}
+                    <div className="minor-text">{fDateTime(selectedSignal.updated_at || selectedSignal.closed_at || selectedSignal.opened_at || selectedSignal.created_at)}</div>
+                    <div className="minor-text">
+                      {(() => {
+                        const rr = calcRrFromSignal(selectedSignal);
+                        const vol = asNum(selectedSignal.volume);
+                        const risk = signalRiskSize(selectedSignal, signalDetails);
+                        return `${rr != null ? rr.toFixed(2) : "-"} rr | ${vol != null ? vol : "-"} vol | ${risk != null ? `$${risk.toFixed(2)}` : "-"} rr size`;
+                      })()}
                     </div>
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>
                       <span className={`badge ${statusUi(selectedSignal.status).cls}`}>{statusUi(selectedSignal.status).label}</span>

@@ -137,6 +137,18 @@ function shouldShowPnl(statusRaw, pnlRaw) {
   return status === "CLOSED" || status === "CANCELLED" || status === "TP" || status === "SL";
 }
 
+function tradeRiskSize(t) {
+  const m = t?.metadata && typeof t.metadata === "object" ? t.metadata : {};
+  const direct = asNum(m.risk_money_actual) ?? asNum(m.risk_money) ?? asNum(m.risk_money_planned);
+  if (direct != null) return direct;
+  const entry = asNum(t?.entry);
+  const sl = asNum(t?.sl);
+  const vol = asNum(t?.volume);
+  if (entry == null || sl == null || vol == null) return null;
+  const est = Math.abs(entry - sl) * vol;
+  return Number.isFinite(est) ? est : null;
+}
+
 const DETAIL_TF_TABS = ["ENTRY", "W", "D", "4H", "15m", "5m", "1m"];
 
 function detailTabToTvInterval(tab) {
@@ -626,17 +638,19 @@ export default function TradesPage() {
                 const actionCls = action === "BUY" ? "side-buy" : "side-sell";
                 const st = statusUi(selectedTrade.execution_status);
                 const pnl = asNum(selectedTrade.pnl_realized);
-                const acc = accountById.get(String(selectedTrade.account_id || ""));
                 const rr = calcRr(selectedTrade);
                 const showPnl = shouldShowPnl(selectedTrade.execution_status, pnl);
+                const riskSize = tradeRiskSize(selectedTrade);
+                const vol = asNum(selectedTrade.volume);
+                const updatedAt = fDateTime(selectedTrade.updated_at || selectedTrade.closed_at || selectedTrade.opened_at || selectedTrade.created_at);
                 return (
                   <div style={{ display: "grid", gap: 8 }}>
                     <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr auto", gap: 12, alignItems: "center" }}>
                       <div className="cell-major">
                         <span className={actionCls}>{action}</span> {selectedTrade.symbol || "-"}
                       </div>
-                      <div className="minor-text" style={{ fontSize: 12 }}>
-                        {(selectedTrade.source_id || "-")} | {(selectedTrade.entry_model || "-")}
+                      <div className="cell-major">
+                        Entry: {selectedTrade.entry || "-"} {"→"} {selectedTrade.tp || "-"} / {selectedTrade.sl || "-"}
                       </div>
                       <div style={{ textAlign: "right" }}>
                         {showPnl ? (
@@ -647,11 +661,12 @@ export default function TradesPage() {
                       </div>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "center" }}>
-                      <div className="cell-major">Entry: {selectedTrade.entry || "-"}</div>
-                      <div className="cell-major">TP/SL: {selectedTrade.tp || "-"} / {selectedTrade.sl || "-"} {rr != null ? `| ${rr.toFixed(2)} rr` : ""}</div>
+                      <div className="minor-text">{updatedAt}</div>
+                      <div className="minor-text">
+                        {(rr != null ? rr.toFixed(2) : "-")} rr | {(vol != null ? vol : "-")} vol | {(riskSize != null ? `$${riskSize.toFixed(2)}` : "-")} rr size
+                      </div>
                       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>
                         <span className={`badge ${st.cls}`}>{st.label}</span>
-                        <span className="minor-text">{acc?.name || selectedTrade.account_id || "-"}</span>
                       </div>
                     </div>
                   </div>
