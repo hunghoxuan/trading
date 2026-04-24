@@ -671,6 +671,51 @@ export default function TradesPage() {
             <div className="empty-state">SELECT A TRADE TO INSPECT DETAILS</div>
           ) : (
             <>
+              <div className="panel" style={{ padding: 12 }}>
+                <div className="panel-label">EDIT TRADE</div>
+                {!editMode ? (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button type="button" className="secondary-button" onClick={() => setEditMode(true)}>EDIT</button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2,minmax(0,1fr))" }}>
+                      <select
+                        value={editForm.execution_status}
+                        onChange={(e) => {
+                          const st = String(e.target.value || "PENDING").toUpperCase();
+                          setEditForm((p) => ({
+                            ...p,
+                            execution_status: st,
+                            pnl_realized: st === "PENDING" ? "0" : p.pnl_realized,
+                          }));
+                        }}
+                      >
+                        <option value="PENDING">PENDING</option>
+                        <option value="OPEN">FILLED (OPEN)</option>
+                        <option value="CLOSED">CLOSED</option>
+                        <option value="CANCELLED">CANCELLED</option>
+                        <option value="REJECTED">REJECTED</option>
+                      </select>
+                      <input
+                        value={editForm.execution_status === "PENDING" ? "0" : editForm.pnl_realized}
+                        onChange={(e) => setEditForm((p) => ({ ...p, pnl_realized: e.target.value }))}
+                        placeholder="PNL realized"
+                        disabled={editForm.execution_status === "PENDING"}
+                      />
+                    </div>
+                    {editMsg.text ? (
+                      <div className={editMsg.type === "error" ? "error" : "loading"} style={{ marginTop: 8 }}>
+                        {editMsg.text}
+                      </div>
+                    ) : null}
+                    <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+                      <button type="button" className="primary-button" onClick={onSaveTradeEdit} disabled={editBusy}>SAVE</button>
+                      <button type="button" className="secondary-button" onClick={() => setEditMode(false)} disabled={editBusy}>CANCEL</button>
+                    </div>
+                  </>
+                )}
+              </div>
               <SignalDetailCard
                 mode="trade"
                 header={(() => {
@@ -739,51 +784,6 @@ export default function TradesPage() {
                 }}
                 formatDateTime={fDateTime}
               />
-              <div className="panel" style={{ padding: 12 }}>
-                <div className="panel-label">EDIT TRADE</div>
-                {!editMode ? (
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button type="button" className="secondary-button" onClick={() => setEditMode(true)}>EDIT</button>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2,minmax(0,1fr))" }}>
-                      <select
-                        value={editForm.execution_status}
-                        onChange={(e) => {
-                          const st = String(e.target.value || "PENDING").toUpperCase();
-                          setEditForm((p) => ({
-                            ...p,
-                            execution_status: st,
-                            pnl_realized: st === "PENDING" ? "0" : p.pnl_realized,
-                          }));
-                        }}
-                      >
-                        <option value="PENDING">PENDING</option>
-                        <option value="OPEN">FILLED (OPEN)</option>
-                        <option value="CLOSED">CLOSED</option>
-                        <option value="CANCELLED">CANCELLED</option>
-                        <option value="REJECTED">REJECTED</option>
-                      </select>
-                      <input
-                        value={editForm.execution_status === "PENDING" ? "0" : editForm.pnl_realized}
-                        onChange={(e) => setEditForm((p) => ({ ...p, pnl_realized: e.target.value }))}
-                        placeholder="PNL realized"
-                        disabled={editForm.execution_status === "PENDING"}
-                      />
-                    </div>
-                    {editMsg.text ? (
-                      <div className={editMsg.type === "error" ? "error" : "loading"} style={{ marginTop: 8 }}>
-                        {editMsg.text}
-                      </div>
-                    ) : null}
-                    <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-                      <button type="button" className="primary-button" onClick={onSaveTradeEdit} disabled={editBusy}>SAVE</button>
-                      <button type="button" className="secondary-button" onClick={() => setEditMode(false)} disabled={editBusy}>CANCEL</button>
-                    </div>
-                  </>
-                )}
-              </div>
               {createMode ? (
                 <div className="panel" style={{ padding: 12 }}>
                   <div className="panel-label">CREATE TRADE</div>

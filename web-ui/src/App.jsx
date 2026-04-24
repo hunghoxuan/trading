@@ -34,7 +34,8 @@ export default function App() {
     return p.startsWith("/logs")
       || p.startsWith("/db")
       || p.startsWith("/users")
-      || p.startsWith("/snapshots");
+      || p.startsWith("/snapshots")
+      || p.startsWith("/storage");
   }, [location?.pathname]);
 
   useEffect(() => {

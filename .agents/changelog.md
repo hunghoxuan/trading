@@ -60,3 +60,7 @@
 - [x] [16:00] [EntryModel] [Author: User] Replaced bridge defaults with per-model config maps (Core/SMC/MSS). Added tokenized `required_previous_events` parser + per-model lookback window.
 - [x] [14:00] [EntryModel] [Author: User] Extended `EntryModelDef` with dynamic trade fields and moved defaults into model init entries. Replaced switch-based config with schema lookup.
 - [x] [11:00] [Dashboard] [Author: User] Enabled SMC realtime intrabar execution (`calc_on_every_tick = true`) so dashboard updates do not wait for candle close.
+
+## 2026-04-24
+- [x] [14:10] [Web-UI/API] [Author: Gemini] Task: [COMPLETED] Update DB Page with table schema + data view.
+- [x] [14:10] [Web-UI/API] [Author: Gemini] Task: [COMPLETED] Add System Storage Page with cleanup metrics/actions.

@@ -4,8 +4,6 @@
 Achieve 100% synchronization reliability between MT5 and VPS to eliminate "Ghost Trades" and "LOCKED" deadlocks.
 
 ## Currently Doing
-- [ ] [2026-04-24 14:10] [Web-UI/API] [Author: User] [DOING: Gemini] Task: Update DB Page with table schema + data view.
-- [ ] [2026-04-24 14:10] [Web-UI/API] [Author: User] [DOING: Gemini] Task: Add System Storage Page with cleanup metrics/actions.
 - [x] [2026-04-20 13:35] [Scripts/AI] [Author: Gemini] Task: Implement Multi-Model AI CLI Gateway. support `--project` and `--context`.
 - [ ] [2026-04-20 13:58] [Web-UI/AI] [Author: User] [DOING: Gemini] Task: AI Agent Hub Page. Implement template management and signal import.
 - [ ] [2026-04-14 15:00] [Hung - Core] [Author: User] Task: Audit and reduce non-essential gate/score/limitation branches. (`P0`)
