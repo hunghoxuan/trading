@@ -1383,6 +1383,41 @@ export default function ChartSnapshotsPage() {
       </div>
     </section>
   );
+  const settingsTabContentNode = (
+    <>
+      {settingsTab === "settings" ? settingsFormNode : null}
+      {settingsTab === "prompt" ? (
+        <>
+          <div className="minor-text">Prompt is the main instruction sent to AI on Analyze.</div>
+          <textarea className="snapshot-mono-v2" rows={30} value={promptDraft} onChange={(e) => { setPromptDraft(e.target.value); setPromptEdited(true); }} />
+        </>
+      ) : null}
+      {settingsTab === "json" ? (
+        <>
+          <div className="minor-text">JSON Config is included in Analyze request as structured context (Prompt + JSON Config + Guide).</div>
+          <textarea className="snapshot-mono-v2" rows={30} value={jsonConfigText} readOnly disabled />
+        </>
+      ) : null}
+      {settingsTab === "guide" ? (
+        <>
+          <div className="minor-text">Guide is editable and included in Analyze request as additional instructions/checklist context.</div>
+          <textarea className="snapshot-mono-v2" rows={30} value={guideDraft} onChange={(e) => setGuideDraft(e.target.value)} />
+        </>
+      ) : null}
+    </>
+  );
+
+  const resetAnalyzeSession = () => {
+    setAnalysisRaw("");
+    setAnalysisJson("");
+    setAnalysisParsed(null);
+    setUsedFiles([]);
+    setAnalysisFilesDisplay([]);
+    setResponseTab("text");
+    resetPositionLocal();
+    setActionStatus({ action: "", type: "", text: "" });
+    setStatus({ type: "success", text: "New analyze session started." });
+  };
 
   const chartFiles = (analysisFilesDisplay && analysisFilesDisplay.length ? analysisFilesDisplay : usedFiles).map((x) => String(x || "").trim()).filter(Boolean);
   const chartPdArrays = useMemo(() => {
@@ -1544,58 +1579,43 @@ export default function ChartSnapshotsPage() {
       </section>
 
       <section className="panel snapshot-col-v3 snapshot-col-settings-v3">
-        <div className="snapshot-live-grid-v4">
-          {widgetTfs.map((tf) => (
-            <div key={tf} className="snapshot-live-card-v3">
-              <div className="minor-text" style={{ marginBottom: 6 }}>{tf}</div>
-              <iframe
-                title={`live-chart-${tf}`}
-                className="snapshot-live-iframe-v3"
-                src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTfToTradingViewInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-              />
-            </div>
-          ))}
+        {!hasResponse ? (
+          <div className="snapshot-live-grid-v4">
+            {widgetTfs.map((tf) => (
+              <div key={tf} className="snapshot-live-card-v3">
+                <div className="minor-text" style={{ marginBottom: 6 }}>{tf}</div>
+                <iframe
+                  title={`live-chart-${tf}`}
+                  className="snapshot-live-iframe-v3"
+                  src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTfToTradingViewInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <div className="snapshot-settings-overview-v4">
+          <button type="button" className="secondary-button" onClick={() => setSettingsModalOpen(true)}>Settings</button>
+          <span className="minor-text">
+            Entry Models: {cfg.strategies.join(", ") || "-"} | Profile: {PROFILE_PRESETS[cfg.profile]?.label || PROFILE_PRESETS.day.label}
+          </span>
         </div>
-        <div className="snapshot-tabs-v2">
-          <button type="button" className={`secondary-button ${settingsTab === "settings" ? "active" : ""}`} onClick={() => setSettingsTab("settings")}>Settings</button>
-          <button type="button" className={`secondary-button ${settingsTab === "prompt" ? "active" : ""}`} onClick={() => setSettingsTab("prompt")}>Prompt</button>
-          <button type="button" className={`secondary-button ${settingsTab === "json" ? "active" : ""}`} onClick={() => setSettingsTab("json")}>JSON Config</button>
-          <button type="button" className={`secondary-button ${settingsTab === "guide" ? "active" : ""}`} onClick={() => setSettingsTab("guide")}>Guide</button>
-          <button type="button" className="secondary-button" onClick={() => setSettingsModalOpen((v) => !v)}>
-            {settingsModalOpen ? "Hide Settings Form" : "Open Settings Form"}
-          </button>
-          <span className="minor-text" style={{ marginLeft: "auto" }}>{(promptDraft || "").length} chars</span>
-        </div>
-
-        {settingsTab === "settings" ? <div className="minor-text">Settings form is in modal. Click “Open Settings Form”.</div> : null}
-        {settingsTab === "prompt" ? (
-          <>
-            <div className="minor-text">Prompt is the main instruction sent to AI on Analyze.</div>
-            <textarea className="snapshot-mono-v2" rows={30} value={promptDraft} onChange={(e) => { setPromptDraft(e.target.value); setPromptEdited(true); }} />
-          </>
-        ) : null}
-        {settingsTab === "json" ? (
-          <>
-            <div className="minor-text">JSON Config is included in Analyze request as structured context (Prompt + JSON Config + Guide).</div>
-            <textarea className="snapshot-mono-v2" rows={30} value={jsonConfigText} readOnly disabled />
-          </>
-        ) : null}
-        {settingsTab === "guide" ? (
-          <>
-            <div className="minor-text">Guide is editable and included in Analyze request as additional instructions/checklist context.</div>
-            <textarea className="snapshot-mono-v2" rows={30} value={guideDraft} onChange={(e) => setGuideDraft(e.target.value)} />
-          </>
-        ) : null}
         <div className="panel snapshot-control-card-v3">
           <div className="snapshot-capture-inline-v2 snapshot-capture-inline-v3">
+            <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>
+              {capturing ? "Taking snapshots..." : "Take Chart Snapshots"}
+            </button>
             <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
+            {hasResponse ? (
+              <button className="secondary-button" type="button" onClick={resetAnalyzeSession}>Back</button>
+            ) : null}
+            {actionStatus.action === "capture" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
             {actionStatus.action === "analyze" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
           </div>
         </div>
         <SignalDetailCard
           mode="ai"
           response={{
-            enabled: true,
+            enabled: false,
             hasData: hasResponse,
             label: "Response",
             tab: responseTab,
@@ -1661,7 +1681,13 @@ export default function ChartSnapshotsPage() {
               <span className="panel-label" style={{ margin: 0 }}>Settings</span>
               <button type="button" className="secondary-button" onClick={() => setSettingsModalOpen(false)}>Close</button>
             </div>
-            {settingsFormNode}
+            <div className="snapshot-tabs-v2" style={{ marginBottom: 10 }}>
+              <button type="button" className={`secondary-button ${settingsTab === "settings" ? "active" : ""}`} onClick={() => setSettingsTab("settings")}>Settings</button>
+              <button type="button" className={`secondary-button ${settingsTab === "prompt" ? "active" : ""}`} onClick={() => setSettingsTab("prompt")}>Prompt</button>
+              <button type="button" className={`secondary-button ${settingsTab === "json" ? "active" : ""}`} onClick={() => setSettingsTab("json")}>JSON Config</button>
+              <button type="button" className={`secondary-button ${settingsTab === "guide" ? "active" : ""}`} onClick={() => setSettingsTab("guide")}>Guide</button>
+            </div>
+            {settingsTabContentNode}
           </div>
         </div>
       ) : null}

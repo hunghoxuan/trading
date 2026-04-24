@@ -472,7 +472,7 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   padding: 10px;
 }
 .snapshot-capture-inline-v3 {
-  grid-template-columns: auto minmax(160px, 1fr);
+  grid-template-columns: auto auto auto minmax(160px, 1fr);
   gap: 10px;
 }
 .snapshot-position-form-v3 {
@@ -520,6 +520,12 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 }
 .snapshot-live-grid-v4 .snapshot-live-iframe-v3 {
   min-height: 200px;
+}
+.snapshot-settings-overview-v4 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 .snapshot-response-footer-v3 {
   margin-top: auto;
