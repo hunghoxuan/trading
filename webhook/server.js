@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-1309"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-1319"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -3726,9 +3726,12 @@ async function mt5InitBackend() {
       }
       return { updated: count };
     },
-        async getStorageStats() {
-      const cancelErrorRes = await pool.query(`SELECT COUNT(*) as c FROM signals WHERE status IN ('CANCEL', 'ERROR', 'CANCELLED')`);
-      const testRes = await pool.query(`SELECT COUNT(*) as c FROM signals WHERE symbol = 'TEST'`);
+            async getStorageStats() {
+      const signalCancelRes = await pool.query(`SELECT COUNT(*) as c FROM signals WHERE status IN ('CANCEL', 'ERROR', 'CANCELLED')`);
+      const tradeCancelRes = await pool.query(`SELECT COUNT(*) as c FROM trades WHERE execution_status IN ('REJECTED', 'CANCELLED')`);
+      
+      const signalTestRes = await pool.query(`SELECT COUNT(*) as c FROM signals WHERE symbol = 'TEST'`);
+      const tradeTestRes = await pool.query(`SELECT COUNT(*) as c FROM trades WHERE symbol = 'TEST'`);
       
       const fs = require('fs');
       const path = require('path');
@@ -3745,13 +3748,13 @@ async function mt5InitBackend() {
       }
       
       return {
-        cancelled_error_count: parseInt(cancelErrorRes.rows[0].c),
-        test_trades_count: parseInt(testRes.rows[0].c),
+        cancelled_error_count: parseInt(signalCancelRes.rows[0].c) + parseInt(tradeCancelRes.rows[0].c),
+        test_trades_count: parseInt(signalTestRes.rows[0].c) + parseInt(tradeTestRes.rows[0].c),
         snapshots_count: snapshotsCount,
         snapshots_size_bytes: snapshotsSize
       };
     },
-    async storageCleanup(target) {
+        async storageCleanup(target) {
       if (target === 'snapshots') {
         const fs = require('fs');
         const path = require('path');
@@ -3767,13 +3770,44 @@ async function mt5InitBackend() {
         }
         return { ok: true, target, deleted_files: deletedFiles };
       } else if (target === 'cancelled_error' || target === 'test_trades') {
-        const whereClause = target === 'cancelled_error' ? "status IN ('CANCEL', 'ERROR', 'CANCELLED')" : "symbol = 'TEST'";
-        const q = await pool.query(`SELECT * FROM signals WHERE ${whereClause}`);
-        const rows = q.rows;
-        const ids = rows.map(r => String(r.signal_id));
-        const removed = await mt5DeleteSignalsByIds(ids);
-        const cleanup = await mt5CleanupSignalTradeArtifacts({ signalRows: rows, signalIds: ids });
-        return { ok: true, target, deleted_signals: removed.deleted, logs_deleted: cleanup.logs_deleted, files_deleted: cleanup.files_deleted };
+        const signalWhere = target === 'cancelled_error' ? "status IN ('CANCEL', 'ERROR', 'CANCELLED')" : "symbol = 'TEST'";
+        const tradeWhere = target === 'cancelled_error' ? "execution_status IN ('REJECTED', 'CANCELLED')" : "symbol = 'TEST'";
+        
+        // 1. Collect signals and their IDs
+        const sQ = await pool.query(`SELECT * FROM signals WHERE ${signalWhere}`);
+        const sRows = sQ.rows;
+        const sIds = sRows.map(r => String(r.signal_id));
+        
+        // 2. Collect trades and their IDs
+        const tQ = await pool.query(`SELECT * FROM trades WHERE ${tradeWhere}`);
+        const tRows = tQ.rows;
+        const tIds = tRows.map(r => String(r.trade_id));
+        
+        // 3. Delete from trades first
+        let tradesDeleted = 0;
+        if (tIds.length > 0) {
+          const tDel = await pool.query(`DELETE FROM trades WHERE trade_id = ANY($1)`, [tIds]);
+          tradesDeleted = tDel.rowCount;
+        }
+        
+        // 4. Delete from signals
+        let signalsDeleted = 0;
+        if (sIds.length > 0) {
+          const sDel = await pool.query(`DELETE FROM signals WHERE signal_id = ANY($1)`, [sIds]);
+          signalsDeleted = sDel.rowCount;
+        }
+        
+        // 5. Cleanup artifacts
+        const cleanup = await mt5CleanupSignalTradeArtifacts({ signalRows: sRows, signalIds: sIds, tradeRows: tRows, tradeIds: tIds });
+        
+        return { 
+          ok: true, 
+          target, 
+          deleted_signals: signalsDeleted, 
+          deleted_trades: tradesDeleted,
+          logs_deleted: cleanup.logs_deleted, 
+          files_deleted: cleanup.files_deleted 
+        };
       } else {
         throw new Error("unknown target");
       }
