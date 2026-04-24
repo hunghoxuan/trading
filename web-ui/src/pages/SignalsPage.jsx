@@ -737,6 +737,7 @@ export default function SignalsPage() {
                   pnlRaw: selectedSignal.pnl_money_realized,
                   rrRaw: rr,
                   volumeRaw: vol,
+                  plannedVolRaw: asNum(raw.volume) ?? vol,
                   riskSizeRaw: risk,
                   riskPctRaw: riskPct,
                   rewardSizeRaw: reward,

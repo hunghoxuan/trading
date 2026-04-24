@@ -17,9 +17,10 @@ export function shouldShowPnl(statusRaw, pnlRaw) {
   return status === "CLOSED" || status === "CANCELLED" || status === "TP" || status === "SL";
 }
 
-export function buildRrVolRiskText({ rrRaw, volumeRaw, riskSizeRaw, riskPctRaw, rewardSizeRaw }) {
+export function buildRrVolRiskText({ rrRaw, volumeRaw, riskSizeRaw, riskPctRaw, rewardSizeRaw, plannedVolRaw }) {
   const rr = asNum(rrRaw);
   const vol = asNum(volumeRaw);
+  const plannedVol = asNum(plannedVolRaw);
   const risk = asNum(riskSizeRaw);
   const riskPct = asNum(riskPctRaw);
   const rewardRaw = asNum(rewardSizeRaw);
@@ -27,13 +28,15 @@ export function buildRrVolRiskText({ rrRaw, volumeRaw, riskSizeRaw, riskPctRaw, 
   const reward = rewardRaw != null
     ? Math.abs(rewardRaw)
     : (loss != null && rr != null ? loss * rr : null);
-  const pctText = riskPct != null ? `${Number(riskPct.toFixed(2))}% vol` : "- vol";
+  const volText = plannedVol != null
+    ? `${Number(plannedVol.toFixed(3))} vol`
+    : (riskPct != null ? `${Number(riskPct.toFixed(2))}% vol` : "- vol");
   const lotsText = vol != null ? `${Number(vol.toFixed(3))} lots` : "- lots";
   const rrText = rr != null ? `${rr.toFixed(2)} rr` : "- rr";
   const wlText = (reward != null || loss != null)
-    ? `W/L: ${reward != null ? `+$${reward.toFixed(2)}` : "+$-"} ${loss != null ? `-$${loss.toFixed(2)}` : "-$-"}`
-    : "W/L: +$- -$-";
-  return `${pctText} | ${lotsText} | ${rrText} ${wlText}`;
+    ? `W/L ${reward != null ? `+$${reward.toFixed(2)}` : "+$-"} ${loss != null ? `-$${loss.toFixed(2)}` : "-$-"}`
+    : "W/L +$- -$-";
+  return `${rrText} ${volText} | ${lotsText} ${wlText}`;
 }
 
 export function buildHeaderMeta({
@@ -41,6 +44,7 @@ export function buildHeaderMeta({
   pnlRaw,
   rrRaw,
   volumeRaw,
+  plannedVolRaw,
   riskSizeRaw,
   riskPctRaw,
   rewardSizeRaw,
@@ -57,7 +61,7 @@ export function buildHeaderMeta({
     pnlText: `$${pnl != null ? pnl.toFixed(2) : "0.00"}`,
     pnlClassName: pnl != null && pnl < 0 ? "money-neg" : "money-pos",
     dateText: formatDetailDateTime(updatedAtRaw),
-    statsText: buildRrVolRiskText({ rrRaw, volumeRaw, riskSizeRaw, riskPctRaw, rewardSizeRaw }),
+    statsText: buildRrVolRiskText({ rrRaw, volumeRaw, plannedVolRaw, riskSizeRaw, riskPctRaw, rewardSizeRaw }),
     statusNode: <span className={`badge ${status.cls}`}>{status.label}</span>,
   };
 }

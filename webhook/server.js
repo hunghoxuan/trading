@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-1848"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-1913"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -6483,7 +6483,7 @@ const appHandler = async (req, res) => {
         user_id: effectiveUserId,
         order_type: payload.order_type || "limit",
         provider: "ui",
-        raw_json: rawPayload,
+        raw_json: (rawPayload.raw_json && typeof rawPayload.raw_json === "object") ? rawPayload.raw_json : rawPayload,
       }, {
         source,
         eventType: "UI_CREATE_TRADE",
@@ -6556,6 +6556,7 @@ const appHandler = async (req, res) => {
           chart_tf: chartTf,
           provider: payload.provider || null,
           entry_model_raw: derived.entryModelRaw || null,
+          raw_json: rawPayload?.raw_json && typeof rawPayload.raw_json === "object" ? rawPayload.raw_json : rawPayload,
           analysis_snapshot: rawPayload?.analysis_snapshot && typeof rawPayload.analysis_snapshot === "object"
             ? rawPayload.analysis_snapshot
             : null,
@@ -8215,6 +8216,13 @@ const appHandler = async (req, res) => {
       const note = String(payload.note || signal.note || "").trim();
       const tradeType = String(payload.trade_type || payload.order_type || raw.order_type || "limit").trim().toLowerCase();
       const sourceId = String(signal.source_id || mt5SlugId(signal.source || "signal", "signal")).trim();
+      const signalRawJson = signal.raw_json && typeof signal.raw_json === "object" ? signal.raw_json : {};
+      const copiedMetadata = {
+        ...signalRawJson,
+      };
+      if (!copiedMetadata.order_type && !copiedMetadata.orderType) {
+        copiedMetadata.order_type = ["limit", "market", "stop"].includes(tradeType) ? tradeType : "limit";
+      }
       const fanout = await mt5FanoutSignalTradeV2({
         signal_id: signalId,
         source_id: sourceId,
@@ -8232,12 +8240,7 @@ const appHandler = async (req, res) => {
         tp: Number.isFinite(tp) ? tp : null,
         volume: asNum(payload.volume ?? raw.volume, NaN) || null,
         note: note || null,
-        metadata: {
-          event_type: "SIGNAL_CREATE_TRADE",
-          order_type: ["limit", "market", "stop"].includes(tradeType) ? tradeType : "limit",
-          rr_planned: Number.isFinite(rr) ? rr : null,
-          manual_trade_create: true,
-        },
+        metadata: copiedMetadata,
       });
       await mt5Log(signalId, "signals", { event_type: "SIGNAL_CREATE_TRADE", data: { created: fanout?.created || 0 } }, signal.user_id || userId || CFG.mt5DefaultUserId);
       return json(res, 200, { ok: true, signal_id: signalId, created: fanout?.created || 0, account_ids: fanout?.account_ids || [] });

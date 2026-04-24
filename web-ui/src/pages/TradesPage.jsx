@@ -2,7 +2,7 @@ import { api } from "../api";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { SignalDetailCard } from "../components/SignalDetailCard";
 import { buildDetailHeader } from "../components/SignalDetailHeaderBuilder";
-import { buildHeaderMeta, renderHistoryItem } from "../utils/signalDetailUtils";
+import { buildHeaderMeta, buildRrVolRiskText, renderHistoryItem } from "../utils/signalDetailUtils";
 
 const STATUS_OPTIONS = [
   { value: "", label: "ALL STATUSES" },
@@ -651,15 +651,22 @@ export default function TradesPage() {
                           <div className="cell-minor">
                             {(() => {
                               const mr = moneyRiskReward(t);
-                              const riskTxt = mr.risk == null ? "-" : `$${mr.risk.toFixed(2)}`;
-                              const rewardTxt = mr.reward == null ? "-" : `$${mr.reward.toFixed(2)}`;
                               const meta = t?.metadata && typeof t.metadata === "object" ? t.metadata : {};
-                              const st = String(t.execution_status || "").toUpperCase();
-                              const lots = ["FILLED", "CLOSED"].includes(st)
-                                ? (asNum(meta.used_volume) ?? asNum(t.volume))
-                                : null;
-                              const execBlock = lots != null ? ` | ${lots} lots | ${riskTxt} / ${rewardTxt}` : "";
-                              return `${t.entry_model || "-"} | ${formatTimeframe(t.chart_tf || "-")} | ${formatTimeframe(t.signal_tf || "-")} | ${(rrDisplay ?? 0).toFixed(2)} rr${execBlock}`;
+                              const lots = asNum(meta.used_volume) ?? asNum(t.volume);
+                              const raw = t?.raw_json && typeof t.raw_json === "object" ? t.raw_json : {};
+                              const plannedVol = asNum(meta.requested_volume) ?? asNum(raw.volume) ?? asNum(t.volume);
+                              const riskPct = asNum(
+                                meta.riskPct ?? meta.risk_pct ?? meta.volumePct ?? meta.volume_pct
+                                ?? raw.riskPct ?? raw.risk_pct ?? raw.volumePct ?? raw.volume_pct
+                              );
+                              return buildRrVolRiskText({
+                                rrRaw: rrDisplay,
+                                volumeRaw: lots,
+                                plannedVolRaw: plannedVol,
+                                riskSizeRaw: mr.risk,
+                                riskPctRaw: riskPct,
+                                rewardSizeRaw: mr.reward,
+                              });
                             })()}
                           </div>
                         </div>
@@ -716,7 +723,11 @@ export default function TradesPage() {
                   const meta = selectedTrade?.metadata && typeof selectedTrade.metadata === "object" ? selectedTrade.metadata : {};
                   const raw = selectedTrade?.raw_json && typeof selectedTrade.raw_json === "object" ? selectedTrade.raw_json : {};
                   const vol = asNum(meta.used_volume) ?? asNum(selectedTrade.volume);
-                  const riskPct = asNum(raw.riskPct ?? raw.risk_pct ?? raw.volumePct ?? raw.volume_pct);
+                  const plannedVol = asNum(meta.requested_volume) ?? asNum(raw.volume) ?? asNum(selectedTrade.volume);
+                  const riskPct = asNum(
+                    meta.riskPct ?? meta.risk_pct ?? meta.volumePct ?? meta.volume_pct
+                    ?? raw.riskPct ?? raw.risk_pct ?? raw.volumePct ?? raw.volume_pct
+                  );
                   const mr = moneyRiskReward(selectedTrade);
                   const status = statusUi(selectedTrade.execution_status);
                   const headerMeta = buildHeaderMeta({
@@ -724,6 +735,7 @@ export default function TradesPage() {
                     pnlRaw: pnl,
                     rrRaw: rr,
                     volumeRaw: vol,
+                    plannedVolRaw: plannedVol,
                     riskSizeRaw: riskSize,
                     riskPctRaw: riskPct,
                     rewardSizeRaw: mr.reward,

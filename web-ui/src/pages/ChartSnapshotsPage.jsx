@@ -1193,6 +1193,7 @@ export default function ChartSnapshotsPage() {
           invalidation: payload?.invalidation || parsed?.invalidation || "",
           confidence_pct: Number.isFinite(payload?.confidence_pct) ? payload.confidence_pct : (parsed?.confidence_pct ?? null),
           final_verdict: parsed?.final_verdict && typeof parsed.final_verdict === "object" ? parsed.final_verdict : undefined,
+          raw_json: parsed && typeof parsed === "object" ? parsed : undefined,
           snapshot_files: chartFiles,
           analysis_snapshot: analysisSnapshotPayload,
         };

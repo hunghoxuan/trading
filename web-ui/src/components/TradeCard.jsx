@@ -50,6 +50,7 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
   const orderTypeRaw = String(trade?.raw_json?.order_type || trade?.raw_json?.orderType || "limit").toUpperCase();
   const orderType = orderTypeRaw === "STOP" || orderTypeRaw === "MARKET" ? orderTypeRaw : "LIMIT";
   const chartTf = trade?.chart_tf || trade?.raw_json?.chartTf || "-";
+  const signalTf = trade?.signal_tf || trade?.raw_json?.signal_tf || trade?.raw_json?.sourceTf || trade?.raw_json?.timeframe || "-";
   const htf = trade?.source_tf || trade?.raw_json?.sourceTf || trade?.raw_json?.timeframe || "-";
   const plannedPrice = positiveOrNull(trade?.raw_json?.price);
   const execPrice = positiveOrNull(trade?.entry_price_exec);
@@ -130,7 +131,7 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
         <div className="trade-bottom-line">
           <span><span className="muted small">ChartTF:</span> {chartTf}, <span className="muted small">HTF:</span> {htf}</span>
           <span><span className="muted small">Strategy:</span> {strategy}</span>
-          <span><span className="muted small">Note:</span> <span className="muted blur">{trade.note || "-"}</span></span>
+          <span><span className="muted small">SignalTF:</span> {signalTf} | <span className="muted small">Entry:</span> {trade.entry_model || "-"}</span>
         </div>
       </Link>
     </article>
