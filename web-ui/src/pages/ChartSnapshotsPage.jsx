@@ -880,6 +880,13 @@ export default function ChartSnapshotsPage() {
     setUsedFiles([]);
     setAnalysisFilesDisplay(Array.isArray(files) ? files : []);
     try {
+      const prefetchSymbol = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
+      const prefetchTf = timeframe;
+      const prefetchBars = Number(cfg.lookbackBars || 300) || 300;
+      const prefetchBarsPromise = prefetchSymbol
+        ? fetchBarsSnapshot(prefetchSymbol, prefetchTf, prefetchBars)
+        : Promise.resolve(null);
+
       const basePrompt = String(promptDraft || promptText || "").trim();
       const composedPrompt = [
         basePrompt,
@@ -902,11 +909,14 @@ export default function ChartSnapshotsPage() {
         setAnalysisJson(JSON.stringify(parsed, null, 2));
         setPosition(extractPositionFromAnalysis(parsed));
         const symbolForBars = normalizeSignalSymbol(parsed?.symbol || tvSymbol || cfg.symbol || "");
-        await fetchBarsSnapshot(symbolForBars, timeframe, Number(cfg.lookbackBars || 300) || 300);
+        const prefetched = await prefetchBarsPromise;
+        if (!prefetched || normalizeSignalSymbol(symbolForBars) !== normalizeSignalSymbol(prefetchSymbol)) {
+          await fetchBarsSnapshot(symbolForBars, timeframe, Number(cfg.lookbackBars || 300) || 300);
+        }
       }
       setUsedFiles(Array.isArray(out?.used_files) ? out.used_files : []);
       if (!files.length) setAnalysisFilesDisplay(Array.isArray(out?.used_files) ? out.used_files : []);
-      setResponseTab("text");
+      setResponseTab("chart");
       const msg = `Analyzed ${Array.isArray(out?.used_files) ? out.used_files.length : 0} screenshot(s).`;
       setStatus({ type: "success", text: msg });
       setActionMessage("analyze", "success", msg);
@@ -1617,21 +1627,22 @@ export default function ChartSnapshotsPage() {
       </section>
 
       <section className="panel snapshot-col-v3 snapshot-col-settings-v3">
-        {!hasResponse ? (
-          <div className="snapshot-live-grid-v4">
-            {widgetTfs.map((tf) => (
-              <div key={tf} className="snapshot-live-card-v3">
-                <div className="minor-text" style={{ marginBottom: 6 }}>{tf}</div>
-                <iframe
-                  title={`live-chart-${tf}`}
-                  className="snapshot-live-iframe-v3"
-                  src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTfToTradingViewInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-                />
-              </div>
-            ))}
-          </div>
-        ) : null}
+        <div className="snapshot-live-grid-v4">
+          {widgetTfs.map((tf) => (
+            <div key={tf} className="snapshot-live-card-v3">
+              <div className="minor-text" style={{ marginBottom: 6 }}>{tf}</div>
+              <iframe
+                title={`live-chart-${tf}`}
+                className="snapshot-live-iframe-v3"
+                src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTfToTradingViewInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+              />
+            </div>
+          ))}
+        </div>
         <div className="snapshot-settings-overview-v4">
+          {hasResponse ? (
+            <button className="secondary-button" type="button" onClick={resetAnalyzeSession}>{"<"} Back</button>
+          ) : null}
           <button type="button" className="secondary-button" onClick={() => setSettingsModalOpen(true)}>Settings</button>
           <span className="minor-text">
             Entry Models: {cfg.strategies.join(", ") || "-"} | Profile: {PROFILE_PRESETS[cfg.profile]?.label || PROFILE_PRESETS.day.label}
@@ -1643,9 +1654,6 @@ export default function ChartSnapshotsPage() {
               {capturing ? "Taking snapshots..." : "Take Chart Snapshots"}
             </button>
             <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
-            {hasResponse ? (
-              <button className="secondary-button" type="button" onClick={resetAnalyzeSession}>Back</button>
-            ) : null}
             {actionStatus.action === "capture" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
             {actionStatus.action === "analyze" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
           </div>
@@ -1653,7 +1661,7 @@ export default function ChartSnapshotsPage() {
         <SignalDetailCard
           mode="ai"
           response={{
-            enabled: false,
+            enabled: true,
             hasData: hasResponse,
             label: "Response",
             tab: responseTab,

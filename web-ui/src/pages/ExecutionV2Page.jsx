@@ -166,9 +166,10 @@ export default function ExecutionV2Page() {
             </tbody>
           </table>
         </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <button className="secondary-button" onClick={() => gotoPage(meta.page - 1)} disabled={loading || meta.page <= 1}>PREV</button>
-          <button className="secondary-button" onClick={() => gotoPage(meta.page + 1)} disabled={loading || meta.page >= meta.pages}>NEXT</button>
+        <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
+          <button className="secondary-button" onClick={() => gotoPage(meta.page - 1)} disabled={loading || meta.page <= 1}>&lt;</button>
+          <span className="minor-text">{meta.page}/{meta.pages}</span>
+          <button className="secondary-button" onClick={() => gotoPage(meta.page + 1)} disabled={loading || meta.page >= meta.pages}>&gt;</button>
         </div>
       </section>
 

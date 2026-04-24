@@ -4,7 +4,7 @@ import UserDetailSection from "../components/UserDetailSection";
 
 const ROLE_OPTIONS = ["System", "Admin", "User", "Guest"];
 const ACCOUNT_STATUS_OPTIONS = ["ACTIVE", "INACTIVE"];
-const PAGE_SIZE_OPTIONS = [20, 50, 100];
+const PAGE_SIZE_OPTIONS = [50, 100, 200];
 const BULK_ACTIONS = ["", "Deactivate Selected", "Delete Selected"];
 
 function byCreatedAsc(a, b) {
@@ -366,13 +366,13 @@ export default function UsersPage({ authUser }) {
         <div className="toolbar-group toolbar-pagination">
           {pages > 1 ? (
             <div className="pager-mini">
-              <button className="secondary-button" disabled={safePage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>PREV</button>
-              <span className="minor-text">PAGE {safePage} / {pages}</span>
-              <button className="secondary-button" disabled={safePage >= pages} onClick={() => setPage((p) => Math.min(pages, p + 1))}>NEXT</button>
+              <button className="secondary-button" disabled={safePage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>&lt;</button>
+              <span className="minor-text">{safePage}/{pages}</span>
+              <button className="secondary-button" disabled={safePage >= pages} onClick={() => setPage((p) => Math.min(pages, p + 1))}>&gt;</button>
             </div>
           ) : null}
           <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
-            {PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n} / page</option>)}
+            {PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </div>
 

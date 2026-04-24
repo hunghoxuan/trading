@@ -90,16 +90,16 @@ export default function LogsPage() {
             <strong>{events.length}</strong>
             {!(page === 0 && events.length < pageSize) && (
               <div className="pager-mini">
-                <button className="secondary-button" disabled={page === 0} onClick={() => setPage(p => p - 1)}>PREV</button>
-                <span className="minor-text">PAGE {page + 1}</span>
-                <button className="secondary-button" disabled={events.length < pageSize} onClick={() => setPage(p => p + 1)}>NEXT</button>
+                <button className="secondary-button" disabled={page === 0} onClick={() => setPage(p => p - 1)}>&lt;</button>
+                <span className="minor-text">{page + 1}</span>
+                <button className="secondary-button" disabled={events.length < pageSize} onClick={() => setPage(p => p + 1)}>&gt;</button>
               </div>
             )}
             <select
               value={pageSize}
               onChange={e => { setPageSize(Number(e.target.value)); setPage(0); }}
             >
-              {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n} / page</option>)}
+              {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
         </div>

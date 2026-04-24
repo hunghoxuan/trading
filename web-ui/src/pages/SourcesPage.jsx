@@ -3,7 +3,7 @@ import { api } from "../api";
 
 const KIND_OPTIONS = ["", "tv", "api", "manual", "bot"];
 const AUTH_OPTIONS = ["token", "api_key", "signature", "none"];
-const PAGE_SIZE_OPTIONS = [10, 20, 50];
+const PAGE_SIZE_OPTIONS = [50, 100, 200];
 
 function newId(prefix = "src") {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -219,13 +219,13 @@ export default function SourcesPage() {
             <strong>{filtered.length}</strong>
             {pages > 1 ? (
               <div className="pager-mini">
-                <button className="secondary-button" disabled={safePage <= 1} onClick={() => setPage((p) => p - 1)}>PREV</button>
-                <span className="minor-text">PAGE {safePage} / {pages}</span>
-                <button className="secondary-button" disabled={safePage >= pages} onClick={() => setPage((p) => p + 1)}>NEXT</button>
+                <button className="secondary-button" disabled={safePage <= 1} onClick={() => setPage((p) => p - 1)}>&lt;</button>
+                <span className="minor-text">{safePage}/{pages}</span>
+                <button className="secondary-button" disabled={safePage >= pages} onClick={() => setPage((p) => p + 1)}>&gt;</button>
               </div>
             ) : null}
             <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
-              {PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n} / page</option>)}
+              {PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
         </div>

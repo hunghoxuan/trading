@@ -129,9 +129,9 @@ export default function DatabasePage() {
         <div className="toolbar-group toolbar-pagination">
           {pages > 1 && (
             <div className="pager-mini">
-              <button className="secondary-button" disabled={filter.page <= 1} onClick={() => handlePageChange(filter.page - 1)}>PREV</button>
-              <span className="minor-text">PAGE {filter.page} / {pages}</span>
-              <button className="secondary-button" disabled={filter.page >= pages} onClick={() => handlePageChange(filter.page + 1)}>NEXT</button>
+              <button className="secondary-button" disabled={filter.page <= 1} onClick={() => handlePageChange(filter.page - 1)}>&lt;</button>
+              <span className="minor-text">{filter.page}/{pages}</span>
+              <button className="secondary-button" disabled={filter.page >= pages} onClick={() => handlePageChange(filter.page + 1)}>&gt;</button>
             </div>
           )}
           <div className="minor-text" style={{ marginLeft: "10px" }}>TOTAL: {total}</div>
@@ -140,7 +140,7 @@ export default function DatabasePage() {
             value={filter.pageSize}
             onChange={e => setFilter(f => ({ ...f, pageSize: Number(e.target.value), page: 1 }))}
           >
-            {[20, 50, 100, 200, 500].map(n => <option key={n} value={n}>{n} / page</option>)}
+            {[50, 100, 200].map(n => <option key={n} value={n}>{n}</option>)}
           </select>
         </div>
 

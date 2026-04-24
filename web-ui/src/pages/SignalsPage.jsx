@@ -495,16 +495,16 @@ export default function SignalsPage() {
             <strong>{total}</strong>
             {pages > 1 && (
               <div className="pager-mini">
-                <button className="secondary-button" disabled={filter.page <= 1} onClick={() => setFilter(f => ({ ...f, page: f.page - 1 }))}>PREV</button>
-                <span className="minor-text">PAGE {filter.page} / {pages}</span>
-                <button className="secondary-button" disabled={filter.page >= pages} onClick={() => setFilter(f => ({ ...f, page: f.page + 1 }))}>NEXT</button>
+                <button className="secondary-button" disabled={filter.page <= 1} onClick={() => setFilter(f => ({ ...f, page: f.page - 1 }))}>&lt;</button>
+                <span className="minor-text">{filter.page}/{pages}</span>
+                <button className="secondary-button" disabled={filter.page >= pages} onClick={() => setFilter(f => ({ ...f, page: f.page + 1 }))}>&gt;</button>
               </div>
             )}
             <select
               value={filter.pageSize}
               onChange={e => setFilter(f => ({ ...f, pageSize: Number(e.target.value), page: 1 }))}
             >
-              {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n} / page</option>)}
+              {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
         </div>
