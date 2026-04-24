@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-0841"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-0922"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -2147,6 +2147,7 @@ function mt5MapDbRow(row) {
     created_at: String(row.created_at),
     user_id: String(row.user_id || CFG.mt5DefaultUserId || "default"),
     source: String(row.source || ""),
+    source_id: String(row.source_id || ""),
     action: String(row.action || row.side || ""),
     side: String(row.side || row.action || ""),
     symbol: String(row.symbol || ""),
@@ -2960,7 +2961,27 @@ async function mt5InitBackend() {
       if (userId) { params.push(userId); clauses.push(`user_id = $${params.length}`); }
       const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
       params.push(limit);
-      const res = await pool.query(`SELECT * FROM signals ${where} ORDER BY created_at DESC LIMIT $${params.length}`, params);
+      const res = await pool.query(`
+        SELECT
+          s.*,
+          t.broker_trade_id AS ack_ticket,
+          t.pnl_realized AS pnl_money_realized,
+          t.opened_at AS opened_at,
+          t.closed_at AS closed_at,
+          t.close_reason AS close_reason,
+          t.execution_status AS execution_status
+        FROM signals s
+        LEFT JOIN LATERAL (
+          SELECT broker_trade_id, pnl_realized, opened_at, closed_at, close_reason, execution_status, updated_at, created_at
+          FROM trades
+          WHERE signal_id = s.signal_id
+          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+          LIMIT 1
+        ) t ON TRUE
+        ${where}
+        ORDER BY s.created_at DESC
+        LIMIT $${params.length}
+      `, params);
       return (res.rows || []).map((r) => mt5MapDbRow(r)).filter(Boolean);
     },
     async listTradesV2(filters = {}, page = 1, pageSize = 50) {
@@ -2983,7 +3004,17 @@ async function mt5InitBackend() {
       if (filters.q) {
         params.push(`%${String(filters.q)}%`);
         const p = `$${params.length}`;
-        clauses.push(`(trade_id ILIKE ${p} OR signal_id ILIKE ${p} OR symbol ILIKE ${p} OR account_id ILIKE ${p} OR source_id ILIKE ${p})`);
+        clauses.push(`(
+          trade_id ILIKE ${p}
+          OR signal_id ILIKE ${p}
+          OR broker_trade_id ILIKE ${p}
+          OR symbol ILIKE ${p}
+          OR account_id ILIKE ${p}
+          OR source_id ILIKE ${p}
+          OR action ILIKE ${p}
+          OR entry_model ILIKE ${p}
+          OR note ILIKE ${p}
+        )`);
       }
       const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
       const countRes = await pool.query(`SELECT COUNT(*) FROM trades ${where}`, params);
@@ -3014,7 +3045,17 @@ async function mt5InitBackend() {
       if (filters.q) {
         params.push(`%${String(filters.q)}%`);
         const p = `$${baseOffset + params.length}`;
-        clauses.push(`(trade_id ILIKE ${p} OR signal_id ILIKE ${p} OR symbol ILIKE ${p} OR account_id ILIKE ${p} OR source_id ILIKE ${p})`);
+        clauses.push(`(
+          trade_id ILIKE ${p}
+          OR signal_id ILIKE ${p}
+          OR broker_trade_id ILIKE ${p}
+          OR symbol ILIKE ${p}
+          OR account_id ILIKE ${p}
+          OR source_id ILIKE ${p}
+          OR action ILIKE ${p}
+          OR entry_model ILIKE ${p}
+          OR note ILIKE ${p}
+        )`);
       }
       if (act === "close_all") clauses.push(`execution_status IN ('OPEN','PENDING')`);
       if (act === "cancel_all") clauses.push(`execution_status = 'PENDING'`);
@@ -3591,9 +3632,15 @@ async function mt5InitBackend() {
       let count = 0;
       for (const u of updates) {
         const rawStatus = String(u?.status || "").trim().toUpperCase();
-        const isClosed = ["CLOSED", "TP", "SL", "CANCEL", "CANCELLED", "FAIL"].includes(rawStatus);
+        const isClosed = ["CLOSED", "TP", "SL", "CANCEL", "CANCELLED", "FAIL", "EXPIRED"].includes(rawStatus);
         const pnlRaw = Number(u?.pnl);
-        const pnlVal = isClosed ? (Number.isFinite(pnlRaw) ? pnlRaw : 0) : 0;
+        const hasPnl = Number.isFinite(pnlRaw);
+        const pnlVal = hasPnl ? pnlRaw : null;
+        let tradeExec = "OPEN";
+        if (["NEW", "LOCKED", "PLACED"].includes(rawStatus)) tradeExec = "PENDING";
+        else if (["TP", "SL", "CLOSED"].includes(rawStatus)) tradeExec = "CLOSED";
+        else if (["CANCEL", "CANCELLED", "EXPIRED"].includes(rawStatus)) tradeExec = "CANCELLED";
+        else if (rawStatus === "FAIL") tradeExec = "REJECTED";
         const res = await pool.query(`
           UPDATE signals 
           SET status = $1
@@ -3603,11 +3650,11 @@ async function mt5InitBackend() {
           UPDATE trades
           SET execution_status = $1,
               broker_trade_id = COALESCE(NULLIF($2, ''), broker_trade_id),
-              pnl_realized = CASE WHEN $4 = TRUE THEN COALESCE($3, pnl_realized) ELSE pnl_realized END,
-              closed_at = CASE WHEN $4 = TRUE THEN NOW() ELSE closed_at END,
+              pnl_realized = CASE WHEN $4 = TRUE THEN $3 ELSE pnl_realized END,
+              closed_at = CASE WHEN $5 = TRUE THEN NOW() ELSE closed_at END,
               updated_at = NOW()
-          WHERE signal_id = $5
-        `, [isClosed ? "CLOSED" : "OPEN", String(u.ticket || ""), pnlVal, isClosed, u.signal_id]);
+          WHERE signal_id = $6
+        `, [tradeExec, String(u.ticket || ""), pnlVal, hasPnl, isClosed, u.signal_id]);
         count += res.rowCount;
       }
       return { updated: count };
@@ -4911,9 +4958,15 @@ async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
     const q = String(filters.q).toLowerCase();
     rows = rows.filter((r) =>
       String(r.signal_id || "").toLowerCase().includes(q)
+      || String(r.raw_json?.id || "").toLowerCase().includes(q)
+      || String(r.raw_json?.trade_id || "").toLowerCase().includes(q)
       || String(r.note || "").toLowerCase().includes(q)
       || String(r.symbol || "").toLowerCase().includes(q)
-      || String(r.ack_ticket || "").toLowerCase().includes(q),
+      || String(r.ack_ticket || "").toLowerCase().includes(q)
+      || String(r.entry_model || "").toLowerCase().includes(q)
+      || String(r.source || "").toLowerCase().includes(q)
+      || String(r.source_id || "").toLowerCase().includes(q)
+      || String(r.action || r.side || "").toLowerCase().includes(q),
     );
   }
   const signalIds = mt5ResolveSignalIds(url, payload);
@@ -6616,7 +6669,6 @@ const appHandler = async (req, res) => {
       if (!requireEaKey(req, res, url, payload)) return;
       
       const activeSignals = payload.active_signals || []; 
-      const confirmedDbIds = new Set();
       
       const dbSignals = await mt5ListActiveSignals(); // NEW, LOCKED, PLACED, START
       const updates = [];
@@ -6627,7 +6679,8 @@ const appHandler = async (req, res) => {
          const sid = String(s.signal_id || "");
          const ticket = String(s.ticket || "");
          const eaStatus = String(s.status || "");
-         const eaPnl = Number(s.pnl || 0);
+         const eaPnl = Number(s.pnl);
+         const hasEaPnl = Number.isFinite(eaPnl);
 
          // Find trade by signal_id + ticket
          let sig = dbSignals.find(d => String(d.signal_id) === sid && String(d.ack_ticket) === ticket);
@@ -6639,15 +6692,19 @@ const appHandler = async (req, res) => {
          if (sig) {
             const dbCan = mt5CanonicalStoredStatus(sig.status);
             const eaCan = mt5CanonicalStoredStatus(eaStatus);
+            const dbPnl = Number(sig.pnl_money_realized);
+            const pnlChanged = hasEaPnl && (!Number.isFinite(dbPnl) || Math.abs(dbPnl - eaPnl) > 0.000001);
 
-            // "Only update when 2 statuses are different."
-            if (dbCan !== eaCan) {
+            // Sync if status changed OR pnl changed.
+            if (dbCan !== eaCan || pnlChanged) {
                updates.push({
                   signal_id: sig.signal_id,
-                  status: eaStatus,
+                  status: eaStatus || sig.status,
                   ticket: ticket,
-                  pnl: eaPnl,
-                  note: `sync_status_diff_${dbCan}_to_${eaCan}`
+                  pnl: hasEaPnl ? eaPnl : undefined,
+                  note: dbCan !== eaCan
+                    ? `sync_status_diff_${dbCan}_to_${eaCan}`
+                    : `sync_pnl_${Number.isFinite(dbPnl) ? dbPnl : "null"}_to_${eaPnl}`
                });
             }
          }
