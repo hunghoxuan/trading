@@ -10,3 +10,6 @@ Future agents MUST read the contents of this folder when booting up near complex
 1. `mt5/` - Quirk documentation for MQL5, payload syncs, and the MT5 terminal API.
 2. `node/` - Deployment, Postgres query structures, and webhook nuances.
 3. `react/` - Dashboard caching, rendering, and API fetch quirks.
+
+## Recent Notes
+- `EA_Risk_Execution_Telemetry.md` - hard risk-cap enforcement, pending-entry risk math, ACK telemetry persistence, and UI visibility rules.

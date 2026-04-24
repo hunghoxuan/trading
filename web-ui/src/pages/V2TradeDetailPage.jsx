@@ -16,12 +16,10 @@ function brokerTicketOf(t) {
   return String(t?.broker_trade_id || t?.ticket || "").trim() || "-";
 }
 
+import { showDateTime } from "../utils/format";
+
 function fDateTime(v) {
-  if (!v) return "-";
-  return new Date(v).toLocaleString(undefined, {
-    year: '2-digit', month: '2-digit', day: '2-digit', 
-    hour: '2-digit', minute: '2-digit', second: '2-digit'
-  });
+  return showDateTime(v);
 }
 
 export default function TradeDetailPage() {
@@ -55,6 +53,21 @@ export default function TradeDetailPage() {
 
   const t = trade || {};
   const status = statusUi(t.execution_status);
+  const meta = t?.metadata && typeof t.metadata === "object" ? t.metadata : {};
+  const statusRaw = String(t.execution_status || "").toUpperCase();
+  const isExecuted = ["FILLED", "CLOSED"].includes(statusRaw);
+  const usedVolume = Number(meta.used_volume ?? t.volume);
+  const slPips = Number(meta.sl_pips);
+  const tpPips = Number(meta.tp_pips);
+  const riskMoneyActual = Number(meta.risk_money_actual);
+  const rewardMoneyPlanned = Number(meta.reward_money_planned);
+  const hasExecTelemetry = isExecuted && (
+    Number.isFinite(usedVolume)
+    || Number.isFinite(slPips)
+    || Number.isFinite(tpPips)
+    || Number.isFinite(riskMoneyActual)
+    || Number.isFinite(rewardMoneyPlanned)
+  );
   
   const asPrice = (v) => {
     const n = Number(v);
@@ -129,6 +142,34 @@ export default function TradeDetailPage() {
           analysisSnapshot={t?.metadata?.analysis_snapshot || t?.raw_json?.analysis_snapshot || null}
         />
       </div>
+
+      {hasExecTelemetry ? (
+        <div className="panel">
+          <div className="panel-label">EXECUTION TELEMETRY</div>
+          <div className="trade-grid three-cols" style={{ marginTop: 14, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+            <div className="detail-item">
+              <div className="muted small">USED VOLUME</div>
+              <div style={{ fontWeight: 600 }}>{Number.isFinite(usedVolume) ? usedVolume : "-"}</div>
+            </div>
+            <div className="detail-item">
+              <div className="muted small">SL PIPS</div>
+              <div style={{ fontWeight: 600 }}>{Number.isFinite(slPips) ? slPips.toFixed(2) : "-"}</div>
+            </div>
+            <div className="detail-item">
+              <div className="muted small">TP PIPS</div>
+              <div style={{ fontWeight: 600 }}>{Number.isFinite(tpPips) ? tpPips.toFixed(2) : "-"}</div>
+            </div>
+            <div className="detail-item">
+              <div className="muted small">MAX LOSS ($)</div>
+              <div style={{ fontWeight: 600 }}>{Number.isFinite(riskMoneyActual) ? riskMoneyActual.toFixed(2) : "-"}</div>
+            </div>
+            <div className="detail-item">
+              <div className="muted small">PLANNED REWARD ($)</div>
+              <div style={{ fontWeight: 600 }}>{Number.isFinite(rewardMoneyPlanned) ? rewardMoneyPlanned.toFixed(2) : "-"}</div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="panel">
         <div className="panel-label">EXECUTION LOGS</div>

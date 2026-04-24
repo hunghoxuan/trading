@@ -1,14 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 
+import { showDateTime } from "../utils/format";
+
 function fDateTime(v) {
-  if (!v) return "-";
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return String(v);
-  return d.toLocaleString(undefined, {
-    year: '2-digit', month: '2-digit', day: '2-digit', 
-    hour: '2-digit', minute: '2-digit', second: '2-digit'
-  });
+  return showDateTime(v);
 }
 
 function statusUi(statusRaw) {

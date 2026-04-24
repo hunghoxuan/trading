@@ -76,4 +76,19 @@ Every interactive action MUST use one of the three established semantic tiers:
 
 ---
 
-*Last Updated: 2026-04-17*
+## 🕒 6. Date & Time Representation
+All timestamps across the platform MUST follow these standardized rules (use `showDateTime` utility):
+1. **Recent Dates**: 
+   - If time is < 30 mins ago: Show `"xxx mins ago"` (or `"Just now"` if < 1 min).
+   - If date is Today: Show `"Today HH:mm"`.
+   - If date is Yesterday: Show `"Yesterday HH:mm"`.
+2. **Older Dates**: Show format `DD/MM/YYYY HH:mm`.
+3. **Format constraints**: 
+   - ALWAYS use 24-hour clock (`HH:mm`).
+   - NEVER show seconds.
+   - NEVER show `"AM"` or `"PM"`.
+   - Use the shared `showDateTime` utility in `web-ui/src/utils/format.js` for all UI rendering.
+
+---
+
+*Last Updated: 2026-04-24*

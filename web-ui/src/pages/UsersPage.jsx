@@ -14,18 +14,10 @@ function byCreatedAsc(a, b) {
   return ad.localeCompare(bd);
 }
 
+import { showDateTime } from "../utils/format";
+
 function fDate(v) {
-  if (!v) return "-";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return String(v);
-  return d.toLocaleString(undefined, {
-    year: "2-digit",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  return showDateTime(v);
 }
 
 function statusLabel(v) {

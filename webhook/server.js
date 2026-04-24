@@ -2770,6 +2770,36 @@ async function mt5InitBackend() {
        const isClosed = ["CLOSED", "TP", "SL", "CANCELLED"].includes(String(payload.execution_status || "").toUpperCase());
        const usedVolumeRaw = Number(payload.used_volume ?? payload.usedVolume ?? payload.volume ?? payload.requested_volume ?? payload.requestedVolume);
        const usedVolume = Number.isFinite(usedVolumeRaw) && usedVolumeRaw > 0 ? usedVolumeRaw : null;
+       const telemetryPatch = {
+         requested_volume: payload.requested_volume ?? payload.requestedVolume ?? null,
+         used_volume: usedVolume,
+         requested_sl: payload.requested_sl ?? payload.requestedSl ?? null,
+         requested_tp: payload.requested_tp ?? payload.requestedTp ?? null,
+         used_sl: payload.used_sl ?? payload.usedSl ?? null,
+         used_tp: payload.used_tp ?? payload.usedTp ?? null,
+         margin_req: payload.margin_req ?? payload.marginReq ?? null,
+         margin_budget: payload.margin_budget ?? payload.marginBudget ?? null,
+         free_margin: payload.free_margin ?? payload.freeMargin ?? null,
+         balance: payload.balance ?? null,
+         equity: payload.equity ?? null,
+         pip_value_per_lot: payload.pip_value_per_lot ?? payload.pipValuePerLot ?? null,
+         sl_pips: payload.sl_pips ?? payload.slPips ?? null,
+         tp_pips: payload.tp_pips ?? payload.tpPips ?? null,
+         risk_money_actual: payload.risk_money_actual ?? payload.riskMoneyActual ?? null,
+         reward_money_planned: payload.reward_money_planned ?? payload.rewardMoneyPlanned ?? null,
+         entry_price_exec: payload.entry_price_exec ?? payload.entry_exec ?? payload.entryExec ?? null,
+         signal_ts: payload.signal_ts ?? payload.signalTs ?? null,
+         exec_ts: payload.exec_ts ?? payload.execTs ?? null,
+         ack_result: payload.result ?? payload.retcode ?? payload.code ?? null,
+         ack_message: payload.message ?? payload.msg ?? null,
+         ack_note: payload.note ?? null,
+       };
+       const telemetryMeta = Object.fromEntries(
+         Object.entries(telemetryPatch).filter(([, v]) => {
+           if (v === null || v === undefined) return false;
+           return String(v).trim() !== "";
+         })
+       );
 
        const res = await pool.query(`
          UPDATE trades
@@ -2779,6 +2809,10 @@ async function mt5InitBackend() {
              entry_exec = $3, 
              pnl_realized = CASE WHEN $10 = TRUE THEN $4 ELSE pnl_realized END,
              volume = COALESCE($11, volume),
+             metadata = CASE
+               WHEN $12::jsonb = '{}'::jsonb THEN metadata
+               ELSE COALESCE(metadata, '{}'::jsonb) || $12::jsonb
+             END,
              opened_at = COALESCE($5, opened_at, CASE WHEN $1 = 'OPEN' THEN $6 ELSE NULL END),
              closed_at = COALESCE($7, CASE WHEN $1 = 'CLOSED' THEN $6 ELSE NULL END), 
              updated_at = $6
@@ -2794,7 +2828,8 @@ async function mt5InitBackend() {
           payload.trade_id, 
           accountId,
           isClosed,
-          usedVolume
+          usedVolume,
+          JSON.stringify(telemetryMeta)
        ]);
        if (res.rowCount > 0) {
          await this.log(payload.trade_id, 'trades', {
@@ -2803,6 +2838,9 @@ async function mt5InitBackend() {
            pnl: isClosed ? payload.pnl_realized : null,
            requested_volume: payload.requested_volume ?? payload.requestedVolume ?? null,
            used_volume: usedVolume,
+           sl_pips: telemetryMeta.sl_pips ?? null,
+           tp_pips: telemetryMeta.tp_pips ?? null,
+           risk_money_actual: telemetryMeta.risk_money_actual ?? null,
          }, res.rows[0].user_id);
        }
        return { ok: res.rowCount > 0 };

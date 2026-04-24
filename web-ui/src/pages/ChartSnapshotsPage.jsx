@@ -193,15 +193,10 @@ function sameUtcDay(aMs, bMs) {
   return a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth() && a.getUTCDate() === b.getUTCDate();
 }
 
+import { showDateTime } from "../utils/format";
+
 function formatCompactDateTime(dateLike) {
-  const d = new Date(dateLike || Date.now());
-  if (!Number.isFinite(d.getTime())) return "-";
-  const yyyy = d.getUTCFullYear();
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  const hh = String(d.getUTCHours()).padStart(2, "0");
-  const mi = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${yyyy}${mm}${dd} ${hh}${mi}`;
+  return showDateTime(dateLike);
 }
 
 function parseNum(value) {

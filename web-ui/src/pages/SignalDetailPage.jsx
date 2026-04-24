@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import { TradeSignalChart } from "../components/TradeSignalChart";
+import { showDateTime } from "../utils/format";
 
 function statusUi(statusRaw) {
   const s = String(statusRaw || "").toUpperCase();
@@ -73,7 +74,7 @@ export default function TradeDetailPage() {
           <div>RR Planned: {t.rr_planned ?? "-"}</div>
           <div>Risk Planned: ${t.risk_money_planned ?? "-"}</div>
           <div>PnL Realized: <span style={{color: Number(t.pnl_money_realized) > 0 ? "#22c55e" : Number(t.pnl_money_realized) < 0 ? "#ef4444" : undefined}}>{t.pnl_money_realized != null ? `$${Number(t.pnl_money_realized).toFixed(2)}` : "-"}</span></div>
-          <div>Created: {new Date(t.created_at).toLocaleString()}</div>
+          <div>Created: {showDateTime(t.created_at)}</div>
           <div>Note: {t.note || "-"}</div>
         </div>
       </div>
@@ -121,7 +122,7 @@ export default function TradeDetailPage() {
           <div className="muted">No events yet.</div>
         ) : (
           <div className="trade-list">
-            {[...events].sort((a,b) => new Date(b.event_time) - new Date(a.event_time)).map((ev) => {
+            {[...events].sort((a,b) => new Date(b.event_time).getTime() - new Date(a.event_time).getTime()).map((ev) => {
               const payload = getEventPayloadForDisplay(ev) || {};
               
               let eventStatusTxt = "";
@@ -144,7 +145,7 @@ export default function TradeDetailPage() {
                       {ev.event_type}
                       {eventStatusTxt && <span className={`badge ${eventStatusCls}`}>{eventStatusTxt}</span>}
                     </strong>
-                    <span className="muted">{new Date(ev.event_time).toLocaleString()}</span>
+                    <span className="muted">{showDateTime(ev.event_time)}</span>
                   </div>
                   <div className="json-table-wrapper" style={{ marginTop: '0.5rem', overflowX: 'auto' }}>
                     <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse', border: '1px solid #1e293b' }}>

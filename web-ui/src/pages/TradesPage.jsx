@@ -31,12 +31,10 @@ const RANGE_OPTIONS = [
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
 const AUTO_REFRESH_MS = 5000;
 
+import { showDateTime } from "../utils/format";
+
 function fDateTime(v) {
-  if (!v) return "-";
-  return new Date(v).toLocaleString(undefined, {
-    year: "2-digit", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-  });
+  return showDateTime(v);
 }
 
 function formatTimeframe(min) {
@@ -124,6 +122,8 @@ function rangeBounds(range) {
 }
 
 function moneyRiskReward(t) {
+  const st = String(t?.execution_status || "").toUpperCase();
+  if (!["FILLED", "CLOSED"].includes(st)) return { risk: null, reward: null };
   const m = t?.metadata && typeof t.metadata === "object" ? t.metadata : {};
   const risk = asNum(m.risk_money_actual) ?? asNum(m.risk_money) ?? asNum(m.risk_money_planned);
   const rr = asNum(m.rr) ?? asNum(t?.rr_planned) ?? calcRr(t);
@@ -132,12 +132,14 @@ function moneyRiskReward(t) {
 }
 
 function tradeRiskSize(t) {
+  const st = String(t?.execution_status || "").toUpperCase();
+  if (!["FILLED", "CLOSED"].includes(st)) return null;
   const m = t?.metadata && typeof t.metadata === "object" ? t.metadata : {};
   const direct = asNum(m.risk_money_actual) ?? asNum(m.risk_money) ?? asNum(m.risk_money_planned);
   if (direct != null) return direct;
   const entry = asNum(t?.entry);
   const sl = asNum(t?.sl);
-  const vol = asNum(t?.volume);
+  const vol = asNum(m?.used_volume ?? t?.volume);
   if (entry == null || sl == null || vol == null) return null;
   const est = Math.abs(entry - sl) * vol;
   return Number.isFinite(est) ? est : null;
@@ -493,7 +495,7 @@ export default function TradesPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
         <h2 className="page-title" style={{ margin: 0 }}>Trades</h2>
         <span className="minor-text" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-          Last refreshed: {lastRefreshAt ? lastRefreshAt.toLocaleTimeString() : "-"} (auto 5s)
+          Last refreshed: {lastRefreshAt ? showDateTime(lastRefreshAt) : "-"} (auto 5s)
         </span>
       </div>
 
@@ -651,7 +653,13 @@ export default function TradesPage() {
                               const mr = moneyRiskReward(t);
                               const riskTxt = mr.risk == null ? "-" : `$${mr.risk.toFixed(2)}`;
                               const rewardTxt = mr.reward == null ? "-" : `$${mr.reward.toFixed(2)}`;
-                              return `${t.entry_model || "-"} | ${formatTimeframe(t.chart_tf || "-")} | ${formatTimeframe(t.signal_tf || "-")} | ${(rrDisplay ?? 0).toFixed(2)} rr | ${asNum(t.volume) ?? "-"} lots | ${riskTxt} / ${rewardTxt}`;
+                              const meta = t?.metadata && typeof t.metadata === "object" ? t.metadata : {};
+                              const st = String(t.execution_status || "").toUpperCase();
+                              const lots = ["FILLED", "CLOSED"].includes(st)
+                                ? (asNum(meta.used_volume) ?? asNum(t.volume))
+                                : null;
+                              const execBlock = lots != null ? ` | ${lots} lots | ${riskTxt} / ${rewardTxt}` : "";
+                              return `${t.entry_model || "-"} | ${formatTimeframe(t.chart_tf || "-")} | ${formatTimeframe(t.signal_tf || "-")} | ${(rrDisplay ?? 0).toFixed(2)} rr${execBlock}`;
                             })()}
                           </div>
                         </div>
@@ -705,7 +713,8 @@ export default function TradesPage() {
                   const pnl = asNum(selectedTrade.pnl_realized);
                   const rr = calcRr(selectedTrade);
                   const riskSize = tradeRiskSize(selectedTrade);
-                  const vol = asNum(selectedTrade.volume);
+                  const meta = selectedTrade?.metadata && typeof selectedTrade.metadata === "object" ? selectedTrade.metadata : {};
+                  const vol = asNum(meta.used_volume) ?? asNum(selectedTrade.volume);
                   const status = statusUi(selectedTrade.execution_status);
                   const headerMeta = buildHeaderMeta({
                     statusRaw: selectedTrade.execution_status,

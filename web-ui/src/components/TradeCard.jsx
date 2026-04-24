@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { showDateTime } from "../utils/format";
 
 function money(v) {
   if (v === null || v === undefined || v === "") return "-";
@@ -45,6 +46,7 @@ function fmtPct(v) {
 }
 
 export default function TradeCard({ trade, selected = false, onToggleSelect = null }) {
+  const meta = trade?.metadata && typeof trade.metadata === "object" ? trade.metadata : {};
   const orderTypeRaw = String(trade?.raw_json?.order_type || trade?.raw_json?.orderType || "limit").toUpperCase();
   const orderType = orderTypeRaw === "STOP" || orderTypeRaw === "MARKET" ? orderTypeRaw : "LIMIT";
   const chartTf = trade?.chart_tf || trade?.raw_json?.chartTf || "-";
@@ -56,28 +58,30 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
     trade?.raw_json?.strategy
     || (String(trade.note || "").includes("|") ? String(trade.note || "").split("|")[0].trim() : "")
     || "-";
-  const pnlValue = trade.pnl_money_realized;
+  const pnlValue = trade.pnl_realized ?? trade.pnl_money_realized;
   const pnlNumber = Number(pnlValue);
   const hasPnl = pnlValue !== null && pnlValue !== undefined && pnlValue !== "" && Number.isFinite(pnlNumber);
   const pnlClass = Number.isFinite(pnlNumber) ? (pnlNumber > 0 ? "pnl-pos" : pnlNumber < 0 ? "pnl-neg" : "pnl-zero") : "";
-  const status = statusUi(trade?.status);
+  const statusRaw = trade?.execution_status ?? trade?.status;
+  const status = statusUi(statusRaw);
+  const isExecuted = ["FILLED", "CLOSED"].includes(String(statusRaw || "").toUpperCase());
   const tpText = fmt(trade.tp_exec ?? trade.tp ?? "-");
   const slText = fmt(trade.sl_exec ?? trade.sl ?? "-");
   const rrText = fmt(trade.rr_planned ?? "-");
   const pnlText = hasPnl ? `$${money(pnlValue)}` : "-";
 
   // Broker execution telemetry (populated after EA ACK)
-  const lotsActual = positiveOrNull(trade?.volume);
-  const slPips = positiveOrNull(trade?.sl_pips);
-  const tpPips = positiveOrNull(trade?.tp_pips);
-  const riskActual = positiveOrNull(trade?.risk_money_actual);
-  const rewardPlanned = positiveOrNull(trade?.reward_money_planned);
+  const lotsActual = positiveOrNull(meta?.used_volume ?? trade?.volume);
+  const slPips = positiveOrNull(meta?.sl_pips ?? trade?.sl_pips);
+  const tpPips = positiveOrNull(meta?.tp_pips ?? trade?.tp_pips);
+  const riskActual = positiveOrNull(meta?.risk_money_actual ?? trade?.risk_money_actual);
+  const rewardPlanned = positiveOrNull(meta?.reward_money_planned ?? trade?.reward_money_planned);
   const riskRaw = positiveOrNull(trade?.raw_json?.risk_money || trade?.raw_json?.risk);
 
   // Volume line: ONLY show real broker facts after placement (ignore TV planned volume)
   let volText = null;
   
-  if (lotsActual) {
+  if (isExecuted && lotsActual) {
     const riskDollar = riskActual ?? positiveOrNull(trade?.risk_money_planned) ?? riskRaw;
     const riskStr = riskDollar ? ` ($${money(riskDollar)})` : "";
     volText = `${lotsActual} Lots${riskStr}`;
@@ -96,7 +100,7 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
             <span className={sideClass(trade.action)}>{String(trade.action || "").toUpperCase() || "-"}</span>
             <span className="order-type-pill">{orderType}</span>
             <span className="muted small blur">{trade.signal_id}</span>
-            <span className="muted small blur">{new Date(trade.created_at).toLocaleString()}</span>
+            <span className="muted small blur">{showDateTime(trade.created_at)}</span>
             {trade.ack_ticket && <span className="muted small blur">Ticket: {trade.ack_ticket}</span>}
           </div>
           <div className="trade-status-col">

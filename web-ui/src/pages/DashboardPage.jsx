@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { showDateTime } from "../utils/format";
 
 const RANGE_OPTIONS = [
   { val: "all", lab: "All times" },
@@ -185,7 +186,7 @@ export default function DashboardPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
         <h2 className="page-title" style={{ margin: 0 }}>Dashboard</h2>
         <span className="minor-text" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-          Last refreshed: {lastRefreshAt ? lastRefreshAt.toLocaleTimeString() : "-"} (auto 10s)
+          Last refreshed: {lastRefreshAt ? showDateTime(lastRefreshAt) : "-"} (auto 10s)
         </span>
       </div>
       <div className="toolbar-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px' }}>

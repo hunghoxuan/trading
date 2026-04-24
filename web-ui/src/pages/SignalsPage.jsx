@@ -59,12 +59,10 @@ function PnlDisplay({ value }) {
   return <div className={`cell-minor ${cls}`}>{n < 0 ? `-${str}` : str}</div>;
 }
 
+import { showDateTime } from "../utils/format";
+
 function fDateTime(v) {
-  if (!v) return "-";
-  return new Date(v).toLocaleString(undefined, {
-    year: '2-digit', month: '2-digit', day: '2-digit', 
-    hour: '2-digit', minute: '2-digit', second: '2-digit'
-  });
+  return showDateTime(v);
 }
 
 function statusUi(statusRaw) {
@@ -486,7 +484,7 @@ export default function SignalsPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
         <h2 className="page-title" style={{ margin: 0 }}>Signals</h2>
         <span className="minor-text" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-          Last refreshed: {lastRefreshAt ? lastRefreshAt.toLocaleTimeString() : "-"} (auto 5s)
+          Last refreshed: {lastRefreshAt ? showDateTime(lastRefreshAt) : "-"} (auto 5s)
         </span>
       </div>
       <div className="toolbar-panel">
