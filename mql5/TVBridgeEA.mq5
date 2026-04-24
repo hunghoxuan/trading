@@ -16,6 +16,8 @@ input double InpMarginSafetyPercent    = 98.0; // Also cap by this % of current 
 input bool   InpUseRiskPercentSizing = true; // true: lots = risk% of balance / SL distance.
 input double InpRiskPercentOfBalance = 1.0; // 1.0 = risk 1% of ACCOUNT_BALANCE per trade.
 input double InpFallbackFixedLot = 0.01; // Used when risk sizing cannot be calculated.
+input bool   InpEnforceHardRiskCap = true; // Clamp/reject final volume if SL loss would exceed risk% cap.
+input double InpRiskCapTolerancePct = 1.0; // Allow tiny calc/rounding drift in % over risk cap.
 input bool   InpHardFailOnMarginPrecheck = false; // true: stop immediately on margin precheck fail; false: still try broker with min lot once.
 input int    InpStopRetrySeconds = 5; // Retry interval for attaching SL/TP after order open.
 input int    InpStopRetryMaxAttempts = 24; // Max retry attempts (24 * 5s = 2 minutes by default).
@@ -38,7 +40,7 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-24.1606";
+string EA_BUILD_VERSION = "2026-04-24.1725";
 
 input string InpMappingFile = "TVBridge_Mappings.csv";
 
@@ -1434,6 +1436,134 @@ bool ComputeRiskBasedVolume(const string action,
    return true;
 }
 
+bool EnforceHardRiskCap(const string action,
+                        const string symbol,
+                        const double slPrice,
+                        const double volumeIn,
+                        double &volumeOut,
+                        string &noteOut)
+{
+   noteOut = "";
+   volumeOut = volumeIn;
+   if(!InpEnforceHardRiskCap)
+   {
+      noteOut = "[hard_risk_cap_off]";
+      return true;
+   }
+   if(!(action == "BUY" || action == "SELL"))
+   {
+      noteOut = "[hard_risk_skip_non_trade_action]";
+      return true;
+   }
+   if(!InpUseRiskPercentSizing || InpRiskPercentOfBalance <= 0.0)
+   {
+      noteOut = "[hard_risk_skip_risk_mode_off]";
+      return true;
+   }
+   if(slPrice <= 0.0)
+   {
+      noteOut = "[hard_risk_missing_sl]";
+      return false;
+   }
+   if(volumeIn <= 0.0)
+   {
+      noteOut = "[hard_risk_invalid_volume]";
+      return false;
+   }
+
+   MqlTick tick;
+   if(!SymbolInfoTick(symbol, tick))
+   {
+      noteOut = "[hard_risk_tick_unavailable]";
+      return false;
+   }
+
+   double entryPrice = (action == "BUY" ? tick.ask : tick.bid);
+   ENUM_ORDER_TYPE orderType = (action == "BUY" ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
+   if(entryPrice <= 0.0)
+   {
+      noteOut = "[hard_risk_entry_invalid]";
+      return false;
+   }
+   if(action == "BUY" && slPrice >= entryPrice)
+   {
+      noteOut = "[hard_risk_sl_not_below_entry]";
+      return false;
+   }
+   if(action == "SELL" && slPrice <= entryPrice)
+   {
+      noteOut = "[hard_risk_sl_not_above_entry]";
+      return false;
+   }
+
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   if(balance <= 0.0)
+   {
+      noteOut = "[hard_risk_balance_invalid]";
+      return false;
+   }
+   double riskMoneyCap = balance * (InpRiskPercentOfBalance / 100.0);
+   if(riskMoneyCap <= 0.0)
+   {
+      noteOut = "[hard_risk_cap_invalid]";
+      return false;
+   }
+
+   double lossPerLot = 0.0;
+   if(!OrderCalcProfit(orderType, symbol, 1.0, entryPrice, slPrice, lossPerLot))
+   {
+      noteOut = "[hard_risk_calc_loss1lot_failed]";
+      return false;
+   }
+   lossPerLot = MathAbs(lossPerLot);
+   if(lossPerLot <= 0.0)
+   {
+      noteOut = "[hard_risk_loss1lot_invalid]";
+      return false;
+   }
+
+   double expectedLoss = lossPerLot * volumeIn;
+   double tolerance = 1.0 + MathMax(0.0, InpRiskCapTolerancePct) / 100.0;
+   if(expectedLoss <= riskMoneyCap * tolerance)
+   {
+      noteOut = "[hard_risk_ok cap$=" + DoubleToString(riskMoneyCap, 2)
+                + " est$=" + DoubleToString(expectedLoss, 2) + "]";
+      return true;
+   }
+
+   double cappedVolume = riskMoneyCap / lossPerLot;
+   string normNote = "";
+   if(!NormalizeVolumeForSymbol(symbol, cappedVolume, cappedVolume, normNote))
+   {
+      noteOut = "[hard_risk_norm_failed cap$=" + DoubleToString(riskMoneyCap, 2)
+                + " est$=" + DoubleToString(expectedLoss, 2) + "]";
+      return false;
+   }
+   if(cappedVolume <= 0.0)
+   {
+      noteOut = "[hard_risk_capped_volume<=0]";
+      return false;
+   }
+
+   double cappedLoss = lossPerLot * cappedVolume;
+   if(cappedLoss > riskMoneyCap * tolerance)
+   {
+      noteOut = "[hard_risk_capped_still_over cap$=" + DoubleToString(riskMoneyCap, 2)
+                + " est$=" + DoubleToString(cappedLoss, 2) + "]";
+      return false;
+   }
+
+   volumeOut = cappedVolume;
+   noteOut = "[hard_risk_clamped " + DoubleToString(volumeIn, 4)
+             + "->" + DoubleToString(cappedVolume, 4)
+             + " cap$=" + DoubleToString(riskMoneyCap, 2)
+             + " est$=" + DoubleToString(expectedLoss, 2)
+             + " est_after$=" + DoubleToString(cappedLoss, 2) + "]";
+   if(StringLen(normNote) > 0)
+      noteOut += " " + normNote;
+   return true;
+}
+
 bool FitVolumeToFreeMargin(const string action,
                            const string symbol,
                            const double volumeIn,
@@ -2250,21 +2380,41 @@ bool ExecuteSignal(const string signalId,
          Print("Margin-fit volume for ", signalId, " ", symbol,
                " used=", DoubleToString(volumeUse, 4),
                " -> fit=", DoubleToString(marginVolume, 4), " ", marginNote);
+         volumeUse = marginVolume;
          if(StringLen(marginNote) > 0)
          {
             if(StringLen(volumeNote) > 0) volumeNote += " ";
             volumeNote += marginNote;
          }
-         // 3. New task: Periodic state reconciliation
-      if(TimeCurrent() - g_syncLastTime >= 300)
-      {
-         SyncWithVps();
-         g_syncLastTime = TimeCurrent();
       }
    }
-}
    g_ackVolumeNote = volumeNote;
    g_ackUsedVolume = volumeUse;
+   if(action == "BUY" || action == "SELL")
+   {
+      double hardRiskVolume = volumeUse;
+      string hardRiskNote = "";
+      if(!EnforceHardRiskCap(action, symbol, slUse, volumeUse, hardRiskVolume, hardRiskNote))
+      {
+         errOut = "hard_risk_cap_blocked " + hardRiskNote;
+         g_dbgLastStatus = "HARD_RISK_BLOCKED";
+         g_dbgLastError = errOut;
+         RefreshDebugPanel();
+         return false;
+      }
+      if(MathAbs(hardRiskVolume - volumeUse) > 1e-9 || StringLen(hardRiskNote) > 0)
+      {
+         Print("Hard risk cap check for ", signalId, " ", symbol,
+               " used=", DoubleToString(volumeUse, 4),
+               " final=", DoubleToString(hardRiskVolume, 4),
+               " ", hardRiskNote);
+         if(StringLen(volumeNote) > 0) volumeNote += " ";
+         volumeNote += hardRiskNote;
+      }
+      volumeUse = hardRiskVolume;
+      g_ackVolumeNote = volumeNote;
+      g_ackUsedVolume = volumeUse;
+   }
    if(action == "BUY" || action == "SELL")
    {
       MqlTick t;
