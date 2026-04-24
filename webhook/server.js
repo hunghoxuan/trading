@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-1725"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-1726"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -2486,6 +2486,12 @@ async function mt5InitBackend() {
     ALTER TABLE trades
     ADD CONSTRAINT trades_execution_status_check
     CHECK (execution_status = ANY (ARRAY['PENDING','OPEN','CLOSED','REJECTED','CANCELLED']))
+  `).catch(() => {});
+  await pool.query(`ALTER TABLE trades DROP CONSTRAINT IF EXISTS trades_close_reason_check`).catch(() => {});
+  await pool.query(`
+    ALTER TABLE trades
+    ADD CONSTRAINT trades_close_reason_check
+    CHECK (close_reason IS NULL OR close_reason = ANY (ARRAY['TP','SL','MANUAL','CANCEL','EXPIRED','FAIL','SNAPSHOT']))
   `).catch(() => {});
   await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS origin_kind`).catch(() => {});
   await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS intent_volume`).catch(() => {});
