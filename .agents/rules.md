@@ -30,6 +30,7 @@ After **every** completed task or phase, end your response with exactly this for
 - **Rule:** All 4 sections always included. Keep each section short (max 5 bullets).  
 - **Rule (Manual tasks section):** Always split user/manual actions into the dedicated `Manual tasks` section so agent tasks and user tasks are clearly separated.
 - **Rule (Manual tasks format):** Only include actions requiring user execution. If none exist, write `- [x] None.`.
+- **Rule (Manual tasks visibility):** If there are no manual tasks, omit the entire `Manual tasks` section from the final response.
 - **Rule (Sprint / Feature section):** Merge done and remaining into one checklist. Completed items must be checked (`[x]`), remaining items unchecked (`[ ]`), and remaining items must be listed last.
 - **Rule (Test & Deploy section):** Use checklist format like Sprint/Feature. Completed items checked (`[x]`), pending items unchecked (`[ ]`) and listed last.
 - **Rule (Build version visibility):** For each Test & Deploy item, include build version next to the item. Build version MUST be visually observable in UI (not only backend/internal constants).
@@ -37,6 +38,7 @@ After **every** completed task or phase, end your response with exactly this for
 - **Rule (Remote deploy default):** After making code changes, ALWAYS auto-remote deploy and run a live smoke check unless the user explicitly says not to deploy.
 - **Rule (Manual fallback):** If any step cannot be executed by the agent and requires user action, provide explicit step-by-step instructions.
 - **Rule (What's Next):** Always provide exactly 3 roadmap/feature options for the user to choose from.
+- **Rule (No low-value suggestions):** Do not suggest creating debug views or adding test cases by default. Suggest those only when they are necessary to resolve an ongoing difficult bug.
 - **Rule (Version integrity):** You MUST report the real incremental version defined in code and make sure it maps to the version shown in UI. NEVER write "updated" or "local_version".
 
 ## 2. Execution Discipline (Task Lifecycle)
