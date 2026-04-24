@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-0802"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-0828"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -2488,6 +2488,123 @@ async function mt5InitBackend() {
         JSON.stringify(signal.raw_json || {}), signal.status || 'NEW'
       ]);
       return { inserted: (r.rowCount || 0) > 0 };
+    },
+    async findSignalById(signalId) {
+      const sid = String(signalId || "").trim();
+      if (!sid) return null;
+      const res = await pool.query(`SELECT * FROM signals WHERE signal_id = $1 LIMIT 1`, [sid]);
+      const row = res.rows?.[0] || null;
+      if (!row) return null;
+      const raw = row.raw_json && typeof row.raw_json === "object" ? row.raw_json : {};
+      const side = String(row.side || raw.action || raw.side || "BUY").toUpperCase();
+      const volumeRaw = Number(raw.volume ?? raw.lots ?? CFG.mt5DefaultLot);
+      return {
+        ...row,
+        action: side,
+        volume: Number.isFinite(volumeRaw) && volumeRaw > 0 ? volumeRaw : CFG.mt5DefaultLot,
+      };
+    },
+    async getSignalByTicket(ticket) {
+      const tk = String(ticket || "").trim();
+      if (!tk) return null;
+      const res = await pool.query(`
+        SELECT * FROM signals
+        WHERE ack_ticket = $1
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 1
+      `, [tk]);
+      const row = res.rows?.[0] || null;
+      if (!row) return null;
+      const raw = row.raw_json && typeof row.raw_json === "object" ? row.raw_json : {};
+      const side = String(row.side || raw.action || raw.side || "BUY").toUpperCase();
+      const volumeRaw = Number(raw.volume ?? raw.lots ?? CFG.mt5DefaultLot);
+      return {
+        ...row,
+        action: side,
+        volume: Number.isFinite(volumeRaw) && volumeRaw > 0 ? volumeRaw : CFG.mt5DefaultLot,
+      };
+    },
+    async pullAndLockSignalById(signalId) {
+      const sid = String(signalId || "").trim();
+      if (!sid) return null;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const sel = await client.query(`SELECT * FROM signals WHERE signal_id = $1 FOR UPDATE`, [sid]);
+        const row = sel.rows?.[0] || null;
+        if (!row) {
+          await client.query("COMMIT");
+          return null;
+        }
+        const cur = mt5CanonicalStoredStatus(row.status);
+        if (!["NEW", "LOCKED", "PLACED", "START"].includes(cur)) {
+          await client.query("COMMIT");
+          return null;
+        }
+        let outRow = row;
+        if (cur === "NEW") {
+          const upd = await client.query(`
+            UPDATE signals
+            SET status = 'LOCKED', locked_at = NOW(), updated_at = NOW()
+            WHERE signal_id = $1
+            RETURNING *
+          `, [sid]);
+          outRow = upd.rows?.[0] || row;
+        }
+        await client.query("COMMIT");
+        const raw = outRow.raw_json && typeof outRow.raw_json === "object" ? outRow.raw_json : {};
+        const side = String(outRow.side || raw.action || raw.side || "BUY").toUpperCase();
+        const volumeRaw = Number(raw.volume ?? raw.lots ?? CFG.mt5DefaultLot);
+        return {
+          ...outRow,
+          action: side,
+          volume: Number.isFinite(volumeRaw) && volumeRaw > 0 ? volumeRaw : CFG.mt5DefaultLot,
+        };
+      } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+      } finally {
+        client.release();
+      }
+    },
+    async pullAndLockNextSignal() {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const sel = await client.query(`
+          SELECT * FROM signals
+          WHERE status = 'NEW'
+          ORDER BY created_at ASC
+          LIMIT 1
+          FOR UPDATE SKIP LOCKED
+        `);
+        const row = sel.rows?.[0] || null;
+        if (!row) {
+          await client.query("COMMIT");
+          return null;
+        }
+        const upd = await client.query(`
+          UPDATE signals
+          SET status = 'LOCKED', locked_at = NOW(), updated_at = NOW()
+          WHERE signal_id = $1
+          RETURNING *
+        `, [row.signal_id]);
+        const outRow = upd.rows?.[0] || row;
+        await client.query("COMMIT");
+        const raw = outRow.raw_json && typeof outRow.raw_json === "object" ? outRow.raw_json : {};
+        const side = String(outRow.side || raw.action || raw.side || "BUY").toUpperCase();
+        const volumeRaw = Number(raw.volume ?? raw.lots ?? CFG.mt5DefaultLot);
+        return {
+          ...outRow,
+          action: side,
+          volume: Number.isFinite(volumeRaw) && volumeRaw > 0 ? volumeRaw : CFG.mt5DefaultLot,
+        };
+      } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+      } finally {
+        client.release();
+      }
     },
     async fanoutSignalTradeV2(payload = {}) {
       const signalIdRaw = String(payload.signal_id || "").trim();
