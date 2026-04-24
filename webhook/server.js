@@ -2922,13 +2922,50 @@ async function mt5InitBackend() {
           }
         }
       }
+      const finalizeSnapshotClosures = async (rows = []) => {
+        const items = Array.isArray(rows) ? rows : [];
+        for (const row of items) {
+          const tradeId = String(row?.trade_id || "").trim();
+          if (!tradeId) continue;
+          let resolvedPnl = Number(row?.pnl_realized);
+          if (!Number.isFinite(resolvedPnl)) {
+            const pnlRes = await pool.query(`
+              SELECT metadata->>'pnl' AS pnl
+              FROM logs
+              WHERE object_table = 'trades'
+                AND object_id = $1
+                AND metadata->>'event' = 'SYNC_UPDATE'
+              ORDER BY created_at DESC, log_id DESC
+              LIMIT 1
+            `, [tradeId]);
+            const raw = String(pnlRes.rows?.[0]?.pnl ?? "").trim();
+            const inferred = Number(raw);
+            if (Number.isFinite(inferred)) {
+              resolvedPnl = inferred;
+              await pool.query(`
+                UPDATE trades
+                SET pnl_realized = COALESCE(pnl_realized, $2),
+                    updated_at = NOW()
+                WHERE trade_id = $1
+              `, [tradeId, inferred]);
+            }
+          }
+          await this.log(tradeId, 'trades', {
+            event: 'SYNC_SNAPSHOT_CLOSE',
+            ticket: row?.broker_trade_id || null,
+            execution_status: row?.execution_status || null,
+            close_reason: row?.close_reason || null,
+            pnl_inferred: Number.isFinite(resolvedPnl) ? resolvedPnl : null,
+          }, uid);
+        }
+      };
       let closed_by_snapshot = 0;
       if (snapshotComplete) {
         if (seenTickets.size > 0) {
           const closeRes = await pool.query(`
             UPDATE trades
             SET execution_status = CASE WHEN execution_status = 'PENDING' THEN 'CANCELLED' ELSE 'CLOSED' END,
-                close_reason = COALESCE(close_reason, CASE WHEN execution_status = 'PENDING' THEN 'CANCEL' ELSE 'MANUAL' END),
+                close_reason = COALESCE(close_reason, CASE WHEN execution_status = 'PENDING' THEN 'CANCEL' ELSE 'SNAPSHOT' END),
                 closed_at = COALESCE(closed_at, NOW()),
                 updated_at = NOW()
             WHERE account_id = $1
@@ -2936,21 +2973,25 @@ async function mt5InitBackend() {
               AND broker_trade_id IS NOT NULL
               AND broker_trade_id <> ''
               AND NOT (broker_trade_id = ANY($2::text[]))
+            RETURNING trade_id, broker_trade_id, execution_status, close_reason, pnl_realized
           `, [aid, Array.from(seenTickets)]);
           closed_by_snapshot = Number(closeRes.rowCount || 0);
+          await finalizeSnapshotClosures(closeRes.rows || []);
         } else {
           const closeRes = await pool.query(`
             UPDATE trades
             SET execution_status = CASE WHEN execution_status = 'PENDING' THEN 'CANCELLED' ELSE 'CLOSED' END,
-                close_reason = COALESCE(close_reason, CASE WHEN execution_status = 'PENDING' THEN 'CANCEL' ELSE 'MANUAL' END),
+                close_reason = COALESCE(close_reason, CASE WHEN execution_status = 'PENDING' THEN 'CANCEL' ELSE 'SNAPSHOT' END),
                 closed_at = COALESCE(closed_at, NOW()),
                 updated_at = NOW()
             WHERE account_id = $1
               AND execution_status IN ('OPEN','PENDING')
               AND broker_trade_id IS NOT NULL
               AND broker_trade_id <> ''
+            RETURNING trade_id, broker_trade_id, execution_status, close_reason, pnl_realized
           `, [aid]);
           closed_by_snapshot = Number(closeRes.rowCount || 0);
+          await finalizeSnapshotClosures(closeRes.rows || []);
         }
       }
 
