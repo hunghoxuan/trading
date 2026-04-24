@@ -1,40 +1,35 @@
-# 🛡️ Trading Analysis Field Guide (Claude AI)
+# Trading Analysis Field Guide (ICT + Price Action + Market Structure)
 
-Use this guide to ensure high-quality analysis when using the `trading-vps-api`.
+Use this guide for snapshot-based AI analysis and signal creation.
 
-## 1. Market Structure (HTF - 1D/4H)
-- **Trend**: Is it Bullish (Higher Highs) or Bearish (Lower Lows)?
-- **Key Levels**: Identify the nearest Institutional Supply/Demand zones.
-- **Bias**: Determine if we are looking for Buys (at discount) or Sells (at premium).
+## 1. Base Config
+- Symbol: prefer `UK100` unless snapshot symbol is clearly different.
+- Strategy stack: `ICT + Price Action + Market Structure`.
+- Min RR: `2.0`.
+- Max risk per trade: `1%`.
+- Daily ADR filter: enabled (avoid unrealistic TP beyond ADR context).
 
-## 2. Execution Setup (LTF - 15m)
-- **PD Array**: Look for Fair Value Gaps (FVG), Order Blocks, or Liquidity Sweeps.
-- **Confirmation**: Wait for a Market Structure Shift (MSS) on the 15m chart.
-- **Quality**: Rate the setup 1-10 based on alignment with the HTF bias.
+## 2. Phase 1: Primary Filters
+- Killzones only: London (`02:00-05:00 EST`) and New York (`07:00-10:00 EST`).
+- Draw on Liquidity (DOL): map current HTF target (`PDH/PDL`, `EQH/EQL`).
+- Premium vs Discount: buys in discount, sells in premium.
+- SMT divergence: mark `Confirmed` or `None`.
 
-## 3. Risk Management
-- **Entry**: Point of interest or limit at FVG/OB.
-- **Stop Loss (SL)**: 1 ATR beyond the swing point or structural high/low.
-- **Take Profit (TP)**: 
-  - TP1: 1:2 RR (Risk/Reward)
-  - TP2: Next major HTF liquidity pool.
+## 3. Phase 2: Arrays and Key Levels
+- PD arrays: `OB`, `FVG`, `Breaker`, `Mitigation`, `Liquidity Void`.
+- Key levels: `PDH`, `PDL`, `Weekly Open`, `Midnight Open`, `ADR_High`, `ADR_Low`.
+- Status labels: `active`, `tested`, `broken`.
+- Include `bar_start_unix` (or `bar_start`) when available.
 
-## 4. Signal Emission Rules
-- **DO NOT** add a signal if the RR is less than 1.5.
-- **DO NOT** add a signal if the spread or volatility is extreme.
-- **ALWAYS** include a `note` explaining the technical rationale.
+## 4. Phase 3: Pattern and Risk Logic
+- Pattern set: `V-Shape`, `Quasimodo`, `Flag`, `Triangle`, `Pin Bar`, `Inside Bar`, `Fakey`.
+- Dynamic risk guide:
+  - High confluence (>85%): `1.0%`
+  - Standard: `0.5%`
+  - High risk: `0.25%`
+- If setup quality is poor or RR < 2.0, return empty `trade_plan`.
 
----
-
-# 📝 Analysis Prompt Template
-
-Copy and paste this when you want to start a new analysis:
-
-```text
-/analyze BTCUSD
-
-1. Capture snapshots (15m, 4h, 1D).
-2. Use the "Trading Analysis Field Guide" to perform a multi-timeframe review.
-3. If a high-quality setup exists (Score > 7), calculate SL/TP and call vps_add_signal.
-4. Summarize your findings in 3 bullet points.
-```
+## 5. Output Rules
+- Strict JSON only.
+- Keep compatibility fields used by app (`market_analysis`, `trade_plan`, `entry/sl/tp`, `rr`, `confidence_pct`).
+- Prefer `trade_plan` array and rank by confidence.

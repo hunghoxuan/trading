@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.23-2036"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-0748"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -3717,7 +3717,7 @@ function parseSnapshotPdArrays(payload = {}) {
       zone: x.zone,
       low: x.low ?? x.bottom ?? null,
       high: x.high ?? x.top ?? null,
-      bar_start: Number.isFinite(Number(x.bar_start)) ? Number(x.bar_start) : null,
+      bar_start: Number.isFinite(Number(x.bar_start_unix ?? x.bar_start)) ? Number(x.bar_start_unix ?? x.bar_start) : null,
       status: String(x.status || "").trim(),
       note: String(x.note || "").trim(),
     }));
@@ -3741,11 +3741,11 @@ function parseSnapshotKeyLevels(payload = {}) {
     if (typeof item === "object") {
       const name = String(item.name || item.label || item.type || "Key Level").slice(0, 40);
       const p = Number(item.price ?? item.level ?? item.value);
-      const barStart = Number(item.bar_start);
+      const barStart = Number(item.bar_start_unix ?? item.bar_start);
       if (Number.isFinite(p)) out.push({ name, price: p, kind: String(item.kind || "generic"), bar_start: Number.isFinite(barStart) ? barStart : null });
     }
   };
-  const keyLevels = payload?.key_levels;
+  const keyLevels = Array.isArray(payload?.market_analysis?.key_levels) ? payload.market_analysis.key_levels : payload?.key_levels;
   if (Array.isArray(keyLevels)) keyLevels.forEach(pushLevel);
   if (payload?.key_level) pushLevel(payload.key_level);
   if (Array.isArray(payload?.risk_management?.key_levels)) payload.risk_management.key_levels.forEach(pushLevel);

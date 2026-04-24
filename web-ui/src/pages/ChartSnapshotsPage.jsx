@@ -5,7 +5,7 @@ import { SignalDetailCard } from "../components/SignalDetailCard";
 
 const STORAGE_KEY = "chart_prompt_builder_templates_v2";
 
-const STRATEGY_OPTIONS = ["ICT", "SMC", "Price Action", "Wyckoff", "EMA Trend", "Breakout", "VWAP"];
+const STRATEGY_OPTIONS = ["ICT", "Price Action", "Market Structure", "SMC", "Wyckoff", "EMA Trend", "Breakout", "VWAP"];
 const DEFAULT_TEMPLATE_ID = "__default__";
 const SYMBOLS_SETTING_TYPE = "SYMBOLS";
 const SYMBOLS_SETTING_NAME = "WATCHLIST";
@@ -40,11 +40,11 @@ const PROFILE_PRESETS = {
 const DEFAULT_CONFIG = {
   symbol: "UK100",
   asset: "Auto detect",
-  session: "Any",
-  rr: "1",
+  session: "London+NY",
+  rr: "2",
   risk: "1",
   lookbackBars: "300",
-  strategies: ["ICT"],
+  strategies: ["ICT", "Price Action", "Market Structure"],
   profile: "day",
   htf_tfs: [...PROFILE_PRESETS.day.htf_tfs],
   exec_tfs: [...PROFILE_PRESETS.day.exec_tfs],
@@ -55,9 +55,36 @@ const DEFAULT_CONFIG = {
   notes: "",
 };
 
-const GUIDE_TEXT = `FIELD GUIDE\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nSYMBOL: Trading instrument (XAUUSD, BTCUSDT, UK100)\nASSET_CLASS: Auto detect | Forex | Crypto | Index | Commodity | Stock\nSESSION: Preferred execution session\nMIN_RR: Minimum Reward:Risk gate\nMAX_RISK_PCT: % risk per setup\n\nTIMEFRAME ARRAY\nHTF_BIAS: trend and structure context\nEXECUTION: setup discovery timeframe\nCONFIRMATION: trigger timeframe\n\nCONFLUENCE GATE\nRequire at least 3 aligned factors before entry.`;
+const GUIDE_TEXT = `FIELD GUIDE (ICT + PRICE ACTION + MARKET STRUCTURE)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SYMBOL: Prefer UK100 unless chart clearly shows another symbol.
+MIN_RR: 2.0 minimum.
+MAX_RISK_PCT: 1.0 max per trade.
+DAILY_ADR_FILTER: enabled. TP must remain realistic vs current daily ADR boundaries.
+
+PHASE 1 — PRIMARY FILTERS
+- Killzones: focus on London (02:00-05:00 EST) and New York (07:00-10:00 EST).
+- Draw on Liquidity (DOL): define nearest HTF target (PDH/PDL, EQH/EQL).
+- Premium/Discount: buy in discount, sell in premium.
+- SMT Divergence: mark as Confirmed or None.
+
+PHASE 2 — PD ARRAYS & LEVELS
+- Include OB, FVG, Breaker, Mitigation, Liquidity Void.
+- Include PDH, PDL, Weekly Open, Midnight Open, ADR High, ADR Low.
+- Mark each item: active | tested | broken.
+
+PHASE 3 — PATTERN & RISK
+- Patterns: V-Shape, QM, Flag, Triangle, Pin Bar, Inside Bar, Fakey.
+- Dynamic risk sizing: 1.0% (high confluence), 0.5% (standard), 0.25% (high risk).
+- If setup is weak or RR < 2.0, return empty trade_plan.
+
+OUTPUT RULE
+- STRICT JSON ONLY (no markdown, no prose).
+- Keep market_analysis + trade_plan structure compatible with existing app fields.
+- Prefer trade_plan as array; multiple plans allowed and ranked by confidence_pct.`;
 const STRATEGY_CHECKLIST = {
-  ICT: ["Liquidity sweep", "BOS/CHoCH confirmed", "PD Array reaction", "Displacement candle", "Killzone/session alignment"],
+  ICT: ["Liquidity sweep", "BOS/CHoCH confirmed", "PD Array reaction", "Displacement candle", "London/NY killzone alignment"],
+  "Market Structure": ["HTF narrative clear", "BOS/CHoCH sequence valid", "Premium/Discount aligned", "DOL target mapped", "No structure conflict"],
   SMC: ["Liquidity grab", "Structure break", "Order block mitigation", "Imbalance/FVG reaction", "HTF bias alignment"],
   "Price Action": ["Trend context clear", "Key S/R reaction", "Candlestick confirmation", "RR >= target", "No major news conflict"],
   Wyckoff: ["Phase identified", "Spring/Upthrust event", "Volume confirmation", "Sign of strength/weakness", "Markup/markdown continuation"],
@@ -274,7 +301,8 @@ function extractPositionFromAnalysis(parsed) {
       : "";
   const entry = parseNum(plan.entry ?? parsed?.entry ?? parsed?.price);
   const sl = parseNum(plan.sl ?? parsed?.sl);
-  const tp = parseNum(plan.tp1 ?? plan.tp ?? parsed?.tp ?? parsed?.take_profit);
+  const tpLevels = Array.isArray(plan?.tp_levels) ? plan.tp_levels : (Array.isArray(plan?.targets) ? plan.targets : []);
+  const tp = parseNum(tpLevels[0] ?? plan.tp1 ?? plan.tp ?? parsed?.tp ?? parsed?.take_profit);
   const rrRaw = parseNum(plan.rr ?? parsed?.rr);
   let rr = Number.isFinite(rrRaw) ? rrRaw : null;
   if (!Number.isFinite(rr) && Number.isFinite(entry) && Number.isFinite(sl) && Number.isFinite(tp)) {
@@ -539,23 +567,32 @@ function buildPrompt(cfg) {
     })
     .join("\n");
 
-  return `Act as a Senior Algo-Trader. Analyze the uploaded chart(s).\n\nSYMBOL: ${symbol}\nASSET_CLASS: ${cfg.asset}\nSTRATEGY: ${strategy}\nMIN_RR: ${cfg.rr}\nMAX_RISK_PCT: ${cfg.risk}%\n${context.length ? `\nCONTEXT:\n${context.map((x) => `  ${x}`).join("\n")}\n` : ""}\nTIMEFRAME_ARRAY:\n${tfJson}\n\nCHECKLIST CONDITIONS BY STRATEGY:\n${checklistRules}\n\nEXECUTION LOGIC:\n1. Context First: HTF Bias — establish bias on [${tfConfig.htf_tfs.join(", ")}]. If HTF alignment is absent, prioritize dominant trend.\n2. Execution layer — identify setup on [${tfConfig.exec_tfs.join(", ")}] using ${strategy}.\n3. Confirmation — wait for trigger on [${tfConfig.conf_tfs.join(", ")}].\n4. Constraint Check: Execute entry ONLY if high-probability confluence exists.\n5. RR gate — reject setup if RR < ${cfg.rr}.\n6. For every PD Array and every Key Level include bar_start (unix seconds) when possible.\n7. Return JSON only (no markdown).\n8. Can return array of trade_plan if there are more than one possible plan (high probability), compare by confidence_pct.\n9. Can return empty trade_plan if no valid trade or trade is too risky.\n\nOUTPUT:\n{\n  "symbol": "",\n  "trade_plan": [\n    {\n      "direction": "",\n      "profile": "position|swing|daily|scalping",\n      "entry": null,\n      "sl": null,\n      "tp1": null,\n      "tp2": null,\n      "tp3": null,\n      "rr": null,\n      "type": "limit|stop|market",\n      "invalidation": "",\n      "strategy": "",\n      "entry_model": "",\n      "confidence_pct": null,\n      "note": "Very short, concise words/sentences about how decision is made."\n    }\n  ],\n  "market_analysis": {\n    "bias": "",\n    "trend": "",\n    "pd_arrays": [\n      { "type": "OB|FVG|S/R|Liquidity", "timeframe": "", "zone": "", "status": "active|tested|broken", "bar_start": null }\n    ],\n    "key_levels": [\n      { "name": "", "price": null, "type": "S/R|EQH|EQL|PD", "bar_start": null }\n    ],\n    "checklist": [\n      { "strategy": "", "condition": "", "checked": true, "note": "" }\n    ]\n  }\n}\n\nSELECTED_PROFILE: ${profileLabel}`;
+  return `Act as a Senior ICT + Price Action + Market Structure trader. Analyze uploaded chart(s).\n\nCONFIG:\nSYMBOL: ${symbol} (or auto-detect)\nASSET_CLASS: ${cfg.asset}\nSTRATEGY: ${strategy}\nMIN_RR: ${cfg.rr}\nMAX_RISK_PCT: ${cfg.risk}%\nDAILY_ADR_FILTER: true\n${context.length ? `\nCONTEXT:\n${context.map((x) => `  ${x}`).join("\n")}\n` : ""}\nTIMEFRAME_ARRAY:\n${tfJson}\n\nPHASE 1 — PRIMARY FILTERS\n1. Time alignment killzones: London (02:00-05:00 EST), New York (07:00-10:00 EST).\n2. Draw on Liquidity (DOL): identify HTF target (PDH/PDL, EQH/EQL).\n3. Premium vs Discount: buys in discount (<0.5 fib), sells in premium (>0.5 fib).\n4. SMT divergence: mark institutional sponsorship as Confirmed or None.\n\nPHASE 2 — ARRAYS & KEY LEVELS\n1. PD arrays: OB, FVG, Breaker, Mitigation, Liquidity Void.\n2. Key levels: PDH, PDL, Weekly Open, Midnight Open, ADR High, ADR Low.\n3. Mark each array/level status as active|tested|broken where applicable.\n4. Include bar_start_unix (or bar_start) when possible.\n\nPHASE 3 — PATTERN & RISK LOGIC\n1. Pattern scan: V-Shape, Quasimodo, Flag, Triangle, Pin Bar, Inside Bar, Fakey.\n2. Dynamic risk sizing guide:\n   - >85 confluence: 1.0%\n   - standard: 0.5%\n   - high risk: 0.25%\n3. TP targeting must be realistic relative to daily ADR.\n4. Reject setup when RR < ${cfg.rr}.\n\nCHECKLIST CONDITIONS BY STRATEGY:\n${checklistRules}\n\nOUTPUT RULES\n1. Return STRICT JSON only (no markdown, no prose).\n2. Keep compatibility with existing fields and structure.\n3. trade_plan can contain multiple plans sorted by confidence_pct.\n4. If no valid setup, return trade_plan as empty array.\n\nOUTPUT:\n{\n  "symbol": "",\n  "trade_plan": [\n    {\n      "direction": "BUY|SELL|NULL",\n      "profile": "position|swing|daily|scalping",\n      "entry_model": "",\n      "entry": null,\n      "sl": null,\n      "tp_levels": [null, null, null],\n      "tp1": null,\n      "tp2": null,\n      "tp3": null,\n      "invalidation": "",\n      "rr": null,\n      "size_vol_pct": "",\n      "type": "limit|stop|market",\n      "strategy": "",\n      "confidence_pct": null,\n      "note": ""\n    }\n  ],\n  "market_analysis": {\n    "bias": "",\n    "trend": "",\n    "multi_tf_structure": [\n      { "tf": "D|4H|15M", "trend": "", "bias": "", "patterns": [{ "name": "", "interpretation": "" }] }\n    ],\n    "pd_arrays": [\n      { "type": "OB|FVG|Breaker|Mitigation|Void|Liquidity", "timeframe": "", "tf": "", "zone": "", "status": "active|tested|broken", "bar_start_unix": null, "bar_start": null }\n    ],\n    "key_levels": [\n      { "name": "PDH|PDL|WeeklyOpen|MidnightOpen|ADR_High|ADR_Low", "price": null, "type": "S/R|Liquidity", "bar_start_unix": null, "bar_start": null }\n    ],\n    "institutional_filters": {\n      "killzone": "Active|Inactive",\n      "dol": "",\n      "p_d_status": "Premium|Discount|Equilibrium",\n      "smt": "Confirmed|None"\n    },\n    "checklist": [\n      { "strategy": "", "condition": "", "checked": true, "note": "" }\n    ]\n  }\n}\n\nSELECTED_PROFILE: ${profileLabel}`;
 }
 
 function buildJsonConfig(cfg) {
   const tfConfig = getEffectiveTfConfig(cfg);
   return JSON.stringify(
     {
-      version: "2.0",
+      version: "2.1",
       saved_at: new Date().toISOString(),
       config: {
         symbol: cfg.symbol,
         profile: tfConfig.profile,
         asset_class: cfg.asset,
+        strategy: cfg.strategies.join(" + "),
         strategies: cfg.strategies,
         session: cfg.session,
         min_rr: Number(cfg.rr),
         max_risk_pct: Number(cfg.risk),
+        daily_adr_filter: true,
+        killzones_est: ["02:00-05:00", "07:00-10:00"],
+        risk_tiers_pct: {
+          high_confluence_gt_85: 1.0,
+          standard: 0.5,
+          high_risk: 0.25,
+        },
+        required_patterns: ["V-Shape", "Quasimodo", "Flag", "Triangle", "Pin Bar", "Inside Bar", "Fakey"],
         lookback_bars: Number(cfg.lookbackBars),
         timeframe_array: {
           htf_bias_tfs: tfConfig.htf_tfs,
@@ -590,7 +627,8 @@ function extractSignalsFromAnalysis(parsed, fallback = {}) {
       const action = sideRaw.includes("SELL") ? "SELL" : "BUY";
       const entry = parseNum(s?.entry ?? s?.price ?? s?.entry_price);
       const sl = parseNum(s?.sl ?? s?.stop_loss);
-      const tp = parseNum(s?.tp ?? s?.take_profit ?? s?.tp1 ?? s?.target);
+      const tpLevels = Array.isArray(s?.tp_levels) ? s.tp_levels : (Array.isArray(s?.targets) ? s.targets : []);
+      const tp = parseNum(tpLevels[0] ?? s?.tp ?? s?.take_profit ?? s?.tp1 ?? s?.target);
       const strategy = String(s?.strategy || fallback.strategy || "ai").trim();
       const entryModel = String(s?.entry_model || s?.model || "ai_claude").trim() || "ai_claude";
       return {
@@ -1428,11 +1466,11 @@ export default function ChartSnapshotsPage() {
       const zoneParsed = parsePdZoneBounds(x?.zone);
       const low = Number.isFinite(lowRaw) ? lowRaw : zoneParsed.low;
       const high = Number.isFinite(highRaw) ? highRaw : zoneParsed.high;
-      const startTs = Number(x?.bar_start);
+      const startTs = Number(x?.bar_start_unix ?? x?.bar_start);
       return {
         id: `${String(x?.type || "PD")}_${idx}`,
         type: String(x?.type || "PD").trim(),
-        timeframe: String(x?.timeframe || "").trim(),
+        timeframe: String(x?.timeframe || x?.tf || "").trim(),
         status: String(x?.status || "").trim(),
         barStart: Number.isFinite(startTs) ? startTs : null,
         low: Number.isFinite(low) ? low : null,
@@ -1451,7 +1489,7 @@ export default function ChartSnapshotsPage() {
           id: `${String(x?.name || "KEY")}_${idx}`,
           name: String(x?.name || x?.type || "Key Level"),
           price: p,
-          barStart: Number.isFinite(Number(x?.bar_start)) ? Number(x.bar_start) : null,
+          barStart: Number.isFinite(Number(x?.bar_start_unix ?? x?.bar_start)) ? Number(x?.bar_start_unix ?? x?.bar_start) : null,
         };
       })
       .filter(Boolean);
