@@ -30,10 +30,6 @@ export default function TradeDetailPage() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [editMode, setEditMode] = useState(false);
-  const [editBusy, setEditBusy] = useState(false);
-  const [editMsg, setEditMsg] = useState({ type: "", text: "" });
-  const [editForm, setEditForm] = useState({ execution_status: "PENDING", pnl_realized: "0" });
 
   useEffect(() => {
     async function loadData() {
@@ -54,17 +50,6 @@ export default function TradeDetailPage() {
     loadData();
   }, [tradeId]);
 
-  useEffect(() => {
-    const st = String(trade?.execution_status || "PENDING").toUpperCase();
-    const pnlRaw = Number(trade?.pnl_realized);
-    setEditForm({
-      execution_status: st,
-      pnl_realized: st === "PENDING" ? "0" : (Number.isFinite(pnlRaw) ? String(Number(pnlRaw.toFixed(2))) : ""),
-    });
-    setEditMode(false);
-    setEditMsg({ type: "", text: "" });
-  }, [trade?.trade_id]);
-
   if (loading) return <div className="loading">Loading trade {tradeId}...</div>;
   if (error) return <div className="error">{error}</div>;
 
@@ -75,31 +60,6 @@ export default function TradeDetailPage() {
     const n = Number(v);
     return Number.isFinite(n) && n > 0 ? n : null;
   };
-
-  async function onSaveEdit() {
-    if (!t.trade_id) return;
-    try {
-      setEditBusy(true);
-      setEditMsg({ type: "", text: "" });
-      const st = String(editForm.execution_status || "PENDING").toUpperCase();
-      const pnlNum = Number(editForm.pnl_realized);
-      const payload = {
-        execution_status: st,
-        pnl_realized: st === "PENDING" ? 0 : (Number.isFinite(pnlNum) ? pnlNum : null),
-      };
-      await api.v2UpdateTrade(t.trade_id, payload);
-      const data = await api.v2Trades({ q: tradeId, page: 1, pageSize: 1 });
-      if (Array.isArray(data?.items) && data.items.length > 0) setTrade(data.items[0]);
-      const evs = await api.v2TradeEvents(tradeId);
-      setEvents(evs?.items || []);
-      setEditMsg({ type: "success", text: "Trade updated." });
-      setEditMode(false);
-    } catch (e) {
-      setEditMsg({ type: "error", text: String(e?.message || e || "Failed to update trade.") });
-    } finally {
-      setEditBusy(false);
-    }
-  }
 
   return (
     <section className="stack-layout" style={{ gap: 20 }}>
@@ -152,44 +112,6 @@ export default function TradeDetailPage() {
             <div className="muted small">CREATED</div>
             <div className="minor-text">{fDateTime(t.created_at)}</div>
           </div>
-        </div>
-        <div style={{ marginTop: 14 }}>
-          {!editMode ? (
-            <button type="button" className="secondary-button" onClick={() => setEditMode(true)}>EDIT</button>
-          ) : (
-            <>
-              <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2,minmax(0,1fr))", maxWidth: 520 }}>
-                <select
-                  value={editForm.execution_status}
-                  onChange={(e) => {
-                    const st = String(e.target.value || "PENDING").toUpperCase();
-                    setEditForm((p) => ({ ...p, execution_status: st, pnl_realized: st === "PENDING" ? "0" : p.pnl_realized }));
-                  }}
-                >
-                  <option value="PENDING">PENDING</option>
-                  <option value="OPEN">FILLED (OPEN)</option>
-                  <option value="CLOSED">CLOSED</option>
-                  <option value="CANCELLED">CANCELLED</option>
-                  <option value="REJECTED">REJECTED</option>
-                </select>
-                <input
-                  value={editForm.execution_status === "PENDING" ? "0" : editForm.pnl_realized}
-                  onChange={(e) => setEditForm((p) => ({ ...p, pnl_realized: e.target.value }))}
-                  placeholder="PNL realized"
-                  disabled={editForm.execution_status === "PENDING"}
-                />
-              </div>
-              {editMsg.text ? (
-                <div className={editMsg.type === "error" ? "error" : "loading"} style={{ marginTop: 8 }}>
-                  {editMsg.text}
-                </div>
-              ) : null}
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <button type="button" className="primary-button" onClick={onSaveEdit} disabled={editBusy}>SAVE</button>
-                <button type="button" className="secondary-button" onClick={() => setEditMode(false)} disabled={editBusy}>CANCEL</button>
-              </div>
-            </>
-          )}
         </div>
       </div>
 

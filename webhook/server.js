@@ -3056,11 +3056,11 @@ async function mt5InitBackend() {
       const whereUser = clauses.length ? ` AND ${clauses.join(" AND ")}` : "";
       const res = await pool.query(`
         UPDATE trades
-        SET execution_status = $1,
-            pnl_realized = CASE WHEN $2 IS NULL THEN pnl_realized ELSE $2 END,
-            close_reason = COALESCE($3, close_reason),
+        SET execution_status = $1::text,
+            pnl_realized = CASE WHEN $2::double precision IS NULL THEN pnl_realized ELSE $2::double precision END,
+            close_reason = COALESCE($3::text, close_reason),
             closed_at = CASE
-              WHEN $1 IN ('CLOSED', 'CANCELLED', 'REJECTED') THEN COALESCE(closed_at, NOW())
+              WHEN $1::text IN ('CLOSED', 'CANCELLED', 'REJECTED') THEN COALESCE(closed_at, NOW())
               ELSE closed_at
             END,
             updated_at = NOW()

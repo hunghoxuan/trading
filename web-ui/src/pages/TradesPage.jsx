@@ -159,7 +159,7 @@ export default function TradesPage() {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [createMode, setCreateMode] = useState(false);
   const [createMsg, setCreateMsg] = useState("");
-  const [editMode, setEditMode] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
   const [editMsg, setEditMsg] = useState({ type: "", text: "" });
   const [editForm, setEditForm] = useState({ execution_status: "PENDING", pnl_realized: "0" });
@@ -371,7 +371,7 @@ export default function TradesPage() {
   useEffect(() => {
     if (!selectedTrade) {
       setEditForm({ execution_status: "PENDING", pnl_realized: "0" });
-      setEditMode(false);
+      setEditModalOpen(false);
       setEditMsg({ type: "", text: "" });
       return;
     }
@@ -383,7 +383,7 @@ export default function TradesPage() {
         ? "0"
         : (Number.isFinite(pnlRaw) ? String(Number(pnlRaw.toFixed(2))) : ""),
     });
-    setEditMode(false);
+    setEditModalOpen(false);
     setEditMsg({ type: "", text: "" });
   }, [selectedTrade?.trade_id]);
   useEffect(() => {
@@ -466,12 +466,25 @@ export default function TradesPage() {
         }
       }
       if (selectedTrade?.trade_id) await loadTradeEvents(selectedTrade.trade_id);
-      setEditMode(false);
+      setEditModalOpen(false);
     } catch (e) {
       setEditMsg({ type: "error", text: String(e?.message || e || "Failed to update trade.") });
     } finally {
       setEditBusy(false);
     }
+  }
+
+  function openTradeEditModal(trade) {
+    if (!trade?.trade_id) return;
+    setSelectedTrade(trade);
+    const st = String(trade.execution_status || "PENDING").toUpperCase();
+    const pnlRaw = Number(trade.pnl_realized);
+    setEditForm({
+      execution_status: st,
+      pnl_realized: st === "PENDING" ? "0" : (Number.isFinite(pnlRaw) ? String(Number(pnlRaw.toFixed(2))) : ""),
+    });
+    setEditMsg({ type: "", text: "" });
+    setEditModalOpen(true);
   }
 
   return (
@@ -650,7 +663,19 @@ export default function TradesPage() {
                       </td>
                       <td>
                         <div className="cell-wrap">
-                          <div className="cell-major"><span className={`badge ${status.cls}`}>{status.label}</span></div>
+                          <div className="cell-major">
+                            <span
+                              className={`badge ${status.cls}`}
+                              style={{ cursor: "pointer" }}
+                              title="Edit trade status / PnL"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openTradeEditModal(t);
+                              }}
+                            >
+                              {status.label}
+                            </span>
+                          </div>
                           {showPnl ? (
                             <div className={`cell-minor ${pnl < 0 ? "money-neg" : "money-pos"}`}>
                               ${pnl.toFixed(2)}
@@ -671,51 +696,6 @@ export default function TradesPage() {
             <div className="empty-state">SELECT A TRADE TO INSPECT DETAILS</div>
           ) : (
             <>
-              <div className="panel" style={{ padding: 12 }}>
-                <div className="panel-label">EDIT TRADE</div>
-                {!editMode ? (
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button type="button" className="secondary-button" onClick={() => setEditMode(true)}>EDIT</button>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2,minmax(0,1fr))" }}>
-                      <select
-                        value={editForm.execution_status}
-                        onChange={(e) => {
-                          const st = String(e.target.value || "PENDING").toUpperCase();
-                          setEditForm((p) => ({
-                            ...p,
-                            execution_status: st,
-                            pnl_realized: st === "PENDING" ? "0" : p.pnl_realized,
-                          }));
-                        }}
-                      >
-                        <option value="PENDING">PENDING</option>
-                        <option value="OPEN">FILLED (OPEN)</option>
-                        <option value="CLOSED">CLOSED</option>
-                        <option value="CANCELLED">CANCELLED</option>
-                        <option value="REJECTED">REJECTED</option>
-                      </select>
-                      <input
-                        value={editForm.execution_status === "PENDING" ? "0" : editForm.pnl_realized}
-                        onChange={(e) => setEditForm((p) => ({ ...p, pnl_realized: e.target.value }))}
-                        placeholder="PNL realized"
-                        disabled={editForm.execution_status === "PENDING"}
-                      />
-                    </div>
-                    {editMsg.text ? (
-                      <div className={editMsg.type === "error" ? "error" : "loading"} style={{ marginTop: 8 }}>
-                        {editMsg.text}
-                      </div>
-                    ) : null}
-                    <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-                      <button type="button" className="primary-button" onClick={onSaveTradeEdit} disabled={editBusy}>SAVE</button>
-                      <button type="button" className="secondary-button" onClick={() => setEditMode(false)} disabled={editBusy}>CANCEL</button>
-                    </div>
-                  </>
-                )}
-              </div>
               <SignalDetailCard
                 mode="trade"
                 header={(() => {
@@ -725,6 +705,7 @@ export default function TradesPage() {
                   const rr = calcRr(selectedTrade);
                   const riskSize = tradeRiskSize(selectedTrade);
                   const vol = asNum(selectedTrade.volume);
+                  const status = statusUi(selectedTrade.execution_status);
                   const headerMeta = buildHeaderMeta({
                     statusRaw: selectedTrade.execution_status,
                     pnlRaw: pnl,
@@ -740,6 +721,16 @@ export default function TradesPage() {
                     sideClass: actionCls,
                     positionText: `${selectedTrade.entry || "-"} → ${selectedTrade.tp || "-"} / ${selectedTrade.sl || "-"}`,
                     ...headerMeta,
+                    statusNode: (
+                      <span
+                        className={`badge ${status.cls}`}
+                        style={{ cursor: "pointer" }}
+                        title="Edit trade status / PnL"
+                        onClick={() => openTradeEditModal(selectedTrade)}
+                      >
+                        {status.label}
+                      </span>
+                    ),
                   });
                 })()}
                 chart={{
@@ -808,6 +799,50 @@ export default function TradesPage() {
           )}
         </div>
       </div>
+      {editModalOpen && selectedTrade ? (
+        <div className="snapshot-modal-backdrop-v4" onClick={() => setEditModalOpen(false)}>
+          <div className="snapshot-modal-panel-v4" style={{ width: "min(640px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="snapshot-modal-head-v4">
+              <div className="panel-label" style={{ marginBottom: 0 }}>EDIT TRADE</div>
+              <button type="button" className="secondary-button" onClick={() => setEditModalOpen(false)}>Close</button>
+            </div>
+            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2,minmax(0,1fr))" }}>
+              <select
+                value={editForm.execution_status}
+                onChange={(e) => {
+                  const st = String(e.target.value || "PENDING").toUpperCase();
+                  setEditForm((p) => ({
+                    ...p,
+                    execution_status: st,
+                    pnl_realized: st === "PENDING" ? "0" : p.pnl_realized,
+                  }));
+                }}
+              >
+                <option value="PENDING">PENDING</option>
+                <option value="OPEN">FILLED (OPEN)</option>
+                <option value="CLOSED">CLOSED</option>
+                <option value="CANCELLED">CANCELLED</option>
+                <option value="REJECTED">REJECTED</option>
+              </select>
+              <input
+                value={editForm.execution_status === "PENDING" ? "0" : editForm.pnl_realized}
+                onChange={(e) => setEditForm((p) => ({ ...p, pnl_realized: e.target.value }))}
+                placeholder="PNL realized"
+                disabled={editForm.execution_status === "PENDING"}
+              />
+            </div>
+            {editMsg.text ? (
+              <div className={editMsg.type === "error" ? "error" : "loading"} style={{ marginTop: 12 }}>
+                {editMsg.text}
+              </div>
+            ) : null}
+            <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
+              <button type="button" className="primary-button" onClick={onSaveTradeEdit} disabled={editBusy}>SAVE</button>
+              <button type="button" className="secondary-button" onClick={() => setEditModalOpen(false)} disabled={editBusy}>CANCEL</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
