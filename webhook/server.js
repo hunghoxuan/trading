@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-1359"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-1606"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -2762,6 +2762,8 @@ async function mt5InitBackend() {
        const openedAt = payload.opened_at || payload.openedAt || null;
        const closedAt = payload.closed_at || payload.closedAt || null;
        const isClosed = ["CLOSED", "TP", "SL", "CANCELLED"].includes(String(payload.execution_status || "").toUpperCase());
+       const usedVolumeRaw = Number(payload.used_volume ?? payload.usedVolume ?? payload.volume ?? payload.requested_volume ?? payload.requestedVolume);
+       const usedVolume = Number.isFinite(usedVolumeRaw) && usedVolumeRaw > 0 ? usedVolumeRaw : null;
 
        const res = await pool.query(`
          UPDATE trades
@@ -2770,6 +2772,7 @@ async function mt5InitBackend() {
              broker_trade_id = $2, 
              entry_exec = $3, 
              pnl_realized = CASE WHEN $10 = TRUE THEN $4 ELSE pnl_realized END,
+             volume = COALESCE($11, volume),
              opened_at = COALESCE($5, opened_at, CASE WHEN $1 = 'OPEN' THEN $6 ELSE NULL END),
              closed_at = COALESCE($7, CASE WHEN $1 = 'CLOSED' THEN $6 ELSE NULL END), 
              updated_at = $6
@@ -2784,10 +2787,17 @@ async function mt5InitBackend() {
           closedAt, 
           payload.trade_id, 
           accountId,
-          isClosed
+          isClosed,
+          usedVolume
        ]);
        if (res.rowCount > 0) {
-         await this.log(payload.trade_id, 'trades', { event: 'ACK', status: payload.execution_status, pnl: isClosed ? payload.pnl_realized : null }, res.rows[0].user_id);
+         await this.log(payload.trade_id, 'trades', {
+           event: 'ACK',
+           status: payload.execution_status,
+           pnl: isClosed ? payload.pnl_realized : null,
+           requested_volume: payload.requested_volume ?? payload.requestedVolume ?? null,
+           used_volume: usedVolume,
+         }, res.rows[0].user_id);
        }
        return { ok: res.rowCount > 0 };
     },
@@ -3036,7 +3046,7 @@ async function mt5InitBackend() {
           const closeRes = await pool.query(`
             UPDATE trades
             SET execution_status = CASE WHEN execution_status = 'PENDING' THEN 'CANCELLED' ELSE 'CLOSED' END,
-                close_reason = COALESCE(close_reason, CASE WHEN execution_status = 'PENDING' THEN 'CANCEL' ELSE 'SNAPSHOT' END),
+                close_reason = COALESCE(close_reason, CASE WHEN execution_status = 'PENDING' THEN 'CANCEL' ELSE 'MANUAL' END),
                 closed_at = COALESCE(closed_at, NOW()),
                 updated_at = NOW()
             WHERE account_id = $1
@@ -3052,7 +3062,7 @@ async function mt5InitBackend() {
           const closeRes = await pool.query(`
             UPDATE trades
             SET execution_status = CASE WHEN execution_status = 'PENDING' THEN 'CANCELLED' ELSE 'CLOSED' END,
-                close_reason = COALESCE(close_reason, CASE WHEN execution_status = 'PENDING' THEN 'CANCEL' ELSE 'SNAPSHOT' END),
+                close_reason = COALESCE(close_reason, CASE WHEN execution_status = 'PENDING' THEN 'CANCEL' ELSE 'MANUAL' END),
                 closed_at = COALESCE(closed_at, NOW()),
                 updated_at = NOW()
             WHERE account_id = $1
