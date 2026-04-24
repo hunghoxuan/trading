@@ -451,7 +451,8 @@ export default function TradesPage() {
       setEditBusy(true);
       setEditMsg({ type: "", text: "" });
       const st = String(editForm.execution_status || "PENDING").toUpperCase();
-      const pnlNum = Number(editForm.pnl_realized);
+      const pnlRaw = String(editForm.pnl_realized ?? "").trim();
+      const pnlNum = pnlRaw === "" ? null : Number(pnlRaw);
       const payload = {
         execution_status: st,
         pnl_realized: st === "PENDING" ? 0 : (Number.isFinite(pnlNum) ? pnlNum : null),
