@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-0832"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-0835"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -2704,29 +2704,44 @@ async function mt5InitBackend() {
     },
     async ackSignal(signalId, status, ticket, error, extra = {}) {
       const s = String(status || "").toUpperCase();
-      const isClosed = ["CLOSED", "TP", "SL", "CANCELLED"].includes(s);
-      const res = await pool.query(`
-        UPDATE signals
-        SET status = $1
-        WHERE signal_id = $2
-        RETURNING user_id
-      `, [s, signalId]);
-      
-      // Also update associated trades if any
-      await pool.query(`
-        UPDATE trades
-        SET execution_status = $1,
-            broker_trade_id = COALESCE(NULLIF($3, ''), broker_trade_id),
-            pnl_realized = CASE WHEN $4 = TRUE THEN COALESCE($5, pnl_realized) ELSE pnl_realized END,
-            closed_at = CASE WHEN $4 = TRUE THEN NOW() ELSE closed_at END,
-            updated_at = NOW()
-        WHERE signal_id = $2
-      `, [s, signalId, ticket || '', isClosed, extra.pnl_money_realized ?? null]);
+      const isClosed = ["CLOSED", "TP", "SL", "CANCEL", "CANCELLED", "EXPIRED", "FAIL"].includes(s);
+      let tradeExec = "OPEN";
+      if (["NEW", "LOCKED", "PLACED"].includes(s)) tradeExec = "PENDING";
+      else if (["TP", "SL", "CLOSED"].includes(s)) tradeExec = "CLOSED";
+      else if (["CANCEL", "CANCELLED", "EXPIRED"].includes(s)) tradeExec = "CANCELLED";
+      else if (s === "FAIL") tradeExec = "REJECTED";
 
-      if (res.rowCount > 0) {
-        await this.log(signalId, 'signals', { event: 'EA_ACK', status: s, ticket, error }, res.rows[0].user_id);
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const res = await client.query(`
+          UPDATE signals
+          SET status = $1
+          WHERE signal_id = $2
+          RETURNING user_id
+        `, [s, signalId]);
+
+        await client.query(`
+          UPDATE trades
+          SET execution_status = $1,
+              broker_trade_id = COALESCE(NULLIF($3, ''), broker_trade_id),
+              pnl_realized = CASE WHEN $4 = TRUE THEN COALESCE($5, pnl_realized) ELSE pnl_realized END,
+              closed_at = CASE WHEN $4 = TRUE THEN NOW() ELSE closed_at END,
+              updated_at = NOW()
+          WHERE signal_id = $2
+        `, [tradeExec, signalId, ticket || '', isClosed, extra.pnl_money_realized ?? null]);
+
+        await client.query("COMMIT");
+        if (res.rowCount > 0) {
+          await this.log(signalId, 'signals', { event: 'EA_ACK', status: s, trade_execution_status: tradeExec, ticket, error }, res.rows[0].user_id);
+        }
+        return { ok: res.rowCount > 0 };
+      } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+      } finally {
+        client.release();
       }
-      return { ok: res.rowCount > 0 };
     },
     async brokerSyncV2(accountId, payload = {}) {
       const aid = String(accountId || "").trim();
