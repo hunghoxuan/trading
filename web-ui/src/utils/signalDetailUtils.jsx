@@ -17,11 +17,23 @@ export function shouldShowPnl(statusRaw, pnlRaw) {
   return status === "CLOSED" || status === "CANCELLED" || status === "TP" || status === "SL";
 }
 
-export function buildRrVolRiskText({ rrRaw, volumeRaw, riskSizeRaw }) {
+export function buildRrVolRiskText({ rrRaw, volumeRaw, riskSizeRaw, riskPctRaw, rewardSizeRaw }) {
   const rr = asNum(rrRaw);
   const vol = asNum(volumeRaw);
   const risk = asNum(riskSizeRaw);
-  return `${rr != null ? rr.toFixed(2) : "-"} rr | ${vol != null ? vol : "-"} vol | ${risk != null ? `$${risk.toFixed(2)}` : "-"} rr size`;
+  const riskPct = asNum(riskPctRaw);
+  const rewardRaw = asNum(rewardSizeRaw);
+  const loss = risk != null ? Math.abs(risk) : null;
+  const reward = rewardRaw != null
+    ? Math.abs(rewardRaw)
+    : (loss != null && rr != null ? loss * rr : null);
+  const pctText = riskPct != null ? `${Number(riskPct.toFixed(2))}% vol` : "- vol";
+  const lotsText = vol != null ? `${Number(vol.toFixed(3))} lots` : "- lots";
+  const rrText = rr != null ? `${rr.toFixed(2)} rr` : "- rr";
+  const wlText = (reward != null || loss != null)
+    ? `W/L: ${reward != null ? `+$${reward.toFixed(2)}` : "+$-"} ${loss != null ? `-$${loss.toFixed(2)}` : "-$-"}`
+    : "W/L: +$- -$-";
+  return `${pctText} | ${lotsText} | ${rrText} ${wlText}`;
 }
 
 export function buildHeaderMeta({
@@ -30,6 +42,8 @@ export function buildHeaderMeta({
   rrRaw,
   volumeRaw,
   riskSizeRaw,
+  riskPctRaw,
+  rewardSizeRaw,
   updatedAtRaw,
   statusUi,
 }) {
@@ -43,7 +57,7 @@ export function buildHeaderMeta({
     pnlText: `$${pnl != null ? pnl.toFixed(2) : "0.00"}`,
     pnlClassName: pnl != null && pnl < 0 ? "money-neg" : "money-pos",
     dateText: formatDetailDateTime(updatedAtRaw),
-    statsText: buildRrVolRiskText({ rrRaw, volumeRaw, riskSizeRaw }),
+    statsText: buildRrVolRiskText({ rrRaw, volumeRaw, riskSizeRaw, riskPctRaw, rewardSizeRaw }),
     statusNode: <span className={`badge ${status.cls}`}>{status.label}</span>,
   };
 }

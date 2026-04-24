@@ -729,12 +729,17 @@ export default function SignalsPage() {
                 const rr = calcRrFromSignal(selectedSignal);
                 const vol = asNum(selectedSignal.volume);
                 const risk = signalRiskSize(selectedSignal, signalDetails);
+                const raw = selectedSignal?.raw_json && typeof selectedSignal.raw_json === "object" ? selectedSignal.raw_json : {};
+                const riskPct = asNum(raw.riskPct ?? raw.risk_pct ?? raw.volumePct ?? raw.volume_pct);
+                const reward = (risk != null && rr != null) ? (Math.abs(risk) * rr) : null;
                 const headerMeta = buildHeaderMeta({
                   statusRaw: selectedSignal.status,
                   pnlRaw: selectedSignal.pnl_money_realized,
                   rrRaw: rr,
                   volumeRaw: vol,
                   riskSizeRaw: risk,
+                  riskPctRaw: riskPct,
+                  rewardSizeRaw: reward,
                   updatedAtRaw: selectedSignal.updated_at || selectedSignal.closed_at || selectedSignal.opened_at || selectedSignal.created_at,
                   statusUi,
                 });

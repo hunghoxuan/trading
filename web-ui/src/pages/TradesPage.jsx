@@ -714,7 +714,10 @@ export default function TradesPage() {
                   const rr = calcRr(selectedTrade);
                   const riskSize = tradeRiskSize(selectedTrade);
                   const meta = selectedTrade?.metadata && typeof selectedTrade.metadata === "object" ? selectedTrade.metadata : {};
+                  const raw = selectedTrade?.raw_json && typeof selectedTrade.raw_json === "object" ? selectedTrade.raw_json : {};
                   const vol = asNum(meta.used_volume) ?? asNum(selectedTrade.volume);
+                  const riskPct = asNum(raw.riskPct ?? raw.risk_pct ?? raw.volumePct ?? raw.volume_pct);
+                  const mr = moneyRiskReward(selectedTrade);
                   const status = statusUi(selectedTrade.execution_status);
                   const headerMeta = buildHeaderMeta({
                     statusRaw: selectedTrade.execution_status,
@@ -722,6 +725,8 @@ export default function TradesPage() {
                     rrRaw: rr,
                     volumeRaw: vol,
                     riskSizeRaw: riskSize,
+                    riskPctRaw: riskPct,
+                    rewardSizeRaw: mr.reward,
                     updatedAtRaw: selectedTrade.updated_at || selectedTrade.closed_at || selectedTrade.opened_at || selectedTrade.created_at,
                     statusUi,
                   });
