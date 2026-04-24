@@ -40,7 +40,7 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-24.1726";
+string EA_BUILD_VERSION = "2026-04-24.1734";
 
 input string InpMappingFile = "TVBridge_Mappings.csv";
 
@@ -1342,6 +1342,7 @@ bool NormalizeVolumeForSymbol(const string symbol,
 
 bool ComputeRiskBasedVolume(const string action,
                             const string symbol,
+                            const double plannedEntryPrice,
                             const double slPrice,
                             double &volumeOut,
                             string &noteOut)
@@ -1364,17 +1365,20 @@ bool ComputeRiskBasedVolume(const string action,
       return false;
    }
 
-   MqlTick tick;
-   if(!SymbolInfoTick(symbol, tick))
-   {
-      noteOut = "[tick_unavailable]";
-      return false;
-   }
-   double entryPrice = 0.0;
+   double entryPrice = plannedEntryPrice;
    ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY;
+   MqlTick tick;
+   if((!MathIsValidNumber(entryPrice)) || entryPrice <= 0.0)
+   {
+      if(!SymbolInfoTick(symbol, tick))
+      {
+         noteOut = "[tick_unavailable]";
+         return false;
+      }
+      entryPrice = (action == "BUY" ? tick.ask : tick.bid);
+   }
    if(action == "BUY")
    {
-      entryPrice = tick.ask;
       orderType = ORDER_TYPE_BUY;
       if(slPrice >= entryPrice)
       {
@@ -1384,7 +1388,6 @@ bool ComputeRiskBasedVolume(const string action,
    }
    else if(action == "SELL")
    {
-      entryPrice = tick.bid;
       orderType = ORDER_TYPE_SELL;
       if(slPrice <= entryPrice)
       {
@@ -1438,6 +1441,7 @@ bool ComputeRiskBasedVolume(const string action,
 
 bool EnforceHardRiskCap(const string action,
                         const string symbol,
+                        const double plannedEntryPrice,
                         const double slPrice,
                         const double volumeIn,
                         double &volumeOut,
@@ -1471,14 +1475,17 @@ bool EnforceHardRiskCap(const string action,
       return false;
    }
 
+   double entryPrice = plannedEntryPrice;
    MqlTick tick;
-   if(!SymbolInfoTick(symbol, tick))
+   if((!MathIsValidNumber(entryPrice)) || entryPrice <= 0.0)
    {
-      noteOut = "[hard_risk_tick_unavailable]";
-      return false;
+      if(!SymbolInfoTick(symbol, tick))
+      {
+         noteOut = "[hard_risk_tick_unavailable]";
+         return false;
+      }
+      entryPrice = (action == "BUY" ? tick.ask : tick.bid);
    }
-
-   double entryPrice = (action == "BUY" ? tick.ask : tick.bid);
    ENUM_ORDER_TYPE orderType = (action == "BUY" ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
    if(entryPrice <= 0.0)
    {
@@ -2284,7 +2291,7 @@ bool ExecuteSignal(const string signalId,
          {
             double riskVol = 0.0;
             string riskNote = "";
-            if(ComputeRiskBasedVolume(action, symbol, slUse, riskVol, riskNote))
+            if(ComputeRiskBasedVolume(action, symbol, entry, slUse, riskVol, riskNote))
             {
                volumeUse = riskVol;
                volumeNote = "[margin_pct_fallback_risk] " + marginPctNote + " " + riskNote;
@@ -2305,7 +2312,7 @@ bool ExecuteSignal(const string signalId,
       {
          double riskVol = 0.0;
          string riskNote = "";
-         if(ComputeRiskBasedVolume(action, symbol, slUse, riskVol, riskNote))
+         if(ComputeRiskBasedVolume(action, symbol, entry, slUse, riskVol, riskNote))
          {
             volumeUse = riskVol;
             volumeNote = riskNote;
@@ -2394,7 +2401,7 @@ bool ExecuteSignal(const string signalId,
    {
       double hardRiskVolume = volumeUse;
       string hardRiskNote = "";
-      if(!EnforceHardRiskCap(action, symbol, slUse, volumeUse, hardRiskVolume, hardRiskNote))
+      if(!EnforceHardRiskCap(action, symbol, entry, slUse, volumeUse, hardRiskVolume, hardRiskNote))
       {
          errOut = "hard_risk_cap_blocked " + hardRiskNote;
          g_dbgLastStatus = "HARD_RISK_BLOCKED";
