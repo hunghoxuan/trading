@@ -1,7 +1,34 @@
 import { TradeSignalChart } from "./TradeSignalChart";
 import { TradePlanEditor } from "./TradePlanEditor";
+import { renderHistoryItem } from "../utils/signalDetailUtils";
 
 const DEFAULT_TF_TABS = ["ENTRY", "W", "D", "4H", "15m", "5m", "1m"];
+const MODE_PRESETS = {
+  generic: {
+    headerColumns: "minmax(0, 1fr) minmax(0, 1.25fr) minmax(120px, 0.55fr)",
+    responseLabel: "Response",
+    historyLoadingText: "Fetching logs...",
+    historyEmptyText: "No events.",
+  },
+  ai: {
+    headerColumns: "minmax(0, 1fr) minmax(0, 1.25fr) minmax(120px, 0.55fr)",
+    responseLabel: "Response",
+    historyLoadingText: "Fetching logs...",
+    historyEmptyText: "No events.",
+  },
+  signal: {
+    headerColumns: "minmax(0, 1fr) minmax(0, 1.25fr) minmax(120px, 0.55fr)",
+    responseLabel: "Response",
+    historyLoadingText: "Fetching telemetry logs...",
+    historyEmptyText: "No signal events.",
+  },
+  trade: {
+    headerColumns: "minmax(0, 1fr) minmax(0, 1.25fr) minmax(120px, 0.55fr)",
+    responseLabel: "Response",
+    historyLoadingText: "Fetching execution logs...",
+    historyEmptyText: "No trade events.",
+  },
+};
 
 function detailTabToTvInterval(tab) {
   const t = String(tab || "").toUpperCase();
@@ -21,25 +48,6 @@ function toTradingViewSymbol(raw) {
   return `ICMARKETS:${s.replace(/[^A-Z0-9]/g, "")}`;
 }
 
-function defaultHistoryRenderer(item, idx, formatDateTime) {
-  const payload = item?.payload_json || item?.metadata || item?.payload || {};
-  const type = String(item?.event_type || item?.type || payload?.event || payload?.event_type || "EVENT");
-  const when = formatDateTime ? formatDateTime(item?.event_time || item?.created_at) : String(item?.event_time || item?.created_at || "-");
-  return (
-    <div key={`${item?.id || item?.event_id || item?.log_id || idx}`} style={{ margin: "0 0 10px 0", paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <span className="panel-label" style={{ margin: 0 }}>{type}</span>
-        <span className="minor-text">{when}</span>
-      </div>
-      <div className="json-table-wrapper">
-        <pre className="minor-text" style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-          {JSON.stringify(payload || {}, null, 2)}
-        </pre>
-      </div>
-    </div>
-  );
-}
-
 export function SignalDetailCard({
   mode = "generic",
   emptyText = "Select an item to inspect details.",
@@ -52,6 +60,7 @@ export function SignalDetailCard({
   history = null,
   formatDateTime,
 }) {
+  const preset = MODE_PRESETS[mode] || MODE_PRESETS.generic;
   if (!showWhenEmpty && !header && !response?.hasData && !tradePlan?.enabled && !chart?.enabled && !metaItems.length && !history?.enabled) {
     return <div className="empty-state">{emptyText}</div>;
   }
@@ -65,7 +74,7 @@ export function SignalDetailCard({
     <div className="trade-detail-content">
       {header ? (
         <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
-          <div style={{ display: "grid", gridTemplateColumns: header.columns || "minmax(0, 1fr) minmax(0, 1.25fr) minmax(120px, 0.55fr)", gap: 12, alignItems: "center" }}>
+          <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
             <div className="cell-major" style={{ minWidth: 0 }}>
               {header.left}
             </div>
@@ -76,7 +85,7 @@ export function SignalDetailCard({
               {header.rightTop}
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: header.columns || "minmax(0, 1fr) minmax(0, 1.25fr) minmax(120px, 0.55fr)", gap: 12, alignItems: "center" }}>
+          <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
             <div className="minor-text" style={{ minWidth: 0 }}>{header.leftMinor}</div>
             <div className="minor-text" style={{ minWidth: 0 }}>{header.centerMinor}</div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center", minWidth: 0 }}>
@@ -89,7 +98,7 @@ export function SignalDetailCard({
       {response?.enabled && response?.hasData ? (
         <div style={{ marginBottom: 14 }}>
           <div className="snapshot-tabs-v2">
-            <span className="panel-label" style={{ margin: 0 }}>{response.label || "Response"}</span>
+            <span className="panel-label" style={{ margin: 0 }}>{response.label || preset.responseLabel}</span>
             <button type="button" className={`secondary-button ${response.tab === "text" ? "active" : ""}`} onClick={() => response.onTabChange?.("text")}>Text</button>
             <button type="button" className={`secondary-button ${response.tab === "raw" ? "active" : ""}`} onClick={() => response.onTabChange?.("raw")}>Raw</button>
             <button type="button" className={`secondary-button ${response.tab === "bars" ? "active" : ""}`} onClick={() => response.onTabChange?.("bars")}>Bars</button>
@@ -181,7 +190,7 @@ export function SignalDetailCard({
       {history?.enabled ? (
         <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10, maxHeight: history.maxHeight || 380, overflow: history.scroll ? "auto" : "visible" }}>
           {history.loading ? (
-            <div className="loading">{history.loadingText || "Fetching logs..."}</div>
+            <div className="loading">{history.loadingText || preset.historyLoadingText}</div>
           ) : (
             <div className="stack-layout" style={{ gap: "10px" }}>
               {(Array.isArray(history.items) && history.items.length
@@ -189,10 +198,10 @@ export function SignalDetailCard({
                 : []).map((item, idx) => (
                 history.renderItem
                   ? history.renderItem(item, idx)
-                  : defaultHistoryRenderer(item, idx, formatDateTime)
+                  : renderHistoryItem(item, idx, { formatDateTime })
               ))}
               {(!Array.isArray(history.items) || history.items.length === 0) ? (
-                <div className="muted">{history.emptyText || "No events."}</div>
+                <div className="muted">{history.emptyText || preset.historyEmptyText}</div>
               ) : null}
             </div>
           )}

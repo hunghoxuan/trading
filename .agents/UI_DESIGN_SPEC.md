@@ -44,6 +44,16 @@ Every interactive action MUST use one of the three established semantic tiers:
 - **Telemetry Audit**: Present data in a granular, structured hierarchy with `border-bottom` separators.
 - **Sensitive Data**: AI Agents MUST blacklist and never render credential fields (hashes, keys, tokens).
 
+### D. Form UX and Action States (Mandatory)
+- **Group Alignment Rule**: Inputs, selects, and buttons that belong to the same meaning or workflow step MUST be placed in the same row/group and visually aligned.
+- **Alignment Rule**: Form grids and action rows MUST maintain clean horizontal/vertical alignment across breakpoints (no overlap, no uneven baselines).
+- **Processing Button Rule**: On click while processing, action button MUST:
+  - become disabled
+  - show a spinner icon inside the button
+  - prevent duplicate submits
+- **Validation/Feedback Placement Rule**: Validation error, error, warning, and success feedback for a form MUST be rendered directly below that form’s input/action group only (not in unrelated areas).
+- **Dirty-Form Rule**: `Save`/`Add`/`Submit` action buttons are disabled by default and only enabled when the form becomes dirty (user has changed at least one value from initial state) and passes basic required validation.
+
 ---
 
 ## 📊 4. Financial Logic (Dashboard)

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { SignalDetailCard } from "../components/SignalDetailCard";
 import { buildDetailHeader } from "../components/SignalDetailHeaderBuilder";
+import { asNum, buildHeaderMeta, renderHistoryItem, shouldShowPnl } from "../utils/signalDetailUtils";
 
 const STATUS_OPTIONS = [
   { value: "", label: "ALL STATUSES" },
@@ -58,11 +59,6 @@ function PnlDisplay({ value }) {
   return <div className={`cell-minor ${cls}`}>{n < 0 ? `-${str}` : str}</div>;
 }
 
-function asNum(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
 function fDateTime(v) {
   if (!v) return "-";
   return new Date(v).toLocaleString(undefined, {
@@ -92,14 +88,6 @@ function calcRrFromSignal(s) {
   const reward = Math.abs(tp - entry);
   if (!risk) return null;
   return reward / risk;
-}
-
-function shouldShowPnl(statusRaw, pnlRaw) {
-  const status = String(statusRaw || "").toUpperCase();
-  const pnl = asNum(pnlRaw);
-  if (pnl == null) return false;
-  if (Math.abs(pnl) > 0.000001) return true;
-  return status === "CLOSED" || status === "CANCELLED" || status === "TP" || status === "SL";
 }
 
 function signalRiskSize(s, details) {
@@ -739,23 +727,27 @@ export default function SignalsPage() {
           ) : (
             <SignalDetailCard
               mode="signal"
-              header={buildDetailHeader({
-                side: String(selectedSignal.action || selectedSignal.side || "-").toUpperCase(),
-                symbol: selectedSignal.symbol || "-",
-                sideClass: String(selectedSignal.action || selectedSignal.side || "").toUpperCase() === "BUY" ? "side-buy" : "side-sell",
-                positionText: `${fPrice(selectedSignal.entry, selectedSignal.target_price || selectedSignal.entry_price)} → ${fPrice(selectedSignal.tp)} / ${fPrice(selectedSignal.sl)}`,
-                showPnl: shouldShowPnl(selectedSignal.status, selectedSignal.pnl_money_realized),
-                pnlText: `$${Number(selectedSignal.pnl_money_realized || 0).toFixed(2)}`,
-                pnlClassName: asNum(selectedSignal.pnl_money_realized) < 0 ? "money-neg" : "money-pos",
-                dateText: fDateTime(selectedSignal.updated_at || selectedSignal.closed_at || selectedSignal.opened_at || selectedSignal.created_at),
-                statsText: (() => {
-                  const rr = calcRrFromSignal(selectedSignal);
-                  const vol = asNum(selectedSignal.volume);
-                  const risk = signalRiskSize(selectedSignal, signalDetails);
-                  return `${rr != null ? rr.toFixed(2) : "-"} rr | ${vol != null ? vol : "-"} vol | ${risk != null ? `$${risk.toFixed(2)}` : "-"} rr size`;
-                })(),
-                statusNode: <span className={`badge ${statusUi(selectedSignal.status).cls}`}>{statusUi(selectedSignal.status).label}</span>,
-              })}
+              header={(() => {
+                const rr = calcRrFromSignal(selectedSignal);
+                const vol = asNum(selectedSignal.volume);
+                const risk = signalRiskSize(selectedSignal, signalDetails);
+                const headerMeta = buildHeaderMeta({
+                  statusRaw: selectedSignal.status,
+                  pnlRaw: selectedSignal.pnl_money_realized,
+                  rrRaw: rr,
+                  volumeRaw: vol,
+                  riskSizeRaw: risk,
+                  updatedAtRaw: selectedSignal.updated_at || selectedSignal.closed_at || selectedSignal.opened_at || selectedSignal.created_at,
+                  statusUi,
+                });
+                return buildDetailHeader({
+                  side: String(selectedSignal.action || selectedSignal.side || "-").toUpperCase(),
+                  symbol: selectedSignal.symbol || "-",
+                  sideClass: String(selectedSignal.action || selectedSignal.side || "").toUpperCase() === "BUY" ? "side-buy" : "side-sell",
+                  positionText: `${fPrice(selectedSignal.entry, selectedSignal.target_price || selectedSignal.entry_price)} → ${fPrice(selectedSignal.tp)} / ${fPrice(selectedSignal.sl)}`,
+                  ...headerMeta,
+                });
+              })()}
               tradePlan={{
                 enabled: true,
                 signalId: selectedSignal?.signal_id || null,
@@ -829,33 +821,15 @@ export default function SignalsPage() {
                 loadingText: "FETCHING TELEMETRY LOGS...",
                 items: [...(signalDetails?.events || signalDetails?.items || [])]
                   .sort((a, b) => new Date(b.event_time || b.created_at || 0) - new Date(a.event_time || a.created_at || 0)),
-                renderItem: (ev, idx) => {
-                  let stTxt = "";
-                  let stCls = "OTHER";
-                  const payload = ev.payload_json || ev.metadata || {};
-                  const tType = String(ev.event_type || payload.event_type || payload.event || ev.type || "");
-                  if (tType.startsWith("EA_ACK_")) {
+                renderItem: (ev, idx) => renderHistoryItem(ev, idx, {
+                  formatDateTime: fDateTime,
+                  statusFromType: (eventType) => {
+                    const tType = String(eventType || "");
+                    if (!tType.startsWith("EA_ACK_")) return null;
                     const raw = tType.replace("EA_ACK_", "");
-                    stTxt = raw;
-                    stCls = statusUi(raw).cls;
-                  }
-                  return (
-                    <div key={`${ev.id || ev.event_id || ev.created_at || idx}`} style={{ margin: "0 0 10px 0", paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <span className="panel-label" style={{ margin: 0 }}>{tType || "EVENT"}</span>
-                          {stTxt ? <span className={`badge ${stCls}`}>{stTxt}</span> : null}
-                        </div>
-                        <span className="minor-text">{fDateTime(ev.event_time || ev.created_at)}</span>
-                      </div>
-                      <div className="json-table-wrapper">
-                        <pre className="minor-text" style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                          {JSON.stringify(payload || {}, null, 2)}
-                        </pre>
-                      </div>
-                    </div>
-                  );
-                },
+                    return statusUi(raw);
+                  },
+                }),
               }}
               formatDateTime={fDateTime}
             />

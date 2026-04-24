@@ -17,13 +17,19 @@ After **every** completed task or phase, end your response with exactly this for
 - [x] [done test/deploy item] (Build: [visually observable UI version, if any])
 - [ ] [remaining test/deploy item] (Build: [visually observable UI version, if any])
 
+## 👤 Manual tasks
+- [ ] [task that must be done by user]
+- [ ] [task that must be done by user]
+
 ## 🧭 What's Next
 - [next feature / roadmap item 1]
 - [next feature / roadmap item 2]
 - [next feature / roadmap item 3]
 ```
 
-- **Rule:** All 3 sections always included. Keep each section short (max 5 bullets).  
+- **Rule:** All 4 sections always included. Keep each section short (max 5 bullets).  
+- **Rule (Manual tasks section):** Always split user/manual actions into the dedicated `Manual tasks` section so agent tasks and user tasks are clearly separated.
+- **Rule (Manual tasks format):** Only include actions requiring user execution. If none exist, write `- [x] None.`.
 - **Rule (Sprint / Feature section):** Merge done and remaining into one checklist. Completed items must be checked (`[x]`), remaining items unchecked (`[ ]`), and remaining items must be listed last.
 - **Rule (Test & Deploy section):** Use checklist format like Sprint/Feature. Completed items checked (`[x]`), pending items unchecked (`[ ]`) and listed last.
 - **Rule (Build version visibility):** For each Test & Deploy item, include build version next to the item. Build version MUST be visually observable in UI (not only backend/internal constants).

@@ -19,3 +19,5 @@
 ## Low Priority (`P2`)
 - [ ] [2026-04-14 15:00] [Architecture] [Author: User] Feature: Define HTF1-priority trend/bias direction policy.
 - [ ] [2026-04-14 15:00] [Indicators] [Author: User] Feature: Add trade minimum size/length filters.
+- [ ] [2026-04-23 20:35] [Web-UI/Architecture] [Author: User] Feature: After current phase, migrate gradually to Tailwind + shadcn for shared UI components (`Button`, `Input`, `Select`, `Card`, `Tabs`) to standardize design system and speed up UI iteration.
+- [ ] [2026-04-23 22:40] [Web-UI/Forms/UX] [Author: User] Feature: Enforce form UX rules in implementation phase: same-meaning controls in same row, consistent alignment, button loading state (disable + spinner), inline form-level feedback below controls only, and Save/Add buttons enabled only when form is dirty.

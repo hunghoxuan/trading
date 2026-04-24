@@ -2,6 +2,7 @@ import { api } from "../api";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { SignalDetailCard } from "../components/SignalDetailCard";
 import { buildDetailHeader } from "../components/SignalDetailHeaderBuilder";
+import { buildHeaderMeta, renderHistoryItem } from "../utils/signalDetailUtils";
 
 const STATUS_OPTIONS = [
   { value: "", label: "ALL STATUSES" },
@@ -128,14 +129,6 @@ function moneyRiskReward(t) {
   const rr = asNum(m.rr) ?? asNum(t?.rr_planned) ?? calcRr(t);
   if (risk == null || rr == null) return { risk: null, reward: null };
   return { risk, reward: risk * rr };
-}
-
-function shouldShowPnl(statusRaw, pnlRaw) {
-  const status = String(statusRaw || "").toUpperCase();
-  const pnl = asNum(pnlRaw);
-  if (pnl == null) return false;
-  if (Math.abs(pnl) > 0.000001) return true;
-  return status === "CLOSED" || status === "CANCELLED" || status === "TP" || status === "SL";
 }
 
 function tradeRiskSize(t) {
@@ -632,24 +625,25 @@ export default function TradesPage() {
                 header={(() => {
                   const action = String(selectedTrade.action || selectedTrade.side || "-").toUpperCase();
                   const actionCls = action === "BUY" ? "side-buy" : "side-sell";
-                  const st = statusUi(selectedTrade.execution_status);
                   const pnl = asNum(selectedTrade.pnl_realized);
                   const rr = calcRr(selectedTrade);
-                  const showPnl = shouldShowPnl(selectedTrade.execution_status, pnl);
                   const riskSize = tradeRiskSize(selectedTrade);
                   const vol = asNum(selectedTrade.volume);
-                  const updatedAt = fDateTime(selectedTrade.updated_at || selectedTrade.closed_at || selectedTrade.opened_at || selectedTrade.created_at);
+                  const headerMeta = buildHeaderMeta({
+                    statusRaw: selectedTrade.execution_status,
+                    pnlRaw: pnl,
+                    rrRaw: rr,
+                    volumeRaw: vol,
+                    riskSizeRaw: riskSize,
+                    updatedAtRaw: selectedTrade.updated_at || selectedTrade.closed_at || selectedTrade.opened_at || selectedTrade.created_at,
+                    statusUi,
+                  });
                   return buildDetailHeader({
                     side: action,
                     symbol: selectedTrade.symbol || "-",
                     sideClass: actionCls,
                     positionText: `${selectedTrade.entry || "-"} → ${selectedTrade.tp || "-"} / ${selectedTrade.sl || "-"}`,
-                    showPnl,
-                    pnlText: `$${pnl != null ? pnl.toFixed(2) : "0.00"}`,
-                    pnlClassName: pnl != null && pnl < 0 ? "money-neg" : "money-pos",
-                    dateText: updatedAt,
-                    statsText: `${rr != null ? rr.toFixed(2) : "-"} rr | ${vol != null ? vol : "-"} vol | ${riskSize != null ? `$${riskSize.toFixed(2)}` : "-"} rr size`,
-                    statusNode: <span className={`badge ${st.cls}`}>{st.label}</span>,
+                    ...headerMeta,
                   });
                 })()}
                 chart={{
@@ -690,31 +684,7 @@ export default function TradesPage() {
                   enabled: true,
                   items: tradeEvents,
                   scroll: true,
-                  renderItem: (ev, idx) => {
-                    const payload = ev?.metadata && typeof ev.metadata === "object" ? ev.metadata : {};
-                    const evType = String(payload.event || payload.event_type || ev.object_table || "LOG");
-                    const evTicket = String(
-                      payload.ticket ||
-                      payload.broker_trade_id ||
-                      payload.brokerTradeId ||
-                      payload.order_ticket ||
-                      ""
-                    ).trim();
-                    return (
-                      <div key={`${ev.log_id || idx}`} style={{ margin: "0 0 10px 0", paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                          <span className="panel-label" style={{ margin: 0 }}>{evType}</span>
-                          <span className="minor-text">{fDateTime(ev.created_at || ev.event_time)}</span>
-                        </div>
-                        {evTicket ? <div className="minor-text" style={{ marginBottom: 8 }}>Ticket: <strong>{evTicket}</strong></div> : null}
-                        <div className="json-table-wrapper">
-                          <pre className="minor-text" style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                            {JSON.stringify(payload || {}, null, 2)}
-                          </pre>
-                        </div>
-                      </div>
-                    );
-                  },
+                  renderItem: (ev, idx) => renderHistoryItem(ev, idx, { formatDateTime: fDateTime, includeTicket: true }),
                 }}
                 formatDateTime={fDateTime}
               />

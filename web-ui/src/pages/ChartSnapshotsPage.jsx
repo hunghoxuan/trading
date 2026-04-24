@@ -714,7 +714,8 @@ export default function ChartSnapshotsPage() {
   const [position, setPosition] = useState({ direction: "BUY", entry: "", tp: "", sl: "", rr: "", trade_type: "limit", note: "" });
   const [barsCache, setBarsCache] = useState({});
   const [barsLoading, setBarsLoading] = useState(false);
-  const [liveTf, setLiveTf] = useState("D");
+  const [symbolActivity, setSymbolActivity] = useState({ loading: false, items: [] });
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [promptDraft, setPromptDraft] = useState(() => buildPrompt(DEFAULT_CONFIG));
   const [promptEdited, setPromptEdited] = useState(false);
   const [guideDraft, setGuideDraft] = useState(GUIDE_TEXT);
@@ -735,6 +736,17 @@ export default function ChartSnapshotsPage() {
     return [...new Set(all.map(configTfToSnapshotTf).filter(Boolean))];
   }, [tfConfig.htf_tfs, tfConfig.exec_tfs, tfConfig.conf_tfs]);
   const jsonConfigText = useMemo(() => buildJsonConfig(cfg), [cfg]);
+  const widgetTfs = useMemo(() => {
+    const base = [...new Set([...(tfConfig.htf_tfs || []), ...(tfConfig.exec_tfs || []), ...(tfConfig.conf_tfs || [])]
+      .map((x) => String(x || "").toUpperCase().trim())
+      .filter(Boolean))];
+    const fallback = ["D", "4H", "15M", "5M", "1M", "W"];
+    for (const tf of fallback) {
+      if (base.length >= 4) break;
+      if (!base.includes(tf)) base.push(tf);
+    }
+    return base.slice(0, 4);
+  }, [tfConfig.htf_tfs, tfConfig.exec_tfs, tfConfig.conf_tfs]);
   const effectiveParsed = useMemo(
     () => enrichParsedAnalysis(analysisRaw, analysisParsed || tryParseJsonLoose(analysisJson) || tryParseJsonLoose(analysisRaw)),
     [analysisParsed, analysisJson, analysisRaw],
@@ -1272,6 +1284,106 @@ export default function ChartSnapshotsPage() {
     if (!promptEdited) setPromptDraft(promptText);
   }, [promptText, promptEdited]);
 
+  useEffect(() => {
+    const symbol = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
+    if (!symbol) {
+      setSymbolActivity({ loading: false, items: [] });
+      return;
+    }
+    let alive = true;
+    (async () => {
+      try {
+        setSymbolActivity((prev) => ({ ...prev, loading: true }));
+        const [tradesOut, signalsOut] = await Promise.all([
+          api.v2Trades({ symbol, page: 1, pageSize: 30 }),
+          api.trades({ symbol, page: 1, pageSize: 30 }),
+        ]);
+        const tradeItems = Array.isArray(tradesOut?.items) ? tradesOut.items : [];
+        const signalItems = Array.isArray(signalsOut?.trades) ? signalsOut.trades : [];
+        const allowed = new Set(["PENDING", "FILLED", "OPEN", "NEW"]);
+        const normalizedTrades = tradeItems
+          .filter((x) => allowed.has(String(x?.execution_status || "").toUpperCase()))
+          .map((x) => ({
+            kind: "TRADE",
+            status: String(x?.execution_status || "").toUpperCase(),
+            side: String(x?.action || x?.side || "").toUpperCase(),
+            symbol: normalizeSignalSymbol(x?.symbol || symbol),
+            entry: x?.entry,
+            tp: x?.tp,
+            sl: x?.sl,
+            updatedAt: x?.updated_at || x?.created_at,
+            id: x?.trade_id || x?.id,
+          }));
+        const normalizedSignals = signalItems
+          .filter((x) => allowed.has(String(x?.status || "").toUpperCase()))
+          .map((x) => ({
+            kind: "SIGNAL",
+            status: String(x?.status || "").toUpperCase(),
+            side: String(x?.action || x?.side || "").toUpperCase(),
+            symbol: normalizeSignalSymbol(x?.symbol || symbol),
+            entry: x?.entry || x?.target_price || x?.entry_price,
+            tp: x?.tp || x?.tp_price,
+            sl: x?.sl || x?.sl_price,
+            updatedAt: x?.updated_at || x?.created_at,
+            id: x?.signal_id || x?.id,
+          }));
+        const merged = [...normalizedTrades, ...normalizedSignals]
+          .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
+          .slice(0, 12);
+        if (alive) setSymbolActivity({ loading: false, items: merged });
+      } catch {
+        if (alive) setSymbolActivity({ loading: false, items: [] });
+      }
+    })();
+    return () => { alive = false; };
+  }, [tvSymbol, cfg.symbol]);
+
+  const settingsFormNode = (
+    <section className="snapshot-settings-v2">
+      <div className="snapshot-template-row-v2">
+        <div className="snapshot-template-col-v2">
+          <select aria-label="Template" value={templateId} onChange={(e) => handleSelectTemplate(e.target.value)}>
+            <option value="">New Template</option>
+            <option value={DEFAULT_TEMPLATE_ID}>Default Template</option>
+            {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+        <div className="snapshot-template-col-v2">
+          <input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name" />
+        </div>
+        <button className="primary-button snapshot-template-save-btn-v2" type="button" onClick={saveTemplate}>Save</button>
+      </div>
+      <div className="snapshot-fields-v2 compact">
+        <div><label className="minor-text">Assets</label><select value={cfg.asset} onChange={(e) => setCfgField("asset", e.target.value)}><option>Auto detect</option><option>Commodity</option><option>Forex</option><option>Crypto</option><option>Index</option><option>Stock</option></select></div>
+        <div><label className="minor-text">Sessions</label><select value={cfg.session} onChange={(e) => setCfgField("session", e.target.value)}><option>Any</option><option>London</option><option>New York</option><option>Asian</option><option>London+NY</option></select></div>
+        <div><label className="minor-text">MinRR</label><input type="number" min="0.5" step="0.5" value={cfg.rr} onChange={(e) => setCfgField("rr", e.target.value)} /></div>
+        <div className="snapshot-col-span-2">
+          <label className="minor-text">Bias / Execution / Confirm TFs</label>
+          <select value={cfg.profile || "day"} onChange={(e) => setProfilePreset(e.target.value)}>
+            <option value="position">{PROFILE_PRESETS.position.label}</option>
+            <option value="swing">{PROFILE_PRESETS.swing.label}</option>
+            <option value="day">{PROFILE_PRESETS.day.label}</option>
+            <option value="scalper">{PROFILE_PRESETS.scalper.label}</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label className="minor-text">Strategy (multi-select)</label>
+        <div className="snapshot-tag-wrap-v2">
+          {STRATEGY_OPTIONS.map((s) => (
+            <button key={s} type="button" className={`secondary-button snapshot-tag-v2 ${cfg.strategies.includes(s) ? "active" : ""}`} onClick={() => setCfgField("strategies", toggleArrayValue(cfg.strategies, s))}>{s}</button>
+          ))}
+        </div>
+      </div>
+      <div className="snapshot-context-v2">
+        <div className="snapshot-col-span-2"><label className="minor-text">HTF Bias</label><select value={cfg.htfbias} onChange={(e) => setCfgField("htfbias", e.target.value)}><option value="">Auto</option><option>Bullish</option><option>Bearish</option><option>Ranging</option></select></div>
+        <div className="snapshot-col-span-2"><label className="minor-text">Direction</label><select value={cfg.dir} onChange={(e) => setCfgField("dir", e.target.value)}><option>Direction: Both</option><option>Direction: Bias</option><option>Long only</option><option>Short only</option></select></div>
+        <div className="snapshot-col-span-2"><label className="minor-text">News</label><select value={cfg.news} onChange={(e) => setCfgField("news", e.target.value)}><option value="">None</option><option>High-impact today</option><option>NFP / FOMC week</option><option>Earnings release</option></select></div>
+        <div className="snapshot-col-span-12"><label className="minor-text">Notes</label><textarea className="snapshot-notes-textarea-v3" rows={4} value={cfg.notes} onChange={(e) => setCfgField("notes", e.target.value)} placeholder="Notes / extra context" /></div>
+      </div>
+    </section>
+  );
+
   const chartFiles = (analysisFilesDisplay && analysisFilesDisplay.length ? analysisFilesDisplay : usedFiles).map((x) => String(x || "").trim()).filter(Boolean);
   const chartPdArrays = useMemo(() => {
     const arr = Array.isArray(effectiveParsed?.market_analysis?.pd_arrays) ? effectiveParsed.market_analysis.pd_arrays : [];
@@ -1383,12 +1495,10 @@ export default function ChartSnapshotsPage() {
   }, [responseTab, currentBarsSnapshot, chartPdArrays, chartKeyLevels, position.entry, position.sl, position.tp]);
 
   return (
-    <section className="snapshot-builder-v2 snapshot-builder-v3">
+    <section className="snapshot-builder-v2 snapshot-builder-v3 snapshot-builder-ai-v4">
       <section className="panel snapshot-col-v3 snapshot-col-symbols-v3">
-        <div className="snapshot-symbols-title-v2">
+        <div className="snapshot-symbol-row-inline-v4">
           <span className="panel-label" style={{ margin: 0 }}>Symbols</span>
-        </div>
-        <div className="snapshot-symbol-row-v4">
           <input
             list="tv-symbol-options"
             value={cfg.symbol}
@@ -1413,82 +1523,51 @@ export default function ChartSnapshotsPage() {
           ))}
         </div>
         <div className="snapshot-live-card-v3">
-          <div className="snapshot-live-head-v3">
-            <div className="snapshot-tag-wrap-v2">
-              {["W", "D", "4H", "15m", "5m", "1m"].map((tf) => (
-                <button
-                  key={tf}
-                  type="button"
-                  className={`secondary-button snapshot-tag-v2 ${liveTf === tf ? "active" : ""}`}
-                  onClick={() => setLiveTf(tf)}
-                >
-                  {tf}
-                </button>
-              ))}
-            </div>
+          <div className="snapshot-gallery-head-v2">
+            <span className="panel-label" style={{ margin: 0 }}>Related Pending / Filled / New</span>
           </div>
-          <iframe
-            title="live-chart"
-            className="snapshot-live-iframe-v3"
-            src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTfToTradingViewInterval(liveTf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-          />
+          <div className="snapshot-activity-list-v4">
+            {symbolActivity.loading ? <div className="minor-text">Loading...</div> : null}
+            {!symbolActivity.loading && symbolActivity.items.length === 0 ? <div className="minor-text">No related trades/signals.</div> : null}
+            {!symbolActivity.loading && symbolActivity.items.map((x) => (
+              <article key={`${x.kind}_${x.id}`} className="snapshot-activity-card-v4">
+                <div className="snapshot-activity-top-v4">
+                  <span className={x.side === "SELL" ? "side-sell" : "side-buy"}>{x.side || "-"}</span>
+                  <span className="cell-major">{x.symbol || "-"}</span>
+                  <span className="minor-text">{x.kind} · {x.status === "OPEN" ? "FILLED" : x.status}</span>
+                </div>
+                <div className="minor-text">{x.entry ?? "-"} → {x.tp ?? "-"} / {x.sl ?? "-"}</div>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 
       <section className="panel snapshot-col-v3 snapshot-col-settings-v3">
+        <div className="snapshot-live-grid-v4">
+          {widgetTfs.map((tf) => (
+            <div key={tf} className="snapshot-live-card-v3">
+              <div className="minor-text" style={{ marginBottom: 6 }}>{tf}</div>
+              <iframe
+                title={`live-chart-${tf}`}
+                className="snapshot-live-iframe-v3"
+                src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTfToTradingViewInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+              />
+            </div>
+          ))}
+        </div>
         <div className="snapshot-tabs-v2">
           <button type="button" className={`secondary-button ${settingsTab === "settings" ? "active" : ""}`} onClick={() => setSettingsTab("settings")}>Settings</button>
           <button type="button" className={`secondary-button ${settingsTab === "prompt" ? "active" : ""}`} onClick={() => setSettingsTab("prompt")}>Prompt</button>
           <button type="button" className={`secondary-button ${settingsTab === "json" ? "active" : ""}`} onClick={() => setSettingsTab("json")}>JSON Config</button>
           <button type="button" className={`secondary-button ${settingsTab === "guide" ? "active" : ""}`} onClick={() => setSettingsTab("guide")}>Guide</button>
+          <button type="button" className="secondary-button" onClick={() => setSettingsModalOpen((v) => !v)}>
+            {settingsModalOpen ? "Hide Settings Form" : "Open Settings Form"}
+          </button>
           <span className="minor-text" style={{ marginLeft: "auto" }}>{(promptDraft || "").length} chars</span>
         </div>
 
-        {settingsTab === "settings" ? (
-          <section className="snapshot-settings-v2">
-            <div className="snapshot-template-row-v2">
-              <div className="snapshot-template-col-v2">
-                <select aria-label="Template" value={templateId} onChange={(e) => handleSelectTemplate(e.target.value)}>
-                  <option value="">New Template</option>
-                  <option value={DEFAULT_TEMPLATE_ID}>Default Template</option>
-                  {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </div>
-              <div className="snapshot-template-col-v2">
-                <input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name" />
-              </div>
-              <button className="primary-button snapshot-template-save-btn-v2" type="button" onClick={saveTemplate}>Save</button>
-            </div>
-            <div className="snapshot-fields-v2 compact">
-              <div><label className="minor-text">Assets</label><select value={cfg.asset} onChange={(e) => setCfgField("asset", e.target.value)}><option>Auto detect</option><option>Commodity</option><option>Forex</option><option>Crypto</option><option>Index</option><option>Stock</option></select></div>
-              <div><label className="minor-text">Sessions</label><select value={cfg.session} onChange={(e) => setCfgField("session", e.target.value)}><option>Any</option><option>London</option><option>New York</option><option>Asian</option><option>London+NY</option></select></div>
-              <div><label className="minor-text">MinRR</label><input type="number" min="0.5" step="0.5" value={cfg.rr} onChange={(e) => setCfgField("rr", e.target.value)} /></div>
-              <div className="snapshot-col-span-2">
-                <label className="minor-text">Bias / Execution / Confirm TFs</label>
-                <select value={cfg.profile || "day"} onChange={(e) => setProfilePreset(e.target.value)}>
-                  <option value="position">{PROFILE_PRESETS.position.label}</option>
-                  <option value="swing">{PROFILE_PRESETS.swing.label}</option>
-                  <option value="day">{PROFILE_PRESETS.day.label}</option>
-                  <option value="scalper">{PROFILE_PRESETS.scalper.label}</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className="minor-text">Strategy (multi-select)</label>
-              <div className="snapshot-tag-wrap-v2">
-                {STRATEGY_OPTIONS.map((s) => (
-                  <button key={s} type="button" className={`secondary-button snapshot-tag-v2 ${cfg.strategies.includes(s) ? "active" : ""}`} onClick={() => setCfgField("strategies", toggleArrayValue(cfg.strategies, s))}>{s}</button>
-                ))}
-              </div>
-            </div>
-            <div className="snapshot-context-v2">
-              <div className="snapshot-col-span-2"><label className="minor-text">HTF Bias</label><select value={cfg.htfbias} onChange={(e) => setCfgField("htfbias", e.target.value)}><option value="">Auto</option><option>Bullish</option><option>Bearish</option><option>Ranging</option></select></div>
-              <div className="snapshot-col-span-2"><label className="minor-text">Direction</label><select value={cfg.dir} onChange={(e) => setCfgField("dir", e.target.value)}><option>Direction: Both</option><option>Direction: Bias</option><option>Long only</option><option>Short only</option></select></div>
-              <div className="snapshot-col-span-2"><label className="minor-text">News</label><select value={cfg.news} onChange={(e) => setCfgField("news", e.target.value)}><option value="">None</option><option>High-impact today</option><option>NFP / FOMC week</option><option>Earnings release</option></select></div>
-              <div className="snapshot-col-span-12"><label className="minor-text">Notes</label><textarea className="snapshot-notes-textarea-v3" rows={4} value={cfg.notes} onChange={(e) => setCfgField("notes", e.target.value)} placeholder="Notes / extra context" /></div>
-            </div>
-          </section>
-        ) : null}
+        {settingsTab === "settings" ? <div className="minor-text">Settings form is in modal. Click “Open Settings Form”.</div> : null}
         {settingsTab === "prompt" ? (
           <>
             <div className="minor-text">Prompt is the main instruction sent to AI on Analyze.</div>
@@ -1509,15 +1588,10 @@ export default function ChartSnapshotsPage() {
         ) : null}
         <div className="panel snapshot-control-card-v3">
           <div className="snapshot-capture-inline-v2 snapshot-capture-inline-v3">
-            <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>{capturing ? "Snapshots..." : "Snapshots"}</button>
             <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
-            {actionStatus.action === "capture" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
             {actionStatus.action === "analyze" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
           </div>
         </div>
-      </section>
-
-      <section className="panel snapshot-col-v3 snapshot-col-position-v3">
         <SignalDetailCard
           mode="ai"
           response={{
@@ -1579,6 +1653,18 @@ export default function ChartSnapshotsPage() {
           <span className={`minor-text snapshot-footer-msg-v3 ${actionStatus.type === "error" ? "msg-error" : "msg-warning"}`}>{actionStatus.text}</span>
         ) : null}
       </section>
+
+      {settingsModalOpen ? (
+        <div className="snapshot-modal-backdrop-v4" onClick={() => setSettingsModalOpen(false)}>
+          <div className="snapshot-modal-panel-v4" onClick={(e) => e.stopPropagation()}>
+            <div className="snapshot-modal-head-v4">
+              <span className="panel-label" style={{ margin: 0 }}>Settings</span>
+              <button type="button" className="secondary-button" onClick={() => setSettingsModalOpen(false)}>Close</button>
+            </div>
+            {settingsFormNode}
+          </div>
+        </div>
+      ) : null}
 
       {status.text ? (
         <div className={`form-message ${status.type === "error" ? "msg-error" : status.type === "warning" ? "msg-warning" : "msg-success"}`}>
