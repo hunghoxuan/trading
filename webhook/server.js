@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-0922"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-1224"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -2786,7 +2786,14 @@ async function mt5InitBackend() {
           if (ticket) seenTickets.add(ticket);
           const pnlRaw = Number(raw.pnl);
           const pnl = Number.isFinite(pnlRaw) ? pnlRaw : null;
-          const statusRaw = String(raw.status || "").trim().toUpperCase();
+          const reasonRaw = String(raw.reason || raw.close_reason || "").trim().toUpperCase();
+          let statusRaw = String(raw.status || "").trim().toUpperCase();
+          if (!statusRaw) {
+            if (reasonRaw === "TP" || reasonRaw === "DEAL_REASON_TP") statusRaw = "TP";
+            else if (reasonRaw === "SL" || reasonRaw === "SO" || reasonRaw === "DEAL_REASON_SL" || reasonRaw === "DEAL_REASON_SO") statusRaw = "SL";
+            else if (reasonRaw === "CLIENT" || reasonRaw === "MOBILE" || reasonRaw === "EXPERT" || reasonRaw === "MANUAL") statusRaw = "CANCEL";
+            else if (pnl !== null) statusRaw = "CLOSED";
+          }
           let executionStatus = "PENDING";
           if (statusRaw === "START" || statusRaw === "OPEN") executionStatus = "OPEN";
           else if (statusRaw === "PLACED" || statusRaw === "NEW" || statusRaw === "PENDING") executionStatus = "PENDING";
@@ -2808,6 +2815,9 @@ async function mt5InitBackend() {
 
       pushItems(payload.positions);
       pushItems(payload.orders);
+      pushItems(payload.closed);
+      pushItems(payload.closed_positions);
+      pushItems(payload.deals);
       const items = Array.from(merged.values());
 
       let matched = 0;

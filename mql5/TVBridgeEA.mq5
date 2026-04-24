@@ -38,7 +38,7 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-24.0922";
+string EA_BUILD_VERSION = "2026-04-24.1224";
 
 input string InpMappingFile = "TVBridge_Mappings.csv";
 
@@ -129,6 +129,7 @@ bool     g_posMapOpenedAckSent[];
 ulong    g_ordMapTicket[];
 string   g_ordMapSignalId[];
 datetime g_syncLastTime = 0;
+datetime g_lastClosedDealSyncTime = 0;
 
 string   g_lastPullPayload = "None";
 string   g_lastSyncPayload = "None";
@@ -2873,8 +2874,11 @@ void SyncWithVps()
 {
    string posUpdates = "";
    string ordUpdates = "";
+   string closedUpdates = "";
    int posCount = 0;
    int ordCount = 0;
+   int closedCount = 0;
+   datetime maxClosedDealTime = g_lastClosedDealSyncTime;
 
    // 1. Positions
    for(int i = 0; i < PositionsTotal(); i++)
@@ -2922,7 +2926,70 @@ void SyncWithVps()
       }
    }
 
-   string stateHash = posUpdates + "|" + ordUpdates;
+   // 3. Recently closed deals (manual close + TP/SL realized pnl)
+   datetime fromTs = g_lastClosedDealSyncTime;
+   if(fromTs <= 0) fromTs = TimeCurrent() - 3600; // bootstrap window
+   datetime toTs = TimeCurrent();
+   if(HistorySelect(fromTs, toTs))
+   {
+      int dealsTotal = HistoryDealsTotal();
+      for(int i = 0; i < dealsTotal; i++)
+      {
+         ulong dealTicket = HistoryDealGetTicket(i);
+         if(dealTicket == 0 || !HistoryDealSelect(dealTicket))
+            continue;
+
+         long magic = HistoryDealGetInteger(dealTicket, DEAL_MAGIC);
+         if(magic != InpMagic)
+            continue;
+
+         ENUM_DEAL_ENTRY entryType = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(dealTicket, DEAL_ENTRY);
+         if(!(entryType == DEAL_ENTRY_OUT || entryType == DEAL_ENTRY_OUT_BY))
+            continue;
+
+         datetime dealTime = (datetime)HistoryDealGetInteger(dealTicket, DEAL_TIME);
+         if(dealTime <= g_lastClosedDealSyncTime)
+            continue;
+
+         ulong posTicket = (ulong)HistoryDealGetInteger(dealTicket, DEAL_POSITION_ID);
+         if(posTicket == 0)
+            continue;
+
+         string sid = "";
+         int idx = -1;
+         GetSignalIdByPositionTicket(posTicket, sid, idx);
+         if(sid == "")
+            sid = HistoryDealGetString(dealTicket, DEAL_COMMENT);
+
+         ENUM_DEAL_REASON reason = (ENUM_DEAL_REASON)HistoryDealGetInteger(dealTicket, DEAL_REASON);
+         string closeStatus = "CLOSED";
+         if(reason == DEAL_REASON_TP)
+            closeStatus = "TP";
+         else if(reason == DEAL_REASON_SL || reason == DEAL_REASON_SO)
+            closeStatus = "SL";
+         else if(reason == DEAL_REASON_CLIENT || reason == DEAL_REASON_EXPERT || reason == DEAL_REASON_MOBILE)
+            closeStatus = "CANCEL";
+
+         double pnl = HistoryDealGetDouble(dealTicket, DEAL_PROFIT)
+                      + HistoryDealGetDouble(dealTicket, DEAL_SWAP)
+                      + HistoryDealGetDouble(dealTicket, DEAL_COMMISSION);
+
+         if(closedCount > 0) closedUpdates += ",";
+         closedUpdates += "{";
+         closedUpdates += "\"signal_id\":\"" + JsonEscape(sid) + "\",";
+         closedUpdates += "\"status\":\"" + JsonEscape(closeStatus) + "\",";
+         closedUpdates += "\"ticket\":\"" + IntegerToString((int)posTicket) + "\",";
+         closedUpdates += "\"pnl\":" + DoubleToString(pnl, 2) + ",";
+         closedUpdates += "\"closed_at\":\"" + IsoTime(dealTime) + "\"";
+         closedUpdates += "}";
+         closedCount++;
+
+         if(dealTime > maxClosedDealTime)
+            maxClosedDealTime = dealTime;
+      }
+   }
+
+   string stateHash = posUpdates + "|" + ordUpdates + "|" + closedUpdates;
 
    // [STATE DETECTION] If total state hasn't changed, skip webhook
    if(stateHash == g_lastStateHash) {
@@ -2938,7 +3005,8 @@ void SyncWithVps()
    string body = "{";
    body += "\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",";
    body += "\"positions\":[" + posUpdates + "],";
-   body += "\"orders\":[" + ordUpdates + "]";
+   body += "\"orders\":[" + ordUpdates + "],";
+   body += "\"closed\":[" + closedUpdates + "]";
    body += "}";
    
    string url = BuildApiUrl("/v2/broker/sync");
@@ -2949,7 +3017,7 @@ void SyncWithVps()
       int synced = (int)JsonGetNumber(resp, "synced", -1);
       int matched = (int)JsonGetNumber(resp, "matched", -1);
       int received = (int)JsonGetNumber(resp, "received", -1);
-      g_lastSyncSummary = "OK pushed pos=" + IntegerToString(posCount) + " ord=" + IntegerToString(ordCount);
+      g_lastSyncSummary = "OK pushed pos=" + IntegerToString(posCount) + " ord=" + IntegerToString(ordCount) + " closed=" + IntegerToString(closedCount);
       if(synced >= 0 || matched >= 0 || received >= 0)
       {
          g_lastSyncSummary += " | synced=" + IntegerToString(synced) +
@@ -2957,6 +3025,8 @@ void SyncWithVps()
                               " recv=" + IntegerToString(received);
       }
       g_lastSyncPayload = "V2 OK: " + SanitizeOneLine(resp, 150);
+      if(maxClosedDealTime > g_lastClosedDealSyncTime)
+         g_lastClosedDealSyncTime = maxClosedDealTime;
    }
    else
    {
