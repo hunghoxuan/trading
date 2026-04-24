@@ -47,12 +47,17 @@ function makeSignalId(prefix) {
   return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
 }
 
+function randomTestPrice(base = 70000) {
+  return Number((base + Math.random() * 1000 + Date.now() % 1000 / 1000).toFixed(4));
+}
+
 test("TradingView webhook push enqueues a signal", async () => {
-  const signalId = makeSignalId("tv_push");
+  const sourceId = makeSignalId("tv_push");
   const payload = {
-    id: signalId,
+    id: sourceId,
     action: "BUY",
     symbol: TEST_SYMBOL,
+    price: randomTestPrice(70000),
     volume: 0.01,
     sl: 65000,
     tp: 75000,
@@ -67,51 +72,59 @@ test("TradingView webhook push enqueues a signal", async () => {
     body: JSON.stringify(payload),
   });
   assert.equal(out.ok, true);
-  assert.equal(out.signal_id, signalId);
+  assert.equal(out.signal?.trade_id, sourceId);
+  const queuedSignalId = out?.execution?.find((item) => item?.broker === "mt5")?.signal_id;
+  assert.ok(queuedSignalId, "mt5 queued signal_id should be present");
 });
 
 test("CSV download returns data and contains just inserted signal", async () => {
-  const signalId = makeSignalId("csv_test");
+  const sourceId = makeSignalId("csv_test");
   const tvWebhookPath = TV_WEBHOOK_TOKEN
     ? `/mt5/tv/webhook/${encodeURIComponent(TV_WEBHOOK_TOKEN)}`
     : "/mt5/tv/webhook";
-  await requestJson(tvWebhookPath, {
+  const queued = await requestJson(tvWebhookPath, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      id: signalId,
+      id: sourceId,
       action: "SELL",
       symbol: TEST_SYMBOL,
+      price: randomTestPrice(74000),
       volume: 0.01,
       sl: 78000,
       tp: 70000,
       note: "remote csv test",
     }),
   });
+  const queuedSignalId = queued?.execution?.find((item) => item?.broker === "mt5")?.signal_id;
+  assert.ok(queuedSignalId, "mt5 queued signal_id should be present");
 
   const csv = await requestText("/csv?limit=500&header=1");
   assert.match(csv, /timestamp;signal_id;action;symbol;volume;sl;tp;note/);
-  assert.ok(csv.includes(signalId), `csv missing ${signalId}`);
+  assert.ok(csv.includes(queuedSignalId), `csv missing ${queuedSignalId}`);
 });
 
 test("EA pull endpoint can pull signal by signal_id", async () => {
-  const signalId = makeSignalId("ea_pull");
+  const sourceId = makeSignalId("ea_pull");
   const tvWebhookPath = TV_WEBHOOK_TOKEN
     ? `/mt5/tv/webhook/${encodeURIComponent(TV_WEBHOOK_TOKEN)}`
     : "/mt5/tv/webhook";
-  await requestJson(tvWebhookPath, {
+  const queued = await requestJson(tvWebhookPath, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      id: signalId,
+      id: sourceId,
       action: "BUY",
       symbol: TEST_SYMBOL,
+      price: randomTestPrice(71000),
       volume: 0.01,
       sl: 65000,
       tp: 76000,
       note: "remote ea pull test",
     }),
   });
+  const signalId = queued?.execution?.find((item) => item?.broker === "mt5")?.signal_id;
+  assert.ok(signalId, "mt5 signal_id should be returned in execution queue");
 
   const out = await requestJson(
     `/mt5/ea/pull?account=${encodeURIComponent(ACCOUNT)}&signal_id=${encodeURIComponent(signalId)}`,
@@ -125,7 +138,7 @@ test("EA pull endpoint can pull signal by signal_id", async () => {
   assert.equal(detail.ok, true);
   assert.ok(Array.isArray(detail.events), "events should be array");
   assert.ok(
-    detail.events.some((e) => String(e.event_type || "") === "EA_PULLED"),
-    "events should include EA_PULLED",
+    detail.events.some((e) => String(e?.metadata?.event_type || "") === "SIGNAL_FETCH"),
+    "events should include SIGNAL_FETCH",
   );
 });
