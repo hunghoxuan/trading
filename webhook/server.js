@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-1258"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-1305"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -3726,6 +3726,58 @@ async function mt5InitBackend() {
       }
       return { updated: count };
     },
+        async getStorageStats() {
+      const cancelErrorRes = await pool.query(`SELECT COUNT(*) as c FROM signals WHERE status IN ('CANCEL', 'ERROR', 'CANCELLED')`);
+      const testRes = await pool.query(`SELECT COUNT(*) as c FROM signals WHERE symbol = 'TEST'`);
+      
+      const fs = require('fs');
+      const path = require('path');
+      let snapshotsSize = 0;
+      let snapshotsCount = 0;
+      if (fs.existsSync(CHART_SNAPSHOT_DIR)) {
+        const files = fs.readdirSync(CHART_SNAPSHOT_DIR);
+        snapshotsCount = files.length;
+        for (const f of files) {
+          try {
+            snapshotsSize += fs.statSync(path.join(CHART_SNAPSHOT_DIR, f)).size;
+          } catch(e){}
+        }
+      }
+      
+      return {
+        cancelled_error_count: parseInt(cancelErrorRes.rows[0].c),
+        test_trades_count: parseInt(testRes.rows[0].c),
+        snapshots_count: snapshotsCount,
+        snapshots_size_bytes: snapshotsSize
+      };
+    },
+    async storageCleanup(target) {
+      if (target === 'snapshots') {
+        const fs = require('fs');
+        const path = require('path');
+        let deletedFiles = 0;
+        if (fs.existsSync(CHART_SNAPSHOT_DIR)) {
+          const files = fs.readdirSync(CHART_SNAPSHOT_DIR);
+          for (const f of files) {
+            try {
+              fs.unlinkSync(path.join(CHART_SNAPSHOT_DIR, f));
+              deletedFiles++;
+            } catch(e){}
+          }
+        }
+        return { ok: true, target, deleted_files: deletedFiles };
+      } else if (target === 'cancelled_error' || target === 'test_trades') {
+        const whereClause = target === 'cancelled_error' ? "status IN ('CANCEL', 'ERROR', 'CANCELLED')" : "symbol = 'TEST'";
+        const q = await pool.query(`SELECT * FROM signals WHERE ${whereClause}`);
+        const rows = q.rows;
+        const ids = rows.map(r => String(r.signal_id));
+        const removed = await mt5DeleteSignalsByIds(ids);
+        const cleanup = await mt5CleanupSignalTradeArtifacts({ signalRows: rows, signalIds: ids });
+        return { ok: true, target, deleted_signals: removed.deleted, logs_deleted: cleanup.logs_deleted, files_deleted: cleanup.files_deleted };
+      } else {
+        throw new Error("unknown target");
+      }
+    },
     async deleteSignalsByIds(ids) {
       const res = await pool.query(`DELETE FROM signals WHERE signal_id = ANY($1)`, [ids]);
       return { deleted: res.rowCount };
@@ -6379,74 +6431,30 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "GET" && url.pathname === "/mt5/storage/stats") {
+    if (req.method === "GET" && url.pathname === "/mt5/storage/stats") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireSystemRoleForUi(req, res)) return;
     try {
-      const cancelErrorRes = await pool.query(`SELECT COUNT(*) as c FROM signals WHERE status IN ('CANCEL', 'ERROR', 'CANCELLED')`);
-      const testRes = await pool.query(`SELECT COUNT(*) as c FROM signals WHERE symbol = 'TEST'`);
-      
-      const fs = require('fs');
-      const path = require('path');
-      let snapshotsSize = 0;
-      let snapshotsCount = 0;
-      if (fs.existsSync(CHART_SNAPSHOT_DIR)) {
-        const files = fs.readdirSync(CHART_SNAPSHOT_DIR);
-        snapshotsCount = files.length;
-        for (const f of files) {
-          try {
-            snapshotsSize += fs.statSync(path.join(CHART_SNAPSHOT_DIR, f)).size;
-          } catch(e){}
-        }
-      }
-      
-      return json(res, 200, {
-        ok: true,
-        stats: {
-          cancelled_error_count: parseInt(cancelErrorRes.rows[0].c),
-          test_trades_count: parseInt(testRes.rows[0].c),
-          snapshots_count: snapshotsCount,
-          snapshots_size_bytes: snapshotsSize
-        }
-      });
+      const b = await mt5Backend();
+      if (!b.getStorageStats) return json(res, 400, { ok: false, error: "Not supported by this backend" });
+      const stats = await b.getStorageStats();
+      return json(res, 200, { ok: true, stats });
     } catch (error) {
       return json(res, 400, { ok: false, error: error.message });
     }
   }
 
-  if (req.method === "POST" && url.pathname === "/mt5/storage/cleanup") {
+    if (req.method === "POST" && url.pathname === "/mt5/storage/cleanup") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireSystemRoleForUi(req, res)) return;
     try {
       const payload = await readJson(req);
       const target = String(payload.target || "").trim();
       if (!target) return json(res, 400, { ok: false, error: "target is required" });
-      
-      if (target === 'snapshots') {
-        const fs = require('fs');
-        const path = require('path');
-        let deletedFiles = 0;
-        if (fs.existsSync(CHART_SNAPSHOT_DIR)) {
-          const files = fs.readdirSync(CHART_SNAPSHOT_DIR);
-          for (const f of files) {
-            try {
-              fs.unlinkSync(path.join(CHART_SNAPSHOT_DIR, f));
-              deletedFiles++;
-            } catch(e){}
-          }
-        }
-        return json(res, 200, { ok: true, target, deleted_files: deletedFiles });
-      } else if (target === 'cancelled_error' || target === 'test_trades') {
-        const whereClause = target === 'cancelled_error' ? "status IN ('CANCEL', 'ERROR', 'CANCELLED')" : "symbol = 'TEST'";
-        const q = await pool.query(`SELECT * FROM signals WHERE ${whereClause}`);
-        const rows = q.rows;
-        const ids = rows.map(r => String(r.signal_id));
-        const removed = await mt5DeleteSignalsByIds(ids);
-        const cleanup = await mt5CleanupSignalTradeArtifacts({ signalRows: rows, signalIds: ids });
-        return json(res, 200, { ok: true, target, deleted_signals: removed.deleted, logs_deleted: cleanup.logs_deleted, files_deleted: cleanup.files_deleted });
-      } else {
-        return json(res, 400, { ok: false, error: "unknown target" });
-      }
+      const b = await mt5Backend();
+      if (!b.storageCleanup) return json(res, 400, { ok: false, error: "Not supported by this backend" });
+      const result = await b.storageCleanup(target);
+      return json(res, 200, { ok: true, ...result });
     } catch (error) {
       return json(res, 400, { ok: false, error: error.message });
     }
