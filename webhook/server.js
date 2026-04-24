@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-0828"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-0832"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -2508,9 +2508,11 @@ async function mt5InitBackend() {
       const tk = String(ticket || "").trim();
       if (!tk) return null;
       const res = await pool.query(`
-        SELECT * FROM signals
-        WHERE ack_ticket = $1
-        ORDER BY updated_at DESC, created_at DESC
+        SELECT s.*
+        FROM trades t
+        LEFT JOIN signals s ON s.signal_id = t.signal_id
+        WHERE t.broker_trade_id = $1
+        ORDER BY t.updated_at DESC, t.created_at DESC
         LIMIT 1
       `, [tk]);
       const row = res.rows?.[0] || null;
@@ -2545,7 +2547,7 @@ async function mt5InitBackend() {
         if (cur === "NEW") {
           const upd = await client.query(`
             UPDATE signals
-            SET status = 'LOCKED', locked_at = NOW(), updated_at = NOW()
+            SET status = 'LOCKED'
             WHERE signal_id = $1
             RETURNING *
           `, [sid]);
@@ -2585,7 +2587,7 @@ async function mt5InitBackend() {
         }
         const upd = await client.query(`
           UPDATE signals
-          SET status = 'LOCKED', locked_at = NOW(), updated_at = NOW()
+          SET status = 'LOCKED'
           WHERE signal_id = $1
           RETURNING *
         `, [row.signal_id]);
@@ -2705,7 +2707,7 @@ async function mt5InitBackend() {
       const isClosed = ["CLOSED", "TP", "SL", "CANCELLED"].includes(s);
       const res = await pool.query(`
         UPDATE signals
-        SET status = $1, updated_at = NOW()
+        SET status = $1
         WHERE signal_id = $2
         RETURNING user_id
       `, [s, signalId]);
@@ -3551,9 +3553,18 @@ async function mt5InitBackend() {
         const pnlVal = isClosed ? (Number.isFinite(pnlRaw) ? pnlRaw : 0) : 0;
         const res = await pool.query(`
           UPDATE signals 
-          SET status = $1, ack_status = $2, ack_ticket = $3, pnl_money_realized = $4, updated_at = NOW() 
+          SET status = $1
+          WHERE signal_id = $2
+        `, [u.status, u.signal_id]);
+        await pool.query(`
+          UPDATE trades
+          SET execution_status = $1,
+              broker_trade_id = COALESCE(NULLIF($2, ''), broker_trade_id),
+              pnl_realized = CASE WHEN $4 = TRUE THEN COALESCE($3, pnl_realized) ELSE pnl_realized END,
+              closed_at = CASE WHEN $4 = TRUE THEN NOW() ELSE closed_at END,
+              updated_at = NOW()
           WHERE signal_id = $5
-        `, [u.status, u.status, u.ticket, pnlVal, u.signal_id]);
+        `, [isClosed ? "CLOSED" : "OPEN", String(u.ticket || ""), pnlVal, isClosed, u.signal_id]);
         count += res.rowCount;
       }
       return { updated: count };
