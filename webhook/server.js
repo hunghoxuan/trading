@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-0835"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-0841"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -2492,7 +2492,15 @@ async function mt5InitBackend() {
     async findSignalById(signalId) {
       const sid = String(signalId || "").trim();
       if (!sid) return null;
-      const res = await pool.query(`SELECT * FROM signals WHERE signal_id = $1 LIMIT 1`, [sid]);
+      const res = await pool.query(`
+        SELECT *
+        FROM signals
+        WHERE signal_id = $1
+           OR raw_json->>'id' = $1
+           OR raw_json->>'trade_id' = $1
+        ORDER BY CASE WHEN signal_id = $1 THEN 0 ELSE 1 END, created_at DESC
+        LIMIT 1
+      `, [sid]);
       const row = res.rows?.[0] || null;
       if (!row) return null;
       const raw = row.raw_json && typeof row.raw_json === "object" ? row.raw_json : {};
@@ -2532,7 +2540,16 @@ async function mt5InitBackend() {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const sel = await client.query(`SELECT * FROM signals WHERE signal_id = $1 FOR UPDATE`, [sid]);
+        const sel = await client.query(`
+          SELECT *
+          FROM signals
+          WHERE signal_id = $1
+             OR raw_json->>'id' = $1
+             OR raw_json->>'trade_id' = $1
+          ORDER BY CASE WHEN signal_id = $1 THEN 0 ELSE 1 END, created_at DESC
+          LIMIT 1
+          FOR UPDATE
+        `, [sid]);
         const row = sel.rows?.[0] || null;
         if (!row) {
           await client.query("COMMIT");
@@ -3553,9 +3570,20 @@ async function mt5InitBackend() {
     },
     async listActiveSignals() {
       const res = await pool.query(`
-        SELECT * FROM signals 
-        WHERE status IN ('NEW', 'LOCKED', 'PLACED', 'START') 
-        ORDER BY created_at DESC
+        SELECT
+          s.*,
+          t.broker_trade_id AS ack_ticket,
+          t.pnl_realized AS pnl_money_realized
+        FROM signals s
+        LEFT JOIN LATERAL (
+          SELECT broker_trade_id, pnl_realized
+          FROM trades
+          WHERE signal_id = s.signal_id
+          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+          LIMIT 1
+        ) t ON TRUE
+        WHERE s.status IN ('NEW', 'LOCKED', 'PLACED', 'START')
+        ORDER BY s.created_at DESC
       `);
       return res.rows || [];
     },
