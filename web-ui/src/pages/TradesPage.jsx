@@ -159,6 +159,10 @@ export default function TradesPage() {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [createMode, setCreateMode] = useState(false);
   const [createMsg, setCreateMsg] = useState("");
+  const [editMode, setEditMode] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editMsg, setEditMsg] = useState({ type: "", text: "" });
+  const [editForm, setEditForm] = useState({ execution_status: "PENDING", pnl_realized: "0" });
   const [detailTfTab, setDetailTfTab] = useState("ENTRY");
   const [createForm, setCreateForm] = useState({
     action: "BUY",
@@ -365,6 +369,24 @@ export default function TradesPage() {
     else setTradeEvents([]);
   }, [selectedTrade?.trade_id]);
   useEffect(() => {
+    if (!selectedTrade) {
+      setEditForm({ execution_status: "PENDING", pnl_realized: "0" });
+      setEditMode(false);
+      setEditMsg({ type: "", text: "" });
+      return;
+    }
+    const st = String(selectedTrade.execution_status || "PENDING").toUpperCase();
+    const pnlRaw = Number(selectedTrade.pnl_realized);
+    setEditForm({
+      execution_status: st,
+      pnl_realized: st === "PENDING"
+        ? "0"
+        : (Number.isFinite(pnlRaw) ? String(Number(pnlRaw.toFixed(2))) : ""),
+    });
+    setEditMode(false);
+    setEditMsg({ type: "", text: "" });
+  }, [selectedTrade?.trade_id]);
+  useEffect(() => {
     const timer = window.setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       loadTrades();
@@ -422,6 +444,35 @@ export default function TradesPage() {
     if (sortKey !== key) return "";
     return sortDir === "asc" ? " ↑" : " ↓";
   };
+
+  async function onSaveTradeEdit() {
+    if (!selectedTrade?.trade_id) return;
+    try {
+      setEditBusy(true);
+      setEditMsg({ type: "", text: "" });
+      const st = String(editForm.execution_status || "PENDING").toUpperCase();
+      const pnlNum = Number(editForm.pnl_realized);
+      const payload = {
+        execution_status: st,
+        pnl_realized: st === "PENDING" ? 0 : (Number.isFinite(pnlNum) ? pnlNum : null),
+      };
+      const out = await api.v2UpdateTrade(selectedTrade.trade_id, payload);
+      setEditMsg({ type: "success", text: "Trade updated." });
+      await loadTrades();
+      if (out?.item?.trade_id) {
+        const refresh = await api.v2Trades({ q: out.item.trade_id, page: 1, pageSize: 1 });
+        if (Array.isArray(refresh?.items) && refresh.items.length > 0) {
+          setSelectedTrade(refresh.items[0]);
+        }
+      }
+      if (selectedTrade?.trade_id) await loadTradeEvents(selectedTrade.trade_id);
+      setEditMode(false);
+    } catch (e) {
+      setEditMsg({ type: "error", text: String(e?.message || e || "Failed to update trade.") });
+    } finally {
+      setEditBusy(false);
+    }
+  }
 
   return (
     <section className="logs-page-container stack-layout">
@@ -688,6 +739,51 @@ export default function TradesPage() {
                 }}
                 formatDateTime={fDateTime}
               />
+              <div className="panel" style={{ padding: 12 }}>
+                <div className="panel-label">EDIT TRADE</div>
+                {!editMode ? (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button type="button" className="secondary-button" onClick={() => setEditMode(true)}>EDIT</button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2,minmax(0,1fr))" }}>
+                      <select
+                        value={editForm.execution_status}
+                        onChange={(e) => {
+                          const st = String(e.target.value || "PENDING").toUpperCase();
+                          setEditForm((p) => ({
+                            ...p,
+                            execution_status: st,
+                            pnl_realized: st === "PENDING" ? "0" : p.pnl_realized,
+                          }));
+                        }}
+                      >
+                        <option value="PENDING">PENDING</option>
+                        <option value="OPEN">FILLED (OPEN)</option>
+                        <option value="CLOSED">CLOSED</option>
+                        <option value="CANCELLED">CANCELLED</option>
+                        <option value="REJECTED">REJECTED</option>
+                      </select>
+                      <input
+                        value={editForm.execution_status === "PENDING" ? "0" : editForm.pnl_realized}
+                        onChange={(e) => setEditForm((p) => ({ ...p, pnl_realized: e.target.value }))}
+                        placeholder="PNL realized"
+                        disabled={editForm.execution_status === "PENDING"}
+                      />
+                    </div>
+                    {editMsg.text ? (
+                      <div className={editMsg.type === "error" ? "error" : "loading"} style={{ marginTop: 8 }}>
+                        {editMsg.text}
+                      </div>
+                    ) : null}
+                    <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+                      <button type="button" className="primary-button" onClick={onSaveTradeEdit} disabled={editBusy}>SAVE</button>
+                      <button type="button" className="secondary-button" onClick={() => setEditMode(false)} disabled={editBusy}>CANCEL</button>
+                    </div>
+                  </>
+                )}
+              </div>
               {createMode ? (
                 <div className="panel" style={{ padding: 12 }}>
                   <div className="panel-label">CREATE TRADE</div>

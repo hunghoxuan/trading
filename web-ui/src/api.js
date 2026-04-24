@@ -502,6 +502,7 @@ export const api = {
     });
     return get(`/v2/trades?${q.toString()}`);
   },
+  v2UpdateTrade: (tradeId, payload = {}) => post(`/v2/trades/${encodeURIComponent(tradeId)}/update`, payload),
   v2TradesBulkAction: (action, filters = {}) => post("/v2/trades/bulk-action", { action, ...filters }),
   v2TradeEvents: (tradeId, limit = 200) => get(`/v2/trades/${encodeURIComponent(tradeId)}/events?limit=${encodeURIComponent(limit)}`),
   v2CreateSource: (payload = {}) => post("/v2/sources", payload),
@@ -568,6 +569,9 @@ export const api = {
     return get(`/mt5/db/rows?${q.toString()}`);
   },
   dbCreateRow: (payload = {}) => post("/mt5/db/rows/create", payload),
+  dbSchema: (table) => get(`/mt5/db/schema?table=${encodeURIComponent(table)}`),
+  storageStats: () => get("/mt5/storage/stats"),
+  storageCleanup: (target) => post("/mt5/storage/cleanup", { target }),
   aiListTemplates: () => get("/v2/ai/templates"),
   aiUpsertTemplate: (payload = {}) => post("/v2/ai/templates", payload),
   aiDeleteTemplate: (templateId) => del(`/v2/ai/templates/${encodeURIComponent(templateId)}`),

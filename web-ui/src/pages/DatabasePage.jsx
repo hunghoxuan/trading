@@ -27,6 +27,8 @@ export default function DatabasePage() {
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState("signals");
   const [rows, setRows] = useState([]);
+  const [schema, setSchema] = useState([]);
+  const [showSchema, setShowSchema] = useState(false);
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -61,7 +63,11 @@ export default function DatabasePage() {
     inFlightRef.current = true;
     try {
       setLoading(true);
-      const data = await api.dbRows(query);
+      const [data, schemaData] = await Promise.all([
+        api.dbRows(query),
+        api.dbSchema(query.table).catch(() => ({ schema: [] }))
+      ]);
+      setSchema(schemaData.schema || []);
       setRows(data.rows || []);
       setTotal(data.total || 0);
       setPages(data.pages || 1);
@@ -109,18 +115,12 @@ export default function DatabasePage() {
   }
 
   const tableHeaders = useMemo(() => {
+    if (schema && schema.length > 0) {
+      return schema.map(c => c.column_name);
+    }
     if (!rows.length) return [];
-    // Prioritize institutional fields
-    const priority = ['signal_id', 'trade_id', 'created_at', 'symbol', 'side', 'status', 'object_id', 'object_table', 'user_id', 'account_id'];
-    const blacklist = ['raw_json', 'metadata', 'extra_meta', 'details', 'log_payload', 'payload', 'password_hash', 'pwd_hash', 'password', 'token', 'api_key', 'admin_key'];
-    
-    const keys = Object.keys(rows[0]).filter(k => {
-      const low = k.toLowerCase();
-      return !blacklist.some(b => low.includes(b));
-    });
-    
-    return [...new Set([...priority.filter(p => keys.includes(p)), ...keys])].slice(0, 10);
-  }, [rows]);
+    return Object.keys(rows[0]);
+  }, [rows, schema]);
 
   return (
     <div className="stack-layout fadeIn">
@@ -158,6 +158,7 @@ export default function DatabasePage() {
           />
         </div>
 
+        <button type="button" className="secondary-button" onClick={() => setShowSchema(!showSchema)}>{showSchema ? "HIDE SCHEMA" : "SHOW SCHEMA"}</button>
         <div className="toolbar-group toolbar-bulk-action">
           <select disabled={loading}>
             <option value="">BULK ACTION...</option>
@@ -173,7 +174,25 @@ export default function DatabasePage() {
         <div className="logs-list-pane">
           {error && <div className="error">{error}</div>}
           {createMsg ? <div className="loading" style={{ padding: 10 }}>{createMsg}</div> : null}
-          <div className="events-table-wrap">
+          {showSchema && schema.length > 0 && (
+            <div className="panel" style={{ margin: "10px", padding: "10px" }}>
+              <div className="panel-label">TABLE SCHEMA: {selectedTable}</div>
+              <table className="events-table" style={{ width: "100%", fontSize: "12px" }}>
+                <thead><tr><th>COLUMN_NAME</th><th>DATA_TYPE</th><th>NULLABLE</th><th>DEFAULT</th></tr></thead>
+                <tbody>
+                  {schema.map(c => (
+                    <tr key={c.column_name}>
+                      <td>{c.column_name}</td>
+                      <td><span className="badge START">{c.data_type} {c.character_maximum_length ? `(${c.character_maximum_length})` : ''}</span></td>
+                      <td>{c.is_nullable}</td>
+                      <td>{c.column_default || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="events-table-wrap" style={{ overflowX: 'auto', whiteSpace: 'nowrap' }}>
             <table className="events-table">
               <thead>
                 <tr>

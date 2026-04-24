@@ -1,0 +1,144 @@
+//@version=6
+indicator('V-Shape IFVG Detector', shorttitle = 'V-IFVG', overlay = true, max_labels_count = 500, max_boxes_count = 500)
+
+// ========================================
+// INPUTS
+// ========================================
+mtfEnabled     = input.bool(false, title = 'Enable Multi-Timeframe', group = 'Timeframe')
+mtfTF          = input.timeframe('5', title = 'Timeframe', options = ['1', '3', '5', '15', '30', '45', '60', '120', '180', '240', 'D', '2D', '3D', 'W', 'M'], group = 'Timeframe', tooltip = 'Higher timeframe to scan for V-Shape IFVGs. Ignored when "Enable Multi-Timeframe" is off.')
+
+detectStd      = input.bool(true,  title = 'Detect Standard V-Shape IFVG',  group = 'Detection', tooltip = 'FVG formed on bars [3][2][1]; next bar closes through the gap.')
+detectExt      = input.bool(false, title = 'Detect Extended V-Shape IFVG',  group = 'Detection', tooltip = 'FVG formed on bars [4][3][2]; one intermediate candle, then a fourth candle closes through. The intermediate candle body must NOT close inside the inversion FVG.')
+
+showFVGBoxes   = input.bool(false, title = 'Show FVG Boxes',        group = 'Display')
+bullFVGColor   = input.color(color.new(color.green, 80), title = 'Bullish FVG Fill',  group = 'Display')
+bearFVGColor   = input.color(color.new(color.red,   80), title = 'Bearish FVG Fill',  group = 'Display')
+bullTriColor   = input.color(color.lime, title = 'Std Bullish V-Reversal',  group = 'Display')
+bearTriColor   = input.color(color.red,  title = 'Std Bearish V-Reversal',  group = 'Display')
+bullExtColor   = input.color(color.aqua,    title = 'Ext Bullish V-Reversal',  group = 'Display')
+bearExtColor   = input.color(color.fuchsia, title = 'Ext Bearish V-Reversal',  group = 'Display')
+triSize        = input.string('small', title = 'Triangle Size', options = ['tiny', 'small', 'normal', 'large', 'huge'], group = 'Display')
+
+tf = mtfEnabled ? mtfTF : timeframe.period
+
+// ========================================
+// DETECTION (runs on the selected timeframe via request.security)
+// Standard FVG uses bars [2], [1], [0] of the selected TF.
+// Standard V-Shape IFVG: the bar RIGHT AFTER the FVG closes straight through
+// the gap on the opposite side (bars [3], [2], [1], [0]).
+// Extended V-Shape IFVG: FVG uses bars [4], [3], [2]; bar [1] is an
+// intermediate candle whose body must NOT close inside the FVG; bar [0]
+// then closes through to confirm the inversion (5 bars total).
+// ========================================
+detect() =>
+    bullFVG_ = low > high[2]
+    bearFVG_ = high < low[2]
+
+    bullFVG_top_ = low
+    bullFVG_bot_ = high[2]
+    bearFVG_top_ = low[2]
+    bearFVG_bot_ = high
+
+    // Standard V-Shape (4-bar)
+    priorBullFVG_     = low[1] > high[3]
+    priorBearFVG_     = high[1] < low[3]
+    priorBullFVG_bot_ = high[3]
+    priorBullFVG_top_ = low[1]
+    priorBearFVG_top_ = low[3]
+    priorBearFVG_bot_ = high[1]
+
+    vBearReversal_ = priorBullFVG_ and close < priorBullFVG_bot_
+    vBullReversal_ = priorBearFVG_ and close > priorBearFVG_top_
+
+    // Extended V-Shape (5-bar): FVG on [4][3][2], intermediate [1], close-through [0]
+    extBullFVG_     = low[2] > high[4]
+    extBearFVG_     = high[2] < low[4]
+    extBullFVG_top_ = low[2]
+    extBullFVG_bot_ = high[4]
+    extBearFVG_top_ = low[4]
+    extBearFVG_bot_ = high[2]
+
+    // Third-candle rule: body of intermediate bar [1] must NOT close inside
+    // the (to-be-inverted) FVG. Also require that it hasn't already closed
+    // through (that would just be a standard V-Shape).
+    extBullIntOK_ = close[1] >= extBullFVG_top_
+    extBearIntOK_ = close[1] <= extBearFVG_bot_
+
+    extVBearReversal_ = extBullFVG_ and extBullIntOK_ and close < extBullFVG_bot_
+    extVBullReversal_ = extBearFVG_ and extBearIntOK_ and close > extBearFVG_top_
+
+    // Extended FVG box anchors (spans bars [4]..close of current bar)
+    extLeft_  = time[4]
+    extRight_ = time_close
+
+    // Time anchors for standard FVG drawings (bars [2]..close of current bar)
+    tLeft_  = time[2]
+    tRight_ = time_close
+
+    [bullFVG_, bearFVG_, bullFVG_top_, bullFVG_bot_, bearFVG_top_, bearFVG_bot_, vBullReversal_, vBearReversal_, extVBullReversal_, extVBearReversal_, extBullFVG_top_, extBullFVG_bot_, extBearFVG_top_, extBearFVG_bot_, extLeft_, tLeft_, tRight_]
+
+[bullFVG, bearFVG, bullFVG_top, bullFVG_bot, bearFVG_top, bearFVG_bot, vBullReversal, vBearReversal, extVBullReversal, extVBearReversal, extBullFVGTop, extBullFVGBot, extBearFVGTop, extBearFVGBot, extLeft, tLeft, tRight] = request.security(syminfo.tickerid, tf, detect(), barmerge.gaps_off, barmerge.lookahead_off)
+
+// Only fire drawings/signals once per source-TF bar transition so higher-TF
+// signals don't repeat across every chart bar inside the HTF period.
+newSrcBar = ta.change(tRight) != 0
+
+// ========================================
+// DRAW FVG BOXES (anchored by time so they align correctly across TFs)
+// ========================================
+if showFVGBoxes and bullFVG and newSrcBar
+    box.new(left = tLeft, top = bullFVG_top, right = tRight, bottom = bullFVG_bot, xloc = xloc.bar_time, border_color = color.new(color.green, 60), bgcolor = bullFVGColor)
+if showFVGBoxes and bearFVG and newSrcBar
+    box.new(left = tLeft, top = bearFVG_top, right = tRight, bottom = bearFVG_bot, xloc = xloc.bar_time, border_color = color.new(color.red, 60), bgcolor = bearFVGColor)
+
+// Extended setup FVG boxes (only when an extended signal confirms, so the user sees the gap that was inverted)
+if showFVGBoxes and detectExt and extVBearReversal and newSrcBar
+    box.new(left = extLeft, top = extBullFVGTop, right = tRight, bottom = extBullFVGBot, xloc = xloc.bar_time, border_color = color.new(color.green, 40), bgcolor = bullFVGColor)
+if showFVGBoxes and detectExt and extVBullReversal and newSrcBar
+    box.new(left = extLeft, top = extBearFVGTop, right = tRight, bottom = extBearFVGBot, xloc = xloc.bar_time, border_color = color.new(color.red,   40), bgcolor = bearFVGColor)
+
+// ========================================
+// PLOT TRIANGLES (one call per size; only the selected size is active)
+// ========================================
+isTiny   = triSize == 'tiny'
+isSmall  = triSize == 'small'
+isNormal = triSize == 'normal'
+isLarge  = triSize == 'large'
+isHuge   = triSize == 'huge'
+
+stdBull = detectStd and vBullReversal    and newSrcBar
+stdBear = detectStd and vBearReversal    and newSrcBar
+extBull = detectExt and extVBullReversal and newSrcBar
+extBear = detectExt and extVBearReversal and newSrcBar
+
+plotshape(stdBull and isTiny,   title = 'Std Bull IFVG (tiny)',   style = shape.triangleup,   location = location.belowbar, color = bullTriColor, size = size.tiny)
+plotshape(stdBull and isSmall,  title = 'Std Bull IFVG (small)',  style = shape.triangleup,   location = location.belowbar, color = bullTriColor, size = size.small)
+plotshape(stdBull and isNormal, title = 'Std Bull IFVG (normal)', style = shape.triangleup,   location = location.belowbar, color = bullTriColor, size = size.normal)
+plotshape(stdBull and isLarge,  title = 'Std Bull IFVG (large)',  style = shape.triangleup,   location = location.belowbar, color = bullTriColor, size = size.large)
+plotshape(stdBull and isHuge,   title = 'Std Bull IFVG (huge)',   style = shape.triangleup,   location = location.belowbar, color = bullTriColor, size = size.huge)
+
+plotshape(stdBear and isTiny,   title = 'Std Bear IFVG (tiny)',   style = shape.triangledown, location = location.abovebar, color = bearTriColor, size = size.tiny)
+plotshape(stdBear and isSmall,  title = 'Std Bear IFVG (small)',  style = shape.triangledown, location = location.abovebar, color = bearTriColor, size = size.small)
+plotshape(stdBear and isNormal, title = 'Std Bear IFVG (normal)', style = shape.triangledown, location = location.abovebar, color = bearTriColor, size = size.normal)
+plotshape(stdBear and isLarge,  title = 'Std Bear IFVG (large)',  style = shape.triangledown, location = location.abovebar, color = bearTriColor, size = size.large)
+plotshape(stdBear and isHuge,   title = 'Std Bear IFVG (huge)',   style = shape.triangledown, location = location.abovebar, color = bearTriColor, size = size.huge)
+
+plotshape(extBull and isTiny,   title = 'Ext Bull IFVG (tiny)',   style = shape.arrowup,      location = location.belowbar, color = bullExtColor, size = size.tiny)
+plotshape(extBull and isSmall,  title = 'Ext Bull IFVG (small)',  style = shape.arrowup,      location = location.belowbar, color = bullExtColor, size = size.small)
+plotshape(extBull and isNormal, title = 'Ext Bull IFVG (normal)', style = shape.arrowup,      location = location.belowbar, color = bullExtColor, size = size.normal)
+plotshape(extBull and isLarge,  title = 'Ext Bull IFVG (large)',  style = shape.arrowup,      location = location.belowbar, color = bullExtColor, size = size.large)
+plotshape(extBull and isHuge,   title = 'Ext Bull IFVG (huge)',   style = shape.arrowup,      location = location.belowbar, color = bullExtColor, size = size.huge)
+
+plotshape(extBear and isTiny,   title = 'Ext Bear IFVG (tiny)',   style = shape.arrowdown,    location = location.abovebar, color = bearExtColor, size = size.tiny)
+plotshape(extBear and isSmall,  title = 'Ext Bear IFVG (small)',  style = shape.arrowdown,    location = location.abovebar, color = bearExtColor, size = size.small)
+plotshape(extBear and isNormal, title = 'Ext Bear IFVG (normal)', style = shape.arrowdown,    location = location.abovebar, color = bearExtColor, size = size.normal)
+plotshape(extBear and isLarge,  title = 'Ext Bear IFVG (large)',  style = shape.arrowdown,    location = location.abovebar, color = bearExtColor, size = size.large)
+plotshape(extBear and isHuge,   title = 'Ext Bear IFVG (huge)',   style = shape.arrowdown,    location = location.abovebar, color = bearExtColor, size = size.huge)
+
+// ========================================
+// ALERTS
+// ========================================
+alertcondition(stdBull, title = 'Std V-Shape Bullish IFVG', message = 'Standard V-Shape Bullish IFVG: bearish FVG inverted on the next close.')
+alertcondition(stdBear, title = 'Std V-Shape Bearish IFVG', message = 'Standard V-Shape Bearish IFVG: bullish FVG inverted on the next close.')
+alertcondition(extBull, title = 'Ext V-Shape Bullish IFVG', message = 'Extended V-Shape Bullish IFVG: bearish FVG inverted on the fourth candle.')
+alertcondition(extBear, title = 'Ext V-Shape Bearish IFVG', message = 'Extended V-Shape Bearish IFVG: bullish FVG inverted on the fourth candle.')

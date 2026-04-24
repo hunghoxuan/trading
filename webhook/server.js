@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-1224"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-1237"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -3032,6 +3032,52 @@ async function mt5InitBackend() {
       const res = await pool.query(`SELECT * FROM trades ${where} ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
       return { items: res.rows, total: parseInt(countRes.rows[0].count), page: safePage, pageSize: safePageSize };
     },
+    async updateTradeManualV2(tradeId, userId = null, payload = {}) {
+      const tid = String(tradeId || "").trim();
+      if (!tid) return { ok: false, error: "trade_id is required" };
+      const stRaw = String(payload.execution_status || payload.status || "").trim().toUpperCase();
+      const allowed = new Set(["PENDING", "OPEN", "CLOSED", "CANCELLED", "REJECTED"]);
+      if (!allowed.has(stRaw)) {
+        return { ok: false, error: "execution_status must be one of: PENDING, OPEN, CLOSED, CANCELLED, REJECTED" };
+      }
+      const pnlRaw = payload.pnl_realized ?? payload.pnl;
+      const pnlNum = Number(pnlRaw);
+      const pnl = stRaw === "PENDING"
+        ? 0
+        : (Number.isFinite(pnlNum) ? pnlNum : null);
+      const closeReasonRaw = String(payload.close_reason || payload.reason || "").trim().toUpperCase();
+      const closeReason = closeReasonRaw || null;
+      const params = [stRaw, pnl, closeReason, tid];
+      const clauses = [];
+      if (userId) {
+        params.push(String(userId));
+        clauses.push(`user_id = $${params.length}`);
+      }
+      const whereUser = clauses.length ? ` AND ${clauses.join(" AND ")}` : "";
+      const res = await pool.query(`
+        UPDATE trades
+        SET execution_status = $1,
+            pnl_realized = CASE WHEN $2 IS NULL THEN pnl_realized ELSE $2 END,
+            close_reason = COALESCE($3, close_reason),
+            closed_at = CASE
+              WHEN $1 IN ('CLOSED', 'CANCELLED', 'REJECTED') THEN COALESCE(closed_at, NOW())
+              ELSE closed_at
+            END,
+            updated_at = NOW()
+        WHERE trade_id = $4
+          ${whereUser}
+        RETURNING trade_id, signal_id, user_id, execution_status, pnl_realized, close_reason, closed_at
+      `, params);
+      if ((res.rowCount || 0) === 0) return { ok: false, error: "trade not found" };
+      const row = res.rows[0];
+      await this.log(row.trade_id, "trades", {
+        event: "MANUAL_EDIT",
+        execution_status: row.execution_status,
+        pnl_realized: row.pnl_realized,
+        close_reason: row.close_reason || null,
+      }, row.user_id || CFG.mt5DefaultUserId);
+      return { ok: true, item: row };
+    },
     async bulkActionTradesV2(action, filters = {}) {
       const act = String(action || "").trim().toLowerCase();
       if (!act) return { ok: false, error: "action is required" };
@@ -3446,6 +3492,17 @@ async function mt5InitBackend() {
         .filter(Boolean);
       await pool.query(`UPDATE accounts SET source_ids_cache = $1::jsonb, updated_at = NOW() WHERE account_id = $2`, [JSON.stringify(sourceIds), targetId]);
       return { ok: true };
+    },
+    async getTableSchema(table) {
+      const allowed = await this.listTables();
+      if (!allowed.includes(table)) throw new Error(`Access denied to table: ${table}`);
+      const res = await pool.query(`
+        SELECT column_name, data_type, is_nullable, character_maximum_length, column_default
+        FROM information_schema.columns 
+        WHERE table_name = $1
+        ORDER BY ordinal_position
+      `, [table]);
+      return res.rows;
     },
     async listTables() {
       return ['users', 'accounts', 'signals', 'trades', 'logs'];
@@ -4671,6 +4728,12 @@ async function mt5BulkActionTradesV2(action, filters = {}) {
   const b = await mt5Backend();
   if (!b.bulkActionTradesV2) return { ok: false, error: "not supported" };
   return b.bulkActionTradesV2(action, filters);
+}
+
+async function mt5UpdateTradeManualV2(tradeId, userId = null, payload = {}) {
+  const b = await mt5Backend();
+  if (!b.updateTradeManualV2) return { ok: false, error: "not supported" };
+  return b.updateTradeManualV2(tradeId, userId, payload);
 }
 
 async function mt5ListTradeEventsV2(tradeId, limit = 200) {
@@ -6301,6 +6364,94 @@ const appHandler = async (req, res) => {
     }
   }
 
+  if (req.method === "GET" && url.pathname === "/mt5/db/schema") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const b = await mt5Backend();
+      if (!b.getTableSchema) return json(res, 400, { ok: false, error: "Not supported by this backend" });
+      const table = envStr(url.searchParams.get("table") || "signals");
+      if (table.toLowerCase() === "ui_auth_users") return json(res, 403, { ok: false, error: "table access forbidden" });
+      const schema = await b.getTableSchema(table);
+      return json(res, 200, { ok: true, table, schema });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error.message });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/mt5/storage/stats") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const cancelErrorRes = await pool.query(`SELECT COUNT(*) as c FROM signals WHERE status IN ('CANCEL', 'ERROR', 'CANCELLED')`);
+      const testRes = await pool.query(`SELECT COUNT(*) as c FROM signals WHERE symbol = 'TEST'`);
+      
+      const fs = require('fs');
+      const path = require('path');
+      let snapshotsSize = 0;
+      let snapshotsCount = 0;
+      if (fs.existsSync(CHART_SNAPSHOT_DIR)) {
+        const files = fs.readdirSync(CHART_SNAPSHOT_DIR);
+        snapshotsCount = files.length;
+        for (const f of files) {
+          try {
+            snapshotsSize += fs.statSync(path.join(CHART_SNAPSHOT_DIR, f)).size;
+          } catch(e){}
+        }
+      }
+      
+      return json(res, 200, {
+        ok: true,
+        stats: {
+          cancelled_error_count: parseInt(cancelErrorRes.rows[0].c),
+          test_trades_count: parseInt(testRes.rows[0].c),
+          snapshots_count: snapshotsCount,
+          snapshots_size_bytes: snapshotsSize
+        }
+      });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error.message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/mt5/storage/cleanup") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const payload = await readJson(req);
+      const target = String(payload.target || "").trim();
+      if (!target) return json(res, 400, { ok: false, error: "target is required" });
+      
+      if (target === 'snapshots') {
+        const fs = require('fs');
+        const path = require('path');
+        let deletedFiles = 0;
+        if (fs.existsSync(CHART_SNAPSHOT_DIR)) {
+          const files = fs.readdirSync(CHART_SNAPSHOT_DIR);
+          for (const f of files) {
+            try {
+              fs.unlinkSync(path.join(CHART_SNAPSHOT_DIR, f));
+              deletedFiles++;
+            } catch(e){}
+          }
+        }
+        return json(res, 200, { ok: true, target, deleted_files: deletedFiles });
+      } else if (target === 'cancelled_error' || target === 'test_trades') {
+        const whereClause = target === 'cancelled_error' ? "status IN ('CANCEL', 'ERROR', 'CANCELLED')" : "symbol = 'TEST'";
+        const q = await pool.query(`SELECT * FROM signals WHERE ${whereClause}`);
+        const rows = q.rows;
+        const ids = rows.map(r => String(r.signal_id));
+        const removed = await mt5DeleteSignalsByIds(ids);
+        const cleanup = await mt5CleanupSignalTradeArtifacts({ signalRows: rows, signalIds: ids });
+        return json(res, 200, { ok: true, target, deleted_signals: removed.deleted, logs_deleted: cleanup.logs_deleted, files_deleted: cleanup.files_deleted });
+      } else {
+        return json(res, 400, { ok: false, error: "unknown target" });
+      }
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error.message });
+    }
+  }
+
   if (req.method === "GET" && url.pathname === "/mt5/db/tables") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireSystemRoleForUi(req, res)) return;
@@ -7716,6 +7867,23 @@ const appHandler = async (req, res) => {
       const limit = Math.max(1, Math.min(1000, Number.isFinite(limitRaw) ? limitRaw : 200));
       const rows = await mt5ListTradeEventsV2(tradeId, limit);
       return json(res, 200, { ok: true, trade_id: tradeId, items: rows });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && /^\/v2\/trades\/[^/]+\/update$/.test(url.pathname)) {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    let payload = {};
+    try { payload = await readJson(req); } catch {}
+    if (!requireAdminKey(req, res, url, payload)) return;
+    try {
+      const m = url.pathname.match(/^\/v2\/trades\/([^/]+)\/update$/);
+      const tradeId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!tradeId) return json(res, 400, { ok: false, error: "trade_id is required" });
+      const userId = uiEffectiveUserId(req, url, payload);
+      const out = await mt5UpdateTradeManualV2(tradeId, userId || null, payload || {});
+      return json(res, out?.ok ? 200 : 400, out);
     } catch (error) {
       return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }

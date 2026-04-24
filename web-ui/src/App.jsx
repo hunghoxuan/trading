@@ -14,6 +14,7 @@ import SignalDetailPage from "./pages/SignalDetailPage";
 import V2TradeDetailPage from "./pages/V2TradeDetailPage";
 import ChartSnapshotsPage from "./pages/ChartSnapshotsPage";
 import SnapshotsPage from "./pages/SnapshotsPage";
+import StoragePage from "./pages/StoragePage";
 import { api, getRuntimeActiveUserId, setRuntimeActiveUserId } from "./api";
 import LoginPage from "./pages/LoginPage";
 
@@ -124,6 +125,7 @@ export default function App() {
               </button>
               <div className="nav-dropdown-menu">
                 <NavLink to="/snapshots">Snapshots</NavLink>
+                <NavLink to="/storage">Storage</NavLink>
                 <NavLink to="/logs">Logs</NavLink>
                 <NavLink to="/db">DB</NavLink>
                 <NavLink to="/users">Users</NavLink>
@@ -169,6 +171,7 @@ export default function App() {
           <Route path="/trades/:tradeId" element={<V2TradeDetailPage />} />
           <Route path="/ai" element={<ChartSnapshotsPage />} />
           <Route path="/snapshots" element={canAccessSystemPages ? <SnapshotsPage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/storage" element={canAccessSystemPages ? <StoragePage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/logs" element={canAccessSystemPages ? <LogsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/db" element={canAccessSystemPages ? <DatabasePage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/users" element={canAccessSystemPages ? <UsersPage authUser={authUser} /> : <Navigate to="/dashboard" replace />} />
