@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-1339"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-1359"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -1709,6 +1709,73 @@ function normalizeSide(sideRaw) {
   throw new Error("Invalid side");
 }
 
+const ENTRY_MODEL_NORMALIZE_RULES = [
+  { label: "ICT Turtle Soup", patterns: ["turtle soup", "turtlesoup"] },
+  { label: "ICT", patterns: ["ict"] },
+  { label: "SMC", patterns: ["smc", "smart money"] },
+  { label: "Fibo", patterns: ["fibo", "fibonacci"] },
+  { label: "Retracement", patterns: ["retracement", "pullback"] },
+  { label: "Order Block", patterns: ["order block", "ob retest", "ob"] },
+  { label: "FVG", patterns: ["fvg", "fair value gap"] },
+  { label: "Breaker", patterns: ["breaker"] },
+  { label: "Mitigation", patterns: ["mitigation"] },
+  { label: "Price Action", patterns: ["price action"] },
+];
+
+function mt5CollapseWhitespace(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function mt5EntryModelLooksVerbose(value) {
+  const raw = mt5CollapseWhitespace(value);
+  if (!raw) return false;
+  if (raw.length > 42) return true;
+  if ((raw.match(/\s+/g) || []).length >= 5) return true;
+  return /[.,;:!?]/.test(raw);
+}
+
+function mt5NormalizeEntryModel(value, opts = {}) {
+  const raw = mt5CollapseWhitespace(value);
+  const fallbackRaw = mt5CollapseWhitespace(opts.fallback || "MANUAL");
+  const normalizedFallback = fallbackRaw ? fallbackRaw.slice(0, 32) : "MANUAL";
+  const source = raw || fallbackRaw;
+  if (!source) return "MANUAL";
+  const lower = source.toLowerCase();
+  for (const rule of ENTRY_MODEL_NORMALIZE_RULES) {
+    if (rule.patterns.some((p) => lower.includes(p))) return rule.label;
+  }
+  if (!mt5EntryModelLooksVerbose(source) && /^[a-z0-9 _/+-]+$/i.test(source)) {
+    return source.slice(0, 32);
+  }
+  return normalizedFallback || "MANUAL";
+}
+
+function mt5MergeNote(base, addition) {
+  const baseText = mt5CollapseWhitespace(base);
+  const extraText = mt5CollapseWhitespace(addition);
+  if (!extraText) return baseText;
+  if (!baseText) return extraText;
+  if (baseText.toLowerCase().includes(extraText.toLowerCase())) return baseText;
+  return `${extraText} | ${baseText}`;
+}
+
+function mt5DeriveEntryModelAndNote(payload = {}, opts = {}) {
+  const rawEntryModel = mt5CollapseWhitespace(
+    payload.entry_model
+    ?? payload.entryModel
+    ?? payload.model
+    ?? payload.strategy
+    ?? opts.fallbackModel
+    ?? "",
+  );
+  const entryModel = mt5NormalizeEntryModel(rawEntryModel, {
+    fallback: opts.fallbackModel || payload.source || "MANUAL",
+  });
+  const baseNote = mt5BuildNote(payload);
+  const note = mt5EntryModelLooksVerbose(rawEntryModel) ? mt5MergeNote(baseNote, rawEntryModel) : baseNote;
+  return { entryModel, note, entryModelRaw: rawEntryModel || null };
+}
+
 function normalizeSignal(payload) {
   const strategy = String(payload.strategy || payload.source || payload.system || "UnknownStrategy");
   const symbol = String(payload.symbol || payload.ticker || "").toUpperCase();
@@ -1722,13 +1789,13 @@ function normalizeSignal(payload) {
   const price = asNum(payload.price ?? payload.entry, NaN);
   const sl = asNum(payload.stop_loss ?? payload.sl, NaN);
   const tp = asNum(payload.take_profit ?? payload.tp, NaN);
-  const note = String(payload.note || payload.comment || "");
+  const derived = mt5DeriveEntryModelAndNote(payload, { fallbackModel: strategy || "UnknownStrategy" });
+  const note = derived.note || String(payload.note || payload.comment || "");
   const signalTime = payload.time || payload.timestamp || new Date().toISOString();
   const quantity = asNum(payload.quantity ?? payload.qty, NaN);
   const userId = envStr(payload.user_id ?? payload.userId ?? payload.user ?? CFG.mt5DefaultUserId, CFG.mt5DefaultUserId);
   const rrPlanned = asNum(payload.rr ?? payload.risk_reward, NaN);
   const riskMoneyPlanned = asNum(payload.risk_money ?? payload.money_risk ?? payload.riskMoney, NaN);
-  const entryModel = String(payload.entry_model ?? payload.entryModel ?? "");
 
   if (!symbol) throw new Error("Missing symbol");
   if (!Number.isFinite(price) || price <= 0) throw new Error("Invalid price");
@@ -1749,7 +1816,7 @@ function normalizeSignal(payload) {
     chart_tf: chartTf || null,
     signal_tf: signalTf || null,
     user_id: userId,
-    entry_model: entryModel || null,
+    entry_model: derived.entryModel || null,
     rr_planned: Number.isFinite(rrPlanned) ? rrPlanned : null,
     risk_money_planned: Number.isFinite(riskMoneyPlanned) ? riskMoneyPlanned : null,
     raw: payload,
@@ -2141,6 +2208,10 @@ function mt5MapDbRow(row) {
   const resolvedEntry = Number.isFinite(rowEntry) && rowEntry > 0
     ? rowEntry
     : (Number.isFinite(entryFromRaw) && entryFromRaw > 0 ? entryFromRaw : null);
+  const normalizedModel = mt5NormalizeEntryModel(
+    row.entry_model || raw.entry_model || raw.entryModel || raw.model || raw.strategy || "",
+    { fallback: row.source_id || row.source || "manual" },
+  );
   const tfFallback = String(row.signal_tf || raw.signal_tf || raw.signalTf || raw.sourceTf || raw.timeframe || "");
   return {
     signal_id: String(row.signal_id),
@@ -2165,7 +2236,7 @@ function mt5MapDbRow(row) {
     raw_json: raw,
     signal_tf: tfFallback,
     chart_tf: String(row.chart_tf || raw.chart_tf || raw.chartTf || raw.chartTimeframe || tfFallback || ""),
-    entry_model: String(row.entry_model || raw.entry_model || raw.entryModel || ""),
+    entry_model: normalizedModel,
     status: String(row.status || ""),
     locked_at: row.locked_at ?? null,
     ack_at: row.ack_at ?? null,
@@ -4368,8 +4439,9 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   const riskMoneyPlanned = asNum(payload.risk_money ?? payload.money_risk ?? payload.riskMoney, NaN);
   const signalTf = mt5TfToMinutes(payload.signal_tf ?? payload.signalTf ?? payload.sourceTf ?? payload.timeframe ?? payload.tf);
   const chartTf = mt5TfToMinutes(payload.chart_tf ?? payload.chartTf ?? payload.chartTimeframe ?? payload.chart_tf_period);
-  const entryModel = String(payload.entry_model ?? payload.entryModel ?? payload.model ?? payload.strategy ?? source ?? "").trim();
-  const note = mt5BuildNote(payload);
+  const derived = mt5DeriveEntryModelAndNote(payload, { fallbackModel: payload.strategy || source || "MANUAL" });
+  const entryModel = derived.entryModel;
+  const note = derived.note;
   const onlySignal = Boolean(payload.only_signal ?? payload.onlySignal ?? payload.raw_json?.only_signal ?? payload.raw_json?.onlySignal);
 
   const plannedEntry = asNum(payload.entry ?? payload.price, NaN);
@@ -4389,7 +4461,8 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   let rawJsonNormalized = {
     ...rawJson,
     order_type: orderType,
-    entry_model: entryModel || String(rawJson.entry_model ?? rawJson.entryModel ?? ""),
+    entry_model: entryModel || mt5NormalizeEntryModel(rawJson.entry_model ?? rawJson.entryModel ?? "", { fallback: source }),
+    entry_model_raw: derived.entryModelRaw || mt5CollapseWhitespace(rawJson.entry_model ?? rawJson.entryModel ?? "") || null,
   };
 
   const hasRisk = rawJsonNormalized.riskPct != null || rawJsonNormalized.risk_pct != null || rawJsonNormalized.volumePct != null || rawJsonNormalized.volume_pct != null;
@@ -4449,7 +4522,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
           signal_id: signalId,
           source_id: sourceId,
           user_id: userId,
-          entry_model: String(payload.entry_model ?? payload.entryModel ?? "") || null,
+          entry_model: entryModel || null,
           signal_tf: signalTf || null,
           chart_tf: chartTf || null,
           symbol,
@@ -4465,6 +4538,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
             signal_tf: signalTf || null,
             chart_tf: chartTf || null,
             provider: payload.provider || null,
+            entry_model_raw: derived.entryModelRaw || null,
             analysis_snapshot: rawJsonNormalized?.analysis_snapshot && typeof rawJsonNormalized.analysis_snapshot === "object"
               ? rawJsonNormalized.analysis_snapshot
               : null,
@@ -5307,10 +5381,12 @@ function mt5ComputeTopWinrateRows(rows, keyPicker, { limit = 10, includeDirectio
 }
 
 function mt5EntryModelFromRow(row) {
-  const direct = envStr(row?.entry_model);
+  const direct = mt5NormalizeEntryModel(envStr(row?.entry_model), {
+    fallback: row?.source_id || row?.source || "manual",
+  });
   if (direct) return direct;
   const raw = row?.raw_json || {};
-  return envStr(raw.entry_model || raw.entryModel || raw.model || raw.strategy || row?.source_id || row?.source || "manual");
+  return mt5NormalizeEntryModel(raw.entry_model || raw.entryModel || raw.model || raw.strategy || row?.source_id || row?.source || "manual");
 }
 
 function mt5StrategyFromRow(row) {
@@ -6316,7 +6392,6 @@ const appHandler = async (req, res) => {
       const payload = await readJson(req);
       const requestedSource = String(payload.source || "").trim().toLowerCase();
       const source = requestedSource === "ai" ? "ai" : "ui_manual";
-      const entryModel = String(payload.entry_model || payload.model || "").trim();
       const timeframe = String(payload.timeframe || payload.tf || "").trim();
       const strategy = String(payload.strategy || (source === "ai" ? "ai" : "Manual")).trim();
       const effectiveUserId = uiEffectiveUserId(req, url, payload) || sess.user_id || CFG.mt5DefaultUserId;
@@ -6348,7 +6423,7 @@ const appHandler = async (req, res) => {
         risk_money: payload.risk_money ?? payload.money_risk ?? null,
         price: payload.price ?? payload.entry ?? null,
         strategy,
-        entry_model: entryModel || null,
+        entry_model: payload.entry_model ?? payload.model ?? payload.strategy ?? null,
         timeframe: timeframe || "manual",
         note: payload.note || "",
         user_id: effectiveUserId,
@@ -6380,13 +6455,14 @@ const appHandler = async (req, res) => {
       const action = mt5NormalizeAction(payload);
       const symbol = mt5NormalizeSymbol(payload);
       const volume = mt5NormalizeVolume(payload);
-      const entryModel = String(payload.entry_model || payload.model || payload.strategy || "").trim() || null;
+      const derived = mt5DeriveEntryModelAndNote(payload, { fallbackModel: payload.strategy || source || "MANUAL" });
+      const entryModel = derived.entryModel || null;
       const signalTf = mt5TfToMinutes(payload.signal_tf ?? payload.signalTf ?? payload.sourceTf ?? payload.timeframe ?? payload.tf) || null;
       const chartTf = mt5TfToMinutes(payload.chart_tf ?? payload.chartTf ?? payload.chartTimeframe ?? payload.chart_tf_period) || null;
       const entry = asNum(payload.entry ?? payload.price, NaN);
       const sl = asNum(payload.sl, NaN);
       const tp = asNum(payload.tp, NaN);
-      const note = String(payload.note || "").trim();
+      const note = String(derived.note || payload.note || "").trim();
       const rawPayload = payload && typeof payload === "object" ? { ...payload } : {};
       if (!symbol) return json(res, 400, { ok: false, error: "symbol is required" });
       if (!Number.isFinite(entry) || !Number.isFinite(sl) || !Number.isFinite(tp)) {
@@ -6425,6 +6501,7 @@ const appHandler = async (req, res) => {
           signal_tf: signalTf,
           chart_tf: chartTf,
           provider: payload.provider || null,
+          entry_model_raw: derived.entryModelRaw || null,
           analysis_snapshot: rawPayload?.analysis_snapshot && typeof rawPayload.analysis_snapshot === "object"
             ? rawPayload.analysis_snapshot
             : null,
@@ -7460,16 +7537,24 @@ const appHandler = async (req, res) => {
         ok: true, 
         model: aiModelUsed,
         raw_response: rawResponse, 
-        signals: (signals || []).map(s => ({
-          ...s,
-          symbol: s.symbol || symbol,
-          side: s.direction || s.side || "BUY",
-          entry: s.entry || s.price || 0,
-          sl: s.sl || s.stop_loss,
-          tp: s.tp || s.take_profit,
-          timeframe: s.timeframe || tf,
-          entry_model: s.entry_model || tData.name || "AI_AGENT"
-        }))
+        signals: (signals || []).map((s) => {
+          const rawEntryModel = s?.entry_model || s?.model || s?.strategy || tData.name || "AI_AGENT";
+          const entryModel = mt5NormalizeEntryModel(rawEntryModel, { fallback: tData.name || "AI_AGENT" });
+          const noteRaw = mt5CollapseWhitespace(s?.note || "");
+          const note = noteRaw || (mt5EntryModelLooksVerbose(rawEntryModel) ? mt5CollapseWhitespace(rawEntryModel) : "");
+          return {
+            ...s,
+            symbol: s.symbol || symbol,
+            side: s.direction || s.side || "BUY",
+            entry: s.entry || s.price || 0,
+            sl: s.sl || s.stop_loss,
+            tp: s.tp || s.take_profit,
+            timeframe: s.timeframe || tf,
+            entry_model: entryModel,
+            entry_model_raw: mt5CollapseWhitespace(rawEntryModel) || null,
+            note,
+          };
+        })
       });
     } catch (e) {
       console.error("[ai] generation error:", e);
@@ -7893,9 +7978,19 @@ const appHandler = async (req, res) => {
       };
       const out = await mt5ListTradesV2(filters, page, pageSize);
       const total = Number(out?.total || 0);
+      const items = Array.isArray(out?.items)
+        ? out.items.map((item) => {
+            const metadata = item?.metadata && typeof item.metadata === "object" ? item.metadata : {};
+            const rawEntryModel = item?.entry_model || metadata?.entry_model || metadata?.entry_model_raw || "";
+            return {
+              ...item,
+              entry_model: mt5NormalizeEntryModel(rawEntryModel, { fallback: item?.source_id || "manual" }),
+            };
+          })
+        : [];
       return json(res, 200, {
         ok: true,
-        items: Array.isArray(out?.items) ? out.items : [],
+        items,
         page: Number(out?.page || page),
         pageSize: Number(out?.page_size || pageSize),
         total,
@@ -8070,7 +8165,10 @@ const appHandler = async (req, res) => {
         signal_id: signalId,
         source_id: sourceId,
         user_id: signal.user_id || userId || CFG.mt5DefaultUserId,
-        entry_model: signal.entry_model || null,
+        entry_model: mt5NormalizeEntryModel(
+          signal.entry_model || raw.entry_model || raw.entryModel || raw.model || raw.strategy || "",
+          { fallback: signal.source_id || signal.source || "manual" },
+        ) || null,
         signal_tf: signal.signal_tf || null,
         chart_tf: signal.chart_tf || null,
         symbol: signal.symbol,
