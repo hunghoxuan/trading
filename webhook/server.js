@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1259"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1302"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -5711,6 +5711,15 @@ function requireSystemRoleForUi(req, res) {
   }
   if (!isSystemRole(uiSess.role)) {
     json(res, 403, { ok: false, error: "FORBIDDEN_SYSTEM_ROLE_REQUIRED" });
+    return false;
+  }
+  return true;
+}
+
+function requireAuthForUi(req, res) {
+  const uiSess = getUiSessionFromReq(req);
+  if (!uiSess.ok) {
+    json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     return false;
   }
   return true;
