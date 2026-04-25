@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1702"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1706"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -1365,9 +1365,9 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
     for (let i = 0; i < 2 && !shotOk; i += 1) {
       try {
         if (outFormat === "png") {
-          await root.screenshot({ path: outPath, type: "png", animations: "disabled", timeout: 12000 });
+          await root.screenshot({ path: outPath, type: "png", animations: "disabled", timeout: 20000 });
         } else {
-          await root.screenshot({ path: outPath, type: "jpeg", quality: jpgQuality, animations: "disabled", timeout: 12000 });
+          await root.screenshot({ path: outPath, type: "jpeg", quality: jpgQuality, animations: "disabled", timeout: 20000 });
         }
         shotOk = true;
       } catch (e) {
@@ -1385,9 +1385,9 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
       });
       if (!box) throw (lastShotErr || new Error("Chart root not found for screenshot"));
       if (outFormat === "png") {
-        await page.screenshot({ path: outPath, type: "png", clip: box, animations: "disabled", timeout: 12000 });
+        await page.screenshot({ path: outPath, type: "png", clip: box, animations: "disabled", timeout: 20000 });
       } else {
-        await page.screenshot({ path: outPath, type: "jpeg", quality: jpgQuality, clip: box, animations: "disabled", timeout: 12000 });
+        await page.screenshot({ path: outPath, type: "jpeg", quality: jpgQuality, clip: box, animations: "disabled", timeout: 20000 });
       }
     }
 
@@ -1404,15 +1404,57 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
           return { x: Math.max(0, Math.floor(r.left)), y: Math.max(0, Math.floor(r.top)), width: Math.max(1, Math.floor(r.width)), height: Math.max(1, Math.floor(r.height)) };
         });
         if (box) {
-          if (outFormat === "png") {
-            await page.screenshot({ path: outPath, type: "png", clip: box, animations: "disabled", timeout: 12000 });
-          } else {
-            await page.screenshot({ path: outPath, type: "jpeg", quality: jpgQuality, clip: box, animations: "disabled", timeout: 12000 });
+          try {
+            if (outFormat === "png") {
+              await page.screenshot({ path: outPath, type: "png", clip: box, animations: "disabled", timeout: 20000 });
+            } else {
+              await page.screenshot({ path: outPath, type: "jpeg", quality: jpgQuality, clip: box, animations: "disabled", timeout: 20000 });
+            }
+          } catch (screenErr) {
+            lastShotErr = screenErr;
           }
         }
       }
     } catch {
       // ignore fallback failure
+    }
+
+    // Last-resort fallback for cases where Playwright screenshot hangs on "waiting for fonts to load".
+    try {
+      const st = fs.statSync(outPath);
+      const minBytes = outFormat === "png" ? 12000 : 9000;
+      if (Number(st.size || 0) < minBytes) {
+        throw new Error("screenshot_too_small");
+      }
+    } catch {
+      const box = await page.evaluate(() => {
+        const el = document.querySelector("#tv-root");
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return {
+          x: Math.max(0, Number(r.left || 0)),
+          y: Math.max(0, Number(r.top || 0)),
+          width: Math.max(1, Number(r.width || 0)),
+          height: Math.max(1, Number(r.height || 0)),
+        };
+      });
+      if (!box) throw (lastShotErr || new Error("Chart root not found for CDP screenshot"));
+      const cdp = await context.newCDPSession(page);
+      const shot = await cdp.send("Page.captureScreenshot", {
+        format: outFormat === "png" ? "png" : "jpeg",
+        quality: outFormat === "png" ? undefined : jpgQuality,
+        fromSurface: true,
+        captureBeyondViewport: false,
+        clip: {
+          x: Number(box.x),
+          y: Number(box.y),
+          width: Number(box.width),
+          height: Number(box.height),
+          scale: 1,
+        },
+      });
+      if (!shot?.data) throw (lastShotErr || new Error("CDP screenshot returned empty payload"));
+      fs.writeFileSync(outPath, Buffer.from(String(shot.data), "base64"));
     }
   } finally {
     try { await context.close(); } catch {}
