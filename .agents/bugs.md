@@ -1,5 +1,4 @@
-# Known Bugs
+# Moved
 
-*(Format: `- [ ] [YYYY-MM-DD HH:MM] [SEV:P0/P1/P2] [STATUS:OPEN/IN_PROGRESS/BLOCKED/DONE] [Module] [Author: User|Gemini|Codex] Bug: description`)*
-
-*(No active bugs reported at this time)*
+This file moved to:
+- [`plans/bugs.md`](./plans/bugs.md)
