@@ -40,7 +40,7 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-25.1746";
+string EA_BUILD_VERSION = "2026-04-25.2255";
 
 input string InpMappingFile = "TVBridge_Mappings.csv";
 

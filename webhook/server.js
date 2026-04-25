@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1746"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-2255"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -2645,6 +2645,7 @@ async function mt5InitBackend() {
       source_id TEXT,
       symbol TEXT NOT NULL,
       side TEXT NOT NULL,
+      entry DOUBLE PRECISION NULL,
       entry_model TEXT NULL,
       sl DOUBLE PRECISION NULL,
       tp DOUBLE PRECISION NULL,
@@ -2714,6 +2715,8 @@ async function mt5InitBackend() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS entry DOUBLE PRECISION NULL`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS market_data (
@@ -2976,14 +2979,14 @@ async function mt5InitBackend() {
       const signalSid = await allocateUniqueSid(pool, "signals", signal.sid || signal.signal_id, "SIG");
       const r = await pool.query(`
         INSERT INTO signals (
-          signal_id, sid, created_at, user_id, source, source_id, symbol, side, sl, tp,
+          signal_id, sid, created_at, user_id, source, source_id, symbol, side, entry, sl, tp,
           entry_model, signal_tf, chart_tf, rr_planned, note, raw_json, status
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17)
         ON CONFLICT (signal_id) DO NOTHING
         RETURNING signal_id
       `, [
         signal.signal_id, signalSid, signal.created_at, signal.user_id, signal.source, signal.source_id,
-        signal.symbol, signal.side, signal.sl, signal.tp, signal.entry_model || null,
+        signal.symbol, signal.side, signal.entry, signal.sl, signal.tp, signal.entry_model || null,
         signal.signal_tf, signal.chart_tf, signal.rr_planned, signal.note,
         JSON.stringify(signal.raw_json || {}), signal.status || 'NEW'
       ]);
@@ -4540,14 +4543,14 @@ async function mt5InitBackend() {
           
           const ins = await client.query(`
             INSERT INTO signals (
-              signal_id, created_at, user_id, source, source_id, side, symbol, entry_model, sl, tp,
+              signal_id, created_at, user_id, source, source_id, side, symbol, entry, entry_model, sl, tp,
               signal_tf, chart_tf, rr_planned, note, raw_json, status
             )
             VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'NEW')
             ON CONFLICT DO NOTHING
           `, [
             renewedId, row.user_id, row.source, row.source_id, row.side || row.action, row.symbol,
-            row.entry_model || row.raw_json?.entry_model || null,
+            row.entry, row.entry_model || row.raw_json?.entry_model || null,
             row.sl, row.tp, row.signal_tf, row.chart_tf, row.rr_planned, row.note, row.raw_json
           ]);
           
@@ -5083,6 +5086,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
     source_id: sourceId,
     symbol,
     side: mt5MapActionToSide(action),
+    entry: plannedEntry,
     entry_model: entryModel || null,
     sl: payload.sl ?? null,
     tp: payload.tp ?? null,
