@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1401"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1407"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -473,6 +473,17 @@ function makeSaltHex() {
   return crypto.randomBytes(16).toString("hex");
 }
 
+const UUID_V4ISH_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function makeCompactId(prefix = "ID", chars = 8) {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const size = Math.max(4, Number(chars) || 8);
+  const bytes = crypto.randomBytes(size);
+  let body = "";
+  for (let i = 0; i < size; i += 1) body += alphabet[bytes[i] % alphabet.length];
+  return `${String(prefix || "ID").toUpperCase()}_${body}`;
+}
+
 // --- Security & Encryption ---
 
 const ENCRYPTION_ALGO = "aes-256-gcm";
@@ -748,7 +759,18 @@ async function uiCreateUser(payload = {}) {
   if (duplicateEmail) return { ok: false, error: "Email is already used by another user" };
   const duplicateName = await uiReadAuthStateByName(name);
   if (duplicateName) return { ok: false, error: "Name is already taken" };
-  const userId = String(payload.user_id || crypto.randomUUID()).trim();
+  let userId = String(payload.user_id || "").trim();
+  if (!userId || UUID_V4ISH_RE.test(userId)) {
+    for (let i = 0; i < 8; i += 1) {
+      const candidate = makeCompactId("USR", 8);
+      const exists = await uiReadAuthStateByUserId(candidate);
+      if (!exists) {
+        userId = candidate;
+        break;
+      }
+    }
+  }
+  if (!userId) return { ok: false, error: "Unable to allocate user_id" };
   const salt = makeSaltHex();
   const now = mt5NowIso();
   await uiWriteAuthState({
@@ -2569,6 +2591,45 @@ async function mt5InitBackend() {
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_${table}_id ON ${table}(id)`).catch(() => {});
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_${table}_sid ON ${table}(sid)`).catch(() => {});
     await pool.query(`ALTER TABLE ${table} ALTER COLUMN sid SET NOT NULL`).catch(() => {});
+  }
+  // Normalize legacy UUID-style users.user_id into compact IDs when safe.
+  const legacyUuidUsers = await pool.query(`
+    SELECT user_id
+    FROM users
+    WHERE user_id ~* '${UUID_REGEX_SQL}'
+  `).catch(() => ({ rows: [] }));
+  for (const row of (legacyUuidUsers.rows || [])) {
+    const oldUserId = String(row?.user_id || "").trim();
+    if (!oldUserId) continue;
+    if (oldUserId === String(CFG.mt5DefaultUserId || "")) continue;
+    const refRes = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM accounts WHERE user_id = $1) AS accounts_count,
+        (SELECT COUNT(*) FROM signals WHERE user_id = $1) AS signals_count,
+        (SELECT COUNT(*) FROM trades WHERE user_id = $1) AS trades_count,
+        (SELECT COUNT(*) FROM user_settings WHERE user_id = $1) AS settings_count,
+        (SELECT COUNT(*) FROM execution_profiles WHERE user_id = $1) AS profiles_count
+    `, [oldUserId]).catch(() => ({ rows: [] }));
+    const refRow = refRes.rows?.[0] || {};
+    const totalRefs = Number(refRow.accounts_count || 0)
+      + Number(refRow.signals_count || 0)
+      + Number(refRow.trades_count || 0)
+      + Number(refRow.settings_count || 0)
+      + Number(refRow.profiles_count || 0);
+    if (totalRefs > 0) continue;
+    let nextUserId = "";
+    for (let i = 0; i < 8; i += 1) {
+      const genRes = await pool.query(`SELECT gen_sid('USR', 8) AS v`).catch(() => ({ rows: [] }));
+      const candidate = String(genRes.rows?.[0]?.v || "").trim();
+      if (!candidate) continue;
+      const exists = await pool.query(`SELECT 1 FROM users WHERE user_id = $1 LIMIT 1`, [candidate]).catch(() => ({ rows: [{ ok: 1 }] }));
+      if (!exists.rows?.length) {
+        nextUserId = candidate;
+        break;
+      }
+    }
+    if (!nextUserId) continue;
+    await pool.query(`UPDATE users SET user_id = $1, updated_at = NOW() WHERE user_id = $2`, [nextUserId, oldUserId]).catch(() => {});
   }
 
   // Ensure default user
