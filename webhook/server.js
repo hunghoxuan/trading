@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1344"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1400"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -4032,7 +4032,8 @@ async function mt5InitBackend() {
         if (!u) throw new Error("userId is required for reset_user_data");
         const tDel = await pool.query(`DELETE FROM trades WHERE user_id = $1`, [u]);
         const sDel = await pool.query(`DELETE FROM signals WHERE user_id = $1`, [u]);
-        return { ok: true, target, trades_deleted: tDel.rowCount, signals_deleted: sDel.rowCount };
+        const lDel = await pool.query(`DELETE FROM logs WHERE user_id = $1`, [u]);
+        return { ok: true, target, trades_deleted: tDel.rowCount, signals_deleted: sDel.rowCount, logs_deleted: lDel.rowCount };
       } else if (target === 'cancelled_error' || target === 'test_trades') {
         const sWhereUser = u ? " AND user_id = $1" : "";
         const tWhereUser = u ? " AND user_id = $1" : "";
