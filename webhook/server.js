@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1457"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1535"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -1212,6 +1212,27 @@ function loadPlaywrightMaybe() {
   return null;
 }
 
+function resolvePlaywrightChromiumExecutablePath() {
+  const fromEnv = String(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || process.env.PLAYWRIGHT_EXECUTABLE_PATH || "").trim();
+  if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
+  try {
+    const base = "/root/.cache/ms-playwright";
+    const entries = fs.readdirSync(base, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && /^chromium-\d+$/.test(d.name))
+      .map((d) => d.name)
+      .sort((a, b) => {
+        const na = Number(a.split("-")[1] || 0);
+        const nb = Number(b.split("-")[1] || 0);
+        return nb - na;
+      });
+    for (const name of entries) {
+      const candidate = path.join(base, name, "chrome-linux", "chrome");
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  } catch {}
+  return "";
+}
+
 async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
   ensureChartSnapshotDir();
   const symbol = await resolveTradingViewSymbolForCapture(opts.symbol, opts.provider);
@@ -1406,8 +1427,10 @@ async function captureTradingViewSnapshot(opts = {}) {
   if (!playwright || !playwright.chromium) {
     throw new Error("Playwright not found. Install in webhook or web-ui workspace.");
   }
+  const executablePath = resolvePlaywrightChromiumExecutablePath();
   const browser = await playwright.chromium.launch({
     headless: true,
+    executablePath: executablePath || undefined,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
   });
   try {
@@ -1430,8 +1453,10 @@ async function captureTradingViewSnapshotsBatch(opts = {}) {
   const timeframes = normalized.length ? normalized : ["15m", "4h", "1D"];
   const requestedConcurrency = Math.max(1, Math.min(3, Math.floor(asNum(opts.captureConcurrency, asNum(process.env.SNAPSHOT_CAPTURE_CONCURRENCY, 2)))));
   const concurrency = Math.min(requestedConcurrency, timeframes.length);
+  const executablePath = resolvePlaywrightChromiumExecutablePath();
   const browser = await playwright.chromium.launch({
     headless: true,
+    executablePath: executablePath || undefined,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
   });
   try {
