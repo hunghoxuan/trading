@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1400"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1401"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -2545,6 +2545,7 @@ async function mt5InitBackend() {
     { table: "sources", legacy: "source_id", prefix: "SRC" },
     { table: "execution_profiles", legacy: "profile_id", prefix: "PRF" },
   ];
+  const UUID_REGEX_SQL = "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
   for (const { table, legacy, prefix } of idSidMigrations) {
     await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS id BIGSERIAL`).catch(() => {});
     await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS sid TEXT`).catch(() => {});
@@ -2552,10 +2553,18 @@ async function mt5InitBackend() {
     await pool.query(`
       UPDATE ${table}
       SET sid = CASE
-        WHEN COALESCE(NULLIF(${legacy}, ''), '') <> '' THEN ${legacy}
+        WHEN COALESCE(NULLIF(${legacy}, ''), '') <> ''
+             AND ${legacy} !~* '${UUID_REGEX_SQL}'
+             AND length(${legacy}) <= 24 THEN ${legacy}
         ELSE gen_sid('${prefix}', 8)
       END
       WHERE sid IS NULL OR sid = ''
+    `).catch(() => {});
+    // Normalize old UUID-style sids into compact custom SIDs.
+    await pool.query(`
+      UPDATE ${table}
+      SET sid = gen_sid('${prefix}', 8)
+      WHERE sid ~* '${UUID_REGEX_SQL}'
     `).catch(() => {});
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_${table}_id ON ${table}(id)`).catch(() => {});
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_${table}_sid ON ${table}(sid)`).catch(() => {});

@@ -79,3 +79,5 @@
 ### Compatibility Note
 - Logs and EA payloads continue to reference legacy IDs.
 - Server resolves `id/sid` to legacy keys internally where needed (e.g., trade events/log timeline).
+- `users.user_id` remains as a legacy/auth compatibility key for existing foreign keys and session logic.
+- `users.sid` is the public/user-facing identifier and must not be UUID-style.
