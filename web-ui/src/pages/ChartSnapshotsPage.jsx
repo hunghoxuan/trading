@@ -990,16 +990,16 @@ export default function ChartSnapshotsPage() {
     setActionStatus({ action, type, text: String(text || "") });
   };
 
-  const fetchBarsSnapshot = async (symbol, tf, bars) => {
+  const fetchBarsSnapshot = async (symbol, tf, bars, forceRefresh = false) => {
     const sym = normalizeSignalSymbol(symbol || "");
     const cacheKey = `${sym}|${tf}|${bars}`;
     if (!sym) return null;
-    if (barsCache[cacheKey]) {
+    if (!forceRefresh && barsCache[cacheKey]) {
       return barsCache[cacheKey];
     }
     setBarsLoading(true);
     try {
-      const out = await api.chartTwelveCandles(sym, tf, bars);
+      const out = await api.chartTwelveCandles(sym, tf, bars, forceRefresh);
       const rawSnap = out?.snapshot && typeof out.snapshot === "object" ? out.snapshot : null;
       const snap = rawSnap ? normalizeSnapshotBars(rawSnap, tf) : null;
       if (snap) {
@@ -1028,7 +1028,7 @@ export default function ChartSnapshotsPage() {
       const prefetchTf = timeframe;
       const prefetchBars = Number(cfg.lookbackBars || 300) || 300;
       const prefetchBarsPromise = prefetchSymbol
-        ? fetchBarsSnapshot(prefetchSymbol, prefetchTf, prefetchBars)
+        ? fetchBarsSnapshot(prefetchSymbol, prefetchTf, prefetchBars, true)
         : Promise.resolve(null);
 
       const basePrompt = String(promptDraft || promptText || "").trim();
@@ -1057,7 +1057,7 @@ export default function ChartSnapshotsPage() {
         const symbolForBars = normalizeSignalSymbol(parsed?.symbol || tvSymbol || cfg.symbol || "");
         const prefetched = await prefetchBarsPromise;
         if (!prefetched || normalizeSignalSymbol(symbolForBars) !== normalizeSignalSymbol(prefetchSymbol)) {
-          await fetchBarsSnapshot(symbolForBars, timeframe, Number(cfg.lookbackBars || 300) || 300);
+          await fetchBarsSnapshot(symbolForBars, timeframe, Number(cfg.lookbackBars || 300) || 300, true);
         }
       }
       setUsedFiles(Array.isArray(out?.used_files) ? out.used_files : []);
