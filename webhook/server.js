@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1650"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1702"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -1312,16 +1312,22 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
       { waitUntil: "domcontentloaded" },
     );
     await page.waitForFunction(() => window.__tvReady === true, { timeout: 15000 });
-    const intervalSec = await page.evaluate((tvInterval) => {
-      const upper = String(tvInterval || "").toUpperCase();
-      if (upper === "D") return 86400;
-      if (upper === "W") return 604800;
-      if (upper === "M") return 2592000;
-      const n = Number(upper);
-      if (Number.isFinite(n) && n > 0) return n * 60;
-      return 300;
-    }, interval);
-    await page.evaluate(({ bars, sec }) => {
+    let intervalSec = 300;
+    try {
+      intervalSec = await page.evaluate((tvInterval) => {
+        const upper = String(tvInterval || "").toUpperCase();
+        if (upper === "D") return 86400;
+        if (upper === "W") return 604800;
+        if (upper === "M") return 2592000;
+        const n = Number(upper);
+        if (Number.isFinite(n) && n > 0) return n * 60;
+        return 300;
+      }, interval);
+    } catch {
+      intervalSec = 300;
+    }
+    try {
+      await page.evaluate(({ bars, sec }) => {
       function applyRange() {
         try {
           const chart = window?.TradingView?.widget?.activeChart ? window.TradingView.widget.activeChart() : null;
@@ -1342,7 +1348,10 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
       } else {
         setTimeout(applyRange, 700);
       }
-    }, { bars: lookbackBars, sec: intervalSec });
+      }, { bars: lookbackBars, sec: intervalSec });
+    } catch {
+      // page may still be renderable even if evaluate step fails
+    }
     try {
       await page.waitForFunction(() => window.__tvShotReady === true, { timeout: 12000 });
     } catch {
@@ -1427,22 +1436,41 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
   };
 }
 
+function isLikelyChromiumCrash(error) {
+  const msg = String(error?.message || error || "").toLowerCase();
+  return msg.includes("target crashed")
+    || msg.includes("page crashed")
+    || msg.includes("browser has been closed")
+    || msg.includes("target page, context or browser has been closed");
+}
+
 async function captureTradingViewSnapshot(opts = {}) {
   const playwright = loadPlaywrightMaybe();
   if (!playwright || !playwright.chromium) {
     throw new Error("Playwright not found. Install in webhook or web-ui workspace.");
   }
   const executablePath = resolvePlaywrightChromiumExecutablePath();
-  const browser = await playwright.chromium.launch({
-    headless: true,
-    executablePath: executablePath || undefined,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-  });
-  try {
-    return await captureTradingViewSnapshotWithBrowser(browser, opts);
-  } finally {
-    await browser.close();
+  let lastErr = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const browser = await playwright.chromium.launch({
+      headless: true,
+      executablePath: executablePath || undefined,
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--no-zygote"],
+    });
+    try {
+      return await captureTradingViewSnapshotWithBrowser(browser, opts);
+    } catch (error) {
+      lastErr = error;
+      if (attempt === 0 && isLikelyChromiumCrash(error)) {
+        await new Promise((r) => setTimeout(r, 500));
+        continue;
+      }
+      throw error;
+    } finally {
+      await browser.close();
+    }
   }
+  throw lastErr || new Error("snapshot_failed");
 }
 
 async function captureTradingViewSnapshotsBatch(opts = {}) {
@@ -1456,7 +1484,7 @@ async function captureTradingViewSnapshotsBatch(opts = {}) {
     .filter(Boolean)
     .slice(0, 10);
   const timeframes = normalized.length ? normalized : ["15m", "4h", "1D"];
-  const requestedConcurrency = Math.max(1, Math.min(3, Math.floor(asNum(opts.captureConcurrency, asNum(process.env.SNAPSHOT_CAPTURE_CONCURRENCY, 2)))));
+  const requestedConcurrency = Math.max(1, Math.min(3, Math.floor(asNum(opts.captureConcurrency, asNum(process.env.SNAPSHOT_CAPTURE_CONCURRENCY, 1)))));
   const concurrency = Math.min(requestedConcurrency, timeframes.length);
   const executablePath = resolvePlaywrightChromiumExecutablePath();
   const browser = await playwright.chromium.launch({
@@ -1474,8 +1502,17 @@ async function captureTradingViewSnapshotsBatch(opts = {}) {
         cursor += 1;
         if (idx >= timeframes.length) return;
         const tf = timeframes[idx];
-        const one = await captureTradingViewSnapshotWithBrowser(browser, { ...opts, timeframe: tf, tf });
-        items[idx] = one;
+        try {
+          const one = await captureTradingViewSnapshotWithBrowser(browser, { ...opts, timeframe: tf, tf });
+          items[idx] = one;
+        } catch (error) {
+          if (isLikelyChromiumCrash(error)) {
+            const one = await captureTradingViewSnapshot({ ...opts, timeframe: tf, tf });
+            items[idx] = one;
+          } else {
+            throw error;
+          }
+        }
       }
     }
 
