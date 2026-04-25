@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.24-1913"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1258"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -1187,7 +1187,9 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
   const ts = Date.now();
   const symbolToken = sanitizeSnapshotFileToken(symbol);
   const tfToken = sanitizeSnapshotFileToken(interval, "TF");
-  const baseName = `${snapshotTimestampToken(ts)}_${symbolToken}_${tfToken}`;
+  const userId = String(opts.userId || "").trim();
+  const userPrefix = userId ? `UID_${userId}_` : "";
+  const baseName = `${userPrefix}${snapshotTimestampToken(ts)}_${symbolToken}_${tfToken}`;
   let fileName = `${baseName}.${outFormat}`;
   let outPath = path.join(CHART_SNAPSHOT_DIR, fileName);
   let dupIdx = 1;
@@ -3892,19 +3894,25 @@ async function mt5InitBackend() {
       }
       return { updated: count };
     },
-            async getStorageStats() {
-      const signalCancelRes = await pool.query(`SELECT COUNT(*) as c FROM signals WHERE status IN ('CANCEL', 'ERROR', 'CANCELLED')`);
-      const tradeCancelRes = await pool.query(`SELECT COUNT(*) as c FROM trades WHERE execution_status IN ('REJECTED', 'CANCELLED')`);
+            async getStorageStats(userId = "") {
+      const u = userId || "";
+      const sWhere = u ? " AND user_id = $1" : "";
+      const tWhere = u ? " AND user_id = $1" : "";
+      const params = u ? [u] : [];
+
+      const signalCancelRes = await pool.query(`SELECT COUNT(*) as c FROM signals WHERE status IN ('CANCEL', 'ERROR', 'CANCELLED')${sWhere}`, params);
+      const tradeCancelRes = await pool.query(`SELECT COUNT(*) as c FROM trades WHERE execution_status IN ('REJECTED', 'CANCELLED')${tWhere}`, params);
       
-      const signalTestRes = await pool.query(`SELECT COUNT(*) as c FROM signals WHERE symbol = 'TEST'`);
-      const tradeTestRes = await pool.query(`SELECT COUNT(*) as c FROM trades WHERE symbol = 'TEST'`);
+      const signalTestRes = await pool.query(`SELECT COUNT(*) as c FROM signals WHERE symbol = 'TEST'${sWhere}`, params);
+      const tradeTestRes = await pool.query(`SELECT COUNT(*) as c FROM trades WHERE symbol = 'TEST'${tWhere}`, params);
       
       const fs = require('fs');
       const path = require('path');
       let snapshotsSize = 0;
       let snapshotsCount = 0;
       if (fs.existsSync(CHART_SNAPSHOT_DIR)) {
-        const files = fs.readdirSync(CHART_SNAPSHOT_DIR);
+        const userPrefix = u ? `UID_${u}_` : "";
+        const files = fs.readdirSync(CHART_SNAPSHOT_DIR).filter(f => !userPrefix || f.startsWith(userPrefix));
         snapshotsCount = files.length;
         for (const f of files) {
           try {
@@ -3920,13 +3928,15 @@ async function mt5InitBackend() {
         snapshots_size_bytes: snapshotsSize
       };
     },
-        async storageCleanup(target) {
+        async storageCleanup(target, userId = "") {
+      const u = userId || "";
       if (target === 'snapshots') {
         const fs = require('fs');
         const path = require('path');
         let deletedFiles = 0;
         if (fs.existsSync(CHART_SNAPSHOT_DIR)) {
-          const files = fs.readdirSync(CHART_SNAPSHOT_DIR);
+          const userPrefix = u ? `UID_${u}_` : "";
+          const files = fs.readdirSync(CHART_SNAPSHOT_DIR).filter(f => !userPrefix || f.startsWith(userPrefix));
           for (const f of files) {
             try {
               fs.unlinkSync(path.join(CHART_SNAPSHOT_DIR, f));
@@ -3935,17 +3945,26 @@ async function mt5InitBackend() {
           }
         }
         return { ok: true, target, deleted_files: deletedFiles };
+      } else if (target === 'reset_user_data') {
+        if (!u) throw new Error("userId is required for reset_user_data");
+        const tDel = await pool.query(`DELETE FROM trades WHERE user_id = $1`, [u]);
+        const sDel = await pool.query(`DELETE FROM signals WHERE user_id = $1`, [u]);
+        return { ok: true, target, trades_deleted: tDel.rowCount, signals_deleted: sDel.rowCount };
       } else if (target === 'cancelled_error' || target === 'test_trades') {
-        const signalWhere = target === 'cancelled_error' ? "status IN ('CANCEL', 'ERROR', 'CANCELLED')" : "symbol = 'TEST'";
-        const tradeWhere = target === 'cancelled_error' ? "execution_status IN ('REJECTED', 'CANCELLED')" : "symbol = 'TEST'";
+        const sWhereUser = u ? " AND user_id = $1" : "";
+        const tWhereUser = u ? " AND user_id = $1" : "";
+        const params = u ? [u] : [];
+
+        const signalWhere = target === 'cancelled_error' ? `status IN ('CANCEL', 'ERROR', 'CANCELLED')${sWhereUser}` : `symbol = 'TEST'${sWhereUser}`;
+        const tradeWhere = target === 'cancelled_error' ? `execution_status IN ('REJECTED', 'CANCELLED')${tWhereUser}` : `symbol = 'TEST'${tWhereUser}`;
         
         // 1. Collect signals and their IDs
-        const sQ = await pool.query(`SELECT * FROM signals WHERE ${signalWhere}`);
+        const sQ = await pool.query(`SELECT * FROM signals WHERE ${signalWhere}`, params);
         const sRows = sQ.rows;
         const sIds = sRows.map(r => String(r.signal_id));
         
         // 2. Collect trades and their IDs
-        const tQ = await pool.query(`SELECT * FROM trades WHERE ${tradeWhere}`);
+        const tQ = await pool.query(`SELECT * FROM trades WHERE ${tradeWhere}`, params);
         const tRows = tQ.rows;
         const tIds = tRows.map(r => String(r.trade_id));
         
@@ -6640,28 +6659,30 @@ const appHandler = async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/mt5/storage/stats") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!requireSystemRoleForUi(req, res)) return;
+    if (!requireAuthForUi(req, res)) return;
     try {
       const b = await mt5Backend();
       if (!b.getStorageStats) return json(res, 400, { ok: false, error: "Not supported by this backend" });
-      const stats = await b.getStorageStats();
+      const userId = uiEffectiveUserId(req, url);
+      const stats = await b.getStorageStats(userId);
       return json(res, 200, { ok: true, stats });
     } catch (error) {
       return json(res, 400, { ok: false, error: error.message });
     }
   }
 
-    if (req.method === "POST" && url.pathname === "/mt5/storage/cleanup") {
+  if (req.method === "POST" && url.pathname === "/mt5/storage/cleanup") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!requireSystemRoleForUi(req, res)) return;
+    if (!requireAuthForUi(req, res)) return;
     try {
       const payload = await readJson(req);
       const target = String(payload.target || "").trim();
       if (!target) return json(res, 400, { ok: false, error: "target is required" });
       const b = await mt5Backend();
       if (!b.storageCleanup) return json(res, 400, { ok: false, error: "Not supported by this backend" });
-      const result = await b.storageCleanup(target);
-      return json(res, 200, { ok: true, ...result });
+      const userId = uiEffectiveUserId(req, url, payload);
+      const stats = await b.storageCleanup(target, userId);
+      return json(res, 200, { ok: true, stats });
     } catch (error) {
       return json(res, 400, { ok: false, error: error.message });
     }
@@ -7624,6 +7645,7 @@ const appHandler = async (req, res) => {
     try {
       const body = await readJson(req);
       const item = await captureTradingViewSnapshot({
+        userId: sess.user_id,
         symbol: body.symbol,
         provider: body.provider,
         timeframe: body.timeframe || body.tf,
@@ -7647,6 +7669,7 @@ const appHandler = async (req, res) => {
     try {
       const body = await readJson(req);
       const items = await captureTradingViewSnapshotsBatch({
+        userId: sess.user_id,
         symbol: body.symbol,
         provider: body.provider,
         timeframes: body.timeframes,

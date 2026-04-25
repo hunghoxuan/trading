@@ -26,7 +26,11 @@ export default function StoragePage() {
   }, []);
 
   async function handleCleanup(target) {
-    if (!window.confirm(`Are you sure you want to delete all ${target}? This cannot be undone.`)) {
+    const confirmMsg = target === 'reset_user_data' 
+      ? "CRITICAL ACTION: This will delete ALL your signals and trades. Are you absolutely sure?" 
+      : `Are you sure you want to delete all ${target}? This cannot be undone.`;
+
+    if (!window.confirm(confirmMsg)) {
       return;
     }
     try {
@@ -60,7 +64,7 @@ export default function StoragePage() {
       {msg && <div className="loading" style={{ padding: 10 }}>{msg}</div>}
 
       <div className="panel" style={{ maxWidth: '800px' }}>
-        <div className="panel-label">SYSTEM STORAGE METRICS</div>
+        <div className="panel-label">YOUR STORAGE METRICS</div>
         <table className="events-table">
           <thead>
             <tr>
@@ -84,7 +88,7 @@ export default function StoragePage() {
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     <button 
-                      className="primary-button" 
+                      className="danger-button" 
                       onClick={() => handleCleanup('cancelled_error')}
                       disabled={busy || stats.cancelled_error_count === 0}
                     >
@@ -102,7 +106,7 @@ export default function StoragePage() {
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     <button 
-                      className="primary-button" 
+                      className="danger-button" 
                       onClick={() => handleCleanup('test_trades')}
                       disabled={busy || stats.test_trades_count === 0}
                     >
@@ -121,11 +125,29 @@ export default function StoragePage() {
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     <button 
-                      className="primary-button" 
+                      className="danger-button" 
                       onClick={() => handleCleanup('snapshots')}
                       disabled={busy || stats.snapshots_count === 0}
                     >
                       DELETE ALL
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div style={{ fontWeight: 'bold', color: '#ef4444' }}>RESET ALL DATA</div>
+                    <div className="minor-text">Delete ALL your trades and signals (irreversible)</div>
+                  </td>
+                  <td>
+                    <span className="badge SL">DANGER ZONE</span>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button 
+                      className="danger-button" 
+                      onClick={() => handleCleanup('reset_user_data')}
+                      disabled={busy}
+                    >
+                      RESET DATA
                     </button>
                   </td>
                 </tr>

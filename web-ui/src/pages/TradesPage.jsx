@@ -831,7 +831,7 @@ export default function TradesPage() {
           <div className="snapshot-modal-panel-v4" style={{ width: "min(640px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
             <div className="snapshot-modal-head-v4">
               <div className="panel-label" style={{ marginBottom: 0 }}>EDIT TRADE</div>
-              <button type="button" className="secondary-button" onClick={() => setEditModalOpen(false)}>Close</button>
+              <button type="button" className="danger-button" onClick={() => setEditModalOpen(false)}>Close</button>
             </div>
             <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2,minmax(0,1fr))" }}>
               <select

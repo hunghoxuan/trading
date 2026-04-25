@@ -513,7 +513,7 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
                    </div>
                    <div style={{ display: "flex", gap: 12 }}>
                       <button className="primary-button" onClick={() => saveSetting(getSettingKey(selectedSetting))} disabled={settingsLoading}>SAVE CHANGES</button>
-                      <button className="secondary-button" style={{ color: "var(--danger)" }} onClick={() => deleteSetting(selectedSetting.type, selectedSetting.name)} disabled={settingsLoading}>DELETE</button>
+                      <button className="danger-button" onClick={() => deleteSetting(selectedSetting.type, selectedSetting.name)} disabled={settingsLoading}>DELETE</button>
                    </div>
                 </div>
 

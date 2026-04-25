@@ -5,35 +5,66 @@ import { SignalDetailCard } from "../components/SignalDetailCard";
 
 const STORAGE_KEY = "chart_prompt_builder_templates_v2";
 
-const STRATEGY_OPTIONS = ["ICT", "Price Action", "Market Structure", "SMC", "Wyckoff", "EMA Trend", "Breakout", "VWAP"];
+const STRATEGY_OPTIONS = [
+  "ICT",
+  "SMC",
+  "Price Action",
+  "Market Structure",
+  "Wyckoff",
+  "EMA Trend",
+  "Breakout",
+  "VWAP",
+
+];
+
+const STRATEGY_CHECKLIST = {
+  ICT: ["Liquidity sweep", "BOS/CHoCH confirmed", "PD Array reaction", "Displacement candle", "London/NY killzone alignment"],
+  "Market Structure": ["HTF narrative clear", "BOS/CHoCH sequence valid", "Premium/Discount aligned", "DOL target mapped", "No structure conflict"],
+  SMC: ["Liquidity grab", "Structure break", "Order block mitigation", "Imbalance/FVG reaction", "HTF bias alignment"],
+  "Price Action": ["Trend context clear", "Key S/R reaction", "Candlestick confirmation", "RR >= target", "No major news conflict"],
+  Wyckoff: ["Phase identified", "Spring/Upthrust event", "Volume confirmation", "Sign of strength/weakness", "Markup/markdown continuation"],
+  "EMA Trend": ["EMA stack aligned", "Pullback to EMA zone", "Trend continuation candle", "Momentum confirmation", "Avoid chop/range"],
+  Breakout: ["Range clearly defined", "Valid breakout close", "Retest holds", "Volume expansion", "False-break risk checked"],
+  VWAP: ["Price vs VWAP bias", "VWAP reclaim/reject", "Session anchor context", "Confluence with S/R", "Risk controlled around VWAP"],
+};
+
+
 const DEFAULT_TEMPLATE_ID = "__default__";
 const SYMBOLS_SETTING_TYPE = "SYMBOLS";
 const SYMBOLS_SETTING_NAME = "WATCHLIST";
 
 const PROFILE_PRESETS = {
   position: {
-    label: "Position (1M / 1W / 1D)",
-    htf_tfs: ["1M"],
-    exec_tfs: ["1W"],
-    conf_tfs: ["1D"],
+    label: "Position (1M+1W / 1D / 4H)",
+    htf_tfs: ["1M", "1W"],
+    exec_tfs: ["1D"],
+    conf_tfs: ["4H"],
+    sessions: "All sessions",
+    rr: "3",
   },
   swing: {
-    label: "Swing (W / D / 1H)",
-    htf_tfs: ["W"],
-    exec_tfs: ["D"],
-    conf_tfs: ["1H"],
+    label: "Swing (W+D / 4H / 15M)",
+    htf_tfs: ["W", "D"],
+    exec_tfs: ["4H"],
+    conf_tfs: ["15M"],
+    sessions: "London+NY",
+    rr: "2",
   },
   day: {
     label: "Daily (D+4H / 15M / 5M)",
     htf_tfs: ["D", "4H"],
     exec_tfs: ["15M"],
     conf_tfs: ["5M"],
+    sessions: "London+NY",
+    rr: "1.5",
   },
   scalper: {
-    label: "Scalping (1H / 5M / 1M)",
-    htf_tfs: ["1H"],
+    label: "Scalping (4H+1H / 5M / 1M)",
+    htf_tfs: ["4H", "1H"],
     exec_tfs: ["5M"],
     conf_tfs: ["1M"],
+    sessions: "London+NY",
+    rr: "1",
   },
 };
 
@@ -43,7 +74,7 @@ const DEFAULT_CONFIG = {
   session: "London+NY",
   rr: "2",
   risk: "1",
-  lookbackBars: "300",
+  lookbackBars: "600",
   strategies: ["ICT", "Price Action", "Market Structure"],
   profile: "day",
   htf_tfs: [...PROFILE_PRESETS.day.htf_tfs],
@@ -82,16 +113,6 @@ OUTPUT RULE
 - STRICT JSON ONLY (no markdown, no prose).
 - Keep market_analysis + trade_plan structure compatible with existing app fields.
 - Prefer trade_plan as array; multiple plans allowed and ranked by confidence_pct.`;
-const STRATEGY_CHECKLIST = {
-  ICT: ["Liquidity sweep", "BOS/CHoCH confirmed", "PD Array reaction", "Displacement candle", "London/NY killzone alignment"],
-  "Market Structure": ["HTF narrative clear", "BOS/CHoCH sequence valid", "Premium/Discount aligned", "DOL target mapped", "No structure conflict"],
-  SMC: ["Liquidity grab", "Structure break", "Order block mitigation", "Imbalance/FVG reaction", "HTF bias alignment"],
-  "Price Action": ["Trend context clear", "Key S/R reaction", "Candlestick confirmation", "RR >= target", "No major news conflict"],
-  Wyckoff: ["Phase identified", "Spring/Upthrust event", "Volume confirmation", "Sign of strength/weakness", "Markup/markdown continuation"],
-  "EMA Trend": ["EMA stack aligned", "Pullback to EMA zone", "Trend continuation candle", "Momentum confirmation", "Avoid chop/range"],
-  Breakout: ["Range clearly defined", "Valid breakout close", "Retest holds", "Volume expansion", "False-break risk checked"],
-  VWAP: ["Price vs VWAP bias", "VWAP reclaim/reject", "Session anchor context", "Confluence with S/R", "Risk controlled around VWAP"],
-};
 
 function normalizeTemplateConfig(raw) {
   const strategyValue = raw?.strategies || raw?.strategy || ["ICT"];
@@ -150,7 +171,10 @@ function toTradingViewInterval(tfRaw) {
 function parseSnapshotMeta(it) {
   const fileName = String(it?.file_name || "");
   const base = fileName.replace(/\.(png|jpe?g)$/i, "");
-  const parts = base.split("_");
+  let parts = base.split("_");
+  if (parts[0] === "UID" && parts.length >= 7) {
+    parts = parts.slice(2);
+  }
   if (parts.length < 5) return null;
   if (!/^\d{8}$/.test(parts[0]) || !/^\d{2}$/.test(parts[1]) || !/^\d{2}$/.test(parts[2])) return null;
   const rest = parts.slice(3);
@@ -1162,18 +1186,18 @@ export default function ChartSnapshotsPage() {
         const mergedKeyLevels = Array.isArray(parsed?.market_analysis?.key_levels) ? parsed.market_analysis.key_levels : [];
         const analysisSnapshotPayload = cachedSnapshot
           ? {
-              ...cachedSnapshot,
-              pd_arrays: mergedPdArrays,
-              key_levels: mergedKeyLevels,
-              htf_tfs: Array.isArray(tfConfig?.htf_tfs) ? tfConfig.htf_tfs : [],
-              summary: {
-                ...(cachedSnapshot.summary && typeof cachedSnapshot.summary === "object" ? cachedSnapshot.summary : {}),
-                profile: payload?.profile || parsed?.profile || "",
-                bias: parsed?.market_analysis?.bias || "",
-                trend: parsed?.market_analysis?.trend || "",
-                note: position.note || payload.note || "",
-              },
-            }
+            ...cachedSnapshot,
+            pd_arrays: mergedPdArrays,
+            key_levels: mergedKeyLevels,
+            htf_tfs: Array.isArray(tfConfig?.htf_tfs) ? tfConfig.htf_tfs : [],
+            summary: {
+              ...(cachedSnapshot.summary && typeof cachedSnapshot.summary === "object" ? cachedSnapshot.summary : {}),
+              profile: payload?.profile || parsed?.profile || "",
+              bias: parsed?.market_analysis?.bias || "",
+              trend: parsed?.market_analysis?.trend || "",
+              note: position.note || payload.note || "",
+            },
+          }
           : undefined;
 
         const finalPayload = {
@@ -1721,7 +1745,7 @@ export default function ChartSnapshotsPage() {
           <div className="snapshot-modal-panel-v4" onClick={(e) => e.stopPropagation()}>
             <div className="snapshot-modal-head-v4">
               <span className="panel-label" style={{ margin: 0 }}>Settings</span>
-              <button type="button" className="secondary-button" onClick={() => setSettingsModalOpen(false)}>Close</button>
+              <button type="button" className="danger-button" onClick={() => setSettingsModalOpen(false)}>Close</button>
             </div>
             <div className="snapshot-tabs-v2" style={{ marginBottom: 10 }}>
               <button type="button" className={`secondary-button ${settingsTab === "settings" ? "active" : ""}`} onClick={() => setSettingsTab("settings")}>Settings</button>
