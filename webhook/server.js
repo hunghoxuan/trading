@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1535"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1539"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -1226,8 +1226,13 @@ function resolvePlaywrightChromiumExecutablePath() {
         return nb - na;
       });
     for (const name of entries) {
-      const candidate = path.join(base, name, "chrome-linux", "chrome");
-      if (fs.existsSync(candidate)) return candidate;
+      const candidates = [
+        path.join(base, name, "chrome-linux64", "chrome"),
+        path.join(base, name, "chrome-linux", "chrome"),
+      ];
+      for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) return candidate;
+      }
     }
   } catch {}
   return "";
