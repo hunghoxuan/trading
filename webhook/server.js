@@ -5,6 +5,7 @@ const http = require("http");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
+const { execFileSync, spawnSync } = require("child_process");
 const { URL, URLSearchParams } = require("url");
 let createRedisClient = null;
 try {
@@ -86,8 +87,157 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1706"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1714"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
+
+function readDiskStats(mountPath = "/") {
+  try {
+    const out = execFileSync("df", ["-Pk", mountPath], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    const lines = String(out || "").trim().split(/\r?\n/);
+    const row = String(lines[lines.length - 1] || "").trim().split(/\s+/);
+    if (row.length < 6) return null;
+    const totalKb = Number(row[1] || 0);
+    const usedKb = Number(row[2] || 0);
+    const availKb = Number(row[3] || 0);
+    const usePctRaw = String(row[4] || "").replace("%", "");
+    const mount = String(row[5] || mountPath);
+    return {
+      mount,
+      total_bytes: Number.isFinite(totalKb) ? totalKb * 1024 : null,
+      used_bytes: Number.isFinite(usedKb) ? usedKb * 1024 : null,
+      avail_bytes: Number.isFinite(availKb) ? availKb * 1024 : null,
+      use_pct: Number.isFinite(Number(usePctRaw)) ? Number(usePctRaw) : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readPathSizeBytes(absPath) {
+  try {
+    if (!absPath || !fs.existsSync(absPath)) return 0;
+    const out = execFileSync("du", ["-sk", absPath], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    const kb = Number(String(out || "").trim().split(/\s+/)[0] || 0);
+    return Number.isFinite(kb) ? kb * 1024 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function cleanupSystemStorageArtifacts() {
+  const before = readDiskStats("/") || {};
+  const report = {
+    actions: [],
+    warnings: [],
+    before,
+  };
+  const addAction = (name, ok, detail = "") => {
+    report.actions.push({ name, ok: Boolean(ok), detail: String(detail || "") });
+  };
+
+  // 1) Flush PM2 logs
+  try {
+    const r = spawnSync("pm2", ["flush"], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", timeout: 20000 });
+    addAction("pm2_flush", r.status === 0, r.status === 0 ? "ok" : String(r.stderr || r.stdout || "failed"));
+  } catch (e) {
+    addAction("pm2_flush", false, String(e?.message || e));
+  }
+
+  // 2) Truncate PostgreSQL file logs if present
+  try {
+    const pgDir = "/var/log/postgresql";
+    let truncated = 0;
+    if (fs.existsSync(pgDir)) {
+      const files = fs.readdirSync(pgDir).filter((f) => /\.log(\.\d+)?$/i.test(f));
+      for (const fileName of files) {
+        const abs = path.join(pgDir, fileName);
+        try {
+          fs.truncateSync(abs, 0);
+          truncated += 1;
+        } catch {
+          const run = spawnSync("sudo", ["-u", "postgres", "truncate", "-s", "0", abs], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", timeout: 15000 });
+          if (run.status === 0) truncated += 1;
+        }
+      }
+    }
+    addAction("postgres_logs_truncate", true, `files=${truncated}`);
+  } catch (e) {
+    addAction("postgres_logs_truncate", false, String(e?.message || e));
+  }
+
+  // 3) Apt cache cleanup
+  try {
+    const r = spawnSync("apt-get", ["clean"], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", timeout: 30000 });
+    addAction("apt_clean", r.status === 0, r.status === 0 ? "ok" : String(r.stderr || r.stdout || "failed"));
+  } catch (e) {
+    addAction("apt_clean", false, String(e?.message || e));
+  }
+
+  // 4) Remove npm cache blobs
+  try {
+    const cacheDir = "/root/.npm/_cacache";
+    if (fs.existsSync(cacheDir)) fs.rmSync(cacheDir, { recursive: true, force: true });
+    addAction("npm_cache_cleanup", true, fs.existsSync(cacheDir) ? "partial" : "ok");
+  } catch (e) {
+    addAction("npm_cache_cleanup", false, String(e?.message || e));
+  }
+
+  // 5) Remove stale /tmp files (>2d)
+  try {
+    const now = Date.now();
+    const tmpDir = "/tmp";
+    let removed = 0;
+    if (fs.existsSync(tmpDir)) {
+      const entries = fs.readdirSync(tmpDir);
+      for (const name of entries) {
+        const abs = path.join(tmpDir, name);
+        try {
+          const st = fs.statSync(abs);
+          const ageMs = now - Number(st.mtimeMs || now);
+          if (ageMs > 2 * 24 * 60 * 60 * 1000) {
+            fs.rmSync(abs, { recursive: true, force: true });
+            removed += 1;
+          }
+        } catch {}
+      }
+    }
+    addAction("tmp_cleanup", true, `removed=${removed}`);
+  } catch (e) {
+    addAction("tmp_cleanup", false, String(e?.message || e));
+  }
+
+  // 6) Prune old chart snapshots (>14d)
+  try {
+    let removed = 0;
+    if (fs.existsSync(CHART_SNAPSHOT_DIR)) {
+      const now = Date.now();
+      const files = fs.readdirSync(CHART_SNAPSHOT_DIR);
+      for (const fileName of files) {
+        const abs = path.join(CHART_SNAPSHOT_DIR, fileName);
+        try {
+          const st = fs.statSync(abs);
+          const ageMs = now - Number(st.mtimeMs || now);
+          if (ageMs > 14 * 24 * 60 * 60 * 1000) {
+            fs.unlinkSync(abs);
+            removed += 1;
+          }
+        } catch {}
+      }
+    }
+    addAction("old_snapshots_prune", true, `removed=${removed}`);
+  } catch (e) {
+    addAction("old_snapshots_prune", false, String(e?.message || e));
+  }
+
+  const after = readDiskStats("/") || {};
+  report.after = after;
+  if (Number.isFinite(before?.avail_bytes) && Number.isFinite(after?.avail_bytes)) {
+    report.freed_bytes = Math.max(0, Number(after.avail_bytes) - Number(before.avail_bytes));
+  } else {
+    report.freed_bytes = null;
+  }
+  return report;
+}
 
 const CFG = {
   port: asNum(process.env.PORT, 80),
@@ -4230,16 +4380,34 @@ async function mt5InitBackend() {
       
       const logsRes = await pool.query(`SELECT COUNT(*) as c FROM logs${u ? " WHERE user_id = $1" : ""}`, params);
       
+      const disk = readDiskStats("/") || {};
+      const pgLogsBytes = readPathSizeBytes("/var/log/postgresql");
+      const aptCacheBytes = readPathSizeBytes("/var/cache/apt");
+      const playwrightCacheBytes = readPathSizeBytes("/root/.cache/ms-playwright");
+      const npmCacheBytes = readPathSizeBytes("/root/.npm");
       return {
         cancelled_error_count: parseInt(signalCancelRes.rows[0].c) + parseInt(tradeCancelRes.rows[0].c),
         test_trades_count: parseInt(signalTestRes.rows[0].c) + parseInt(tradeTestRes.rows[0].c),
         logs_count: parseInt(logsRes.rows[0].c),
         snapshots_count: snapshotsCount,
-        snapshots_size_bytes: snapshotsSize
+        snapshots_size_bytes: snapshotsSize,
+        disk_mount: disk.mount || "/",
+        disk_total_bytes: Number(disk.total_bytes || 0),
+        disk_used_bytes: Number(disk.used_bytes || 0),
+        disk_avail_bytes: Number(disk.avail_bytes || 0),
+        disk_use_pct: Number.isFinite(Number(disk.use_pct)) ? Number(disk.use_pct) : null,
+        system_postgres_logs_size_bytes: pgLogsBytes,
+        system_apt_cache_size_bytes: aptCacheBytes,
+        system_playwright_cache_size_bytes: playwrightCacheBytes,
+        system_npm_cache_size_bytes: npmCacheBytes,
       };
     },
         async storageCleanup(target, userId = "") {
       const u = userId || "";
+      if (target === "hard_disk") {
+        const report = cleanupSystemStorageArtifacts();
+        return { ok: true, target, ...report };
+      }
       if (target === 'snapshots') {
         const fs = require('fs');
         const path = require('path');
@@ -7106,7 +7274,7 @@ const appHandler = async (req, res) => {
     }
   }
 
-    if (req.method === "GET" && url.pathname === "/mt5/storage/stats") {
+  if (req.method === "GET" && url.pathname === "/mt5/storage/stats") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAuthForUi(req, res)) return;
     try {
@@ -7114,7 +7282,8 @@ const appHandler = async (req, res) => {
       if (!b.getStorageStats) return json(res, 400, { ok: false, error: "Not supported by this backend" });
       const userId = uiEffectiveUserId(req, url);
       const stats = await b.getStorageStats(userId);
-      return json(res, 200, { ok: true, stats });
+      const sess = getUiSessionFromReq(req);
+      return json(res, 200, { ok: true, stats, can_hard_disk_cleanup: Boolean(sess?.ok && isSystemRole(sess.role)) });
     } catch (error) {
       return json(res, 400, { ok: false, error: error.message });
     }
@@ -7127,6 +7296,7 @@ const appHandler = async (req, res) => {
       const payload = await readJson(req);
       const target = String(payload.target || "").trim();
       if (!target) return json(res, 400, { ok: false, error: "target is required" });
+      if (target === "hard_disk" && !requireSystemRoleForUi(req, res)) return;
       const b = await mt5Backend();
       if (!b.storageCleanup) return json(res, 400, { ok: false, error: "Not supported by this backend" });
       const userId = uiEffectiveUserId(req, url, payload);
