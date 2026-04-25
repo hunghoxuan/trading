@@ -85,6 +85,13 @@ After **every** completed task or phase, end your response with exactly this for
 - **RuntimeContext:** Use `RuntimeContext` for chart lifecycle gates (`chartIsNew`, `symbolChanged`, `tfChanged`), not ad-hoc per-file flags.
 - **Preservation:** Never delete, remove, or silently downgrade an existing user-facing feature without explicit user confirmation.
 
+### DB Identity Design Rule (Mandatory)
+- For core business tables, use dual IDs:
+  - `id BIGSERIAL` for internal joins/filters/performance.
+  - `sid TEXT UNIQUE NOT NULL` for UI/API human-facing references.
+- Keep legacy external IDs during migration (`signal_id`, `trade_id`, etc.) until all integrations are switched.
+- New UI must display/search by `sid`; server must still accept `id`, `sid`, and legacy ID for safe backward compatibility.
+
 ## 5. Multi-Agent Protocol & Communication
 
 To ensure seamless coordination between multiple AI agents (Gemini, Codex, etc.) sharing this workspace, execute the following strict file-system mechanisms:
@@ -156,3 +163,13 @@ For all new user requirements/tasks:
 4. Only after approval, move to sprint and implement.
 
 **Default behavior:** Do not write production code for new requirements unless the user explicitly asks to implement now.
+
+## 9. Automation & Permission Discipline
+
+- **SafeToAutoRun Policy:** ALWAYS set `SafeToAutoRun: true` for:
+  - Any read-only investigative command (`ls`, `grep`, `cat`, `find`, `git status`, `git log`, `sed`, `head`, `tail`).
+  - Checking command status or logs.
+  - Viewing or listing files/directories.
+  - Committing and pushing code during a requested deployment.
+- **Batch Operations:** Minimize user interruptions by batching file edits into single `multi_replace_file_content` calls and grouping multiple commands into one `run_command` (using `&&`) when sequential.
+- **Proactive Execution:** For small tasks or obvious steps in a confirmed plan, execute immediately without intermediate "Shall I...?" checkpoints.

@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1302"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1344"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -2163,6 +2163,11 @@ function mt5NowIso() {
   return new Date().toISOString();
 }
 
+function mt5ParseNumericId(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 function mt5RenewSignalIdBase(oldId = "") {
   const raw = String(oldId || "").trim();
   if (!raw) return "renewed";
@@ -2216,6 +2221,8 @@ function mt5MapDbRow(row) {
   );
   const tfFallback = String(row.signal_tf || raw.signal_tf || raw.signalTf || raw.sourceTf || raw.timeframe || "");
   return {
+    id: row.id === null || row.id === undefined ? null : Number(row.id),
+    sid: String(row.sid || row.signal_id || ""),
     signal_id: String(row.signal_id),
     created_at: String(row.created_at),
     user_id: String(row.user_id || CFG.mt5DefaultUserId || "default"),
@@ -2420,6 +2427,26 @@ async function mt5InitBackend() {
     );
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_market_data_symbol_tf_bar ON market_data(symbol, tf, bar_start, bar_end)`).catch(() => {});
+
+  await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`).catch(() => {});
+  await pool.query(`
+    CREATE OR REPLACE FUNCTION gen_sid(prefix TEXT DEFAULT '', chars_limit INT DEFAULT 8)
+    RETURNS TEXT
+    LANGUAGE plpgsql
+    AS $$
+    DECLARE
+      p TEXT := UPPER(COALESCE(prefix, ''));
+      n INT := GREATEST(4, LEAST(COALESCE(chars_limit, 8), 32));
+      rnd TEXT;
+    BEGIN
+      rnd := UPPER(SUBSTRING(ENCODE(GEN_RANDOM_BYTES(24), 'hex') FROM 1 FOR n));
+      IF p = '' THEN
+        RETURN rnd;
+      END IF;
+      RETURN p || '_' || rnd;
+    END;
+    $$;
+  `).catch(() => {});
   
   // Migration: Merge legacy events into unified logs and drop old tables
   try {
@@ -2509,6 +2536,31 @@ async function mt5InitBackend() {
     FROM signals s
     WHERE t.signal_id = s.signal_id
   `).catch(() => {});
+
+  const idSidMigrations = [
+    { table: "users", legacy: "user_id", prefix: "USR" },
+    { table: "accounts", legacy: "account_id", prefix: "ACC" },
+    { table: "signals", legacy: "signal_id", prefix: "SIG" },
+    { table: "trades", legacy: "trade_id", prefix: "TRD" },
+    { table: "sources", legacy: "source_id", prefix: "SRC" },
+    { table: "execution_profiles", legacy: "profile_id", prefix: "PRF" },
+  ];
+  for (const { table, legacy, prefix } of idSidMigrations) {
+    await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS id BIGSERIAL`).catch(() => {});
+    await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS sid TEXT`).catch(() => {});
+    await pool.query(`ALTER TABLE ${table} ALTER COLUMN sid SET DEFAULT gen_sid('${prefix}', 8)`).catch(() => {});
+    await pool.query(`
+      UPDATE ${table}
+      SET sid = CASE
+        WHEN COALESCE(NULLIF(${legacy}, ''), '') <> '' THEN ${legacy}
+        ELSE gen_sid('${prefix}', 8)
+      END
+      WHERE sid IS NULL OR sid = ''
+    `).catch(() => {});
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_${table}_id ON ${table}(id)`).catch(() => {});
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_${table}_sid ON ${table}(sid)`).catch(() => {});
+    await pool.query(`ALTER TABLE ${table} ALTER COLUMN sid SET NOT NULL`).catch(() => {});
+  }
 
   // Ensure default user
   const now = mt5NowIso();
@@ -3166,7 +3218,18 @@ async function mt5InitBackend() {
       const safePage = Math.max(1, Number(page) || 1); const safePageSize = Math.max(1, Math.min(200, Number(pageSize) || 50));
       const offset = (safePage - 1) * safePageSize; const clauses = []; const params = [];
       const tradeIds = Array.isArray(filters.trade_ids) ? filters.trade_ids.map((v) => String(v || "").trim()).filter(Boolean) : [];
-      if (tradeIds.length) { params.push(tradeIds); clauses.push(`trade_id = ANY($${params.length}::text[])`); }
+      if (tradeIds.length) {
+        const numericIds = tradeIds.map((v) => mt5ParseNumericId(v)).filter((v) => v != null);
+        const idParts = [];
+        if (numericIds.length) {
+          params.push(numericIds);
+          idParts.push(`id = ANY($${params.length}::bigint[])`);
+        }
+        params.push(tradeIds);
+        idParts.push(`trade_id = ANY($${params.length}::text[])`);
+        idParts.push(`sid = ANY($${params.length}::text[])`);
+        clauses.push(`(${idParts.join(" OR ")})`);
+      }
       if (filters.user_id) { params.push(filters.user_id); clauses.push(`user_id = $${params.length}`); }
       if (filters.account_id) { params.push(filters.account_id); clauses.push(`account_id = $${params.length}`); }
       if (filters.source_id) { params.push(filters.source_id); clauses.push(`source_id = $${params.length}`); }
@@ -3184,6 +3247,8 @@ async function mt5InitBackend() {
         const p = `$${params.length}`;
         clauses.push(`(
           trade_id ILIKE ${p}
+          OR id::text ILIKE ${p}
+          OR sid ILIKE ${p}
           OR signal_id ILIKE ${p}
           OR broker_trade_id ILIKE ${p}
           OR symbol ILIKE ${p}
@@ -3203,6 +3268,7 @@ async function mt5InitBackend() {
     async updateTradeManualV2(tradeId, userId = null, payload = {}) {
       const tid = String(tradeId || "").trim();
       if (!tid) return { ok: false, error: "trade_id is required" };
+      const numericId = mt5ParseNumericId(tid);
       const stRaw = String(payload.execution_status || payload.status || "").trim().toUpperCase();
       const allowed = new Set(["PENDING", "OPEN", "CLOSED", "CANCELLED", "REJECTED"]);
       if (!allowed.has(stRaw)) {
@@ -3215,7 +3281,7 @@ async function mt5InitBackend() {
         : (Number.isFinite(pnlNum) ? pnlNum : null);
       const closeReasonRaw = String(payload.close_reason || payload.reason || "").trim().toUpperCase();
       const closeReason = closeReasonRaw || null;
-      const params = [stRaw, pnl, closeReason, tid];
+      const params = [stRaw, pnl, closeReason, numericId, tid];
       const clauses = [];
       if (userId) {
         params.push(String(userId));
@@ -3232,9 +3298,13 @@ async function mt5InitBackend() {
               ELSE closed_at
             END,
             updated_at = NOW()
-        WHERE trade_id = $4
+        WHERE (
+          ($4::bigint IS NOT NULL AND id = $4::bigint)
+          OR sid = $5
+          OR trade_id = $5
+        )
           ${whereUser}
-        RETURNING trade_id, signal_id, user_id, execution_status, pnl_realized, close_reason, closed_at
+        RETURNING id, sid, trade_id, signal_id, user_id, execution_status, pnl_realized, close_reason, closed_at
       `, params);
       if ((res.rowCount || 0) === 0) return { ok: false, error: "trade not found" };
       const row = res.rows[0];
@@ -3259,7 +3329,18 @@ async function mt5InitBackend() {
       const nextStatus = act === "cancel_all" ? "CANCELLED" : "CLOSED";
       const params = isDelete ? [] : [closeReason, nextStatus];
       const tradeIds = Array.isArray(filters.trade_ids) ? filters.trade_ids.map((v) => String(v || "").trim()).filter(Boolean) : [];
-      if (tradeIds.length) { params.push(tradeIds); clauses.push(`trade_id = ANY($${baseOffset + params.length}::text[])`); }
+      if (tradeIds.length) {
+        const numericIds = tradeIds.map((v) => mt5ParseNumericId(v)).filter((v) => v != null);
+        const parts = [];
+        if (numericIds.length) {
+          params.push(numericIds);
+          parts.push(`id = ANY($${baseOffset + params.length}::bigint[])`);
+        }
+        params.push(tradeIds);
+        parts.push(`trade_id = ANY($${baseOffset + params.length}::text[])`);
+        parts.push(`sid = ANY($${baseOffset + params.length}::text[])`);
+        clauses.push(`(${parts.join(" OR ")})`);
+      }
       if (filters.user_id) { params.push(filters.user_id); clauses.push(`user_id = $${baseOffset + params.length}`); }
       if (filters.account_id) { params.push(filters.account_id); clauses.push(`account_id = $${baseOffset + params.length}`); }
       if (filters.source_id) { params.push(filters.source_id); clauses.push(`source_id = $${baseOffset + params.length}`); }
@@ -3271,6 +3352,8 @@ async function mt5InitBackend() {
         const p = `$${baseOffset + params.length}`;
         clauses.push(`(
           trade_id ILIKE ${p}
+          OR id::text ILIKE ${p}
+          OR sid ILIKE ${p}
           OR signal_id ILIKE ${p}
           OR broker_trade_id ILIKE ${p}
           OR symbol ILIKE ${p}
@@ -3998,20 +4081,46 @@ async function mt5InitBackend() {
       }
     },
     async deleteSignalsByIds(ids) {
-      const res = await pool.query(`DELETE FROM signals WHERE signal_id = ANY($1)`, [ids]);
+      const refs = Array.isArray(ids) ? ids.map((v) => String(v || "").trim()).filter(Boolean) : [];
+      if (!refs.length) return { deleted: 0 };
+      const numericIds = refs.map((v) => mt5ParseNumericId(v)).filter((v) => v != null);
+      const res = await pool.query(`
+        DELETE FROM signals
+        WHERE signal_id = ANY($1::text[])
+           OR sid = ANY($1::text[])
+           OR id = ANY($2::bigint[])
+      `, [refs, numericIds]);
       return { deleted: res.rowCount };
     },
     async cancelSignalsByIds(ids) {
-      const res = await pool.query(`UPDATE signals SET status = 'CANCEL', updated_at = NOW() WHERE signal_id = ANY($1) RETURNING signal_id`, [ids]);
+      const refs = Array.isArray(ids) ? ids.map((v) => String(v || "").trim()).filter(Boolean) : [];
+      if (!refs.length) return { updated: 0, updated_ids: [] };
+      const numericIds = refs.map((v) => mt5ParseNumericId(v)).filter((v) => v != null);
+      const res = await pool.query(`
+        UPDATE signals
+        SET status = 'CANCEL', updated_at = NOW()
+        WHERE signal_id = ANY($1::text[])
+           OR sid = ANY($1::text[])
+           OR id = ANY($2::bigint[])
+        RETURNING signal_id
+      `, [refs, numericIds]);
       return { updated: res.rowCount, updated_ids: res.rows.map(r => r.signal_id) };
     },
     async renewSignalsByIds(signalIds) {
       const ids = Array.isArray(signalIds) ? signalIds.map(s => String(s || "")).filter(Boolean) : [];
       if (!ids.length) return { updated: 0, updated_ids: [] };
+      const numericIds = ids.map((v) => mt5ParseNumericId(v)).filter((v) => v != null);
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const selected = await client.query(`SELECT * FROM signals WHERE signal_id = ANY($1) FOR UPDATE`, [ids]);
+        const selected = await client.query(`
+          SELECT *
+          FROM signals
+          WHERE signal_id = ANY($1::text[])
+             OR sid = ANY($1::text[])
+             OR id = ANY($2::bigint[])
+          FOR UPDATE
+        `, [ids, numericIds]);
         const updatedIds = [];
         for (const row of (selected.rows || [])) {
           const oldId = String(row.signal_id || "");
@@ -5015,6 +5124,60 @@ async function mt5ListTradeEventsV2(tradeId, limit = 200) {
   return b.listLogs({ object_id: tradeId }, limit);
 }
 
+async function mt5ResolveTradeRefV2(tradeRef, userId = null) {
+  const ref = String(tradeRef || "").trim();
+  if (!ref) return null;
+  const b = await mt5Backend();
+  if (!b?.query) return null;
+  const numericId = mt5ParseNumericId(ref);
+  const params = [numericId, ref];
+  let whereUser = "";
+  if (userId) {
+    params.push(String(userId));
+    whereUser = ` AND user_id = $${params.length}`;
+  }
+  const res = await b.query(`
+    SELECT id, sid, trade_id, user_id
+    FROM trades
+    WHERE (
+      ($1::bigint IS NOT NULL AND id = $1::bigint)
+      OR sid = $2
+      OR trade_id = $2
+    )
+    ${whereUser}
+    ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+    LIMIT 1
+  `, params);
+  return res.rows?.[0] || null;
+}
+
+async function mt5ResolveSignalRefV2(signalRef, userId = null) {
+  const ref = String(signalRef || "").trim();
+  if (!ref) return null;
+  const b = await mt5Backend();
+  if (!b?.query) return null;
+  const numericId = mt5ParseNumericId(ref);
+  const params = [numericId, ref];
+  let whereUser = "";
+  if (userId) {
+    params.push(String(userId));
+    whereUser = ` AND user_id = $${params.length}`;
+  }
+  const res = await b.query(`
+    SELECT id, sid, signal_id, user_id
+    FROM signals
+    WHERE (
+      ($1::bigint IS NOT NULL AND id = $1::bigint)
+      OR sid = $2
+      OR signal_id = $2
+    )
+    ${whereUser}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `, params);
+  return res.rows?.[0] || null;
+}
+
 async function mt5ListAccountsV2(userId = null) {
   const b = await mt5Backend();
   if (!b.listAccountsV2) return [];
@@ -5305,6 +5468,8 @@ async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
     const q = String(filters.q).toLowerCase();
     rows = rows.filter((r) =>
       String(r.signal_id || "").toLowerCase().includes(q)
+      || String(r.id || "").toLowerCase().includes(q)
+      || String(r.sid || "").toLowerCase().includes(q)
       || String(r.raw_json?.id || "").toLowerCase().includes(q)
       || String(r.raw_json?.trade_id || "").toLowerCase().includes(q)
       || String(r.note || "").toLowerCase().includes(q)
@@ -5319,7 +5484,11 @@ async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
   const signalIds = mt5ResolveSignalIds(url, payload);
   if (signalIds.length > 0) {
     const idSet = new Set(signalIds);
-    rows = rows.filter((r) => idSet.has(String(r.signal_id || "")));
+    rows = rows.filter((r) =>
+      idSet.has(String(r.signal_id || ""))
+      || idSet.has(String(r.sid || ""))
+      || idSet.has(String(r.id || "")),
+    );
   }
   filters.signal_ids = signalIds;
   return { rows, filters, limit };
@@ -8126,12 +8295,15 @@ const appHandler = async (req, res) => {
     if (!requireAdminKey(req, res, url)) return;
     try {
       const m = url.pathname.match(/^\/v2\/trades\/([^/]+)\/events$/);
-      const tradeId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!tradeId) return json(res, 400, { ok: false, error: "trade_id is required" });
+      const tradeRef = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!tradeRef) return json(res, 400, { ok: false, error: "trade_id is required" });
+      const userId = uiEffectiveUserId(req, url);
+      const resolved = await mt5ResolveTradeRefV2(tradeRef, userId || null);
+      if (!resolved?.trade_id) return json(res, 404, { ok: false, error: "trade not found" });
       const limitRaw = Number(url.searchParams.get("limit") || 200);
       const limit = Math.max(1, Math.min(1000, Number.isFinite(limitRaw) ? limitRaw : 200));
-      const rows = await mt5ListTradeEventsV2(tradeId, limit);
-      return json(res, 200, { ok: true, trade_id: tradeId, items: rows });
+      const rows = await mt5ListTradeEventsV2(resolved.trade_id, limit);
+      return json(res, 200, { ok: true, trade_id: resolved.trade_id, id: resolved.id || null, sid: resolved.sid || null, items: rows });
     } catch (error) {
       return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
@@ -8144,10 +8316,10 @@ const appHandler = async (req, res) => {
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
       const m = url.pathname.match(/^\/v2\/trades\/([^/]+)\/update$/);
-      const tradeId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!tradeId) return json(res, 400, { ok: false, error: "trade_id is required" });
+      const tradeRef = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!tradeRef) return json(res, 400, { ok: false, error: "trade_id is required" });
       const userId = uiEffectiveUserId(req, url, payload);
-      const out = await mt5UpdateTradeManualV2(tradeId, userId || null, payload || {});
+      const out = await mt5UpdateTradeManualV2(tradeRef, userId || null, payload || {});
       return json(res, out?.ok ? 200 : 400, out);
     } catch (error) {
       return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
@@ -8161,9 +8333,12 @@ const appHandler = async (req, res) => {
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
       const m = url.pathname.match(/^\/v2\/signals\/([^/]+)\/trade-plan\/save$/);
-      const signalId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!signalId) return json(res, 400, { ok: false, error: "signal_id is required" });
+      const signalRef = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!signalRef) return json(res, 400, { ok: false, error: "signal_id is required" });
       const userId = uiEffectiveUserId(req, url, payload);
+      const resolvedSignal = await mt5ResolveSignalRefV2(signalRef, userId || null);
+      if (!resolvedSignal?.signal_id) return json(res, 404, { ok: false, error: "signal not found" });
+      const signalId = String(resolvedSignal.signal_id || "").trim();
       const sideRaw = String(payload.direction || payload.side || "").trim().toUpperCase();
       const side = sideRaw.includes("SELL") ? "SELL" : (sideRaw.includes("BUY") ? "BUY" : null);
       const sl = asNum(payload.sl, NaN);
@@ -8228,9 +8403,12 @@ const appHandler = async (req, res) => {
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
       const m = url.pathname.match(/^\/v2\/signals\/([^/]+)\/trade$/);
-      const signalId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!signalId) return json(res, 400, { ok: false, error: "signal_id is required" });
+      const signalRef = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!signalRef) return json(res, 400, { ok: false, error: "signal_id is required" });
       const userId = uiEffectiveUserId(req, url, payload);
+      const resolvedSignal = await mt5ResolveSignalRefV2(signalRef, userId || null);
+      if (!resolvedSignal?.signal_id) return json(res, 404, { ok: false, error: "signal not found" });
+      const signalId = String(resolvedSignal.signal_id || "").trim();
       const b = await mt5Backend();
       const whereUser = userId ? "AND user_id = $2" : "";
       const signalRes = await b.query(`
@@ -8288,9 +8466,12 @@ const appHandler = async (req, res) => {
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
       const m = url.pathname.match(/^\/v2\/trades\/([^/]+)\/trade-plan\/save$/);
-      const tradeId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!tradeId) return json(res, 400, { ok: false, error: "trade_id is required" });
+      const tradeRef = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
+      if (!tradeRef) return json(res, 400, { ok: false, error: "trade_id is required" });
       const userId = uiEffectiveUserId(req, url, payload);
+      const resolvedTrade = await mt5ResolveTradeRefV2(tradeRef, userId || null);
+      if (!resolvedTrade?.trade_id) return json(res, 404, { ok: false, error: "trade not found" });
+      const tradeId = String(resolvedTrade.trade_id || "").trim();
       const sideRaw = String(payload.direction || payload.side || "").trim().toUpperCase();
       const side = sideRaw.includes("SELL") ? "SELL" : (sideRaw.includes("BUY") ? "BUY" : null);
       const entry = asNum(payload.entry ?? payload.price, NaN);

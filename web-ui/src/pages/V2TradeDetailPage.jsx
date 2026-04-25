@@ -86,7 +86,7 @@ export default function TradeDetailPage() {
             <h1 style={{ margin: 0, fontSize: '24px' }}>
               <span className={t.action === 'BUY' ? 'side-buy' : 'side-sell'}>{t.action}</span> {t.symbol}
             </h1>
-            <div className="minor-text" style={{ marginTop: 4 }}>ID: {t.trade_id}</div>
+            <div className="minor-text" style={{ marginTop: 4 }}>SID: {t.sid || t.trade_id}</div>
             <div className="minor-text" style={{ marginTop: 2 }}>Ticket: {brokerTicketOf(t)}</div>
           </div>
           <div className={`badge ${status.cls}`} style={{ padding: '8px 16px', fontSize: '14px' }}>

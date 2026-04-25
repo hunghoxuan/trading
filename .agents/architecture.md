@@ -54,3 +54,28 @@
 2. [x] Replace all event-appending calls with `mt5Log(...)`.
 3. [x] Verify Dashboard PnL still aggregates correctly from `trades` (using direct `user_id` filter).
 4. [x] Purge legacy event tables and migrate historical data to `logs`.
+
+---
+
+## 4. Identity Layer (V2.3)
+
+### Policy
+- Core tables now use dual identity:
+  - `id` = numeric, internal, high-performance key (`BIGSERIAL`).
+  - `sid` = human-facing stable identifier (text), unique.
+- Legacy business keys (`signal_id`, `trade_id`, `account_id`, `source_id`, `profile_id`) remain for backward compatibility with EA, webhooks, and older integrations.
+
+### Tables Covered
+- `users`, `accounts`, `signals`, `trades`, `sources`, `execution_profiles`.
+
+### Runtime Rules
+- UI shows/searches by `sid`.
+- Mutations (`update/delete/bulk`) are executed by numeric `id` where available.
+- API endpoints resolve identifiers in this order:
+  1. numeric `id`
+  2. `sid`
+  3. legacy key (`trade_id` / `signal_id` / etc.)
+
+### Compatibility Note
+- Logs and EA payloads continue to reference legacy IDs.
+- Server resolves `id/sid` to legacy keys internally where needed (e.g., trade events/log timeline).

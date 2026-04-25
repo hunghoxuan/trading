@@ -84,6 +84,12 @@ function brokerTicketOf(t) {
   return String(t?.broker_trade_id || t?.ticket || "").trim() || "-";
 }
 
+function tradeKeyOf(t) {
+  const idNum = Number(t?.id);
+  if (Number.isInteger(idNum) && idNum > 0) return String(idNum);
+  return String(t?.trade_id || "").trim();
+}
+
 function rangeBounds(range) {
   const now = new Date();
   const start = new Date(now);
@@ -266,7 +272,7 @@ export default function TradesPage() {
       const selectedTradeId = String(selectedTradeIdRef.current || "").trim();
       if (items.length > 0 && !selectedTradeId) {
         setSelectedTrade(items[0]);
-        selectedTradeIdRef.current = String(items[0]?.trade_id || "");
+        selectedTradeIdRef.current = tradeKeyOf(items[0]);
       }
     } catch (e) {
       setError(e?.message || "Failed to load trades");
@@ -276,18 +282,18 @@ export default function TradesPage() {
     }
   }
 
-  async function loadTradeEvents(tradeId) {
-    if (!tradeId) {
+  async function loadTradeEvents(tradeRef) {
+    if (!tradeRef) {
       setTradeEvents([]);
       return;
     }
     if (tradeEventsInFlightRef.current) return;
     tradeEventsInFlightRef.current = true;
     try {
-      const out = await api.v2TradeEvents(tradeId, 100);
+      const out = await api.v2TradeEvents(tradeRef, 100);
       let items = Array.isArray(out?.items) ? out.items : [];
       if (items.length === 0) {
-        const row = rows.find((r) => r.trade_id === tradeId);
+        const row = rows.find((r) => tradeKeyOf(r) === String(tradeRef));
         const signalId = String(row?.signal_id || "").trim();
         if (signalId) {
           const legacy = await api.trade(signalId);
@@ -364,12 +370,13 @@ export default function TradesPage() {
   useEffect(() => { loadMeta(); }, []);
   useEffect(() => { loadTrades(); }, [query]);
   useEffect(() => {
-    selectedTradeIdRef.current = String(selectedTrade?.trade_id || "").trim();
-  }, [selectedTrade?.trade_id]);
+    selectedTradeIdRef.current = tradeKeyOf(selectedTrade);
+  }, [selectedTrade?.id, selectedTrade?.trade_id]);
   useEffect(() => {
-    if (selectedTrade?.trade_id) loadTradeEvents(selectedTrade.trade_id);
+    const ref = tradeKeyOf(selectedTrade);
+    if (ref) loadTradeEvents(ref);
     else setTradeEvents([]);
-  }, [selectedTrade?.trade_id]);
+  }, [selectedTrade?.id, selectedTrade?.trade_id]);
   useEffect(() => {
     if (!selectedTrade) {
       setEditForm({ execution_status: "PENDING", pnl_realized: "0" });
@@ -387,7 +394,7 @@ export default function TradesPage() {
     });
     setEditModalOpen(false);
     setEditMsg({ type: "", text: "" });
-  }, [selectedTrade?.trade_id]);
+  }, [selectedTrade?.id, selectedTrade?.trade_id]);
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
@@ -396,7 +403,7 @@ export default function TradesPage() {
     return () => window.clearInterval(timer);
   }, [query]);
 
-  const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(r.trade_id));
+  const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(tradeKeyOf(r)));
   const sortedRows = useMemo(() => {
     const statusRankAsc = (v) => {
       const s = String(v || "").toUpperCase();
@@ -448,7 +455,8 @@ export default function TradesPage() {
   };
 
   async function onSaveTradeEdit() {
-    if (!selectedTrade?.trade_id) return;
+    const selectedRef = tradeKeyOf(selectedTrade);
+    if (!selectedRef) return;
     try {
       setEditBusy(true);
       setEditMsg({ type: "", text: "" });
@@ -459,16 +467,17 @@ export default function TradesPage() {
         execution_status: st,
         pnl_realized: st === "PENDING" ? 0 : (Number.isFinite(pnlNum) ? pnlNum : null),
       };
-      const out = await api.v2UpdateTrade(selectedTrade.trade_id, payload);
+      const out = await api.v2UpdateTrade(selectedRef, payload);
       setEditMsg({ type: "success", text: "Trade updated." });
       await loadTrades();
-      if (out?.item?.trade_id) {
-        const refresh = await api.v2Trades({ q: out.item.trade_id, page: 1, pageSize: 1 });
+      if (out?.item?.id || out?.item?.sid || out?.item?.trade_id) {
+        const refreshQ = String(out?.item?.sid || out?.item?.trade_id || out?.item?.id || "");
+        const refresh = await api.v2Trades({ q: refreshQ, page: 1, pageSize: 1 });
         if (Array.isArray(refresh?.items) && refresh.items.length > 0) {
           setSelectedTrade(refresh.items[0]);
         }
       }
-      if (selectedTrade?.trade_id) await loadTradeEvents(selectedTrade.trade_id);
+      if (selectedRef) await loadTradeEvents(selectedRef);
       setEditModalOpen(false);
     } catch (e) {
       setEditMsg({ type: "error", text: String(e?.message || e || "Failed to update trade.") });
@@ -478,7 +487,7 @@ export default function TradesPage() {
   }
 
   function openTradeEditModal(trade) {
-    if (!trade?.trade_id) return;
+    if (!tradeKeyOf(trade)) return;
     setSelectedTrade(trade);
     const st = String(trade.execution_status || "PENDING").toUpperCase();
     const pnlRaw = Number(trade.pnl_realized);
@@ -517,7 +526,7 @@ export default function TradesPage() {
         </div>
 
         <div className="toolbar-group toolbar-search-filter" style={{ flexWrap: "wrap" }}>
-          <input value={filter.q} onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value, page: 1 }))} placeholder="Search trade id, symbol..." style={{ width: 220 }} />
+          <input value={filter.q} onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value, page: 1 }))} placeholder="Search sid, symbol..." style={{ width: 220 }} />
           <select value={filter.account_id} onChange={(e) => setFilter((f) => ({ ...f, account_id: e.target.value, page: 1 }))}>
             <option value="">ALL ACCOUNTS</option>
             {accounts.map((a) => <option key={a.account_id} value={a.account_id}>{a.name || a.account_id}</option>)}
@@ -576,8 +585,8 @@ export default function TradesPage() {
                         setSelectedIds((prev) => {
                           const next = new Set(prev);
                           rows.forEach((r) => {
-                            if (checked) next.add(r.trade_id);
-                            else next.delete(r.trade_id);
+                            if (checked) next.add(tradeKeyOf(r));
+                            else next.delete(tradeKeyOf(r));
                           });
                           return next;
                         });
@@ -611,23 +620,23 @@ export default function TradesPage() {
                   const timeValue = fDateTime(t.closed_at || t.opened_at || t.created_at);
                   return (
                     <tr
-                      key={t.trade_id}
-                      className={selectedTrade?.trade_id === t.trade_id ? "active" : ""}
+                      key={tradeKeyOf(t)}
+                      className={tradeKeyOf(selectedTrade) === tradeKeyOf(t) ? "active" : ""}
                       onClick={() => {
-                        selectedTradeIdRef.current = String(t?.trade_id || "");
+                        selectedTradeIdRef.current = tradeKeyOf(t);
                         setSelectedTrade(t);
                       }}
                     >
                       <td onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
-                          checked={selectedIds.has(t.trade_id)}
+                          checked={selectedIds.has(tradeKeyOf(t))}
                           onChange={(e) => {
                             const checked = e.target.checked;
                             setSelectedIds((prev) => {
                               const next = new Set(prev);
-                              if (checked) next.add(t.trade_id);
-                              else next.delete(t.trade_id);
+                              if (checked) next.add(tradeKeyOf(t));
+                              else next.delete(tradeKeyOf(t));
                               return next;
                             });
                           }}
@@ -636,7 +645,7 @@ export default function TradesPage() {
                       <td>
                         <div className="cell-wrap">
                           <div className="cell-major"><span className={actionCls}>{action}</span> {t.symbol}</div>
-                          <div className="cell-minor">{String(t.trade_id || "").slice(-8)}</div>
+                          <div className="cell-minor">{String(t.sid || t.trade_id || "-").slice(-12)}</div>
                         </div>
                       </td>
                       <td>
@@ -788,7 +797,7 @@ export default function TradesPage() {
                   { label: "Signal TF", value: formatTimeframe(selectedTrade.signal_tf || "-") },
                   { label: "Source", value: selectedTrade.source_id || "-" },
                   { label: "Entry Model", value: selectedTrade.entry_model || "-" },
-                  { label: "Trade ID", value: selectedTrade.trade_id || "-" },
+                  { label: "Trade SID", value: selectedTrade.sid || selectedTrade.trade_id || "-" },
                   { label: "Broker Ticket", value: brokerTicketOf(selectedTrade) },
                   { label: "Signal ID", value: selectedTrade.signal_id || "-" },
                   { label: "Account", value: accountById.get(String(selectedTrade.account_id || ""))?.name || selectedTrade.account_id || "-" },

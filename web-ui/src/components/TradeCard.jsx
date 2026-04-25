@@ -100,7 +100,7 @@ export default function TradeCard({ trade, selected = false, onToggleSelect = nu
             <span className="symbol">{trade.symbol}</span>
             <span className={sideClass(trade.action)}>{String(trade.action || "").toUpperCase() || "-"}</span>
             <span className="order-type-pill">{orderType}</span>
-            <span className="muted small blur">{trade.signal_id}</span>
+            <span className="muted small blur">{trade.sid || trade.trade_id || "-"}</span>
             <span className="muted small blur">{showDateTime(trade.created_at)}</span>
             {trade.ack_ticket && <span className="muted small blur">Ticket: {trade.ack_ticket}</span>}
           </div>

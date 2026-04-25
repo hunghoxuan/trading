@@ -64,7 +64,7 @@ export default function TradeDetailPage() {
       <p style={{ marginBottom: "1rem" }}><Link to="/signals">Back to signals</Link></p>
       <div className="panel">
         <div className="trade-grid two-cols">
-          <div>Signal ID: {t.signal_id}</div>
+          <div>Signal SID: {t.sid || t.signal_id}</div>
           {t.ack_ticket && <div>Ticket: <strong>{t.ack_ticket}</strong></div>}
           <div>Status: <span className={`badge ${status.cls}`}>{status.label}</span></div>
           <div>Order Type: <span className="order-type-pill">{orderType}</span></div>

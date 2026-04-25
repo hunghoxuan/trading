@@ -1,6 +1,8 @@
 -- MT5 product schema (Postgres)
 
 CREATE TABLE IF NOT EXISTS users (
+  id BIGSERIAL UNIQUE,
+  sid TEXT UNIQUE NOT NULL,
   user_id TEXT PRIMARY KEY,
   name TEXT,
   email TEXT,
@@ -13,6 +15,8 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS accounts (
+  id BIGSERIAL UNIQUE,
+  sid TEXT UNIQUE NOT NULL,
   account_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
   name TEXT,
@@ -24,6 +28,8 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 
 CREATE TABLE IF NOT EXISTS signals (
+  id BIGSERIAL UNIQUE,
+  sid TEXT UNIQUE NOT NULL,
   signal_id TEXT PRIMARY KEY,
   created_at TIMESTAMPTZ NOT NULL,
   user_id TEXT NOT NULL DEFAULT 'default' REFERENCES users(user_id),

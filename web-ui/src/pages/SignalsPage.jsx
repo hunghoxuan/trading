@@ -65,6 +65,12 @@ function fDateTime(v) {
   return showDateTime(v);
 }
 
+function signalRefOf(s) {
+  const idNum = Number(s?.id);
+  if (Number.isInteger(idNum) && idNum > 0) return String(idNum);
+  return String(s?.signal_id || "").trim();
+}
+
 function statusUi(statusRaw) {
   const s = String(statusRaw || "").toUpperCase();
   if (s === "ACTIVE" || s === "TRUE") return { cls: "ACTIVE", label: "ACTIVE" };
@@ -231,7 +237,7 @@ export default function SignalsPage() {
       setLastRefreshAt(new Date());
       const selectedSignalId = String(selectedSignalIdRef.current || "").trim();
       if (selectedSignalId) {
-        const exists = nextRows.some((x) => String(x?.signal_id || "") === selectedSignalId);
+        const exists = nextRows.some((x) => signalRefOf(x) === selectedSignalId);
         if (!exists) setSelectedSignal(null);
       }
     } catch (e) {
@@ -282,7 +288,8 @@ export default function SignalsPage() {
   };
 
   async function saveSelectedSignalPlan() {
-    if (!selectedSignal?.signal_id) return;
+    const signalRef = signalRefOf(selectedSignal);
+    if (!signalRef) return;
     const err = validateTradePlan(detailPlan);
     if (err) {
       setDetailPlanMsg({ type: "error", text: err });
@@ -290,7 +297,7 @@ export default function SignalsPage() {
     }
     try {
       setDetailPlanBusy((p) => ({ ...p, save: true }));
-      await api.saveSignalTradePlan(selectedSignal.signal_id, {
+      await api.saveSignalTradePlan(signalRef, {
         direction: detailPlan.direction,
         trade_type: detailPlan.trade_type,
         entry: asNum(detailPlan.entry),
@@ -310,14 +317,14 @@ export default function SignalsPage() {
   }
 
   async function addTradeFromSignal(signal) {
-    const targetSignalId = String(signal?.signal_id || selectedSignal?.signal_id || "").trim();
+    const targetSignalId = String(signalRefOf(signal) || signalRefOf(selectedSignal)).trim();
     if (!targetSignalId) return;
     const err = validateTradePlan(detailPlan);
-    if (signal?.signal_id === selectedSignal?.signal_id && err) {
+    if (signalRefOf(signal) === signalRefOf(selectedSignal) && err) {
       setDetailPlanMsg({ type: "error", text: err });
       return;
     }
-    const plan = signal?.signal_id === selectedSignal?.signal_id ? detailPlan : extractTradePlanFromSignal(signal);
+    const plan = signalRefOf(signal) === signalRefOf(selectedSignal) ? detailPlan : extractTradePlanFromSignal(signal);
     try {
       setDetailPlanBusy((p) => ({ ...p, trade: true }));
       await api.createTradeFromSignal(targetSignalId, {
@@ -414,8 +421,8 @@ export default function SignalsPage() {
     }
   }, [selectedSignal]);
   useEffect(() => {
-    selectedSignalIdRef.current = String(selectedSignal?.signal_id || "").trim();
-  }, [selectedSignal?.signal_id]);
+    selectedSignalIdRef.current = signalRefOf(selectedSignal);
+  }, [selectedSignal?.id, selectedSignal?.signal_id]);
 
   useEffect(() => { loadSymbols(); }, []);
   useEffect(() => { loadSignals(); }, [query]);
@@ -477,7 +484,7 @@ export default function SignalsPage() {
     return sortDir === "asc" ? " ↑" : " ↓";
   };
 
-  const allSelected = sortedRows.length > 0 && sortedRows.every(r => selectedIds.has(r.signal_id));
+  const allSelected = sortedRows.length > 0 && sortedRows.every(r => selectedIds.has(signalRefOf(r)));
 
   return (
     <section className="logs-page-container stack-layout">
@@ -511,7 +518,7 @@ export default function SignalsPage() {
           <input 
             value={filter.q} 
             onChange={(e) => setFilter(f => ({ ...f, q: e.target.value, page: 1 }))} 
-            placeholder="Search Signal ID..." 
+            placeholder="Search sid..." 
             style={{ width: '200px' }}
           />
           <select value={filter.symbol} onChange={(e) => setFilter(f => ({ ...f, symbol: e.target.value, page: 1 }))}>
@@ -574,7 +581,11 @@ export default function SignalsPage() {
                         const checked = e.target.checked;
                         setSelectedIds(prev => {
                           const next = new Set(prev);
-                          sortedRows.forEach(r => checked ? next.add(r.signal_id) : next.delete(r.signal_id));
+                          sortedRows.forEach((r) => {
+                            const ref = signalRefOf(r);
+                            if (checked) next.add(ref);
+                            else next.delete(ref);
+                          });
                           return next;
                         });
                       }}
@@ -593,14 +604,14 @@ export default function SignalsPage() {
                   const sideCls = sideValue === 'BUY' ? 'side-buy' : 'side-sell';
                   const sourceLabel = String(t.source || "-");
                   const sourceId = String(t.source_id || "-");
-                  const signalShort = String(t.signal_id || "").slice(-8) || "-";
+                  const signalShort = String(t.sid || t.signal_id || "").slice(-12) || "-";
                   
                   return (
                     <tr 
-                      key={t.signal_id} 
-                      className={selectedSignal?.signal_id === t.signal_id ? "active" : ""}
+                      key={signalRefOf(t)} 
+                      className={signalRefOf(selectedSignal) === signalRefOf(t) ? "active" : ""}
                       onClick={() => {
-                        selectedSignalIdRef.current = String(t?.signal_id || "");
+                        selectedSignalIdRef.current = signalRefOf(t);
                         setCreateMode(false);
                         setSelectedSignal(t);
                       }}
@@ -608,13 +619,14 @@ export default function SignalsPage() {
                       <td onClick={e => e.stopPropagation()}>
                         <input 
                           type="checkbox" 
-                          checked={selectedIds.has(t.signal_id)}
+                          checked={selectedIds.has(signalRefOf(t))}
                           onChange={e => {
                             const checked = e.target.checked;
                             setSelectedIds(prev => {
                               const next = new Set(prev);
-                              if (checked) next.add(t.signal_id);
-                              else next.delete(t.signal_id);
+                              const ref = signalRefOf(t);
+                              if (checked) next.add(ref);
+                              else next.delete(ref);
                               return next;
                             });
                           }}
@@ -754,7 +766,7 @@ export default function SignalsPage() {
               })()}
               tradePlan={{
                 enabled: true,
-                signalId: selectedSignal?.signal_id || null,
+                signalId: signalRefOf(selectedSignal) || null,
                 tradeId: null,
                 value: detailPlan,
                 onChange: updateDetailPlanField,
@@ -813,9 +825,9 @@ export default function SignalsPage() {
                 { label: "Signal TF", value: formatTimeframe(selectedSignal.signal_tf || "-") },
                 { label: "Source", value: selectedSignal.source || "-" },
                 { label: "Entry Model", value: selectedSignal.entry_model || "-" },
-                { label: "Trade ID", value: signalDetails?.trade?.trade_id || "-" },
+                { label: "Trade SID", value: signalDetails?.trade?.sid || signalDetails?.trade?.trade_id || "-" },
                 { label: "Broker Ticket", value: selectedSignal.ack_ticket || signalDetails?.trade?.broker_trade_id || "-" },
-                { label: "Signal ID", value: selectedSignal.signal_id || "-" },
+                { label: "Signal SID", value: selectedSignal.sid || selectedSignal.signal_id || "-" },
                 { label: "Account", value: signalDetails?.trade?.account_id || "-" },
                 { label: "Note", value: selectedSignal.note || "-", fullWidth: true },
               ]}
