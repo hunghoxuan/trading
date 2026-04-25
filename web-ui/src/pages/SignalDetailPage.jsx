@@ -1,25 +1,38 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
-import { TradeSignalChart } from "../components/TradeSignalChart";
+import { SignalDetailCard } from "../components/SignalDetailCard";
+import { buildDetailHeader } from "../components/SignalDetailHeaderBuilder";
+import { asNum, buildHeaderMeta, renderHistoryItem } from "../utils/signalDetailUtils";
 import { showDateTime } from "../utils/format";
 
 function statusUi(statusRaw) {
   const s = String(statusRaw || "").toUpperCase();
-  if (s === "ACTIVE" || s === "TRUE") return { cls: "ACTIVE", label: "ACTIVE" };
-  if (s === "INACTIVE" || s === "FALSE" || s === "DISABLE" || s === "DISABLED") return { cls: "INACTIVE", label: "INACTIVE" };
-  if (s === "PLACED") return { cls: "PLACED", label: "PLACED" };
+  if (["ACTIVE", "OPEN", "PLACED", "START", "TRUE"].includes(s)) return { cls: "ACTIVE", label: s === "TRUE" ? "ACTIVE" : s };
+  if (["INACTIVE", "FALSE", "DISABLE", "DISABLED", "CANCELLED", "CANCEL"].includes(s)) return { cls: "INACTIVE", label: s === "FALSE" ? "INACTIVE" : s };
   if (s === "LOCKED") return { cls: "LOCKED", label: "LOCKED" };
-  if (s === "START") return { cls: "START", label: "START" };
   if (s === "TP") return { cls: "TP", label: "TP" };
   if (s === "SL") return { cls: "SL", label: "SL" };
   return { cls: "OTHER", label: s || "UNKNOWN" };
 }
 
-export default function TradeDetailPage() {
+function formatTimeframe(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return String(value || "-");
+  if (n % 1440 === 0) return `${n / 1440}D`;
+  if (n % 60 === 0) return `${n / 60}H`;
+  return `${n}m`;
+}
+
+function fDateTime(v) {
+  return showDateTime(v);
+}
+
+export default function SignalDetailPage() {
   const { signalId } = useParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [detailTfTab, setDetailTfTab] = useState("ENTRY");
 
   useEffect(() => {
     let live = true;
@@ -30,140 +43,87 @@ export default function TradeDetailPage() {
       })
       .catch((e) => {
         if (!live) return;
-        setError(e.message);
+        setError(e?.message || "Load failed");
       });
     return () => {
       live = false;
     };
   }, [signalId]);
 
+  const t = data?.trade || null;
+  const events = Array.isArray(data?.events) ? data.events : [];
+
+  const header = useMemo(() => {
+    if (!t) return null;
+    const rr = asNum(t.rr_planned);
+    const vol = asNum(t.volume);
+    const risk = asNum(t.risk_money_actual ?? t.risk_money_planned ?? t?.raw_json?.risk_money ?? t?.raw_json?.risk);
+    const raw = t?.raw_json && typeof t.raw_json === "object" ? t.raw_json : {};
+    const riskPct = asNum(raw.riskPct ?? raw.risk_pct ?? raw.volumePct ?? raw.volume_pct);
+    const reward = (risk != null && rr != null) ? (Math.abs(risk) * rr) : null;
+    const headerMeta = buildHeaderMeta({
+      statusRaw: t.status,
+      pnlRaw: t.pnl_money_realized,
+      rrRaw: rr,
+      volumeRaw: vol,
+      plannedVolRaw: asNum(raw.volume) ?? vol,
+      riskSizeRaw: risk,
+      riskPctRaw: riskPct,
+      rewardSizeRaw: reward,
+      updatedAtRaw: t.updated_at || t.closed_at || t.opened_at || t.created_at,
+      statusUi,
+    });
+    const side = String(t.action || t.side || "-").toUpperCase();
+    return buildDetailHeader({
+      side,
+      symbol: t.symbol || "-",
+      sideClass: side === "BUY" ? "side-buy" : "side-sell",
+      positionText: `${t.entry_price || t.entry || "-"} → ${t.tp || "-"} / ${t.sl || "-"}`,
+      ...headerMeta,
+    });
+  }, [t]);
+
   if (error) return <div className="error">{error}</div>;
-  if (!data) return <div className="loading">Loading trade...</div>;
+  if (!t) return <div className="loading">Loading signal...</div>;
 
-  const asPrice = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  };
-
-  const t = data.trade;
-  const status = statusUi(t?.status);
-  const orderTypeRaw = String(t?.raw_json?.order_type || t?.raw_json?.orderType || "limit").toUpperCase();
-  const orderType = orderTypeRaw === "STOP" || orderTypeRaw === "MARKET" ? orderTypeRaw : "LIMIT";
-  const events = Array.isArray(data.events) ? data.events : [];
-  const getEventPayloadForDisplay = (ev) => {
-    const payload = ev?.payload_json || {};
-    const eventType = String(ev?.event_type || "");
-    const isQueuedEvent = eventType.startsWith("QUEUED_");
-    if (!isQueuedEvent) return payload;
-
-    // Show original TradingView payload at the first NEW/queued event.
-    return payload.raw_payload || t?.raw_json || payload;
-  };
   return (
-    <section>
-      <p style={{ marginBottom: "1rem" }}><Link to="/signals">Back to signals</Link></p>
+    <section className="stack-layout" style={{ gap: 14 }}>
+      <p style={{ marginBottom: 0 }}><Link to="/signals" className="minor-text">← BACK TO SIGNALS</Link></p>
       <div className="panel">
-        <div className="trade-grid two-cols">
-          <div>Signal SID: {t.sid || t.signal_id}</div>
-          {t.ack_ticket && <div>Ticket: <strong>{t.ack_ticket}</strong></div>}
-          <div>Status: <span className={`badge ${status.cls}`}>{status.label}</span></div>
-          <div>Order Type: <span className="order-type-pill">{orderType}</span></div>
-          <div>Symbol: {t.symbol}</div>
-          <div>Action: {t.action}</div>
-          <div>{t.volume} Lots { (t.risk_money_actual || t.risk_money_planned || t?.raw_json?.risk_money || t?.raw_json?.risk) ? `($${Number(t.risk_money_actual || t.risk_money_planned || t?.raw_json?.risk_money || t?.raw_json?.risk).toFixed(2)})` : ""}</div>
-          <div>RR Planned: {t.rr_planned ?? "-"}</div>
-          <div>Risk Planned: ${t.risk_money_planned ?? "-"}</div>
-          <div>PnL Realized: <span style={{color: Number(t.pnl_money_realized) > 0 ? "#22c55e" : Number(t.pnl_money_realized) < 0 ? "#ef4444" : undefined}}>{t.pnl_money_realized != null ? `$${Number(t.pnl_money_realized).toFixed(2)}` : "-"}</span></div>
-          <div>Created: {showDateTime(t.created_at)}</div>
-          <div>Note: {t.note || "-"}</div>
-        </div>
-      </div>
-
-      {/* Broker Execution Telemetry — populated after EA ACK */}
-      {(t.sl_pips || t.risk_money_actual) && (
-        <div className="panel" style={{ marginTop: "1rem" }}>
-          <div style={{ color: "#94a3b8", fontSize: "12px", marginBottom: "8px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Execution Details</div>
-          <div className="trade-grid two-cols" style={{ fontSize: "14px" }}>
-            {t.volume != null && <div>Lots: <strong>{t.volume}</strong></div>}
-            {t.pip_value_per_lot != null && <div>Pip Value / Lot: <strong>${Number(t.pip_value_per_lot).toFixed(4)}</strong></div>}
-            {t.sl_pips != null && <div>SL Distance: <strong>{Number(t.sl_pips).toFixed(1)} pips</strong></div>}
-            {t.tp_pips != null && <div>TP Distance: <strong>{Number(t.tp_pips).toFixed(1)} pips</strong></div>}
-            {t.risk_money_actual != null && <div>Actual Risk: <strong style={{color:"#fb7185"}}>${Number(t.risk_money_actual).toFixed(2)}</strong></div>}
-            {t.reward_money_planned != null && <div>Planned Reward: <strong style={{color:"#34d399"}}>${Number(t.reward_money_planned).toFixed(2)}</strong></div>}
-            {t.risk_money_actual && t.reward_money_planned && (
-              <div style={{gridColumn:"1/-1"}}>
-                RR Actual: <strong>{(Number(t.reward_money_planned)/Number(t.risk_money_actual)).toFixed(2)}</strong>
-                {" "}
-                <span className="muted" style={{fontSize:"12px"}}>
-                  (Risk ${Number(t.risk_money_actual).toFixed(2)} → Reward ${Number(t.reward_money_planned).toFixed(2)})
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="panel" style={{ marginTop: "1rem" }}>
-        <div style={{ color: "#94a3b8", fontSize: "12px", marginBottom: "12px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Market Glance</div>
-        <TradeSignalChart 
-          symbol={t.symbol} 
-          interval={t.signal_tf || t.chart_tf || "1h"} 
-          live={true}
-          entryPrice={asPrice(t.entry_price || t.raw_json?.entry || t.entry)}
-          slPrice={asPrice(t.sl_price || t.raw_json?.sl || t.sl)}
-          tpPrice={asPrice(t.tp_price || t.raw_json?.tp || t.tp)}
-          analysisSnapshot={t?.raw_json?.analysis_snapshot || null}
+        <SignalDetailCard
+          mode="signal"
+          header={header}
+          chart={{
+            enabled: true,
+            detailTfTab,
+            onDetailTfTabChange: setDetailTfTab,
+            iframeTitle: `signal-detail-tv-${detailTfTab}`,
+            symbol: t.symbol,
+            interval: t.signal_tf || t.chart_tf || "1h",
+            live: true,
+            entryPrice: asNum(t.entry_price || t.raw_json?.entry || t.entry),
+            slPrice: asNum(t.sl_price || t.raw_json?.sl || t.sl),
+            tpPrice: asNum(t.tp_price || t.raw_json?.tp || t.tp),
+            analysisSnapshot: t?.raw_json?.analysis_snapshot || null,
+          }}
+          metaItems={[
+            { label: "Signal SID", value: t.sid || t.signal_id || "-" },
+            { label: "Trade SID", value: data?.trade?.sid || data?.trade?.trade_id || "-" },
+            { label: "Status", value: statusUi(t.status).label },
+            { label: "Order Type", value: String(t?.raw_json?.order_type || t?.raw_json?.orderType || "limit").toUpperCase() },
+            { label: "Signal TF", value: formatTimeframe(t.signal_tf || "-") },
+            { label: "Chart TF", value: formatTimeframe(t.chart_tf || "-") },
+            { label: "Volume", value: `${t.volume ?? "-"} lots` },
+            { label: "Created", value: fDateTime(t.created_at) },
+            { label: "Note", value: t.note || "-", fullWidth: true },
+            { label: "Raw JSON", value: JSON.stringify(t.raw_json || {}, null, 2), fullWidth: true, valueStyle: { whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" } },
+          ]}
+          history={{
+            enabled: true,
+            items: [...events].sort((a, b) => new Date(b.event_time || 0).getTime() - new Date(a.event_time || 0).getTime()),
+            renderItem: (ev, idx) => renderHistoryItem(ev, idx, { formatDateTime: fDateTime, includeTicket: true }),
+          }}
         />
-      </div>
-
-      <h2 style={{ marginTop: "2rem" }}>History</h2>
-      <div style={{ marginTop: "1rem" }}>
-        {events.length === 0 ? (
-          <div className="muted">No events yet.</div>
-        ) : (
-          <div className="trade-list">
-            {[...events].sort((a,b) => new Date(b.event_time).getTime() - new Date(a.event_time).getTime()).map((ev) => {
-              const payload = getEventPayloadForDisplay(ev) || {};
-              
-              let eventStatusTxt = "";
-              let eventStatusCls = "OTHER";
-              const tType = String(ev.event_type || "");
-              if (tType.startsWith("QUEUED_")) { eventStatusTxt = "NEW"; eventStatusCls = "OTHER"; }
-              else if (tType === "EA_PULLED") { eventStatusTxt = "LOCKED"; eventStatusCls = "LOCKED"; }
-              else if (tType.startsWith("EA_ACK_")) {
-                 const rawStatus = tType.replace("EA_ACK_", "");
-                 eventStatusTxt = rawStatus;
-                 eventStatusCls = statusUi(rawStatus).cls;
-              }
-              else if (tType === "MANUAL_CANCEL") { eventStatusTxt = "CANCELED"; eventStatusCls = "OTHER"; }
-              else if (tType === "EA_REQUEUE_CONNECTION") { eventStatusTxt = "NEW"; eventStatusCls = "OTHER"; }
-              
-              return (
-                <article key={`${ev.id}-${ev.event_time}`} className="trade-card">
-                  <div className="trade-head">
-                    <strong style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      {ev.event_type}
-                      {eventStatusTxt && <span className={`badge ${eventStatusCls}`}>{eventStatusTxt}</span>}
-                    </strong>
-                    <span className="muted">{showDateTime(ev.event_time)}</span>
-                  </div>
-                  <div className="json-table-wrapper" style={{ marginTop: '0.5rem', overflowX: 'auto' }}>
-                    <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse', border: '1px solid #1e293b' }}>
-                      <tbody>
-                        {Object.entries(payload).map(([k, v]) => (
-                          <tr key={k} style={{ borderBottom: '1px solid #1e293b' }}>
-                            <td style={{ padding: '4px 8px', color: '#94a3b8', width: '30%', borderRight: '1px solid #1e293b' }}>{k}</td>
-                            <td style={{ padding: '4px 8px', wordBreak: 'break-all' }}>{typeof v === 'object' ? JSON.stringify(v) : String(v)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
       </div>
     </section>
   );

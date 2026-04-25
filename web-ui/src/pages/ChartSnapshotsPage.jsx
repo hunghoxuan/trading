@@ -175,26 +175,43 @@ function parseSnapshotMeta(it) {
   if (parts[0] === "UID" && parts.length >= 7) {
     parts = parts.slice(2);
   }
-  if (parts.length < 5) return null;
-  if (!/^\d{8}$/.test(parts[0]) || !/^\d{2}$/.test(parts[1]) || !/^\d{2}$/.test(parts[2])) return null;
-  const rest = parts.slice(3);
-  if (rest.length < 2) return null;
-  const hasDup = rest.length >= 3 && /^\d+$/.test(rest[rest.length - 1]);
-  const tfToken = String(hasDup ? rest[rest.length - 2] : rest[rest.length - 1]).toUpperCase();
-  const symbolParts = rest.slice(0, hasDup ? -2 : -1);
-  if (!symbolParts.length) return null;
-  const yyyy = Number(parts[0].slice(0, 4));
-  const mm = Number(parts[0].slice(4, 6));
-  const dd = Number(parts[0].slice(6, 8));
-  const hh = Number(parts[1]);
-  const mi = Number(parts[2]);
-  const tsFromName = Date.UTC(yyyy, Math.max(mm - 1, 0), dd, hh, mi, 0, 0);
+  if (parts.length < 3) return null;
+  let tfToken = "";
+  let sessionPrefix = "";
+  let symbolParts = [];
+  let tsFromName = 0;
+  if (parts.length >= 5 && /^\d{8}$/.test(parts[0]) && /^\d{2}$/.test(parts[1]) && /^\d{2}$/.test(parts[2])) {
+    const rest = parts.slice(3);
+    if (rest.length < 2) return null;
+    const hasDup = rest.length >= 3 && /^\d+$/.test(rest[rest.length - 1]);
+    tfToken = String(hasDup ? rest[rest.length - 2] : rest[rest.length - 1]).toUpperCase();
+    symbolParts = rest.slice(0, hasDup ? -2 : -1);
+    const yyyy = Number(parts[0].slice(0, 4));
+    const mm = Number(parts[0].slice(4, 6));
+    const dd = Number(parts[0].slice(6, 8));
+    const hh = Number(parts[1]);
+    const mi = Number(parts[2]);
+    tsFromName = Date.UTC(yyyy, Math.max(mm - 1, 0), dd, hh, mi, 0, 0);
+  } else {
+    const hasDup = parts.length >= 4 && /^\d+$/.test(parts[parts.length - 1]);
+    tfToken = String(hasDup ? parts[parts.length - 2] : parts[parts.length - 1]).toUpperCase();
+    sessionPrefix = String(hasDup ? parts[parts.length - 3] : parts[parts.length - 2] || "").toUpperCase();
+    symbolParts = parts.slice(0, hasDup ? -3 : -2);
+  }
+  if (!symbolParts.length || !tfToken) return null;
   return {
     fileName,
     tfToken,
+    sessionPrefix,
     symbolToken: symbolParts.join("_"),
     createdAtMs: Date.parse(it?.created_at || "") || tsFromName || 0,
   };
+}
+
+function makeSessionPrefix() {
+  const now = Date.now().toString(36).toUpperCase();
+  const rnd = Math.random().toString(36).slice(2, 7).toUpperCase();
+  return `${now}${rnd}`.replace(/[^A-Z0-9]/g, "").slice(0, 12);
 }
 
 function intervalTokenToLabel(token) {
@@ -763,6 +780,7 @@ export default function ChartSnapshotsPage() {
   const [analysisJson, setAnalysisJson] = useState("");
   const [analysisParsed, setAnalysisParsed] = useState(null);
   const [usedFiles, setUsedFiles] = useState([]);
+  const [sessionPrefix, setSessionPrefix] = useState("");
 
   const [selectedFiles, setSelectedFiles] = useState(new Set());
   const [symbolOptions, setSymbolOptions] = useState([]);
@@ -898,6 +916,8 @@ export default function ChartSnapshotsPage() {
     setAnalysisParsed(null);
     setUsedFiles([]);
     setAnalysisFilesDisplay(Array.isArray(files) ? files : []);
+    const activeSessionPrefix = sessionPrefix || makeSessionPrefix();
+    if (!sessionPrefix) setSessionPrefix(activeSessionPrefix);
     try {
       const prefetchSymbol = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
       const prefetchTf = timeframe;
@@ -917,6 +937,7 @@ export default function ChartSnapshotsPage() {
       const payload = {
         model: "claude-sonnet-4-0",
         prompt: composedPrompt,
+        session_prefix: activeSessionPrefix,
       };
       if (Array.isArray(files) && files.length) payload.files = files;
       const out = await api.chartSnapshotsAnalyze(payload);
@@ -960,10 +981,13 @@ export default function ChartSnapshotsPage() {
     }
     setCapturing(true);
     setStatus({ type: "", text: "" });
+    const activeSessionPrefix = sessionPrefix || makeSessionPrefix();
+    if (!sessionPrefix) setSessionPrefix(activeSessionPrefix);
     try {
       const out = await api.chartSnapshotCreateBatch({
         symbol: tvSymbol,
         provider,
+        session_prefix: activeSessionPrefix,
         timeframes: tfs,
         lookbackBars: Number(cfg.lookbackBars || 300),
         format: "jpg",
@@ -997,6 +1021,8 @@ export default function ChartSnapshotsPage() {
   };
 
   const analyzeSelected = async () => {
+    const activeSessionPrefix = sessionPrefix || makeSessionPrefix();
+    if (!sessionPrefix) setSessionPrefix(activeSessionPrefix);
     const files = [...selectedFiles];
     if (files.length) {
       await analyzeFiles(files);
@@ -1019,6 +1045,7 @@ export default function ChartSnapshotsPage() {
       .filter((x) => x && x.createdAtMs > 0)
       .filter((x) => symbolTokens.has(x.symbolToken))
       .filter((x) => targetTfTokens.includes(x.tfToken))
+      .filter((x) => !activeSessionPrefix || !x.sessionPrefix || x.sessionPrefix === activeSessionPrefix)
       .filter((x) => sameUtcDay(x.createdAtMs, nowMs))
       .filter((x) => Math.abs(nowMs - x.createdAtMs) <= 15 * 60 * 1000)
       .sort((a, b) => b.createdAtMs - a.createdAtMs);
@@ -1048,6 +1075,7 @@ export default function ChartSnapshotsPage() {
       const out = await api.chartSnapshotCreateBatch({
         symbol: tvSymbol,
         provider,
+        session_prefix: activeSessionPrefix,
         timeframes: tfs,
         lookbackBars: Number(cfg.lookbackBars || 300),
         format: "jpg",
@@ -1140,6 +1168,8 @@ export default function ChartSnapshotsPage() {
   const addBySelection = async (mode = "signal") => {
     setAddingSignal(true);
     setStatus({ type: "", text: "" });
+    const activeSessionPrefix = sessionPrefix || makeSessionPrefix();
+    if (!sessionPrefix) setSessionPrefix(activeSessionPrefix);
     try {
       let parsed = effectiveParsed;
       if (!parsed && analysisJson) parsed = JSON.parse(analysisJson);
@@ -1202,6 +1232,12 @@ export default function ChartSnapshotsPage() {
 
         const finalPayload = {
           ...payload,
+          session_prefix: activeSessionPrefix || undefined,
+          sid: (() => {
+            const s = normalizeSignalSymbol(payload.symbol || tvSymbol || cfg.symbol || "");
+            const p = String(activeSessionPrefix || "").trim().toUpperCase();
+            return s && p ? `${s}_${p}` : undefined;
+          })(),
           action: dir === "BUY" || dir === "SELL" ? dir : payload.action,
           entry: parseNum(position.entry) || payload.entry,
           tp: parseNum(position.tp) || payload.tp,
@@ -1484,6 +1520,7 @@ export default function ChartSnapshotsPage() {
     setResponseTab("text");
     resetPositionLocal();
     setActionStatus({ action: "", type: "", text: "" });
+    setSessionPrefix("");
     setStatus({ type: "success", text: "New analyze session started." });
   };
 
@@ -1667,6 +1704,7 @@ export default function ChartSnapshotsPage() {
           <span className="minor-text">
             Entry Models: {cfg.strategies.join(", ") || "-"} | Profile: {PROFILE_PRESETS[cfg.profile]?.label || PROFILE_PRESETS.day.label}
           </span>
+          {sessionPrefix ? <span className="minor-text">Session: {sessionPrefix}</span> : null}
         </div>
         <div className="panel snapshot-control-card-v3">
           <div className="snapshot-capture-inline-v2 snapshot-capture-inline-v3">

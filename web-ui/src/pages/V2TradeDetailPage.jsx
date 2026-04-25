@@ -1,14 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
-import { TradeSignalChart } from "../components/TradeSignalChart";
+import { SignalDetailCard } from "../components/SignalDetailCard";
+import { buildDetailHeader } from "../components/SignalDetailHeaderBuilder";
+import { asNum, buildHeaderMeta, renderHistoryItem } from "../utils/signalDetailUtils";
+import { showDateTime } from "../utils/format";
 
 function statusUi(statusRaw) {
   const s = String(statusRaw || "").toUpperCase();
-  if (s === "FILLED") return { cls: "ACTIVE", label: "FILLED" };
-  if (s === "OPEN") return { cls: "ACTIVE", label: "OPEN" };
+  if (s === "FILLED" || s === "OPEN") return { cls: "ACTIVE", label: "FILLED" };
   if (s === "CLOSED" || s === "CANCELLED") return { cls: "INACTIVE", label: s };
-  if (s === "ERROR") return { cls: "FAIL", label: s };
+  if (s === "ERROR" || s === "FAIL") return { cls: "FAIL", label: s };
+  if (s === "PENDING" || s === "NEW") return { cls: "OTHER", label: "PENDING" };
   return { cls: "OTHER", label: s || "PENDING" };
 }
 
@@ -16,7 +19,13 @@ function brokerTicketOf(t) {
   return String(t?.broker_trade_id || t?.ticket || "").trim() || "-";
 }
 
-import { showDateTime } from "../utils/format";
+function formatTimeframe(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return String(value || "-");
+  if (n % 1440 === 0) return `${n / 1440}D`;
+  if (n % 60 === 0) return `${n / 60}H`;
+  return `${n}m`;
+}
 
 function fDateTime(v) {
   return showDateTime(v);
@@ -28,19 +37,20 @@ export default function TradeDetailPage() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [detailTfTab, setDetailTfTab] = useState("ENTRY");
 
   useEffect(() => {
     async function loadData() {
       try {
         setLoading(true);
-        const evs = await api.v2TradeEvents(tradeId);
-        setEvents(evs?.items || []);
-        const data = await api.v2Trades({ q: tradeId });
-        if (data.items?.length > 0) {
-          setTrade(data.items[0]);
-        }
+        const [evs, data] = await Promise.all([
+          api.v2TradeEvents(tradeId),
+          api.v2Trades({ q: tradeId }),
+        ]);
+        setEvents(Array.isArray(evs?.items) ? evs.items : []);
+        setTrade(Array.isArray(data?.items) && data.items.length ? data.items[0] : null);
       } catch (e) {
-        setError(e.message);
+        setError(e?.message || "Load failed");
       } finally {
         setLoading(false);
       }
@@ -48,159 +58,85 @@ export default function TradeDetailPage() {
     loadData();
   }, [tradeId]);
 
+  const header = useMemo(() => {
+    if (!trade) return null;
+    const action = String(trade.action || trade.side || "-").toUpperCase();
+    const rr = asNum(trade.rr_planned);
+    const pnl = asNum(trade.pnl_realized);
+    const meta = trade?.metadata && typeof trade.metadata === "object" ? trade.metadata : {};
+    const raw = trade?.raw_json && typeof trade.raw_json === "object" ? trade.raw_json : {};
+    const vol = asNum(meta.used_volume) ?? asNum(trade.volume);
+    const plannedVol = asNum(meta.requested_volume) ?? asNum(raw.volume) ?? asNum(trade.volume);
+    const riskSize = asNum(meta.risk_money_actual ?? trade.risk_money_actual ?? trade.risk_money_planned);
+    const riskPct = asNum(meta.riskPct ?? meta.risk_pct ?? raw.riskPct ?? raw.risk_pct);
+    const reward = asNum(meta.reward_money_planned);
+    const headerMeta = buildHeaderMeta({
+      statusRaw: trade.execution_status,
+      pnlRaw: pnl,
+      rrRaw: rr,
+      volumeRaw: vol,
+      plannedVolRaw: plannedVol,
+      riskSizeRaw: riskSize,
+      riskPctRaw: riskPct,
+      rewardSizeRaw: reward,
+      updatedAtRaw: trade.updated_at || trade.closed_at || trade.opened_at || trade.created_at,
+      statusUi,
+    });
+    return buildDetailHeader({
+      side: action,
+      symbol: trade.symbol || "-",
+      sideClass: action === "BUY" ? "side-buy" : "side-sell",
+      positionText: `${trade.entry || "-"} → ${trade.tp || "-"} / ${trade.sl || "-"}`,
+      ...headerMeta,
+    });
+  }, [trade]);
+
   if (loading) return <div className="loading">Loading trade {tradeId}...</div>;
   if (error) return <div className="error">{error}</div>;
-
-  const t = trade || {};
-  const status = statusUi(t.execution_status);
-  const meta = t?.metadata && typeof t.metadata === "object" ? t.metadata : {};
-  const statusRaw = String(t.execution_status || "").toUpperCase();
-  const isExecuted = ["FILLED", "CLOSED"].includes(statusRaw);
-  const usedVolume = Number(meta.used_volume ?? t.volume);
-  const slPips = Number(meta.sl_pips);
-  const tpPips = Number(meta.tp_pips);
-  const riskMoneyActual = Number(meta.risk_money_actual);
-  const rewardMoneyPlanned = Number(meta.reward_money_planned);
-  const hasExecTelemetry = isExecuted && (
-    Number.isFinite(usedVolume)
-    || Number.isFinite(slPips)
-    || Number.isFinite(tpPips)
-    || Number.isFinite(riskMoneyActual)
-    || Number.isFinite(rewardMoneyPlanned)
-  );
-  
-  const asPrice = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  };
+  if (!trade) return <div className="empty-state">Trade not found.</div>;
 
   return (
-    <section className="stack-layout" style={{ gap: 20 }}>
-      <div>
-        <Link to="/trades" className="minor-text">← BACK TO TRADES</Link>
-      </div>
-
-      <div className="panel trade-detail-header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '24px' }}>
-              <span className={t.action === 'BUY' ? 'side-buy' : 'side-sell'}>{t.action}</span> {t.symbol}
-            </h1>
-            <div className="minor-text" style={{ marginTop: 4 }}>SID: {t.sid || t.trade_id}</div>
-            <div className="minor-text" style={{ marginTop: 2 }}>Ticket: {brokerTicketOf(t)}</div>
-          </div>
-          <div className={`badge ${status.cls}`} style={{ padding: '8px 16px', fontSize: '14px' }}>
-            {status.label}
-          </div>
-        </div>
-
-        <div className="trade-grid three-cols" style={{ marginTop: 24, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-          <div className="detail-item">
-            <div className="muted small">ACCOUNT</div>
-            <div style={{ fontWeight: 600 }}>{t.account_id}</div>
-          </div>
-          <div className="detail-item">
-            <div className="muted small">SOURCE</div>
-            <div style={{ fontWeight: 600 }}>{t.source_id}</div>
-          </div>
-          <div className="detail-item">
-            <div className="muted small">BROKER TICKET</div>
-            <div style={{ fontWeight: 600 }}>{brokerTicketOf(t)}</div>
-          </div>
-          <div className="detail-item">
-            <div className="muted small">ENTRY</div>
-            <div style={{ fontWeight: 600 }}>{t.entry || '-'}</div>
-          </div>
-          <div className="detail-item">
-            <div className="muted small">SL / TP</div>
-            <div style={{ fontWeight: 600 }}>{t.sl || '-'} / {t.tp || '-'}</div>
-          </div>
-          <div className="detail-item">
-            <div className="muted small">PNL</div>
-            <div className={Number(t.pnl_realized) >= 0 ? 'money-pos' : 'money-neg'} style={{ fontWeight: 800 }}>
-              {t.pnl_realized != null ? `$${Number(t.pnl_realized).toFixed(2)}` : '-'}
-            </div>
-          </div>
-          <div className="detail-item">
-            <div className="muted small">CREATED</div>
-            <div className="minor-text">{fDateTime(t.created_at)}</div>
-          </div>
-        </div>
-      </div>
-
+    <section className="stack-layout" style={{ gap: 14 }}>
+      <p style={{ marginBottom: 0 }}><Link to="/trades" className="minor-text">← BACK TO TRADES</Link></p>
       <div className="panel">
-        <div style={{ color: "#94a3b8", fontSize: "12px", marginBottom: "12px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Execution Context</div>
-        <TradeSignalChart 
-          symbol={t.symbol} 
-          interval={t.signal_tf || t.chart_tf || "1h"} 
-          live={true}
-          entryPrice={asPrice(t.entry)}
-          slPrice={asPrice(t.sl)}
-          tpPrice={asPrice(t.tp)}
-          openedAt={t.opened_at}
-          closedAt={t.closed_at}
-          analysisSnapshot={t?.metadata?.analysis_snapshot || t?.raw_json?.analysis_snapshot || null}
+        <SignalDetailCard
+          mode="trade"
+          header={header}
+          chart={{
+            enabled: true,
+            detailTfTab,
+            onDetailTfTabChange: setDetailTfTab,
+            iframeTitle: `trade-detail-tv-${detailTfTab}`,
+            symbol: trade.symbol,
+            interval: trade.signal_tf || trade.chart_tf || "1h",
+            live: true,
+            entryPrice: asNum(trade.entry),
+            slPrice: asNum(trade.sl),
+            tpPrice: asNum(trade.tp),
+            openedAt: trade.opened_at,
+            closedAt: trade.closed_at,
+            analysisSnapshot: trade?.metadata?.analysis_snapshot || trade?.raw_json?.analysis_snapshot || null,
+          }}
+          metaItems={[
+            { label: "Trade SID", value: trade.sid || trade.trade_id || "-" },
+            { label: "Signal SID", value: trade.signal_id || "-" },
+            { label: "Broker Ticket", value: brokerTicketOf(trade) },
+            { label: "Account", value: trade.account_id || "-" },
+            { label: "Source", value: trade.source_id || "-" },
+            { label: "Status", value: statusUi(trade.execution_status).label },
+            { label: "Signal TF", value: formatTimeframe(trade.signal_tf || "-") },
+            { label: "Chart TF", value: formatTimeframe(trade.chart_tf || "-") },
+            { label: "Volume", value: `${trade.volume ?? "-"} lots` },
+            { label: "Created", value: fDateTime(trade.created_at) },
+            { label: "Note", value: trade.note || "-", fullWidth: true },
+            { label: "Raw JSON", value: JSON.stringify(trade.raw_json || {}, null, 2), fullWidth: true, valueStyle: { whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" } },
+          ]}
+          history={{
+            enabled: true,
+            items: [...events].sort((a, b) => new Date(b.event_time || b.created_at || 0).getTime() - new Date(a.event_time || a.created_at || 0).getTime()),
+            renderItem: (ev, idx) => renderHistoryItem(ev, idx, { formatDateTime: fDateTime, includeTicket: true }),
+          }}
         />
-      </div>
-
-      {hasExecTelemetry ? (
-        <div className="panel">
-          <div className="panel-label">EXECUTION TELEMETRY</div>
-          <div className="trade-grid three-cols" style={{ marginTop: 14, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-            <div className="detail-item">
-              <div className="muted small">USED VOLUME</div>
-              <div style={{ fontWeight: 600 }}>{Number.isFinite(usedVolume) ? usedVolume : "-"}</div>
-            </div>
-            <div className="detail-item">
-              <div className="muted small">SL PIPS</div>
-              <div style={{ fontWeight: 600 }}>{Number.isFinite(slPips) ? slPips.toFixed(2) : "-"}</div>
-            </div>
-            <div className="detail-item">
-              <div className="muted small">TP PIPS</div>
-              <div style={{ fontWeight: 600 }}>{Number.isFinite(tpPips) ? tpPips.toFixed(2) : "-"}</div>
-            </div>
-            <div className="detail-item">
-              <div className="muted small">MAX LOSS ($)</div>
-              <div style={{ fontWeight: 600 }}>{Number.isFinite(riskMoneyActual) ? riskMoneyActual.toFixed(2) : "-"}</div>
-            </div>
-            <div className="detail-item">
-              <div className="muted small">PLANNED REWARD ($)</div>
-              <div style={{ fontWeight: 600 }}>{Number.isFinite(rewardMoneyPlanned) ? rewardMoneyPlanned.toFixed(2) : "-"}</div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="panel">
-        <div className="panel-label">EXECUTION LOGS</div>
-        {events.length === 0 ? (
-          <div className="empty-state minor-text">No execution events recorded.</div>
-        ) : (
-          <div className="stack-layout" style={{ gap: 10, marginTop: 10 }}>
-            {events.map((ev) => (
-              <div key={ev.event_id} className="panel" style={{ margin: 0, padding: 12, border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span className="panel-label" style={{ margin: 0 }}>{ev.event_type}</span>
-                  <span className="minor-text">{fDateTime(ev.event_time)}</span>
-                </div>
-                <div className="json-table-wrapper">
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <tbody>
-                      {Object.entries(ev.payload_json || {}).map(([k, v]) => (
-                        <tr key={k} style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td className="minor-text" style={{ padding: '6px 0', width: '30%', fontWeight: 700 }}>{k.toUpperCase()}</td>
-                          <td className="minor-text" style={{ padding: '6px 0' }}>
-                            {typeof v === 'object' ? JSON.stringify(v) : String(v)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </section>
   );

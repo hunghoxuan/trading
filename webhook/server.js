@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1407"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1457"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -1084,6 +1084,24 @@ function sanitizeSnapshotFileToken(value, fallback = "chart") {
   return token || fallback;
 }
 
+function sanitizeSessionPrefix(value, fallback = "") {
+  const raw = String(value || "").trim().toUpperCase();
+  const token = raw.replace(/[^A-Z0-9_-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+  if (token) return token.slice(0, 32);
+  return String(fallback || "").trim().toUpperCase().replace(/[^A-Z0-9_-]+/g, "_").slice(0, 32);
+}
+
+function normalizePublicSidBase(raw, fallbackPrefix = "ID") {
+  const cleaned = String(raw || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  if (cleaned) return cleaned.slice(0, 48);
+  return `${String(fallbackPrefix || "ID").toUpperCase()}_${snapshotTimestampToken(Date.now()).replace(/[^0-9_]/g, "")}`.slice(0, 48);
+}
+
 function snapshotTimestampToken(dateLike = Date.now()) {
   const d = new Date(dateLike);
   const yyyy = d.getUTCFullYear();
@@ -1209,9 +1227,12 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
   const ts = Date.now();
   const symbolToken = sanitizeSnapshotFileToken(symbol);
   const tfToken = sanitizeSnapshotFileToken(interval, "TF");
+  const sessionPrefix = sanitizeSessionPrefix(opts.session_prefix || opts.sessionPrefix || "");
   const userId = String(opts.userId || "").trim();
   const userPrefix = userId ? `UID_${userId}_` : "";
-  const baseName = `${userPrefix}${snapshotTimestampToken(ts)}_${symbolToken}_${tfToken}`;
+  const baseName = sessionPrefix
+    ? `${userPrefix}${symbolToken}_${sessionPrefix}_${tfToken}`
+    : `${userPrefix}${snapshotTimestampToken(ts)}_${symbolToken}_${tfToken}`;
   let fileName = `${baseName}.${outFormat}`;
   let outPath = path.join(CHART_SNAPSHOT_DIR, fileName);
   let dupIdx = 1;
@@ -2663,6 +2684,23 @@ async function mt5InitBackend() {
 
   // Legacy migration paths removed; using Postgres-exclusive storage.
 
+  async function allocateUniqueSid(client, table, baseRaw, fallbackPrefix = "ID") {
+    const allowed = new Set(["users", "accounts", "signals", "trades", "sources", "execution_profiles"]);
+    const tableName = String(table || "").trim();
+    if (!allowed.has(tableName)) {
+      const fallbackRes = await client.query(`SELECT gen_sid($1, 8) AS sid`, [String(fallbackPrefix || "ID").slice(0, 6).toUpperCase()]).catch(() => ({ rows: [] }));
+      return String(fallbackRes.rows?.[0]?.sid || normalizePublicSidBase(baseRaw, fallbackPrefix));
+    }
+    const base = normalizePublicSidBase(baseRaw, fallbackPrefix);
+    for (let i = 0; i < 120; i += 1) {
+      const candidate = i === 0 ? base : `${base}_${i + 1}`;
+      const exists = await client.query(`SELECT 1 FROM ${tableName} WHERE sid = $1 LIMIT 1`, [candidate]).catch(() => ({ rows: [{ exists: 1 }] }));
+      if (!exists.rows?.length) return candidate.slice(0, 64);
+    }
+    const fallbackRes = await client.query(`SELECT gen_sid($1, 8) AS sid`, [String(fallbackPrefix || "ID").slice(0, 6).toUpperCase()]).catch(() => ({ rows: [] }));
+    return String(fallbackRes.rows?.[0]?.sid || base.slice(0, 64));
+  }
+
   const storage = "postgres";
   MT5_BACKEND = {
     storage,
@@ -2676,15 +2714,16 @@ async function mt5InitBackend() {
       `, [objectId, objectTable, JSON.stringify(metadata), userId]);
     },
     async upsertSignal(signal) {
+      const signalSid = await allocateUniqueSid(pool, "signals", signal.sid || signal.signal_id, "SIG");
       const r = await pool.query(`
         INSERT INTO signals (
-          signal_id, created_at, user_id, source, source_id, symbol, side, sl, tp,
+          signal_id, sid, created_at, user_id, source, source_id, symbol, side, sl, tp,
           entry_model, signal_tf, chart_tf, rr_planned, note, raw_json, status
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16)
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17)
         ON CONFLICT (signal_id) DO NOTHING
         RETURNING signal_id
       `, [
-        signal.signal_id, signal.created_at, signal.user_id, signal.source, signal.source_id,
+        signal.signal_id, signalSid, signal.created_at, signal.user_id, signal.source, signal.source_id,
         signal.symbol, signal.side, signal.sl, signal.tp, signal.entry_model || null,
         signal.signal_tf, signal.chart_tf, signal.rr_planned, signal.note,
         JSON.stringify(signal.raw_json || {}), signal.status || 'NEW'
@@ -2841,15 +2880,21 @@ async function mt5InitBackend() {
         for (const row of accounts.rows || []) {
           const aid = row.account_id;
           const tradeId = mt5GenerateId("TRD");
+          const tradeSid = await allocateUniqueSid(
+            client,
+            "trades",
+            payload.trade_sid || payload.sid || `${payload.symbol || "TRD"}_${payload.session_prefix || ""}`,
+            "TRD",
+          );
           const ins = await client.query(`
             INSERT INTO trades (
-              trade_id, account_id, user_id, signal_id, source_id,
+              trade_id, sid, account_id, user_id, signal_id, source_id,
               entry_model, signal_tf, chart_tf,
               symbol, action, entry, sl, tp, volume, note,
               dispatch_status, execution_status, metadata, created_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'NEW','PENDING',$16::jsonb,$17,$17)
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'NEW','PENDING',$17::jsonb,$18,$18)
           `, [
-            tradeId, aid, userId, signalId, sourceId,
+            tradeId, tradeSid, aid, userId, signalId, sourceId,
             payload.entry_model || null, payload.signal_tf || null, payload.chart_tf || null,
             payload.symbol, payload.action, payload.entry, payload.sl,
             payload.tp, payload.volume, payload.note, JSON.stringify(payload.metadata || {}), mt5NowIso()
@@ -4074,9 +4119,12 @@ async function mt5InitBackend() {
         }
       }
       
+      const logsRes = await pool.query(`SELECT COUNT(*) as c FROM logs${u ? " WHERE user_id = $1" : ""}`, params);
+      
       return {
         cancelled_error_count: parseInt(signalCancelRes.rows[0].c) + parseInt(tradeCancelRes.rows[0].c),
         test_trades_count: parseInt(signalTestRes.rows[0].c) + parseInt(tradeTestRes.rows[0].c),
+        logs_count: parseInt(logsRes.rows[0].c),
         snapshots_count: snapshotsCount,
         snapshots_size_bytes: snapshotsSize
       };
@@ -4147,6 +4195,10 @@ async function mt5InitBackend() {
           logs_deleted: cleanup.logs_deleted, 
           files_deleted: cleanup.files_deleted 
         };
+      } else if (target === 'logs') {
+        const whereUser = u ? " WHERE user_id = $1" : "";
+        const lDel = await pool.query(`DELETE FROM logs${whereUser}`, u ? [u] : []);
+        return { ok: true, target, logs_deleted: lDel.rowCount };
       } else {
         throw new Error("unknown target");
       }
@@ -4155,6 +4207,13 @@ async function mt5InitBackend() {
       const refs = Array.isArray(ids) ? ids.map((v) => String(v || "").trim()).filter(Boolean) : [];
       if (!refs.length) return { deleted: 0 };
       const numericIds = refs.map((v) => mt5ParseNumericId(v)).filter((v) => v != null);
+      
+      // Delete trades first (due to foreign key or just clean association)
+      await pool.query(`
+        DELETE FROM trades
+        WHERE signal_id = ANY($1::text[])
+      `, [refs]);
+
       const res = await pool.query(`
         DELETE FROM signals
         WHERE signal_id = ANY($1::text[])
@@ -4711,8 +4770,14 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
     throw new Error("Already added");
   }
   const rawJson = payload.raw_json || payload;
+  const sessionPrefix = sanitizeSessionPrefix(payload.session_prefix || payload.sessionPrefix || rawJson?.session_prefix || rawJson?.sessionPrefix || "");
+  const sidBaseFromPayload = String(payload.sid || payload.signal_sid || rawJson?.sid || rawJson?.signal_sid || "").trim();
+  const signalSid = sidBaseFromPayload
+    ? normalizePublicSidBase(sidBaseFromPayload, "SIG")
+    : normalizePublicSidBase(sessionPrefix ? `${symbol}_${sessionPrefix}` : signalId, "SIG");
   let rawJsonNormalized = {
     ...rawJson,
+    session_prefix: sessionPrefix || undefined,
     order_type: orderType,
     entry_model: entryModel || mt5NormalizeEntryModel(rawJson.entry_model ?? rawJson.entryModel ?? "", { fallback: source }),
     entry_model_raw: derived.entryModelRaw || mt5CollapseWhitespace(rawJson.entry_model ?? rawJson.entryModel ?? "") || null,
@@ -4729,6 +4794,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   delete rawJsonNormalized.token;
   const upsertResult = await mt5UpsertSignal({
     signal_id: signalId,
+    sid: signalSid,
     created_at: mt5NowIso(),
     user_id: userId,
     source,
@@ -4785,6 +4851,8 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
           tp: payload.tp ?? null,
           volume: volume ?? null,
           note: note || null,
+          sid: signalSid,
+          session_prefix: sessionPrefix || null,
           metadata: {
             event_type: eventType,
             order_type: orderType,
@@ -4792,6 +4860,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
             chart_tf: chartTf || null,
             provider: payload.provider || null,
             entry_model_raw: derived.entryModelRaw || null,
+            session_prefix: sessionPrefix || null,
             analysis_snapshot: rawJsonNormalized?.analysis_snapshot && typeof rawJsonNormalized.analysis_snapshot === "object"
               ? rawJsonNormalized.analysis_snapshot
               : null,
@@ -6786,6 +6855,11 @@ const appHandler = async (req, res) => {
       const tp = asNum(payload.tp, NaN);
       const note = String(derived.note || payload.note || "").trim();
       const rawPayload = payload && typeof payload === "object" ? { ...payload } : {};
+      const sessionPrefix = sanitizeSessionPrefix(payload.session_prefix || payload.sessionPrefix || rawPayload?.session_prefix || rawPayload?.sessionPrefix || "");
+      const sidBaseRaw = String(payload.sid || payload.trade_sid || rawPayload?.sid || rawPayload?.trade_sid || "").trim();
+      const tradeSidBase = sidBaseRaw
+        ? normalizePublicSidBase(sidBaseRaw, "TRD")
+        : normalizePublicSidBase(sessionPrefix ? `${symbol}_${sessionPrefix}` : `${symbol}_TRD`, "TRD");
       if (!symbol) return json(res, 400, { ok: false, error: "symbol is required" });
       if (!Number.isFinite(entry) || !Number.isFinite(sl) || !Number.isFinite(tp)) {
         return json(res, 400, { ok: false, error: "entry/sl/tp are required numeric values" });
@@ -6817,12 +6891,16 @@ const appHandler = async (req, res) => {
         tp: Number.isFinite(tp) ? tp : null,
         volume: volume ?? null,
         note: note || null,
+        sid: tradeSidBase,
+        trade_sid: tradeSidBase,
+        session_prefix: sessionPrefix || null,
         metadata: {
           event_type: "UI_CREATE_TRADE_DIRECT",
           order_type: payload.order_type || "limit",
           signal_tf: signalTf,
           chart_tf: chartTf,
           provider: payload.provider || null,
+          session_prefix: sessionPrefix || null,
           entry_model_raw: derived.entryModelRaw || null,
           raw_json: rawPayload?.raw_json && typeof rawPayload.raw_json === "object" ? rawPayload.raw_json : rawPayload,
           analysis_snapshot: rawPayload?.analysis_snapshot && typeof rawPayload.analysis_snapshot === "object"
@@ -7897,6 +7975,7 @@ const appHandler = async (req, res) => {
         userId: sess.user_id,
         symbol: body.symbol,
         provider: body.provider,
+        session_prefix: body.session_prefix || body.sessionPrefix || "",
         timeframe: body.timeframe || body.tf,
         width: body.width,
         height: body.height,
@@ -7921,6 +8000,7 @@ const appHandler = async (req, res) => {
         userId: sess.user_id,
         symbol: body.symbol,
         provider: body.provider,
+        session_prefix: body.session_prefix || body.sessionPrefix || "",
         timeframes: body.timeframes,
         width: body.width,
         height: body.height,
@@ -7983,6 +8063,7 @@ const appHandler = async (req, res) => {
     if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       const body = await readJson(req);
+      const reqSessionPrefix = sanitizeSessionPrefix(body.session_prefix || body.sessionPrefix || "");
       ensureChartSnapshotDir();
       const userId = sess.user_id || CFG.mt5DefaultUserId;
       const cfgRows = await (await mt5InitBackend()).query(
@@ -8002,6 +8083,7 @@ const appHandler = async (req, res) => {
       if (!files.length) {
         files = fs.readdirSync(CHART_SNAPSHOT_DIR)
           .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
+          .filter((f) => !reqSessionPrefix || f.includes(`_${reqSessionPrefix}_`))
           .map((f) => {
             const st = fs.statSync(path.join(CHART_SNAPSHOT_DIR, f));
             return { f, t: Number(st.mtimeMs || 0) };
@@ -8078,8 +8160,10 @@ const appHandler = async (req, res) => {
     try {
       ensureChartSnapshotDir();
       const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit") || 30) || 30, 200));
+      const reqSessionPrefix = sanitizeSessionPrefix(url.searchParams.get("session_prefix") || "");
       const files = fs.readdirSync(CHART_SNAPSHOT_DIR)
         .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
+        .filter((f) => !reqSessionPrefix || f.includes(`_${reqSessionPrefix}_`))
         .map((f) => {
           const abs = path.join(CHART_SNAPSHOT_DIR, f);
           const st = fs.statSync(abs);
@@ -8106,13 +8190,20 @@ const appHandler = async (req, res) => {
     try {
       ensureChartSnapshotDir();
       const body = await readJson(req);
+      const reqSessionPrefix = sanitizeSessionPrefix(body?.session_prefix || body?.sessionPrefix || "");
       const deleteAll = body?.all === true;
       const requestedFiles = Array.isArray(body?.files)
         ? body.files.map((x) => String(x || "").trim()).filter(Boolean)
         : [];
       const candidates = deleteAll
-        ? fs.readdirSync(CHART_SNAPSHOT_DIR).filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
-        : requestedFiles;
+        ? fs.readdirSync(CHART_SNAPSHOT_DIR)
+          .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
+          .filter((f) => !reqSessionPrefix || f.includes(`_${reqSessionPrefix}_`))
+        : (reqSessionPrefix
+          ? fs.readdirSync(CHART_SNAPSHOT_DIR)
+            .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
+            .filter((f) => f.includes(`_${reqSessionPrefix}_`))
+          : requestedFiles);
       const deleted = [];
       const skipped = [];
       for (const fileNameRaw of candidates) {
