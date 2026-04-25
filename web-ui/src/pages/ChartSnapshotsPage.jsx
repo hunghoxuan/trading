@@ -281,6 +281,73 @@ function normalizeTfLabelToLower(tfRaw) {
   return tf;
 }
 
+function tfToSeconds(tfRaw) {
+  const s = String(tfRaw || "").trim().toLowerCase();
+  if (!s) return 900;
+  if (/^\d+$/.test(s)) return Math.max(60, Number(s) * 60);
+  const m = s.match(/^(\d+)\s*(m|min|h|d|w)$/i);
+  if (!m) return 900;
+  const n = Math.max(1, Number(m[1] || 1));
+  const u = String(m[2] || "").toLowerCase();
+  if (u === "m" || u === "min") return n * 60;
+  if (u === "h") return n * 3600;
+  if (u === "d") return n * 86400;
+  if (u === "w") return n * 604800;
+  return 900;
+}
+
+function normalizeSnapshotBars(snapshot, tfRaw = "") {
+  const rawBars = Array.isArray(snapshot?.bars) ? snapshot.bars : [];
+  if (!rawBars.length) return snapshot;
+  const tfSec = tfToSeconds(tfRaw || snapshot?.tf_norm || snapshot?.timeframe || snapshot?.interval);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const dedup = new Map();
+  rawBars.forEach((x) => {
+    const t = Number(x?.time);
+    const o = Number(x?.open);
+    const h = Number(x?.high);
+    const l = Number(x?.low);
+    const c = Number(x?.close);
+    if (!Number.isFinite(t) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return;
+    if (t > nowSec + (tfSec * 2)) return;
+    dedup.set(t, { time: t, open: o, high: h, low: l, close: c });
+  });
+  let bars = [...dedup.values()].sort((a, b) => a.time - b.time);
+  if (bars.length >= 30) {
+    const ranges = bars.map((b) => Math.abs(b.high - b.low)).filter((v) => Number.isFinite(v) && v > 0);
+    const typicalRange = ranges.length ? ranges.sort((a, b) => a - b)[Math.floor(ranges.length / 2)] : 0;
+    if (typicalRange > 0) {
+      const tinyRange = typicalRange * 0.06;
+      let trailingTiny = 0;
+      for (let i = bars.length - 1; i >= 0; i -= 1) {
+        const r = Math.abs(Number(bars[i].high) - Number(bars[i].low));
+        if (r <= tinyRange) trailingTiny += 1;
+        else break;
+      }
+      if (trailingTiny >= 12) {
+        bars = bars.slice(0, Math.max(10, bars.length - trailingTiny + 2));
+      }
+    }
+  }
+  if (!bars.length) return snapshot;
+  return {
+    ...(snapshot || {}),
+    bars,
+    bar_start: bars[0].time,
+    bar_end: bars[bars.length - 1].time,
+  };
+}
+
+function aiSourceFromModel(modelRaw) {
+  const model = String(modelRaw || "").trim().toLowerCase();
+  if (!model) return "ai_claude";
+  if (model.includes("gpt") || model.includes("openai")) return "ai_openai";
+  if (model.includes("gemini")) return "ai_gemini";
+  if (model.includes("deepseek")) return "ai_deepseek";
+  if (model.includes("claude")) return "ai_claude";
+  return "ai_claude";
+}
+
 function liveTfToTradingViewInterval(tfRaw) {
   const s = String(tfRaw || "").toUpperCase();
   if (s === "W") return "W";
@@ -354,6 +421,36 @@ function extractPositionFromAnalysis(parsed) {
     rr: Number.isFinite(rr) ? formatNum3(rr) : "",
     trade_type: String(plan.type || parsed?.type || "limit").trim().toLowerCase() || "limit",
     note: String(plan.note || parsed?.invalidation || parsed?.note || "").trim(),
+  };
+}
+
+function extractPositionFromPlan(plan, parsed = {}) {
+  const item = plan && typeof plan === "object" ? plan : {};
+  const directionRaw = String(item.direction || parsed?.direction || "").trim().toUpperCase();
+  const direction = directionRaw.includes("SELL") || directionRaw.includes("SHORT")
+    ? "SELL"
+    : directionRaw.includes("BUY") || directionRaw.includes("LONG")
+      ? "BUY"
+      : "BUY";
+  const entry = parseNum(item.entry ?? parsed?.entry ?? parsed?.price);
+  const sl = parseNum(item.sl ?? parsed?.sl);
+  const tpLevels = Array.isArray(item?.tp_levels) ? item.tp_levels : (Array.isArray(item?.targets) ? item.targets : []);
+  const tp = parseNum(tpLevels[0] ?? item.tp1 ?? item.tp ?? parsed?.tp ?? parsed?.take_profit);
+  const rrRaw = parseNum(item.rr ?? parsed?.rr);
+  let rr = Number.isFinite(rrRaw) ? rrRaw : null;
+  if (!Number.isFinite(rr) && Number.isFinite(entry) && Number.isFinite(sl) && Number.isFinite(tp)) {
+    const risk = Math.abs(entry - sl);
+    const reward = Math.abs(tp - entry);
+    if (risk > 0 && reward > 0) rr = Number((reward / risk).toFixed(2));
+  }
+  return {
+    direction,
+    entry: Number.isFinite(entry) ? formatNum3(entry) : "",
+    tp: Number.isFinite(tp) ? formatNum3(tp) : "",
+    sl: Number.isFinite(sl) ? formatNum3(sl) : "",
+    rr: Number.isFinite(rr) ? formatNum3(rr) : "",
+    trade_type: String(item.type || parsed?.type || "limit").trim().toLowerCase() || "limit",
+    note: String(item.note || parsed?.invalidation || parsed?.note || "").trim(),
   };
 }
 
@@ -667,6 +764,7 @@ function extractSignalsFromAnalysis(parsed, fallback = {}) {
       const tp = parseNum(tpLevels[0] ?? s?.tp ?? s?.take_profit ?? s?.tp1 ?? s?.target);
       const strategy = String(s?.strategy || fallback.strategy || "ai").trim();
       const entryModel = String(s?.entry_model || s?.model || "ai_claude").trim() || "ai_claude";
+      const source = String(s?.source || fallback.source || "ai_claude").trim() || "ai_claude";
       return {
         symbol: normalizeSignalSymbol(s?.symbol || fallback.symbol || ""),
         action,
@@ -678,7 +776,7 @@ function extractSignalsFromAnalysis(parsed, fallback = {}) {
         entry_model: entryModel,
         order_type: String(s?.type || s?.order_type || "limit").trim().toLowerCase(),
         note: typeof s?.note === "string" ? s.note : "",
-        source: "ai",
+        source,
         strategy,
         rr: parseNum(s?.rr),
         profile: String(s?.profile || parsed?.profile || "").trim(),
@@ -779,6 +877,7 @@ export default function ChartSnapshotsPage() {
   const [analysisRaw, setAnalysisRaw] = useState("");
   const [analysisJson, setAnalysisJson] = useState("");
   const [analysisParsed, setAnalysisParsed] = useState(null);
+  const [analysisSource, setAnalysisSource] = useState("ai_claude");
   const [usedFiles, setUsedFiles] = useState([]);
   const [sessionPrefix, setSessionPrefix] = useState("");
 
@@ -833,7 +932,12 @@ export default function ChartSnapshotsPage() {
   const responseText = useMemo(() => buildFriendlyResponse(effectiveParsed), [effectiveParsed]);
   const canAddSignal = useMemo(
     () => {
-      const fromAi = extractSignalsFromAnalysis(effectiveParsed, { symbol: tvSymbol, timeframe, strategy: cfg.strategies.join("+") || "ai" }).length > 0;
+      const fromAi = extractSignalsFromAnalysis(effectiveParsed, {
+        symbol: tvSymbol,
+        timeframe,
+        strategy: cfg.strategies.join("+") || "ai",
+        source: analysisSource,
+      }).length > 0;
       if (fromAi) return true;
       const err = validatePosition(position);
       return Boolean(normalizeSignalSymbol(tvSymbol || cfg.symbol || "")) && !err;
@@ -896,7 +1000,8 @@ export default function ChartSnapshotsPage() {
     setBarsLoading(true);
     try {
       const out = await api.chartTwelveCandles(sym, tf, bars);
-      const snap = out?.snapshot && typeof out.snapshot === "object" ? out.snapshot : null;
+      const rawSnap = out?.snapshot && typeof out.snapshot === "object" ? out.snapshot : null;
+      const snap = rawSnap ? normalizeSnapshotBars(rawSnap, tf) : null;
       if (snap) {
         setBarsCache((prev) => ({ ...prev, [cacheKey]: snap }));
       }
@@ -943,6 +1048,7 @@ export default function ChartSnapshotsPage() {
       const out = await api.chartSnapshotsAnalyze(payload);
       const raw = String(out?.raw_response || "");
       setAnalysisRaw(raw);
+      setAnalysisSource(aiSourceFromModel(out?.model));
       const parsed = enrichParsedAnalysis(raw, out?.parsed_json || tryParseJsonLoose(raw));
       if (parsed && typeof parsed === "object") {
         setAnalysisParsed(parsed);
@@ -1178,6 +1284,7 @@ export default function ChartSnapshotsPage() {
         symbol: tvSymbol,
         timeframe,
         strategy: cfg.strategies.join("+") || "ai",
+        source: analysisSource,
       });
       if (!signals.length) {
         const symbolManual = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
@@ -1197,11 +1304,11 @@ export default function ChartSnapshotsPage() {
           sl,
           tp,
           tf: timeframe,
-          model: "ai_claude",
-          entry_model: "ai_claude",
+          model: analysisSource,
+          entry_model: analysisSource,
           order_type: String(position.trade_type || "limit").toLowerCase(),
           note: position.note || "",
-          source: "ai",
+          source: analysisSource,
           strategy: cfg.strategies.join("+") || "ai",
           rr: parseNum(position.rr),
         });
@@ -1232,6 +1339,7 @@ export default function ChartSnapshotsPage() {
 
         const finalPayload = {
           ...payload,
+          source: String(payload?.source || analysisSource || "ai_claude").trim() || "ai_claude",
           session_prefix: activeSessionPrefix || undefined,
           sid: (() => {
             const s = normalizeSignalSymbol(payload.symbol || tvSymbol || cfg.symbol || "");
@@ -1515,6 +1623,7 @@ export default function ChartSnapshotsPage() {
     setAnalysisRaw("");
     setAnalysisJson("");
     setAnalysisParsed(null);
+    setAnalysisSource("ai_claude");
     setUsedFiles([]);
     setAnalysisFilesDisplay([]);
     setResponseTab("text");
@@ -1562,9 +1671,42 @@ export default function ChartSnapshotsPage() {
       .filter(Boolean);
   }, [effectiveParsed]);
 
+  const analysisTradePlans = useMemo(() => {
+    const plans = Array.isArray(effectiveParsed?.trade_plan)
+      ? effectiveParsed.trade_plan
+      : (effectiveParsed?.trade_plan && typeof effectiveParsed.trade_plan === "object" ? [effectiveParsed.trade_plan] : []);
+    return plans
+      .map((p, idx) => {
+        const entry = parseNum(p?.entry);
+        const sl = parseNum(p?.sl);
+        const tpLevels = Array.isArray(p?.tp_levels) ? p.tp_levels : [];
+        const tp = parseNum(tpLevels[0] ?? p?.tp1 ?? p?.tp);
+        const rr = parseNum(p?.rr);
+        return {
+          idx,
+          raw: p,
+          direction: String(p?.direction || "NULL").toUpperCase(),
+          strategy: String(p?.strategy || "").trim(),
+          entryModel: String(p?.entry_model || p?.model || "").trim(),
+          confidence: parseNum(p?.confidence_pct),
+          entry,
+          sl,
+          tp,
+          rr,
+          note: String(p?.note || "").trim(),
+        };
+      })
+      .filter((x) => x.raw && typeof x.raw === "object");
+  }, [effectiveParsed]);
+
+  const applyTradePlanToEditor = (plan) => {
+    if (!plan?.raw) return;
+    setPosition(extractPositionFromPlan(plan.raw, effectiveParsed || {}));
+  };
+
   useEffect(() => {
     if (!liteChartRef.current || responseTab !== "chart") return;
-    const snapshot = currentBarsSnapshot;
+    const snapshot = normalizeSnapshotBars(currentBarsSnapshot, timeframe);
     const bars = Array.isArray(snapshot?.bars) ? snapshot.bars : [];
     if (!bars.length) return;
 
@@ -1734,6 +1876,31 @@ export default function ChartSnapshotsPage() {
                   <div ref={liteChartRef} className="snapshot-lite-chart-v3" />
                   <div className="minor-text">{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
                 </div>
+                {analysisTradePlans.length ? (
+                  <div className="snapshot-live-card-v3">
+                    <div className="minor-text" style={{ marginBottom: 8 }}>Trade Plans ({analysisTradePlans.length})</div>
+                    <div className="snapshot-activity-list-v4">
+                      {analysisTradePlans.map((plan) => (
+                        <article key={`plan_${plan.idx}`} className="snapshot-activity-card-v4">
+                          <div className="snapshot-activity-top-v4">
+                            <span className={plan.direction === "SELL" ? "side-sell" : "side-buy"}>{plan.direction || "NULL"}</span>
+                            <span className="cell-major">{plan.entryModel || "-"}</span>
+                            <span className="minor-text">{plan.strategy || "-"}</span>
+                          </div>
+                          <div className="minor-text">
+                            {Number.isFinite(plan.entry) ? formatNum3(plan.entry) : "-"} → {Number.isFinite(plan.tp) ? formatNum3(plan.tp) : "-"} / {Number.isFinite(plan.sl) ? formatNum3(plan.sl) : "-"}
+                            {" | "}RR {Number.isFinite(plan.rr) ? plan.rr.toFixed(2) : "-"}
+                            {Number.isFinite(plan.confidence) ? ` | ${plan.confidence}%` : ""}
+                          </div>
+                          {plan.note ? <div className="minor-text">{plan.note}</div> : null}
+                          <div>
+                            <button type="button" className="secondary-button" onClick={() => applyTradePlanToEditor(plan)}>Use Plan</button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 {chartFiles.length ? (
                   <div className="snapshot-chart-grid-v2">
                     {chartFiles.map((f) => {

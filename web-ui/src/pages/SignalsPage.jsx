@@ -156,6 +156,23 @@ function validateTradePlan(plan = {}) {
   return "";
 }
 
+function compactStrategy(item = {}) {
+  const raw = item?.raw_json && typeof item.raw_json === "object" ? item.raw_json : {};
+  const fromRaw = String(raw?.strategy || raw?.trade_plan?.strategy || "").trim();
+  if (fromRaw) return fromRaw;
+  const fromNote = String(item?.note || "").split("|")[0].trim();
+  return fromNote || "-";
+}
+
+function displaySource(item = {}) {
+  const src = String(item?.source || "").trim().toLowerCase();
+  if (src.startsWith("ai_")) return src;
+  if (src === "ai") return "ai_claude";
+  if (src) return src;
+  const srcId = String(item?.source_id || "").trim().toLowerCase();
+  return srcId || "-";
+}
+
 export default function SignalsPage() {
   const [symbols, setSymbols] = useState([]);
   const [rows, setRows] = useState([]);
@@ -602,9 +619,10 @@ export default function SignalsPage() {
                   const status = statusUi(t.status);
                   const sideValue = String(t.action || t.side || '-').toUpperCase();
                   const sideCls = sideValue === 'BUY' ? 'side-buy' : 'side-sell';
-                  const sourceLabel = String(t.source || "-");
+                  const sourceLabel = displaySource(t);
                   const sourceId = String(t.source_id || "-");
                   const signalShort = String(t.sid || t.signal_id || "").slice(-12) || "-";
+                  const strategyLabel = compactStrategy(t);
                   
                   return (
                     <tr 
@@ -644,14 +662,14 @@ export default function SignalsPage() {
                             {fPrice(t.entry, t.target_price || t.entry_price)} → {fPrice(t.tp)} / {fPrice(t.sl)}
                           </div>
                           <div className="cell-minor">
-                            {(t.entry_model || "-")} | {formatTimeframe(t.chart_tf)} | {formatTimeframe(t.signal_tf)} | {(asNum(t.rr_planned) ?? 0).toFixed(2)} rr
+                            {strategyLabel} | {t.entry_model || "-"} | {formatTimeframe(t.chart_tf)} | {formatTimeframe(t.signal_tf)} | {(asNum(t.rr_planned) ?? 0).toFixed(2)} rr
                           </div>
                         </div>
                       </td>
                       <td>
                         <div className="cell-wrap">
                           <div className="cell-major">{fDateTime(t.closed_at || t.opened_at || t.created_at)}</div>
-                          <div className="cell-minor">{t.note || 'No note'}</div>
+                          <div className="cell-minor">{strategyLabel} | {t.entry_model || "-"}</div>
                         </div>
                       </td>
                       <td>
@@ -823,7 +841,8 @@ export default function SignalsPage() {
               metaItems={[
                 { label: "Chart TF", value: formatTimeframe(selectedSignal.chart_tf || "-") },
                 { label: "Signal TF", value: formatTimeframe(selectedSignal.signal_tf || "-") },
-                { label: "Source", value: selectedSignal.source || "-" },
+                { label: "Source", value: displaySource(selectedSignal) },
+                { label: "Strategy", value: compactStrategy(selectedSignal) },
                 { label: "Entry Model", value: selectedSignal.entry_model || "-" },
                 { label: "Trade SID", value: signalDetails?.trade?.sid || signalDetails?.trade?.trade_id || "-" },
                 { label: "Broker Ticket", value: selectedSignal.ack_ticket || signalDetails?.trade?.broker_trade_id || "-" },

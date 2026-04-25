@@ -86,7 +86,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1539"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-1650"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 const CFG = {
@@ -4712,7 +4712,8 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
       return { provider: "twelvedata", status: "error", reason: lastError || "provider error", normalized_symbol: tvSymbol };
     }
     const values = Array.isArray(data?.values) ? data.values : [];
-    const bars = values
+    const dedup = new Map();
+    values
       .map((v) => {
         const t = parseTimeToUnixSec(v?.datetime);
         const o = Number(v?.open);
@@ -4720,10 +4721,14 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
         const l = Number(v?.low);
         const c = Number(v?.close);
         if (!Number.isFinite(t) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return null;
+        if (t > (reqRange.end + (reqRange.sec * 2))) return null;
         return { time: t, open: o, high: h, low: l, close: c };
       })
       .filter(Boolean)
-      .sort((a, b) => a.time - b.time);
+      .forEach((bar) => {
+        dedup.set(bar.time, bar);
+      });
+    const bars = [...dedup.values()].sort((a, b) => a.time - b.time);
     const barStart = bars.length ? bars[0].time : null;
     const barEnd = bars.length ? bars[bars.length - 1].time : null;
     const snapshot = {
@@ -4913,6 +4918,15 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   }
 
   return { signal_id: signalId, action, symbol, status: upsertResult?.inserted ? "NEW" : "DUPLICATE" };
+}
+
+function mt5NormalizeUiSource(rawSource, fallback = "ui_manual") {
+  const input = String(rawSource || "").trim().toLowerCase();
+  if (!input) return fallback;
+  if (input === "ai") return "ai_claude";
+  if (input.startsWith("ai_")) return input;
+  if (input === "ui" || input === "manual" || input === "ui_manual") return "ui_manual";
+  return input.replace(/[^a-z0-9_/-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "") || fallback;
 }
 
 function mt5NormalizeAckStatus(value) {
@@ -6811,10 +6825,9 @@ const appHandler = async (req, res) => {
 
     try {
       const payload = await readJson(req);
-      const requestedSource = String(payload.source || "").trim().toLowerCase();
-      const source = requestedSource === "ai" ? "ai" : "ui_manual";
+      const source = mt5NormalizeUiSource(payload.source, "ui_manual");
       const timeframe = String(payload.timeframe || payload.tf || "").trim();
-      const strategy = String(payload.strategy || (source === "ai" ? "ai" : "Manual")).trim();
+      const strategy = String(payload.strategy || (source.startsWith("ai_") ? source : "Manual")).trim();
       const effectiveUserId = uiEffectiveUserId(req, url, payload) || sess.user_id || CFG.mt5DefaultUserId;
       const rawPayload = payload && typeof payload === "object" ? { ...payload } : {};
       const existingSnapshot = rawPayload.analysis_snapshot && typeof rawPayload.analysis_snapshot === "object"
@@ -6849,7 +6862,8 @@ const appHandler = async (req, res) => {
         note: payload.note || "",
         user_id: effectiveUserId,
         order_type: payload.order_type || "limit",
-        provider: "ui",
+        provider: source.startsWith("ai_") ? source : "ui",
+        only_signal: Boolean(payload.only_signal ?? payload.onlySignal),
         raw_json: (rawPayload.raw_json && typeof rawPayload.raw_json === "object") ? rawPayload.raw_json : rawPayload,
       }, {
         source,
@@ -6869,8 +6883,7 @@ const appHandler = async (req, res) => {
     if (!requireAdminKey(req, res, url)) return;
     try {
       const payload = await readJson(req);
-      const requestedSource = String(payload.source || "").trim().toLowerCase();
-      const source = requestedSource === "ai" ? "ai" : "ui_manual";
+      const source = mt5NormalizeUiSource(payload.source, "ui_manual");
       const sourceId = mt5SlugId(source, "tradingview");
       const effectiveUserId = uiEffectiveUserId(req, url, payload) || sess.user_id || CFG.mt5DefaultUserId;
       const action = mt5NormalizeAction(payload);

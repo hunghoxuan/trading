@@ -222,7 +222,7 @@ export function SignalDetailCard({
         </div>
       ) : null}
 
-      {Array.isArray(metaItems) && metaItems.length ? (
+      {Array.isArray(metaItems) && metaItems.length && (mainTab === "chart" || mainTab === "fields") ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10, marginTop: 14 }}>
           {metaItems.map((m, idx) => (
             <div key={`${m.label || "meta"}_${idx}`} style={m.fullWidth ? { gridColumn: "1 / -1" } : undefined}>
