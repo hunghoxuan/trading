@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1820"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1831"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -4843,7 +4843,7 @@ function normalizeSymbolForTwelve(rawSymbol) {
 
 async function resolveTwelveSymbol(rawSymbol, apiKey = "") {
   const base = String(rawSymbol || "").trim().toUpperCase();
-  if (!base) return "";
+  if (!base) return [];
   const noProvider = base.includes(":") ? base.split(":").slice(1).join(":").trim().toUpperCase() : base;
   const normalized = normalizeSymbolForTwelve(noProvider);
   const compact = noProvider.replace(/[^A-Z0-9]/g, "");
@@ -4869,12 +4869,15 @@ async function resolveTwelveSymbol(rawSymbol, apiKey = "") {
     const arr = Array.isArray(out?.data) ? out.data : [];
     for (const row of arr) {
       add(row?.symbol);
+      if (row?.symbol && row?.exchange) {
+        add(`${row.symbol}:${row.exchange}`);
+      }
     }
   } catch {
     // ignore and fallback to static candidates
   }
 
-  return candidates[0] || normalized || compact;
+  return candidates;
 }
 
 function timeframeToTwelve(tfRaw) {
@@ -5040,10 +5043,10 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
   const twelveKey = String(keys.TWELVE_DATA_API_KEY || CFG.twelveDataApiKey || "").trim();
   if (!twelveKey) return { provider: "twelvedata", status: "skipped", reason: "TWELVE_DATA_API_KEY missing" };
 
-  const tvSymbol = await resolveTwelveSymbol(symbol, twelveKey);
-  if (!tvSymbol) return { provider: "twelvedata", status: "skipped", reason: "invalid symbol" };
+  const tvCandidates = await resolveTwelveSymbol(symbol, twelveKey);
+  if (!tvCandidates || !tvCandidates.length) return { provider: "twelvedata", status: "skipped", reason: "invalid symbol" };
   const interval = timeframeToTwelve(timeframe);
-  const primaryCandidates = [tvSymbol];
+  const primaryCandidates = [...tvCandidates];
   const rawNoProvider = String(symbol || "").trim().toUpperCase().includes(":")
     ? String(symbol || "").trim().toUpperCase().split(":").slice(1).join(":").trim().toUpperCase()
     : String(symbol || "").trim().toUpperCase();
@@ -5082,7 +5085,7 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
       break;
     }
     if (!data || !Array.isArray(data?.values) || !data.values.length) {
-      return { provider: "twelvedata", status: "error", reason: lastError || "provider error", normalized_symbol: tvSymbol };
+      return { provider: "twelvedata", status: "error", reason: lastError || "provider error", tried_candidates: primaryCandidates };
     }
     const values = Array.isArray(data?.values) ? data.values : [];
     const dedup = new Map();
