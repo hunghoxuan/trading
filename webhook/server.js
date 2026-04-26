@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1812"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1820"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -4779,6 +4779,7 @@ function mt5TfToMinutes(tf) {
 }
 
 const TWELVE_SYMBOL_MAP = {
+  // Indices
   "UK100": "UK100",
   "UK 100": "UK100",
   "FTSE": "UK100",
@@ -4788,17 +4789,32 @@ const TWELVE_SYMBOL_MAP = {
   "DJI": "DJI",
   "NAS100": "NDX",
   "USTEC": "NDX",
+  "US100": "NDX",
   "NASDAQ": "NDX",
   "SPX500": "SPX",
+  "US500": "SPX",
   "SPX": "SPX",
+  "DE40": "GER40",
   "GER40": "GER40",
   "GER30": "DAX",
   "DAX": "DAX",
   "DAX40": "GER40",
+  "HK50": "HSI",
+  "JP225": "NI225",
+  "NI225": "NI225",
+  "FRA40": "FRA40",
+  "CAC40": "FRA40",
+  "EUSTX50": "STX50",
+  // Metals / Commodities
   "XAUUSD": "XAU/USD",
   "GOLD": "XAU/USD",
   "XAGUSD": "XAG/USD",
   "SILVER": "XAG/USD",
+  "WTI": "WTI/USD",
+  "BRENT": "BRENT/USD",
+  "USOIL": "WTI/USD",
+  "UKOIL": "BRENT/USD",
+  // Crypto Fallbacks (if regex fails)
   "BTCUSD": "BTC/USD",
   "ETHUSD": "ETH/USD",
 };
