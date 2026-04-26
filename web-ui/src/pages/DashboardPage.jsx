@@ -12,7 +12,7 @@ const RANGE_OPTIONS = [
   { val: "month", lab: "This Month" },
   { val: "year", lab: "This Year" },
 ];
-const AUTO_REFRESH_MS = 10000;
+const AUTO_REFRESH_MS = Number(localStorage.getItem("tvbridge_refresh_ms") || 30000);
 
 const PERIOD_DISPLAY = [
   { key: "all", lab: "All times" },
@@ -186,7 +186,7 @@ export default function DashboardPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
         <h2 className="page-title" style={{ margin: 0 }}>Dashboard</h2>
         <span className="minor-text" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-          Last refreshed: {lastRefreshAt ? showDateTime(lastRefreshAt) : "-"} (auto 10s)
+          Last refreshed: {lastRefreshAt ? showDateTime(lastRefreshAt) : "-"} (auto {Math.round(AUTO_REFRESH_MS/1000)}s)
         </span>
       </div>
       <div className="toolbar-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px' }}>

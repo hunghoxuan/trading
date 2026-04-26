@@ -401,6 +401,35 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
             </div>
           </section>
         )}
+
+        <section className="panel" style={{ height: "100%" }}>
+          <div className="panel-label">UI PREFERENCES</div>
+          <div className="stack-layout" style={{ gap: 12 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span className="minor-text">Auto Refresh Interval</span>
+              <select 
+                value={localStorage.getItem("tvbridge_refresh_ms") || "30000"} 
+                onChange={(e) => {
+                  localStorage.setItem("tvbridge_refresh_ms", e.target.value);
+                  setMsg("Refresh interval updated.");
+                  window.setTimeout(() => setMsg(""), 2000);
+                  // Force a re-render if needed, but localStorage is usually enough for the other pages
+                  setProfileForm(f => ({ ...f })); 
+                }}
+              >
+                <option value="5000">5 seconds</option>
+                <option value="10000">10 seconds</option>
+                <option value="15000">15 seconds</option>
+                <option value="30000">30 seconds</option>
+                <option value="60000">1 minute</option>
+                <option value="120000">2 minutes</option>
+              </select>
+            </label>
+            <div className="minor-text" style={{ marginTop: 4 }}>
+              Controls how often the Dashboard, Trades, and Signals pages update automatically.
+            </div>
+          </div>
+        </section>
       </div>
 
       {!isProfileMode && (

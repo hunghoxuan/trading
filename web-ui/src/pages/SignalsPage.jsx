@@ -28,7 +28,7 @@ const RANGE_OPTIONS = [
   { val: "year", lab: "This Year" },
 ];
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
-const AUTO_REFRESH_MS = 5000;
+const AUTO_REFRESH_MS = Number(localStorage.getItem("tvbridge_refresh_ms") || 30000);
 
 function fPrice(v1, v2) {
   const n1 = Number(v1);
@@ -508,7 +508,7 @@ export default function SignalsPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
         <h2 className="page-title" style={{ margin: 0 }}>Signals</h2>
         <span className="minor-text" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-          Last refreshed: {lastRefreshAt ? showDateTime(lastRefreshAt) : "-"} (auto 5s)
+          Last refreshed: {lastRefreshAt ? showDateTime(lastRefreshAt) : "-"} (auto {Math.round(AUTO_REFRESH_MS/1000)}s)
         </span>
       </div>
       <div className="toolbar-panel">

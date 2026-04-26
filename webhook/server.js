@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-0819"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-0834"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -3567,8 +3567,10 @@ async function mt5InitBackend() {
       const clauses = ["signal_id NOT LIKE 'SYSTEM_%'"]; const params = [];
       if (typeof filters === 'string') {
         // Legacy support
-        params.push(filters);
-        clauses.push(`status = $${params.length}`);
+        if (filters) {
+          params.push(filters);
+          clauses.push(`status = $${params.length}`);
+        }
       } else {
         if (filters.status) { params.push(filters.status); clauses.push(`status = $${params.length}`); }
         if (filters.symbol) { params.push(filters.symbol); clauses.push(`symbol = $${params.length}`); }
