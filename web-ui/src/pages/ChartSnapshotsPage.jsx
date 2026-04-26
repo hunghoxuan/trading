@@ -1316,7 +1316,8 @@ export default function ChartSnapshotsPage() {
       const validationErr = validatePosition(position);
       if (validationErr) throw new Error(validationErr);
       let createdCount = 0;
-      for (const payload of signals) {
+      for (let i = 0; i < signals.length; i++) {
+        const payload = signals[i];
         const dir = String(position.direction || "").trim().toUpperCase();
         const cachedSnapshot = currentBarsSnapshot && typeof currentBarsSnapshot === "object" ? currentBarsSnapshot : null;
         const mergedPdArrays = Array.isArray(parsed?.market_analysis?.pd_arrays) ? parsed.market_analysis.pd_arrays : [];
@@ -1340,11 +1341,11 @@ export default function ChartSnapshotsPage() {
         const finalPayload = {
           ...payload,
           source: String(payload?.source || analysisSource || "ai_claude").trim() || "ai_claude",
-          session_prefix: activeSessionPrefix || undefined,
+          session_prefix: activeSessionPrefix ? `${activeSessionPrefix}_${i}` : undefined,
           sid: (() => {
             const s = normalizeSignalSymbol(payload.symbol || tvSymbol || cfg.symbol || "");
             const p = String(activeSessionPrefix || "").trim().toUpperCase();
-            return s && p ? `${s}_${p}` : undefined;
+            return s && p ? `${s}_${p}_${i}` : undefined;
           })(),
           action: dir === "BUY" || dir === "SELL" ? dir : payload.action,
           entry: parseNum(position.entry) || payload.entry,

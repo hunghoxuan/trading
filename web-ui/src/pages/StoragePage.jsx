@@ -193,8 +193,8 @@ export default function StoragePage() {
                 </tr>
                 <tr>
                   <td>
-                    <div style={{ fontWeight: "bold" }}>System Logs</div>
-                    <div className="minor-text">Internal events and audit logs</div>
+                    <div style={{ fontWeight: "bold" }}>Activity & Event Logs</div>
+                    <div className="minor-text">Internal events, signal history, and trade execution logs</div>
                   </td>
                   <td>
                     <span className="badge OTHER">{stats.logs_count} entries</span>
@@ -205,7 +205,7 @@ export default function StoragePage() {
                       onClick={() => handleCleanup("logs")}
                       disabled={busy || stats.logs_count === 0}
                     >
-                      DELETE ALL
+                      DELETE ALL LOGS
                     </button>
                   </td>
                 </tr>
