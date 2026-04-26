@@ -1,5 +1,16 @@
 # Changelog (Latest first)
 
+## 2026.04.26
+- [x] [16:22] [Web-UI/Charts] [Author: Gemini] Task: **Multi-TF Chart UI Hardening**. 
+  - Overhauled `SignalDetailCard` with side-by-side Chart/Live view.
+  - Enforced 3:2 aspect ratio for all charts and removed redundant footers.
+  - Improved tab visibility logic: "Analysis" and "Json" tabs are now hidden until AI response is received.
+  - Defaulted to Live-only mode before analysis, auto-enabling static charts post-analysis.
+  - Removed redundant "Snapshots" tab.
+- [x] [14:00] [Backend/Sync] [Author: Gemini] Task: **Trade Volume Sync Fix**. Resolved issue where MT5 reported lots were being ignored; volume is now correctly updated on broker sync.
+- [x] [14:05] [Database/Perf] [Author: Gemini] Task: **Trades API Speedup**. Added indexes to `trades` table (symbol, account, signal, broker_id).
+- Version: 2026.04.26-1622
+
 ## 2026.04.20
 - [x] [13:38] [Scripts/AI] [Author: Gemini] Task: **Multi-Model AI CLI Gateway**. Implemented `scripts/ai.js` for manual selection and querying of DeepSeek and Qwen (Ollama). Added VS Code tasks (`.vscode/tasks.json`) for IDE-level model selection and prompting. Removed experimental auto-audit from webhook server to honor manual-use preference.
 - [x] [13:41] [Docs/AI] [Author: Gemini] Task: **AI Model Guidelines & Global Config**. Created `docs/AI_GUIDE.md` for model selection/verification instructions. Expanded `provider_config.yaml` with templates for GPT-4o, Claude 3.5, and OpenRouter. Enabled global configuration support via `~/.gemini/antigravity/provider_config.yaml`.

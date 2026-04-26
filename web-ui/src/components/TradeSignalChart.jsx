@@ -459,9 +459,16 @@ export const TradeSignalChart = ({
 
     // Resize handling
     const handleResize = () => {
-      if (chartContainerRef.current) chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+      if (chartContainerRef.current) {
+        const w = chartContainerRef.current.clientWidth;
+        const h = Math.floor(w * 2 / 3);
+        chart.applyOptions({ width: w, height: h });
+      }
     };
     window.addEventListener('resize', handleResize);
+
+    // Initial size
+    handleResize();
 
     return () => {
       isMounted = false;
@@ -471,7 +478,7 @@ export const TradeSignalChart = ({
   }, [symbol, interval, openedAt, closedAt, JSON.stringify(analysisSnapshot), JSON.stringify(historicalData), live]); // Re-init if bounds change
 
   return (
-    <div className="chart-wrapper" style={{ position: 'relative', width: '100%', minHeight: '420px' }}>
+    <div className="chart-wrapper" style={{ position: 'relative', width: '100%' }}>
       {loading && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(13, 17, 23, 0.7)', zIndex: 10, borderRadius: '8px' }}>
           <div className="loading-small">Loading Chart Data...</div>
@@ -481,14 +488,6 @@ export const TradeSignalChart = ({
         ref={chartContainerRef} 
         style={{ width: '100%', borderRadius: '8px', overflow: 'hidden', border: '1px solid #30363d' }} 
       />
-      <div style={{ padding: '8px', fontSize: '11px', color: '#8b949e', display: 'flex', justifyContent: 'space-between' }}>
-        <span>{symbol} ({interval})</span>
-        {(dataSource === "snapshot" || analysisSnapshot?.status === "ok")
-          ? <span style={{ color: '#22c55e' }}>● Snapshot: TwelveData</span>
-          : dataSource === "twelve"
-            ? <span style={{ color: '#22c55e' }}>● TwelveData (on-demand)</span>
-            : <span style={{ color: '#94a3b8' }}>● No data</span>}
-      </div>
     </div>
   );
 };

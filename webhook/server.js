@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1317"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1445"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -3382,6 +3382,8 @@ async function mt5InitBackend() {
           if (ticket) seenTickets.add(ticket);
           const pnlRaw = Number(raw.pnl);
           const pnl = Number.isFinite(pnlRaw) ? pnlRaw : null;
+          const volumeRaw = Number(raw.volume || raw.lots);
+          const volume = Number.isFinite(volumeRaw) ? volumeRaw : null;
           const reasonRaw = String(raw.reason || raw.close_reason || "").trim().toUpperCase();
           let statusRaw = String(raw.status || "").trim().toUpperCase();
           if (!statusRaw) {
@@ -3397,7 +3399,7 @@ async function mt5InitBackend() {
           const key = ticket ? `tk:${ticket}` : `sig:${signalId}`;
           const prev = merged.get(key);
           if (!prev) {
-            merged.set(key, { signal_id: signalId || null, ticket, pnl, status_raw: statusRaw || "UNKNOWN", execution_status: executionStatus });
+            merged.set(key, { signal_id: signalId || null, ticket, pnl, volume, status_raw: statusRaw || "UNKNOWN", execution_status: executionStatus });
           } else {
             if (!prev.signal_id && signalId) prev.signal_id = signalId;
             if (statusRank(executionStatus) > statusRank(prev.execution_status)) {
@@ -3405,6 +3407,7 @@ async function mt5InitBackend() {
               prev.status_raw = statusRaw || prev.status_raw;
             }
             if (pnl !== null) prev.pnl = pnl;
+            if (volume !== null) prev.volume = volume;
           }
         }
       };
@@ -3435,12 +3438,13 @@ async function mt5InitBackend() {
                   ELSE $1
                 END,
                 pnl_realized = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($2, pnl_realized) ELSE pnl_realized END,
+                volume = COALESCE($7, volume),
                 opened_at = COALESCE($5, opened_at),
                 closed_at = COALESCE($6, CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN NOW() ELSE closed_at END),
                 updated_at = NOW()
             WHERE account_id = $3 AND broker_trade_id = $4
             RETURNING trade_id
-          `, [it.execution_status, it.pnl, aid, it.ticket, openedAt, closedAt]);
+          `, [it.execution_status, it.pnl, aid, it.ticket, openedAt, closedAt, it.volume]);
         }
         if (it.signal_id) {
           if (res.rowCount === 0) {
@@ -3457,6 +3461,7 @@ async function mt5InitBackend() {
                 END,
                 broker_trade_id = COALESCE(NULLIF($2, ''), broker_trade_id),
                 pnl_realized = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($3, pnl_realized) ELSE pnl_realized END,
+                volume = COALESCE($6, volume),
                 closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN NOW() ELSE closed_at END,
                 updated_at = NOW()
             WHERE trade_id = (
@@ -3470,7 +3475,7 @@ async function mt5InitBackend() {
               LIMIT 1
             )
             RETURNING trade_id
-            `, [it.execution_status, it.ticket, it.pnl, aid, it.signal_id]);
+            `, [it.execution_status, it.ticket, it.pnl, aid, it.signal_id, it.volume]);
           }
         }
         if (res.rowCount === 0 && it.ticket) {
@@ -3488,6 +3493,7 @@ async function mt5InitBackend() {
                 END,
                 broker_trade_id = COALESCE(NULLIF($2, ''), broker_trade_id),
                 pnl_realized = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($3, pnl_realized) ELSE pnl_realized END,
+                volume = COALESCE($5, volume),
                 closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN NOW() ELSE closed_at END,
                 updated_at = NOW()
             WHERE trade_id = (
@@ -3500,7 +3506,7 @@ async function mt5InitBackend() {
               LIMIT 1
             )
             RETURNING trade_id
-          `, [it.execution_status, it.ticket, it.pnl, aid]);
+          `, [it.execution_status, it.ticket, it.pnl, aid, it.volume]);
         }
         matched += res.rowCount;
         if (res.rowCount > 0) {

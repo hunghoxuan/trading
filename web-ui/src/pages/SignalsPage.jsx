@@ -863,6 +863,10 @@ export default function SignalsPage() {
                 }),
               }}
               formatDateTime={fDateTime}
+              response={{
+                raw: selectedSignal?.raw_json,
+                metadata: selectedSignal?.metadata,
+              }}
             />
           )}
         </div>

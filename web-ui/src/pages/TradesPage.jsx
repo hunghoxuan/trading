@@ -819,6 +819,10 @@ export default function TradesPage() {
                   renderItem: (ev, idx) => renderHistoryItem(ev, idx, { formatDateTime: fDateTime, includeTicket: true }),
                 }}
                 formatDateTime={fDateTime}
+                response={{
+                  raw: selectedTrade?.raw_json,
+                  metadata: selectedTrade?.metadata,
+                }}
               />
               {createMode ? (
                 <div className="panel" style={{ padding: 12 }}>
