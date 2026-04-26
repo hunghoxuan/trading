@@ -1383,8 +1383,10 @@ export default function ChartSnapshotsPage() {
     });
   };
 
-  const addBySelection = async (mode = "signal", overridePosition = null) => {
+  const [submittingPlanId, setSubmittingPlanId] = useState(null); // track which plan is adding
+  const addBySelection = async (mode = "signal", overridePosition = null, planId = "main") => {
     setAddingSignal(true);
+    setSubmittingPlanId(planId);
     setStatus({ type: "", text: "" });
     const activePosition = overridePosition || position;
     const activeSessionPrefix = sessionPrefix || makeSessionPrefix();
@@ -1393,12 +1395,15 @@ export default function ChartSnapshotsPage() {
       let parsed = effectiveParsed;
       if (!parsed && analysisJson) parsed = JSON.parse(analysisJson);
       if (!parsed && analysisRaw) parsed = enrichParsedAnalysis(analysisRaw, tryParseJsonLoose(analysisRaw));
-      const signals = extractSignalsFromAnalysis(parsed, {
+      
+      // If overridePosition is provided (from a specific plan card), we ONLY add that one.
+      const signals = overridePosition ? [] : extractSignalsFromAnalysis(parsed, {
         symbol: tvSymbol,
         timeframe,
         strategy: cfg.strategies.join("+") || "ai",
         source: analysisSource,
       });
+
       if (!signals.length) {
         const symbolManual = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
         const entry = parseNum(activePosition.entry);
@@ -1497,6 +1502,7 @@ export default function ChartSnapshotsPage() {
       setActionMessage("add", "error", msg);
     } finally {
       setAddingSignal(false);
+      setSubmittingPlanId(null);
     }
   };
 
@@ -2055,14 +2061,18 @@ export default function ChartSnapshotsPage() {
               tradeId: null,
               value: position,
               onChange: updatePositionField,
-              onAddSignal: (pos) => addBySelection("signal", pos),
-              onAddTrade: (pos) => addBySelection("trade", pos),
+              onAddSignal: (pos) => addBySelection("signal", pos, "main"),
+              onAddTrade: (pos) => addBySelection("trade", pos, "main"),
               showSaveButton: false,
               showAddSignalButton: true,
               showAddTradeButton: true,
               showResetButton: true,
               onReset: resetPositionLocal,
-              busy: { signal: addingSignal, trade: addingSignal },
+              busy: { 
+                signal: addingSignal && submittingPlanId === "main", 
+                trade: addingSignal && submittingPlanId === "main" 
+              },
+              submittingPlanId: submittingPlanId,
               disabled: false,
               error: !canAddSignal ? validatePosition(position) : "",
               successMessage: actionStatus.action === "add" && actionStatus.text && actionStatus.type !== "error" && actionStatus.type !== "warning"

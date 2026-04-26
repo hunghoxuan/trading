@@ -78,7 +78,7 @@ function renderFormattedText(text) {
 /**
  * Local helper component for each "Cloned Screen 1" (Trade Plan)
  */
-function ExtraPlanBlock({ plan, onAddSignal, onAddTrade, busy }) {
+function ExtraPlanBlock({ planId, plan, onAddSignal, onAddTrade, busy, submittingPlanId }) {
   const [localPos, setLocalPos] = useState({
     direction: plan.direction || "BUY",
     trade_type: "limit",
@@ -90,17 +90,23 @@ function ExtraPlanBlock({ plan, onAddSignal, onAddTrade, busy }) {
   });
 
   const update = (key, val) => setLocalPos(prev => ({ ...prev, [key]: val }));
+  const isAdding = busy?.signal || busy?.trade;
+  const isThisPlanAdding = isAdding && submittingPlanId === planId;
 
   return (
     <TradePlanEditor
       value={localPos}
       onChange={update}
-      onAddSignal={() => onAddSignal?.(localPos)}
-      onAddTrade={() => onAddTrade?.(localPos)}
+      onAddSignal={() => onAddSignal?.(localPos, planId)}
+      onAddTrade={() => onAddTrade?.(localPos, planId)}
       showAddSignalButton={true}
       showAddTradeButton={true}
       showResetButton={false}
-      busy={busy}
+      busy={{
+        signal: isThisPlanAdding,
+        trade: isThisPlanAdding
+      }}
+      disabled={isAdding && !isThisPlanAdding} // disable others while one is adding
     />
   );
 }
@@ -244,11 +250,11 @@ export function SignalDetailCard({
 
       {/* Multiple Trade Plan Blocks (Duplicates of Screen 1) */}
       {tradePlan?.enabled && (
-        <div className="stack-layout" style={{ gap: 16, marginBottom: 20 }}>
+        <div className="stack-layout" style={{ gap: 24, marginBottom: 32 }}>
           {/* Main Plan (from analysis) or Default Editor */}
-          <div style={{ border: '1px solid var(--accent-soft)', padding: 16, borderRadius: 8, background: 'rgba(255,255,255,0.03)' }}>
+          <div style={{ border: '2px solid var(--accent-soft)', padding: 20, borderRadius: 12, background: 'rgba(255,255,255,0.03)' }}>
             {Array.isArray(response?.tradePlans) && response.tradePlans.length > 0 && (
-              <div className="minor-text" style={{ marginBottom: 12, fontWeight: 'bold', color: 'var(--accent)' }}>
+              <div className="minor-text" style={{ marginBottom: 16, fontWeight: '900', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '10px' }}>
                 Primary Trade Plan: {response.tradePlans[0].entryModel || response.tradePlans[0].strategy || "Suggested"}
               </div>
             )}
@@ -259,8 +265,8 @@ export function SignalDetailCard({
               onChange={tradePlan.onChange}
               onReset={tradePlan.onReset}
               onSave={tradePlan.onSave}
-              onAddSignal={() => tradePlan.onAddSignal?.(tradePlan.value)}
-              onAddTrade={() => tradePlan.onAddTrade?.(tradePlan.value)}
+              onAddSignal={(pos) => tradePlan.onAddSignal?.(pos || tradePlan.value, "main")}
+              onAddTrade={(pos) => tradePlan.onAddTrade?.(pos || tradePlan.value, "main")}
               showSaveButton={tradePlan.showSaveButton}
               showAddSignalButton={tradePlan.showAddSignalButton}
               showAddTradeButton={tradePlan.showAddTradeButton}
@@ -269,24 +275,29 @@ export function SignalDetailCard({
               disabled={Boolean(tradePlan.disabled)}
               error={tradePlan.error || ""}
             />
-            {tradePlan.successMessage ? <span className="minor-text msg-success">{tradePlan.successMessage}</span> : null}
+            {tradePlan.successMessage ? <div style={{ marginTop: 12 }}><span className="minor-text msg-success">{tradePlan.successMessage}</span></div> : null}
           </div>
 
           {/* Additional Plans */}
           {Array.isArray(response?.tradePlans) && response.tradePlans.length > 1 && 
-            response.tradePlans.slice(1).map((plan, pIdx) => (
-              <div key={`extra_plan_${pIdx}`} style={{ border: '1px solid var(--border)', padding: 16, borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
-                <div className="minor-text" style={{ marginBottom: 12, fontWeight: 'bold', color: 'var(--accent)' }}>
-                  Suggested Plan {pIdx + 2}: {plan.entryModel || plan.strategy || "Alternative Scenario"}
+            response.tradePlans.slice(1).map((plan, pIdx) => {
+              const planId = `suggested_${pIdx + 1}`;
+              return (
+                <div key={planId} style={{ border: '1px solid var(--border)', padding: 20, borderRadius: 12, background: 'rgba(255,255,255,0.015)' }}>
+                  <div className="minor-text" style={{ marginBottom: 16, fontWeight: '900', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '10px' }}>
+                    Suggested Plan {pIdx + 2}: {plan.entryModel || plan.strategy || "Alternative Scenario"}
+                  </div>
+                  <ExtraPlanBlock 
+                     planId={planId}
+                     plan={plan} 
+                     onAddSignal={tradePlan?.onAddSignal}
+                     onAddTrade={tradePlan?.onAddTrade}
+                     busy={tradePlan?.busy}
+                     submittingPlanId={tradePlan?.submittingPlanId}
+                  />
                 </div>
-                <ExtraPlanBlock 
-                   plan={plan} 
-                   onAddSignal={tradePlan?.onAddSignal}
-                   onAddTrade={tradePlan?.onAddTrade}
-                   busy={tradePlan?.busy}
-                />
-              </div>
-            ))
+              );
+            })
           }
         </div>
       )}

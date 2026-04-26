@@ -58,18 +58,18 @@ export function TradePlanEditor({
   };
 
   return (
-    <div className={className}>
-      <div className="snapshot-footer-row0-v3">
-        <div className="snapshot-direction-field-v4">
-          <label className="minor-text">Direction</label>
+    <div className={`trade-plan-editor-v5 ${className}`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div className="snapshot-footer-row0-v3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+        <div className="snapshot-direction-field-v4" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label className="minor-text" style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.02em' }}>Direction</label>
           <select value={value.direction || "BUY"} onChange={(e) => update("direction", String(e.target.value || ""))} disabled={controlsDisabled}>
             {directionOptions.map((x) => (
               <option key={x} value={x}>{x === "BUY" ? "Buy" : "Sell"}</option>
             ))}
           </select>
         </div>
-        <div className="snapshot-direction-field-v4">
-          <label className="minor-text">Trade Type</label>
+        <div className="snapshot-direction-field-v4" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label className="minor-text" style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.02em' }}>Trade Type</label>
           <select value={value.trade_type || "limit"} onChange={(e) => update("trade_type", String(e.target.value || "limit"))} disabled={controlsDisabled}>
             <option value="limit">limit</option>
             <option value="market">market</option>
@@ -77,9 +77,10 @@ export function TradePlanEditor({
           </select>
         </div>
       </div>
-      <div className="snapshot-footer-row1-v3">
-        <div className="snapshot-footer-field-v3">
-          <label className="minor-text">Entry</label>
+
+      <div className="snapshot-footer-row1-v3" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+        <div className="snapshot-footer-field-v3" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label className="minor-text" style={{ fontWeight: 'bold' }}>Entry</label>
           <input type="number" step="0.001" inputMode="decimal" value={value.entry || ""} onChange={(e) => update("entry", e.target.value)} disabled={controlsDisabled} />
           {(() => {
             const m = calcSliderMeta(value.entry);
@@ -97,8 +98,8 @@ export function TradePlanEditor({
             );
           })()}
         </div>
-        <div className="snapshot-footer-field-v3">
-          <label className="minor-text">TP</label>
+        <div className="snapshot-footer-field-v3" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label className="minor-text" style={{ fontWeight: 'bold' }}>TP</label>
           <input type="number" step="0.001" inputMode="decimal" value={value.tp || ""} onChange={(e) => update("tp", e.target.value)} disabled={controlsDisabled} />
           {(() => {
             const m = calcSliderMeta(value.tp);
@@ -116,8 +117,8 @@ export function TradePlanEditor({
             );
           })()}
         </div>
-        <div className="snapshot-footer-field-v3">
-          <label className="minor-text">SL</label>
+        <div className="snapshot-footer-field-v3" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label className="minor-text" style={{ fontWeight: 'bold' }}>SL</label>
           <input type="number" step="0.001" inputMode="decimal" value={value.sl || ""} onChange={(e) => update("sl", e.target.value)} disabled={controlsDisabled} />
           {(() => {
             const m = calcSliderMeta(value.sl);
@@ -135,8 +136,8 @@ export function TradePlanEditor({
             );
           })()}
         </div>
-        <div className="snapshot-footer-field-v3">
-          <label className="minor-text">RR</label>
+        <div className="snapshot-footer-field-v3" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label className="minor-text" style={{ fontWeight: 'bold' }}>RR</label>
           <input type="number" step="0.001" inputMode="decimal" min="0.3" max="5" value={value.rr || ""} onChange={(e) => update("rr", e.target.value)} disabled={controlsDisabled} readOnly={rrReadOnly} />
           {(() => {
             const m = calcSliderMeta(value.rr);
@@ -155,9 +156,10 @@ export function TradePlanEditor({
           })()}
         </div>
       </div>
-      <div className="snapshot-footer-row2-v3">
-        <div className="snapshot-note-field-v3">
-          <label className="minor-text">Note</label>
+
+      <div className="snapshot-footer-row2-v3" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '16px', alignItems: 'end' }}>
+        <div className="snapshot-note-field-v3" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label className="minor-text" style={{ fontWeight: 'bold' }}>Note</label>
           <textarea 
             value={value.note || ""} 
             onChange={(e) => update("note", e.target.value)} 
@@ -167,28 +169,31 @@ export function TradePlanEditor({
             }}
             rows={1} 
             disabled={controlsDisabled} 
+            placeholder="Plan description..."
           />
         </div>
-        {showResetButton ? (
-          <button className="secondary-button snapshot-add-btn-v3" type="button" onClick={onReset} disabled={controlsDisabled || typeof onReset !== "function"}>
-            Reset
-          </button>
-        ) : null}
-        {effectiveShowSave ? (
-          <button className="secondary-button snapshot-add-btn-v3" type="button" onClick={onSave} disabled={controlsDisabled || typeof onSave !== "function"}>
-            {busy?.save ? "Saving..." : resolvedSaveLabel}
-          </button>
-        ) : null}
-        {effectiveShowAddSignal ? (
-          <button className="secondary-button snapshot-add-btn-v3" type="button" onClick={onAddSignal} disabled={controlsDisabled || typeof onAddSignal !== "function"}>
-            {busy?.signal ? "Adding..." : addSignalLabel}
-          </button>
-        ) : null}
-        {effectiveShowAddTrade ? (
-          <button className="primary-button snapshot-add-btn-v3" type="button" onClick={onAddTrade} disabled={controlsDisabled || typeof onAddTrade !== "function"}>
-            {busy?.trade ? "Adding..." : addTradeLabel}
-          </button>
-        ) : null}
+        <div style={{ display: 'flex', gap: '10px' }}>
+          {showResetButton ? (
+            <button className="secondary-button" type="button" onClick={onReset} disabled={controlsDisabled || typeof onReset !== "function"}>
+              Reset
+            </button>
+          ) : null}
+          {effectiveShowSave ? (
+            <button className="secondary-button" type="button" onClick={onSave} disabled={controlsDisabled || typeof onSave !== "function"}>
+              {busy?.save ? "Saving..." : resolvedSaveLabel}
+            </button>
+          ) : null}
+          {effectiveShowAddSignal ? (
+            <button className="secondary-button" type="button" onClick={() => onAddSignal?.(value)} disabled={controlsDisabled || typeof onAddSignal !== "function"}>
+              {busy?.signal ? "Adding..." : addSignalLabel}
+            </button>
+          ) : null}
+          {effectiveShowAddTrade ? (
+            <button className="primary-button" type="button" onClick={() => onAddTrade?.(value)} disabled={controlsDisabled || typeof onAddTrade !== "function"}>
+              {busy?.trade ? "Adding..." : addTradeLabel}
+            </button>
+          ) : null}
+        </div>
       </div>
       {error ? <span className="minor-text snapshot-footer-msg-v3 msg-error">{error}</span> : null}
     </div>
