@@ -191,7 +191,7 @@ export default function SignalsPage() {
   const [detailPlan, setDetailPlan] = useState({ direction: "BUY", trade_type: "limit", entry: "", tp: "", sl: "", rr: "", note: "" });
   const [detailPlanBusy, setDetailPlanBusy] = useState({ save: false, trade: false, signal: false });
   const [detailPlanMsg, setDetailPlanMsg] = useState({ type: "", text: "" });
-  const [createForm, setCreateForm] = useState({
+  const DEFAULT_CREATE_FORM = {
     action: "BUY",
     symbol: "",
     volume: "0.01",
@@ -201,7 +201,11 @@ export default function SignalsPage() {
     strategy: "Manual",
     timeframe: "manual",
     note: "",
-  });
+  };
+  const [createForm, setCreateForm] = useState(DEFAULT_CREATE_FORM);
+  const isSignalFormDirty = useMemo(() => {
+    return JSON.stringify(createForm) !== JSON.stringify(DEFAULT_CREATE_FORM);
+  }, [createForm]);
   const inFlightRef = useRef(false);
   const [sortKey, setSortKey] = useState("audit");
   const [sortDir, setSortDir] = useState("desc");
@@ -238,6 +242,12 @@ export default function SignalsPage() {
     } catch { /* ignore */ }
   }
 
+  const [initialDetailPlan, setInitialDetailPlan] = useState(null);
+  const isDetailPlanDirty = useMemo(() => {
+    if (!initialDetailPlan) return false;
+    return JSON.stringify(detailPlan) !== JSON.stringify(initialDetailPlan);
+  }, [detailPlan, initialDetailPlan]);
+
   async function loadSignals() {
     if (inFlightRef.current) return;
     inFlightRef.current = true;
@@ -267,6 +277,9 @@ export default function SignalsPage() {
     try {
       const res = await api.trade(signalId);
       setSignalDetails(res);
+      const plan = extractTradePlanFromSignal(res?.trade);
+      setDetailPlan(plan);
+      setInitialDetailPlan(plan);
     } catch (e) {
       console.error("Failed to load details:", e);
     }
@@ -744,7 +757,7 @@ export default function SignalsPage() {
                   <input value={createForm.note} onChange={(e) => setCreateForm((p) => ({ ...p, note: e.target.value }))} placeholder="Optional note" />
                 </label>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" className="primary-button" onClick={onCreateSignal} disabled={bulkBusy}>{bulkBusy ? "💾 SAVING..." : "💾 SAVE SIGNAL"}</button>
+                  <button type="button" className="primary-button" onClick={onCreateSignal} disabled={bulkBusy || !isSignalFormDirty}>{bulkBusy ? "💾 SAVING..." : "💾 SAVE SIGNAL"}</button>
                   <button type="button" className="secondary-button" onClick={() => setCreateMode(false)} disabled={bulkBusy}>✖ CANCEL</button>
                 </div>
               </div>
@@ -796,6 +809,7 @@ export default function SignalsPage() {
                 showResetButton: true,
                 saveLabel: "Save Signal",
                 busy: detailPlanBusy,
+                disabled: !isDetailPlanDirty,
                 error: detailPlanMsg.type === "error" ? detailPlanMsg.text : "",
                 successMessage: detailPlanMsg.text && detailPlanMsg.type !== "error" ? detailPlanMsg.text : "",
               }}

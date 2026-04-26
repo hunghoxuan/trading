@@ -3,7 +3,11 @@ import { TradeSignalChart } from "./TradeSignalChart";
 import { TradePlanEditor } from "./TradePlanEditor";
 import { renderHistoryItem } from "../utils/signalDetailUtils";
 
-const DEFAULT_TF_TABS = ["ENTRY", "W", "D", "4H", "15m", "5m", "1m"];
+const TF_WEIGHTS = {
+  '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240, 'd': 1440, 'w': 10080
+};
+
+const DEFAULT_TF_TABS = ["ENTRY", "W", "D", "4H", "1h", "15m", "5m", "1m"];
 const MODE_PRESETS = {
   generic: {
     headerColumns: "minmax(0, 1fr) minmax(0, 1.25fr) minmax(120px, 0.55fr)",
@@ -79,15 +83,18 @@ export function SignalDetailCard({
   }
 
   const tfTabs = Array.isArray(chart?.detailTfTabs) && chart.detailTfTabs.length ? chart.detailTfTabs : DEFAULT_TF_TABS;
-  const liveTabs = tfTabs.filter((x) => String(x || "").toUpperCase() !== "ENTRY");
+  const liveTabs = tfTabs
+    .filter((x) => String(x || "").toUpperCase() !== "ENTRY")
+    .sort((a, b) => (TF_WEIGHTS[a.toLowerCase()] || 0) - (TF_WEIGHTS[b.toLowerCase()] || 0));
   const activeTab = chart?.detailTfTab || "ENTRY";
   const canSwitchTab = typeof chart?.onDetailTfTabChange === "function";
   const tvSymbol = String(chart?.tvSymbol || toTradingViewSymbol(chart?.symbol || "")).trim();
 
   const availableTabs = useMemo(() => {
     const tabs = [];
-    if (chart?.enabled) tabs.push("chart");
-    if (response?.text) {
+    const hasResponse = Boolean(response?.text);
+    if (chart?.enabled && hasResponse) tabs.push("chart");
+    if (hasResponse) {
       tabs.push("analysis");
       tabs.push("json");
     }
@@ -98,7 +105,11 @@ export function SignalDetailCard({
     return tabs;
   }, [chart?.enabled, response?.text, response?.tradePlans, response?.raw, response?.bars, history?.enabled, metaItems]);
 
-  const [mainTab, setMainTab] = useState(availableTabs[0] || "chart");
+  const [mainTab, setMainTab] = useState("fields"); // Default to fields if chart/analysis hidden
+  
+  useEffect(() => {
+    if (!availableTabs.includes(mainTab)) setMainTab(availableTabs[0] || "fields");
+  }, [availableTabs, mainTab]);
   
   // Chart Multi-TF and Mode State
   const [selectedTfs, setSelectedTfs] = useState([]);
@@ -150,20 +161,21 @@ export function SignalDetailCard({
     }
   }, [mainTab, chart?.symbol, selectedTfs, chartModes]);
 
+  // Toggle Mode: Before analysis = Live only. After analysis = Static only.
   useEffect(() => {
-    if (!availableTabs.includes(mainTab)) setMainTab(availableTabs[0] || "fields");
-  }, [availableTabs, mainTab]);
-
-  // Auto-enable 'static' mode once analysis is available
-  useEffect(() => {
-    if (response?.text && !chartModes.includes('static')) {
-      setChartModes(prev => prev.includes('static') ? prev : [...prev, 'static']);
+    if (response?.text) {
+      setChartModes(['static']); // "screen 1: hide this (live grid) after got AI response"
+    } else {
+      setChartModes(['live']);
     }
   }, [response?.text]);
 
   const toggleTf = (tf) => {
     const t = tf.toLowerCase();
-    setSelectedTfs(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
+    setSelectedTfs(prev => {
+      const next = prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t];
+      return next.sort((a, b) => (TF_WEIGHTS[a] || 0) - (TF_WEIGHTS[b] || 0));
+    });
   };
 
   const toggleMode = (m) => {
@@ -295,22 +307,26 @@ export function SignalDetailCard({
               ))}
             </div>
             <div className="mode-toggles" style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.2)', padding: 2, borderRadius: '6px' }}>
-              <button 
-                type="button"
-                className={`mode-btn ${chartModes.includes('static') ? 'active' : ''}`}
-                onClick={() => toggleMode('static')}
-                style={{ padding: '4px 12px', fontSize: '11px', border: 'none', background: chartModes.includes('static') ? 'var(--surface-light)' : 'transparent', borderRadius: '4px', color: chartModes.includes('static') ? 'var(--text)' : 'var(--muted)' }}
-              >
-                Chart
-              </button>
-              <button 
-                type="button"
-                className={`mode-btn ${chartModes.includes('live') ? 'active' : ''}`}
-                onClick={() => toggleMode('live')}
-                style={{ padding: '4px 12px', fontSize: '11px', border: 'none', background: chartModes.includes('live') ? 'var(--surface-light)' : 'transparent', borderRadius: '4px', color: chartModes.includes('live') ? 'var(--text)' : 'var(--muted)' }}
-              >
-                Live
-              </button>
+              {response?.text && (
+                <button 
+                  type="button"
+                  className={`mode-btn ${chartModes.includes('static') ? 'active' : ''}`}
+                  onClick={() => toggleMode('static')}
+                  style={{ padding: '4px 12px', fontSize: '11px', border: 'none', background: chartModes.includes('static') ? 'var(--surface-light)' : 'transparent', borderRadius: '4px', color: chartModes.includes('static') ? 'var(--text)' : 'var(--muted)' }}
+                >
+                  Chart
+                </button>
+              )}
+              {!response?.text && (
+                <button 
+                  type="button"
+                  className={`mode-btn ${chartModes.includes('live') ? 'active' : ''}`}
+                  onClick={() => toggleMode('live')}
+                  style={{ padding: '4px 12px', fontSize: '11px', border: 'none', background: chartModes.includes('live') ? 'var(--surface-light)' : 'transparent', borderRadius: '4px', color: chartModes.includes('live') ? 'var(--text)' : 'var(--muted)' }}
+                >
+                  Live
+                </button>
+              )}
             </div>
           </div>
 

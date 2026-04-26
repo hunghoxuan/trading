@@ -187,7 +187,7 @@ export default function TradesPage() {
   const [editMsg, setEditMsg] = useState({ type: "", text: "" });
   const [editForm, setEditForm] = useState({ execution_status: "PENDING", pnl_realized: "0" });
   const [detailTfTab, setDetailTfTab] = useState("ENTRY");
-  const [createForm, setCreateForm] = useState({
+  const DEFAULT_CREATE_FORM = {
     action: "BUY",
     symbol: "",
     volume: "0.01",
@@ -197,7 +197,11 @@ export default function TradesPage() {
     strategy: "Manual",
     timeframe: "manual",
     note: "",
-  });
+  };
+  const [createForm, setCreateForm] = useState(DEFAULT_CREATE_FORM);
+  const isCreateFormDirty = useMemo(() => {
+    return JSON.stringify(createForm) !== JSON.stringify(DEFAULT_CREATE_FORM);
+  }, [createForm]);
 
   const [filter, setFilter] = useState({
     q: "",
@@ -839,7 +843,7 @@ export default function TradesPage() {
                     <input style={{ gridColumn: "1/-1" }} value={createForm.note} onChange={(e) => setCreateForm((p) => ({ ...p, note: e.target.value }))} placeholder="Note" />
                   </div>
                   <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-                    <button type="button" className="primary-button" onClick={onCreateTrade} disabled={bulkBusy}>SAVE</button>
+                  <button type="button" className="primary-button" onClick={onCreateTrade} disabled={bulkBusy || !isCreateFormDirty}>{bulkBusy ? "💾 SAVING..." : "💾 SAVE TRADE"}</button>
                     <button type="button" className="secondary-button" onClick={() => setCreateMode(false)}>CANCEL</button>
                   </div>
                 </div>
