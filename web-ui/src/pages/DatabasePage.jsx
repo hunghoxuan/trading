@@ -9,14 +9,91 @@ function fDateTime(v) {
 
 function statusUi(statusRaw) {
   const s = String(statusRaw || "").toUpperCase();
-  if (s === "ACTIVE" || s === "TRUE") return { cls: "ACTIVE", label: "ACTIVE" };
-  if (s === "INACTIVE" || s === "FALSE" || s === "DISABLE" || s === "DISABLED") return { cls: "INACTIVE", label: "INACTIVE" };
-  if (s === "PLACED") return { cls: "PLACED", label: "PLACED" };
-  if (s === "LOCKED") return { cls: "LOCKED", label: "LOCKED" };
-  if (s === "START") return { cls: "START", label: "START" };
-  if (s === "TP") return { cls: "TP", label: "TP" };
-  if (s === "SL") return { cls: "SL", label: "SL" };
+  if (s === "ACTIVE" || s === "TRUE" || s === "SUCCESS" || s === "OK") return { cls: "TP", label: s };
+  if (s === "INACTIVE" || s === "FALSE" || s === "DISABLE" || s === "DISABLED") return { cls: "INACTIVE", label: s };
+  if (s === "PLACED" || s === "OPEN") return { cls: "PLACED", label: s };
+  if (s === "LOCKED") return { cls: "LOCKED", label: s };
+  if (s === "START") return { cls: "START", label: s };
+  if (s === "TP" || s === "WON" || s === "WIN") return { cls: "TP", label: s };
+  if (s === "SL" || s === "FAILED" || s === "ERROR" || s === "REJECTED" || s === "LOSS") return { cls: "SL", label: s };
   return { cls: "OTHER", label: s || "-" };
+}
+
+function DynamicForm({ schema, onSubmit, onCancel, busy }) {
+  const [formData, setFormData] = useState({});
+
+  useEffect(() => {
+    const initial = {};
+    schema.forEach(col => {
+      if (col.column_default && !col.column_default.includes('nextval')) {
+        let def = col.column_default.replace(/'/g, '').split('::')[0];
+        initial[col.column_name] = def;
+      }
+    });
+    setFormData(initial);
+  }, [schema]);
+
+  const handleChange = (name, val) => {
+    setFormData(prev => ({ ...prev, [name]: val }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const final = { ...formData };
+    // Try to parse JSON fields
+    schema.forEach(col => {
+      if (col.data_type.toLowerCase().includes('json') && typeof final[col.column_name] === 'string') {
+        try { final[col.column_name] = JSON.parse(final[col.column_name]); } catch(e) {}
+      }
+    });
+    onSubmit(final);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="stack-layout" style={{ gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        {schema.map(col => {
+          const isRequired = col.is_nullable === 'NO' && !col.column_default;
+          const type = col.data_type.toLowerCase();
+          const isFullWidth = type.includes('json') || col.column_name === 'note';
+          
+          return (
+            <label key={col.column_name} style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: isFullWidth ? 'span 2' : 'auto' }}>
+              <span className="minor-text" style={{ fontSize: 10, fontWeight: 800, color: 'var(--muted)' }}>
+                {col.column_name.toUpperCase()} {isRequired && <span style={{ color: '#ef4444' }}>*</span>}
+                <span style={{ marginLeft: 8, opacity: 0.5, fontWeight: 400 }}>{col.data_type}</span>
+              </span>
+              
+              {type.includes('json') ? (
+                <textarea 
+                  className="snapshot-mono"
+                  value={typeof formData[col.column_name] === 'object' ? JSON.stringify(formData[col.column_name], null, 2) : (formData[col.column_name] || '')}
+                  onChange={e => handleChange(col.column_name, e.target.value)}
+                  rows={4}
+                  style={{ fontSize: '11px' }}
+                />
+              ) : (
+                <input 
+                  type={type.includes('int') || type.includes('double') || type.includes('float') ? 'number' : type.includes('timestamp') ? 'datetime-local' : 'text'}
+                  step="any"
+                  value={formData[col.column_name] || ''}
+                  onChange={e => handleChange(col.column_name, e.target.value)}
+                  placeholder={col.column_default || ''}
+                  required={isRequired}
+                />
+              )}
+            </label>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 10, marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+        <button type="submit" className="primary-button" style={{ minWidth: 120 }} disabled={busy}>
+          {busy ? "SAVING..." : "💾 CREATE RECORD"}
+        </button>
+        <button type="button" className="secondary-button" onClick={onCancel} disabled={busy}>✖ CANCEL</button>
+      </div>
+    </form>
+  );
 }
 
 export default function DatabasePage() {
@@ -94,19 +171,18 @@ export default function DatabasePage() {
     setFilter(prev => ({ ...prev, page: p }));
   };
 
-  async function onCreateRow() {
+  async function onCreateRow(formData) {
     try {
       setCreateBusy(true);
-      const parsed = createRowJson ? JSON.parse(createRowJson) : {};
-      await api.dbCreateRow({ table: selectedTable, row: parsed });
-      setCreateMsg("Row created.");
+      await api.dbCreateRow({ table: selectedTable, row: formData });
+      setCreateMsg("Record successfully committed to institutional ledger.");
       setCreateMode(false);
       await loadRows();
     } catch (e) {
       setError(e?.message || "Failed to create row");
     } finally {
       setCreateBusy(false);
-      window.setTimeout(() => setCreateMsg(""), 2200);
+      window.setTimeout(() => setCreateMsg(""), 3000);
     }
   }
 
@@ -245,53 +321,47 @@ export default function DatabasePage() {
           </div>
         </div>
 
-        <div className="logs-detail-pane">
+        <div className="logs-detail-pane" style={{ padding: '0' }}>
           {createMode ? (
-            <div className="panel" style={{ margin: 0 }}>
-              <div className="panel-label">DB ROW FORM ({selectedTable})</div>
-              <div className="stack-layout" style={{ gap: 10 }}>
-                <div className="minor-text">
-                  Supported tables: <code>users</code>, <code>accounts</code>, <code>signals</code>, <code>trades</code>, <code>logs</code>.
-                </div>
-                <label>
-                  <div className="muted small">Row JSON</div>
-                  <textarea
-                    value={createRowJson}
-                    onChange={(e) => setCreateRowJson(e.target.value)}
-                    rows={14}
-                    style={{ width: "100%", resize: "vertical" }}
-                  />
-                </label>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" className="primary-button" onClick={onCreateRow} disabled={createBusy}>{createBusy ? "💾 SAVING..." : "💾 SAVE ROW"}</button>
-                  <button type="button" className="secondary-button" onClick={() => setCreateMode(false)} disabled={createBusy}>✖ CANCEL</button>
-                </div>
-              </div>
+            <div className="panel" style={{ margin: 12, border: 'none', background: 'transparent' }}>
+              <div className="panel-label">CREATE NEW {selectedTable.toUpperCase()} RECORD</div>
+              <DynamicForm 
+                schema={schema} 
+                busy={createBusy}
+                onSubmit={onCreateRow}
+                onCancel={() => setCreateMode(false)}
+              />
             </div>
           ) : selectedRow ? (
-            <div className="trade-detail-content scrollable fadeIn">
-              <div className="detail-header" style={{ marginBottom: '15px' }}>
-                 <h2 style={{ margin: 0 }}>ROW DETAILS</h2>
+            <div className="trade-detail-content scrollable fadeIn" style={{ padding: 20 }}>
+              <div className="detail-header" style={{ marginBottom: '20px', borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+                 <h2 style={{ margin: 0, fontSize: 18 }}>TELEMETRY INSPECTION</h2>
+                 <div className="minor-text" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                   {selectedTable} ID: {selectedRow.id || selectedRow.signal_id || selectedRow.trade_id || selectedRow.user_id || "-"}
+                 </div>
               </div>
-              <div className="detail-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+              <div className="detail-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
                 {Object.entries(selectedRow)
-                  .filter(([k]) => {
-                    const low = k.toLowerCase();
-                    const sensitive = ['password', 'hash', 'token', 'key'];
-                    return !sensitive.some(s => low.includes(s));
-                  })
                   .map(([k, v]) => (
-                  <div key={k} style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
-                    <div className="minor-text" style={{ textTransform: 'uppercase', marginBottom: '2px', color: 'var(--text-secondary)' }}>{k.replace(/_/g, " ")}</div>
-                    <div className="minor-text" style={{ color: 'var(--text)', wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
-                      {typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v ?? "-")}
+                  <div key={k} style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 12, alignItems: 'start' }}>
+                    <div className="minor-text" style={{ textTransform: 'uppercase', color: 'var(--muted)', fontWeight: 800, fontSize: 9 }}>{k.replace(/_/g, " ")}</div>
+                    <div className="cell-major" style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap', fontSize: 12 }}>
+                      {typeof v === 'object' ? (
+                        <pre className="snapshot-mono" style={{ margin: 0, padding: 8, background: 'var(--bg)', borderRadius: 6, fontSize: 11 }}>
+                          {JSON.stringify(v, null, 2)}
+                        </pre>
+                      ) : (
+                        String(v ?? "-")
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
             </div>
           ) : (
-             <div className="empty-state minor-text">SELECT A RECORD TO INSPECT TELEMETRY</div>
+             <div className="empty-state minor-text" style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+               SELECT A RECORD TO INSPECT INSTITUTIONAL TELEMETRY
+             </div>
           )}
         </div>
       </div>

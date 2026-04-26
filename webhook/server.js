@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1026"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1112"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -2123,6 +2123,8 @@ function normalizeSignal(payload) {
     entry_model: derived.entryModel || null,
     rr_planned: Number.isFinite(rrPlanned) ? rrPlanned : null,
     risk_money_planned: Number.isFinite(riskMoneyPlanned) ? riskMoneyPlanned : null,
+    risk_pct_planned: asNum(payload.risk_pct ?? payload.riskPct ?? 1.0, 1.0),
+    rejection_reason: null,
     raw: payload,
   };
 }
@@ -2653,7 +2655,10 @@ async function mt5InitBackend() {
       signal_tf TEXT NULL,
       chart_tf TEXT NULL,
       rr_planned DOUBLE PRECISION NULL,
+      risk_money_planned DOUBLE PRECISION NULL,
+      risk_pct_planned DOUBLE PRECISION NULL,
       note TEXT,
+      rejection_reason TEXT,
       raw_json JSONB,
       status TEXT NOT NULL DEFAULT 'NEW'
     );
@@ -2680,6 +2685,7 @@ async function mt5InitBackend() {
       dispatch_status TEXT NOT NULL DEFAULT 'NEW',
       execution_status TEXT NOT NULL DEFAULT 'PENDING',
       close_reason TEXT NULL,
+      rejection_reason TEXT NULL,
       broker_trade_id TEXT NULL,
       entry_exec FLOAT8 NULL,
       sl_exec FLOAT8 NULL,
@@ -2780,7 +2786,7 @@ async function mt5InitBackend() {
 
   // Migration: Strip legacy columns from signals/trades that Postgres persists despite IF NOT EXISTS definitions
   const legacySigCols = [
-    'risk_money_planned', 'pnl_money_realized', 'entry_price_exec', 'sl_exec', 'tp_exec', 
+    'pnl_money_realized', 'entry_price_exec', 'sl_exec', 'tp_exec', 
     'sl_pips', 'tp_pips', 'pip_value_per_lot', 'risk_money_actual', 
     'reward_money_planned', 'reward_money_actual', 'ack_status', 'ack_ticket', 'ack_error',
     'locked_at', 'ack_at', 'opened_at', 'closed_at'
@@ -2792,6 +2798,12 @@ async function mt5InitBackend() {
   // Migration: keep schema simple and aligned with v2.2 fields.
   await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS balance_start`).catch(() => {});
   await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS source_id TEXT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS sid TEXT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS risk_money_planned DOUBLE PRECISION NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS risk_pct_planned DOUBLE PRECISION NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS rejection_reason TEXT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS sid TEXT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS rejection_reason TEXT NULL`).catch(() => {});
   await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS entry_model TEXT NULL`).catch(() => {});
   await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS name TEXT`).catch(() => {});
   await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS balance DOUBLE PRECISION NULL`).catch(() => {});
@@ -2981,15 +2993,16 @@ async function mt5InitBackend() {
       const r = await pool.query(`
         INSERT INTO signals (
           signal_id, sid, created_at, user_id, source, source_id, symbol, side, entry, sl, tp,
-          entry_model, signal_tf, chart_tf, rr_planned, note, raw_json, status
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17)
+          entry_model, signal_tf, chart_tf, rr_planned, risk_money_planned, risk_pct_planned,
+          note, rejection_reason, raw_json, status
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21)
         ON CONFLICT (signal_id) DO NOTHING
         RETURNING signal_id
       `, [
         signal.signal_id, signalSid, signal.created_at, signal.user_id, signal.source, signal.source_id,
         signal.symbol, signal.side, signal.entry, signal.sl, signal.tp, signal.entry_model || null,
-        signal.signal_tf, signal.chart_tf, signal.rr_planned, signal.note,
-        JSON.stringify(signal.raw_json || {}), signal.status || 'NEW'
+        signal.signal_tf, signal.chart_tf, signal.rr_planned, signal.risk_money_planned, signal.risk_pct_planned,
+        signal.note, signal.rejection_reason, JSON.stringify(signal.raw_json || {}), signal.status || 'NEW'
       ]);
       return { inserted: (r.rowCount || 0) > 0 };
     },
