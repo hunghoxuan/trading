@@ -29,7 +29,7 @@ const RANGE_OPTIONS = [
   { value: "year", label: "This Year" },
 ];
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
-const AUTO_REFRESH_MS = Number(localStorage.getItem("tvbridge_refresh_ms") || 30000);
+const AUTO_REFRESH_MS = Number(localStorage.getItem("tvbridge_refresh_ms") || 10000);
 
 import { showDateTime } from "../utils/format";
 

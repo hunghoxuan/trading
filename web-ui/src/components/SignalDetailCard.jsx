@@ -40,9 +40,13 @@ function detailTabToTvInterval(tab) {
 
 function toTradingViewSymbol(raw) {
   const s = String(raw || "").trim().toUpperCase();
-  if (!s) return "ICMARKETS:EURUSD";
+  if (!s) return "BINANCE:BTCUSDT";
   if (s.includes(":")) return s;
-  return `ICMARKETS:${s.replace(/[^A-Z0-9]/g, "")}`;
+  // Common mapping for TV iframe
+  if (s === "BTCUSD" || s === "BTCUSDT") return "BINANCE:BTCUSDT";
+  if (s === "ETHUSD" || s === "ETHUSDT") return "BINANCE:ETHUSDT";
+  if (s === "XAUUSD" || s === "GOLD") return "OANDA:XAUUSD";
+  return `OANDA:${s.replace(/[^A-Z0-9]/g, "")}`;
 }
 
 function renderFormattedText(text) {
@@ -93,11 +97,60 @@ export function SignalDetailCard({
   }, [chart?.enabled, response?.text, response?.tradePlans, response?.chartNode, response?.snapshotNode, response?.snapshotFiles, response?.raw, response?.text, response?.bars, history?.enabled, metaItems]);
 
   const [mainTab, setMainTab] = useState(availableTabs[0] || "chart");
-  const [liveTab, setLiveTab] = useState(liveTabs[0] || "15m");
+  
+  // Chart Multi-TF and Mode State
+  const [selectedTfs, setSelectedTfs] = useState([]);
+  const [chartModes, setChartModes] = useState(['static']); // 'static', 'live'
+  const [multiChartData, setMultiChartData] = useState({});
+  const [loadingCharts, setLoadingCharts] = useState(false);
+
+  // Initialize selected TFs from signal/profile
+  useEffect(() => {
+    if (chart?.enabled) {
+      const initial = [];
+      if (chart.detailTfTab && chart.detailTfTab !== 'ENTRY') initial.push(chart.detailTfTab.toLowerCase());
+      if (chart.signalTf) {
+          const sTf = String(chart.signalTf).toLowerCase();
+          if (!initial.includes(sTf)) initial.push(sTf);
+      }
+      if (!initial.length) initial.push('15m');
+      setSelectedTfs(initial);
+    }
+  }, [chart?.enabled, chart?.detailTfTab, chart?.signalTf]);
+
+  // Fetch Multi-TF Data
+  useEffect(() => {
+    if (mainTab === 'chart' && chart?.symbol && selectedTfs.length > 0 && chartModes.includes('static')) {
+      let isMounted = true;
+      setLoadingCharts(true);
+      const tfsParam = selectedTfs.join(',');
+      fetch(`/api/charts/multi?symbol=${encodeURIComponent(chart.symbol)}&tfs=${encodeURIComponent(tfsParam)}`)
+        .then(res => res.json())
+        .then(res => {
+          if (isMounted && res.ok) {
+            setMultiChartData(res.data || {});
+          }
+        })
+        .catch(err => console.error("Failed to fetch multi-TF charts", err))
+        .finally(() => {
+          if (isMounted) setLoadingCharts(false);
+        });
+      return () => { isMounted = false; };
+    }
+  }, [mainTab, chart?.symbol, selectedTfs, chartModes]);
 
   useEffect(() => {
     if (!availableTabs.includes(mainTab)) setMainTab(availableTabs[0] || "fields");
   }, [availableTabs, mainTab]);
+
+  const toggleTf = (tf) => {
+    const t = tf.toLowerCase();
+    setSelectedTfs(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
+  };
+
+  const toggleMode = (m) => {
+    setChartModes(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
+  };
 
   useEffect(() => {
     if (canSwitchTab && mainTab === "chart") chart.onDetailTfTabChange("ENTRY");
@@ -211,34 +264,74 @@ export function SignalDetailCard({
       ) : null}
 
       {mainTab === "chart" && chart?.enabled ? (
-        <div className="stack-layout" style={{ gap: 14 }}>
-          {chart.entryNode || (
-            <TradeSignalChart
-              symbol={chart.symbol}
-              interval={chart.interval}
-              live={chart.live !== false}
-              historicalData={chart.historicalData || []}
-              entryPrice={chart.entryPrice}
-              slPrice={chart.slPrice}
-              tpPrice={chart.tpPrice}
-              openedAt={chart.openedAt || null}
-              closedAt={chart.closedAt || null}
-              analysisSnapshot={chart.analysisSnapshot || null}
-            />
-          )}
+        <div className="chart-tab-content">
+          <div className="chart-controls-header">
+            <div className="tf-pills">
+              {liveTabs.map(tf => (
+                <button 
+                  key={tf}
+                  className={`tf-pill ${selectedTfs.includes(tf.toLowerCase()) ? 'active' : ''}`}
+                  onClick={() => toggleTf(tf)}
+                >
+                  {tf}
+                </button>
+              ))}
+            </div>
+            <div className="mode-toggles">
+              <button 
+                className={`mode-btn ${chartModes.includes('static') ? 'active' : ''}`}
+                onClick={() => toggleMode('static')}
+              >
+                Chart
+              </button>
+              <button 
+                className={`mode-btn ${chartModes.includes('live') ? 'active' : ''}`}
+                onClick={() => toggleMode('live')}
+              >
+                Live
+              </button>
+            </div>
+          </div>
 
-          <div>
-             <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
-               <span className="panel-label small" style={{ margin: 0 }}>LIVE CHART</span>
-               {liveTabs.map((tab) => (
-                 <button key={tab} type="button" className={`secondary-button ${liveTab === tab ? "active" : ""}`} onClick={() => setLiveTab(tab)}>{tab}</button>
-               ))}
-             </div>
-             <iframe
-               title={chart.iframeTitle || `detail-tv-${liveTab}`}
-               style={{ width: "100%", height: 430, border: "1px solid var(--border)", borderRadius: 10, background: "var(--panel)" }}
-               src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol)}&interval=${encodeURIComponent(detailTabToTvInterval(liveTab))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-             />
+          <div className="multi-chart-grid">
+            {selectedTfs.map(tf => (
+              <div key={tf} className="tf-chart-row">
+                <h4 className="tf-row-label">{tf.toUpperCase()}</h4>
+                <div className={`tf-row-charts ${chartModes.length > 1 ? 'side-by-side' : ''}`}>
+                  {chartModes.includes('static') && (
+                    <div className="chart-wrapper static-wrapper">
+                      {loadingCharts && !multiChartData[tf] ? (
+                        <div className="chart-loading">Loading {tf} data...</div>
+                      ) : (
+                        <TradeSignalChart 
+                          symbol={chart?.symbol}
+                          interval={tf}
+                          analysisSnapshot={multiChartData[tf]}
+                          entryPrice={chart?.entryPrice}
+                          slPrice={chart?.slPrice}
+                          tpPrice={chart?.tpPrice}
+                          openedAt={chart?.openedAt}
+                          closedAt={chart?.closedAt}
+                        />
+                      )}
+                    </div>
+                  )}
+                  {chartModes.includes('live') && (
+                    <div className="chart-wrapper live-wrapper">
+                      <iframe
+                        title={`TV-${tf}`}
+                        src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_762ae&symbol=${encodeURIComponent(tvSymbol)}&interval=${detailTabToTvInterval(tf)}&hidesidetoolbar=1&symboledit=1&saveimage=1&theme=dark&style=1&timezone=Etc%2FUTC&studies=[]`}
+                        width="100%"
+                        height="420"
+                        frameBorder="0"
+                        allowFullScreen
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {selectedTfs.length === 0 && <div className="empty-state">Select at least one Timeframe to view charts.</div>}
           </div>
         </div>
       ) : null}

@@ -275,7 +275,7 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   line-height: 1.2; 
 }
 .badge.TP, .badge.LIVE, .badge.SUCCESS { color: #10b981 !important; border: 1px solid #10b981 !important; }
-.badge.SL, .badge.FAIL, .badge.ERROR { color: #ef4444 !important; border: 1px solid #ef4444 !important; }
+.badge.SL, .badge.FAIL, .badge.ERROR, .badge.REJECTED { color: #ef4444 !important; border: 1px solid #ef4444 !important; }
 .badge.START, .badge.PROGRESS { color: #3b82f6 !important; border: 1px solid #3b82f6 !important; }
 .badge.OK, .badge.PLACED, .badge.ACTIVE { color: #f59e0b !important; border: 1px solid #f59e0b !important; }
 .badge.INACTIVE, .badge.DISABLE, .badge.DISABLED, .badge.FALSE, .badge.OFFLINE { color: var(--muted) !important; border: 1px solid var(--border) !important; }
@@ -512,6 +512,138 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #0b1220;
+}
+
+/* Multi-TF Chart Overhaul Styles */
+.chart-tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px;
+}
+
+.chart-controls-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.tf-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tf-pill {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tf-pill:hover {
+  border-color: var(--muted);
+  color: var(--text);
+}
+
+.tf-pill.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.mode-toggles {
+  display: flex;
+  gap: 4px;
+  background: var(--panel);
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.mode-btn {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.mode-btn.active {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.multi-chart-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.tf-chart-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tf-row-label {
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--muted);
+  margin: 0;
+  letter-spacing: 0.1em;
+}
+
+.tf-row-charts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tf-row-charts.side-by-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+}
+
+.chart-wrapper {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+.chart-loading {
+  height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+@media (max-width: 1200px) {
+  .tf-row-charts.side-by-side {
+    grid-template-columns: 1fr;
+  }
 }
 .snapshot-live-grid-v4 {
   display: grid;

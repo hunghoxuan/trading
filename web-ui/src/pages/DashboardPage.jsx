@@ -12,7 +12,7 @@ const RANGE_OPTIONS = [
   { val: "month", lab: "This Month" },
   { val: "year", lab: "This Year" },
 ];
-const AUTO_REFRESH_MS = Number(localStorage.getItem("tvbridge_refresh_ms") || 30000);
+const AUTO_REFRESH_MS = Number(localStorage.getItem("tvbridge_refresh_ms") || 10000);
 
 const PERIOD_DISPLAY = [
   { key: "all", lab: "All times" },

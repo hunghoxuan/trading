@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-0922"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1022"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -6606,6 +6606,31 @@ const appHandler = async (req, res) => {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });
     }
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/charts/multi") {
+    const sess = getUiSessionFromReq(req);
+    if (!sess.ok) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const symbol = url.searchParams.get("symbol");
+    const tfsRaw = url.searchParams.get("tfs") || "";
+    const tfs = tfsRaw.split(",").filter(Boolean);
+    if (!symbol || !tfs.length) return json(res, 400, { ok: false, error: "Missing symbol or tfs" });
+    const results = {};
+    const tasks = tfs.map(async (tf) => {
+      try {
+        const data = await buildAnalysisSnapshotFromTwelve({ 
+            userId: sess.user_id, 
+            symbol, 
+            timeframe: tf, 
+            payload: Object.fromEntries(url.searchParams) 
+        });
+        results[tf] = data;
+      } catch (e) {
+        results[tf] = { status: "error", reason: e.message };
+      }
+    });
+    await Promise.all(tasks);
+    return json(res, 200, { ok: true, symbol, data: results });
   }
 
   if (req.method === "GET" && url.pathname === "/auth/users") {

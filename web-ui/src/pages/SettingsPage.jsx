@@ -408,7 +408,7 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <span className="minor-text">Auto Refresh Interval</span>
               <select 
-                value={localStorage.getItem("tvbridge_refresh_ms") || "30000"} 
+                value={localStorage.getItem("tvbridge_refresh_ms") || "10000"} 
                 onChange={(e) => {
                   localStorage.setItem("tvbridge_refresh_ms", e.target.value);
                   setMsg("Refresh interval updated.");

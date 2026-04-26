@@ -14,10 +14,8 @@ input bool   InpUseMarginPercentSizing = false; // Set false to prioritize Risk 
 input double InpMarginPercentOfBalance = 100.0; // Margin budget as % of ACCOUNT_BALANCE.
 input double InpMarginSafetyPercent    = 98.0; // Also cap by this % of current free margin to avoid broker margin-outs.
 input bool   InpUseRiskPercentSizing = true; // true: lots = risk% of balance / SL distance.
-input double InpRiskPercentOfBalance = 1.0; // 1.0 = risk 1% of ACCOUNT_BALANCE per trade.
-input double InpFallbackFixedLot = 0.01; // Used when risk sizing cannot be calculated.
-input bool   InpEnforceHardRiskCap = true; // Clamp/reject final volume if SL loss would exceed risk% cap.
-input double InpRiskCapTolerancePct = 1.0; // Allow tiny calc/rounding drift in % over risk cap.
+input double InpMaxRiskPct           = 1.0;  // Strict max risk % of ACCOUNT_BALANCE per trade.
+input double InpFallbackFixedLot     = 0.01; // Used when risk sizing cannot be calculated.
 input bool   InpHardFailOnMarginPrecheck = false; // true: stop immediately on margin precheck fail; false: still try broker with min lot once.
 input int    InpStopRetrySeconds = 5; // Retry interval for attaching SL/TP after order open.
 input int    InpStopRetryMaxAttempts = 24; // Max retry attempts (24 * 5s = 2 minutes by default).
@@ -40,7 +38,7 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-26.0922";
+string EA_BUILD_VERSION = "2026-04-26.1022";
 
 input string InpMappingFile = "TVBridge_Mappings.csv";
 
@@ -1294,7 +1292,8 @@ int VolumeDigits(const double step)
 bool NormalizeVolumeForSymbol(const string symbol,
                               const double volumeIn,
                               double &volumeOut,
-                              string &noteOut)
+                              string &noteOut,
+                              bool forceNoRoundingUp = false)
 {
    noteOut = "";
    double vMin = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
@@ -1310,6 +1309,11 @@ bool NormalizeVolumeForSymbol(const string symbol,
 
    if(v < vMin)
    {
+      if(forceNoRoundingUp) {
+         volumeOut = 0;
+         noteOut = "[rejected] Calculated " + DoubleToString(v, 4) + " < min lot " + DoubleToString(vMin, 2);
+         return false;
+      }
       v = vMin;
       noteOut += "[vol->min]";
    }
@@ -1319,10 +1323,17 @@ bool NormalizeVolumeForSymbol(const string symbol,
       noteOut += "[vol->max]";
    }
 
+   // MathFloor ensures we don't exceed the risk cap by rounding down to the nearest step.
    double steps = MathFloor((v - vMin) / vStep + 1e-9);
    double vAligned = vMin + steps * vStep;
-   if(vAligned < vMin)
+   if(vAligned < vMin) {
+      if(forceNoRoundingUp) {
+         volumeOut = 0;
+         noteOut = "[rejected] Aligned " + DoubleToString(vAligned, 4) + " < min lot " + DoubleToString(vMin, 2);
+         return false;
+      }
       vAligned = vMin;
+   }
    if(vAligned > vMax)
       vAligned = vMax;
 
@@ -1330,13 +1341,9 @@ bool NormalizeVolumeForSymbol(const string symbol,
    vAligned = NormalizeDouble(vAligned, vd);
    volumeOut = vAligned;
 
-   // Final safety check: alignment and range.
    if(volumeOut < vMin - 1e-10 || volumeOut > vMax + 1e-10)
       return false;
-   double k = (volumeOut - vMin) / vStep;
-   if(MathAbs(k - MathRound(k)) > 1e-6)
-      return false;
-
+   
    return true;
 }
 
@@ -1354,7 +1361,7 @@ bool ComputeRiskBasedVolume(const string action,
       noteOut = "[risk_mode_off]";
       return false;
    }
-   if(InpRiskPercentOfBalance <= 0.0)
+   if(InpMaxRiskPct <= 0.0)
    {
       noteOut = "[risk_pct<=0]";
       return false;
@@ -1412,7 +1419,7 @@ bool ComputeRiskBasedVolume(const string action,
       noteOut = "[balance_invalid]";
       return false;
    }
-   double riskMoney = balance * (InpRiskPercentOfBalance / 100.0);
+   double riskMoney = balance * (InpMaxRiskPct / 100.0);
    if(riskMoney <= 0.0)
    {
       noteOut = "[risk_money_invalid]";
@@ -1432,144 +1439,23 @@ bool ComputeRiskBasedVolume(const string action,
       return false;
    }
 
-   volumeOut = riskMoney / lossAbs;
-   noteOut = "[risk_sized balance=" + DoubleToString(balance, 2)
-             + " risk$=" + DoubleToString(riskMoney, 2)
-             + " loss1lot$=" + DoubleToString(lossAbs, 2) + "]";
-   return true;
-}
-
-bool EnforceHardRiskCap(const string action,
-                        const string symbol,
-                        const double plannedEntryPrice,
-                        const double slPrice,
-                        const double volumeIn,
-                        double &volumeOut,
-                        string &noteOut)
-{
-   noteOut = "";
-   volumeOut = volumeIn;
-   if(!InpEnforceHardRiskCap)
-   {
-      noteOut = "[hard_risk_cap_off]";
-      return true;
-   }
-   if(!(action == "BUY" || action == "SELL"))
-   {
-      noteOut = "[hard_risk_skip_non_trade_action]";
-      return true;
-   }
-   if(!InpUseRiskPercentSizing || InpRiskPercentOfBalance <= 0.0)
-   {
-      noteOut = "[hard_risk_skip_risk_mode_off]";
-      return true;
-   }
-   if(slPrice <= 0.0)
-   {
-      noteOut = "[hard_risk_missing_sl]";
-      return false;
-   }
-   if(volumeIn <= 0.0)
-   {
-      noteOut = "[hard_risk_invalid_volume]";
-      return false;
-   }
-
-   double entryPrice = plannedEntryPrice;
-   MqlTick tick;
-   if((!MathIsValidNumber(entryPrice)) || entryPrice <= 0.0)
-   {
-      if(!SymbolInfoTick(symbol, tick))
-      {
-         noteOut = "[hard_risk_tick_unavailable]";
-         return false;
-      }
-      entryPrice = (action == "BUY" ? tick.ask : tick.bid);
-   }
-   ENUM_ORDER_TYPE orderType = (action == "BUY" ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
-   if(entryPrice <= 0.0)
-   {
-      noteOut = "[hard_risk_entry_invalid]";
-      return false;
-   }
-   if(action == "BUY" && slPrice >= entryPrice)
-   {
-      noteOut = "[hard_risk_sl_not_below_entry]";
-      return false;
-   }
-   if(action == "SELL" && slPrice <= entryPrice)
-   {
-      noteOut = "[hard_risk_sl_not_above_entry]";
-      return false;
-   }
-
-   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
-   if(balance <= 0.0)
-   {
-      noteOut = "[hard_risk_balance_invalid]";
-      return false;
-   }
-   double riskMoneyCap = balance * (InpRiskPercentOfBalance / 100.0);
-   if(riskMoneyCap <= 0.0)
-   {
-      noteOut = "[hard_risk_cap_invalid]";
-      return false;
-   }
-
-   double lossPerLot = 0.0;
-   if(!OrderCalcProfit(orderType, symbol, 1.0, entryPrice, slPrice, lossPerLot))
-   {
-      noteOut = "[hard_risk_calc_loss1lot_failed]";
-      return false;
-   }
-   lossPerLot = MathAbs(lossPerLot);
-   if(lossPerLot <= 0.0)
-   {
-      noteOut = "[hard_risk_loss1lot_invalid]";
-      return false;
-   }
-
-   double expectedLoss = lossPerLot * volumeIn;
-   double tolerance = 1.0 + MathMax(0.0, InpRiskCapTolerancePct) / 100.0;
-   if(expectedLoss <= riskMoneyCap * tolerance)
-   {
-      noteOut = "[hard_risk_ok cap$=" + DoubleToString(riskMoneyCap, 2)
-                + " est$=" + DoubleToString(expectedLoss, 2) + "]";
-      return true;
-   }
-
-   double cappedVolume = riskMoneyCap / lossPerLot;
+   double rawVolume = riskMoney / lossAbs;
    string normNote = "";
-   if(!NormalizeVolumeForSymbol(symbol, cappedVolume, cappedVolume, normNote))
+   // Round down to ensure we never exceed InpMaxRiskPct.
+   if(!NormalizeVolumeForSymbol(symbol, rawVolume, volumeOut, normNote, true))
    {
-      noteOut = "[hard_risk_norm_failed cap$=" + DoubleToString(riskMoneyCap, 2)
-                + " est$=" + DoubleToString(expectedLoss, 2) + "]";
-      return false;
-   }
-   if(cappedVolume <= 0.0)
-   {
-      noteOut = "[hard_risk_capped_volume<=0]";
+      noteOut = normNote;
       return false;
    }
 
-   double cappedLoss = lossPerLot * cappedVolume;
-   if(cappedLoss > riskMoneyCap * tolerance)
-   {
-      noteOut = "[hard_risk_capped_still_over cap$=" + DoubleToString(riskMoneyCap, 2)
-                + " est$=" + DoubleToString(cappedLoss, 2) + "]";
-      return false;
-   }
-
-   volumeOut = cappedVolume;
-   noteOut = "[hard_risk_clamped " + DoubleToString(volumeIn, 4)
-             + "->" + DoubleToString(cappedVolume, 4)
-             + " cap$=" + DoubleToString(riskMoneyCap, 2)
-             + " est$=" + DoubleToString(expectedLoss, 2)
-             + " est_after$=" + DoubleToString(cappedLoss, 2) + "]";
-   if(StringLen(normNote) > 0)
-      noteOut += " " + normNote;
+   noteOut = "[risk_sized balance=" + DoubleToString(balance, 2)
+             + " max_risk$=" + DoubleToString(riskMoney, 2)
+             + " loss1lot$=" + DoubleToString(lossAbs, 2)
+             + " target_vol=" + DoubleToString(rawVolume, 4) + "]";
+   if(StringLen(normNote) > 0) noteOut += " " + normNote;
    return true;
 }
+
 
 bool FitVolumeToFreeMargin(const string action,
                            const string symbol,
@@ -2321,15 +2207,31 @@ bool ExecuteSignal(const string signalId,
          }
          else
          {
+            if(StringFind(riskNote, "[rejected]") >= 0)
+            {
+               errOut = "rejected " + riskNote;
+               g_dbgLastStatus = "REJECTED";
+               g_dbgLastError = errOut;
+               RefreshDebugPanel();
+               return false;
+            }
             volumeUse = InpFallbackFixedLot;
             volumeNote = "[risk_fallback_fixed_lot] " + riskNote;
          }
       }
    }
    string normNote = "";
-   if(!NormalizeVolumeForSymbol(symbol, volumeUse, volumeUse, normNote))
+   if(!NormalizeVolumeForSymbol(symbol, volumeUse, volumeUse, normNote, true))
    {
-      errOut = "Invalid volume for symbol: " + symbol + " input=" + DoubleToString(volumeUse, 4);
+      if(StringFind(normNote, "[rejected]") >= 0)
+      {
+         errOut = "rejected " + normNote;
+         g_dbgLastStatus = "REJECTED";
+         g_dbgLastError = errOut;
+         RefreshDebugPanel();
+         return false;
+      }
+      errOut = "Invalid volume for symbol: " + symbol + " input=" + DoubleToString(volumeUse, 4) + " note=" + normNote;
       g_dbgLastStatus = "INVALID_VOLUME";
       g_dbgLastError = errOut;
       RefreshDebugPanel();
@@ -2399,31 +2301,6 @@ bool ExecuteSignal(const string signalId,
    }
    g_ackVolumeNote = volumeNote;
    g_ackUsedVolume = volumeUse;
-   if(action == "BUY" || action == "SELL")
-   {
-      double hardRiskVolume = volumeUse;
-      string hardRiskNote = "";
-      if(!EnforceHardRiskCap(action, symbol, entry, slUse, volumeUse, hardRiskVolume, hardRiskNote))
-      {
-         errOut = "hard_risk_cap_blocked " + hardRiskNote;
-         g_dbgLastStatus = "HARD_RISK_BLOCKED";
-         g_dbgLastError = errOut;
-         RefreshDebugPanel();
-         return false;
-      }
-      if(MathAbs(hardRiskVolume - volumeUse) > 1e-9 || StringLen(hardRiskNote) > 0)
-      {
-         Print("Hard risk cap check for ", signalId, " ", symbol,
-               " used=", DoubleToString(volumeUse, 4),
-               " final=", DoubleToString(hardRiskVolume, 4),
-               " ", hardRiskNote);
-         if(StringLen(volumeNote) > 0) volumeNote += " ";
-         volumeNote += hardRiskNote;
-      }
-      volumeUse = hardRiskVolume;
-      g_ackVolumeNote = volumeNote;
-      g_ackUsedVolume = volumeUse;
-   }
    if(action == "BUY" || action == "SELL")
    {
       MqlTick t;
