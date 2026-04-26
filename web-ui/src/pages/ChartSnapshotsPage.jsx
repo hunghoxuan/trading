@@ -1827,9 +1827,9 @@ export default function ChartSnapshotsPage() {
       </section>
 
       <section className="panel snapshot-col-v3 snapshot-col-settings-v3">
-        <div className="snapshot-control-card-v3 toolbar-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, padding: '12px 16px' }}>
+        <div className="snapshot-control-card-v3 toolbar-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, padding: '12px 16px', alignItems: 'flex-start' }}>
           {/* Row 1 */}
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', width: '100%', justifyContent: 'flex-start' }}>
             {hasResponse && (
               <button className="secondary-button" type="button" onClick={resetAnalyzeSession}>{"<"} Back</button>
             )}
@@ -1868,7 +1868,7 @@ export default function ChartSnapshotsPage() {
           </div>
 
           {/* Row 2 */}
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', width: '100%', justifyContent: 'flex-start' }}>
             <select
               value={analysisSource}
               onChange={(e) => setAnalysisSource(e.target.value)}
@@ -1902,54 +1902,56 @@ export default function ChartSnapshotsPage() {
             </div>
           ))}
         </div>
-        <SignalDetailCard
-          mode="ai"
-          hideTabsBeforeResponse={true}
-          chart={{
-            enabled: true,
-            symbol: cfg.symbol,
-            interval: timeframe,
-            entryNode: (
-              <div className="snapshot-live-card-v3">
-                <div className="minor-text" style={{ marginBottom: 6 }}>Chart 1: Twelve + PD Arrays</div>
-                <div ref={liteChartRef} className="snapshot-lite-chart-v3" />
-                <div className="minor-text">{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
-              </div>
-            )
-          }}
-          response={{
-            enabled: true,
-            hasData: hasResponse,
-            label: "Response",
-            tab: responseTab,
-            onTabChange: setResponseTab,
-            text: responseText,
-            raw: analysisRaw || analysisJson,
-            bars: JSON.stringify(currentBarsSnapshot || { status: "no_cached_bars" }, null, 2),
-            tradePlans: analysisTradePlans,
-            snapshotFiles: chartFiles,
-          }}
-          tradePlan={{
-            enabled: true,
-            signalId: null,
-            tradeId: null,
-            value: position,
-            onChange: updatePositionField,
-            onAddSignal: () => addBySelection("signal"),
-            onAddTrade: () => addBySelection("trade"),
-            showSaveButton: false,
-            showAddSignalButton: true,
-            showAddTradeButton: true,
-            showResetButton: true,
-            onReset: resetPositionLocal,
-            busy: { signal: addingSignal, trade: addingSignal },
-            disabled: false,
-            error: !canAddSignal ? validatePosition(position) : "",
-            successMessage: actionStatus.action === "add" && actionStatus.text && actionStatus.type !== "error" && actionStatus.type !== "warning"
-              ? actionStatus.text
-              : "",
-          }}
-        />
+        {hasResponse && (
+          <SignalDetailCard
+            mode="ai"
+            hideTabsBeforeResponse={true}
+            chart={{
+              enabled: true,
+              symbol: cfg.symbol,
+              interval: timeframe,
+              entryNode: (
+                <div className="snapshot-live-card-v3">
+                  <div className="minor-text" style={{ marginBottom: 6 }}>Chart 1: Twelve + PD Arrays</div>
+                  <div ref={liteChartRef} className="snapshot-lite-chart-v3" />
+                  <div className="minor-text">{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
+                </div>
+              )
+            }}
+            response={{
+              enabled: true,
+              hasData: hasResponse,
+              label: "Response",
+              tab: responseTab,
+              onTabChange: setResponseTab,
+              text: responseText,
+              raw: effectiveParsed || analysisRaw || analysisJson,
+              bars: JSON.stringify(currentBarsSnapshot || { status: "no_cached_bars" }, null, 2),
+              tradePlans: analysisTradePlans,
+              snapshotFiles: chartFiles,
+            }}
+            tradePlan={{
+              enabled: true,
+              signalId: null,
+              tradeId: null,
+              value: position,
+              onChange: updatePositionField,
+              onAddSignal: () => addBySelection("signal"),
+              onAddTrade: () => addBySelection("trade"),
+              showSaveButton: false,
+              showAddSignalButton: true,
+              showAddTradeButton: true,
+              showResetButton: true,
+              onReset: resetPositionLocal,
+              busy: { signal: addingSignal, trade: addingSignal },
+              disabled: false,
+              error: !canAddSignal ? validatePosition(position) : "",
+              successMessage: actionStatus.action === "add" && actionStatus.text && actionStatus.type !== "error" && actionStatus.type !== "warning"
+                ? actionStatus.text
+                : "",
+            }}
+          />
+        )}
         {actionStatus.action === "add" && actionStatus.text && (actionStatus.type === "error" || actionStatus.type === "warning") ? (
           <span className={`minor-text snapshot-footer-msg-v3 ${actionStatus.type === "error" ? "msg-error" : "msg-warning"}`}>{actionStatus.text}</span>
         ) : null}

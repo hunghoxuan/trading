@@ -7,7 +7,7 @@ const TF_WEIGHTS = {
   '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240, 'd': 1440, 'w': 10080
 };
 
-const DEFAULT_TF_TABS = ["ENTRY", "W", "d", "4h", "1h", "15m", "5m", "1m"];
+const DEFAULT_TF_TABS = ["W", "d", "4h", "1h", "15m", "5m", "1m"];
 const MODE_PRESETS = {
   generic: {
     headerColumns: "minmax(0, 1fr) minmax(0, 1.25fr) minmax(120px, 0.55fr)",
@@ -86,8 +86,7 @@ export function SignalDetailCard({
   }
 
   const tfTabs = Array.isArray(chart?.detailTfTabs) && chart.detailTfTabs.length ? chart.detailTfTabs : DEFAULT_TF_TABS;
-  const liveTabs = tfTabs
-    .filter((x) => String(x || "").toUpperCase() !== "ENTRY")
+  const liveTabs = [...tfTabs]
     .sort((a, b) => (TF_WEIGHTS[a.toLowerCase()] || 0) - (TF_WEIGHTS[b.toLowerCase()] || 0));
   const activeTab = chart?.detailTfTab || "ENTRY";
   const canSwitchTab = typeof chart?.onDetailTfTabChange === "function";
@@ -303,13 +302,23 @@ export function SignalDetailCard({
         <div className="chart-tab-content">
           <div className="chart-controls-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div className="tf-pills" style={{ display: 'flex', gap: 6 }}>
+              {chart?.entryNode && (
+                <button 
+                  type="button"
+                  className={`tf-pill ${activeTab === 'ENTRY' ? 'active' : ''}`}
+                  onClick={() => canSwitchTab && chart.onDetailTfTabChange('ENTRY')}
+                  style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border)', background: activeTab === 'ENTRY' ? 'var(--accent-soft)' : 'transparent', color: activeTab === 'ENTRY' ? 'var(--text)' : 'var(--muted)' }}
+                >
+                  ENTRY
+                </button>
+              )}
               {liveTabs.map(tf => (
                 <button 
                   key={tf}
                   type="button"
-                  className={`tf-pill ${selectedTfs.includes(tf.toLowerCase()) ? 'active' : ''}`}
+                  className={`tf-pill ${activeTab !== 'ENTRY' && selectedTfs.includes(tf.toLowerCase()) ? 'active' : ''}`}
                   onClick={() => toggleTf(tf)}
-                  style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border)', background: selectedTfs.includes(tf.toLowerCase()) ? 'var(--accent-soft)' : 'transparent', color: selectedTfs.includes(tf.toLowerCase()) ? 'var(--text)' : 'var(--muted)' }}
+                  style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border)', background: (activeTab !== 'ENTRY' && selectedTfs.includes(tf.toLowerCase())) ? 'var(--accent-soft)' : 'transparent', color: (activeTab !== 'ENTRY' && selectedTfs.includes(tf.toLowerCase())) ? 'var(--text)' : 'var(--muted)' }}
                 >
                   {tf}
                 </button>
@@ -323,62 +332,66 @@ export function SignalDetailCard({
                   onClick={() => toggleMode('static')}
                   style={{ padding: '4px 12px', fontSize: '11px', border: 'none', background: chartModes.includes('static') ? 'var(--surface-light)' : 'transparent', borderRadius: '4px', color: chartModes.includes('static') ? 'var(--text)' : 'var(--muted)' }}
                 >
-                  Chart
+                  CHART
                 </button>
               )}
-              {!response?.text && (
-                <button 
-                  type="button"
-                  className={`mode-btn ${chartModes.includes('live') ? 'active' : ''}`}
-                  onClick={() => toggleMode('live')}
-                  style={{ padding: '4px 12px', fontSize: '11px', border: 'none', background: chartModes.includes('live') ? 'var(--surface-light)' : 'transparent', borderRadius: '4px', color: chartModes.includes('live') ? 'var(--text)' : 'var(--muted)' }}
-                >
-                  Live
-                </button>
-              )}
+              <button 
+                type="button"
+                className={`mode-btn ${chartModes.includes('live') ? 'active' : ''}`}
+                onClick={() => toggleMode('live')}
+                style={{ padding: '4px 12px', fontSize: '11px', border: 'none', background: chartModes.includes('live') ? 'var(--surface-light)' : 'transparent', borderRadius: '4px', color: chartModes.includes('live') ? 'var(--text)' : 'var(--muted)' }}
+              >
+                LIVE
+              </button>
             </div>
           </div>
 
           <div className="multi-chart-grid">
-            {selectedTfs.map(tf => (
-              <div key={tf} className="tf-chart-row">
-                <h4 className="tf-row-label">{tf.toUpperCase()}</h4>
-                <div className={`tf-row-charts ${chartModes.length > 1 ? 'side-by-side' : ''}`} style={{ display: 'grid', gridTemplateColumns: chartModes.length > 1 ? '1fr 1fr' : '1fr', gap: 12 }}>
-                  {chartModes.includes('static') && (
-                    <div className="chart-wrapper static-wrapper">
-                      {loadingCharts && !multiChartData[tf] ? (
-                        <div className="chart-loading" style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>Loading {tf} data...</div>
-                      ) : (
-                        <TradeSignalChart 
-                          symbol={chart?.symbol}
-                          interval={tf}
-                          analysisSnapshot={multiChartData[tf]}
-                          entryPrice={chart?.entryPrice}
-                          slPrice={chart?.slPrice}
-                          tpPrice={chart?.tpPrice}
-                          openedAt={chart?.openedAt}
-                          closedAt={chart?.closedAt}
-                        />
-                      )}
-                    </div>
-                  )}
-                  {chartModes.includes('live') && (
-                    <div className="chart-wrapper live-wrapper">
-                      <iframe
-                        title={`TV-${tf}`}
-                        src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_762ae&symbol=${encodeURIComponent(tvSymbol)}&interval=${detailTabToTvInterval(tf)}&hidesidetoolbar=1&symboledit=1&saveimage=1&theme=dark&style=1&timezone=Etc%2FUTC&studies=[]`}
-                        width="100%"
-                        height="100%"
-                        style={{ aspectRatio: '3 / 2', borderRadius: '8px', border: '1px solid var(--border)', display: 'block' }}
-                        frameBorder="0"
-                        allowFullScreen
-                      />
-                    </div>
-                  )}
-                </div>
+            {activeTab === 'ENTRY' && chart?.entryNode ? (
+              <div className="tf-chart-row">
+                {chart.entryNode}
               </div>
-            ))}
-            {selectedTfs.length === 0 && <div className="empty-state">Select at least one Timeframe to view charts.</div>}
+            ) : (
+              selectedTfs.map(tf => (
+                <div key={tf} className="tf-chart-row">
+                  <h4 className="tf-row-label">{tf}</h4>
+                  <div className={`tf-row-charts ${chartModes.length > 1 ? 'side-by-side' : ''}`} style={{ display: 'grid', gridTemplateColumns: chartModes.length > 1 ? '1fr 1fr' : '1fr', gap: 12 }}>
+                    {chartModes.includes('static') && (
+                      <div className="chart-wrapper static-wrapper">
+                        {loadingCharts && !multiChartData[tf] ? (
+                          <div className="chart-loading" style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>Loading {tf} data...</div>
+                        ) : (
+                          <TradeSignalChart 
+                            symbol={chart?.symbol}
+                            interval={tf}
+                            analysisSnapshot={multiChartData[tf]}
+                            entryPrice={chart?.entryPrice}
+                            slPrice={chart?.slPrice}
+                            tpPrice={chart?.tpPrice}
+                            openedAt={chart?.openedAt}
+                            closedAt={chart?.closedAt}
+                          />
+                        )}
+                      </div>
+                    )}
+                    {chartModes.includes('live') && (
+                      <div className="chart-wrapper live-wrapper">
+                        <iframe
+                          title={`TV-${tf}`}
+                          src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_762ae&symbol=${encodeURIComponent(tvSymbol)}&interval=${detailTabToTvInterval(tf)}&hidesidetoolbar=1&symboledit=1&saveimage=1&theme=dark&style=1&timezone=Etc%2FUTC&studies=[]`}
+                          width="100%"
+                          height="100%"
+                          style={{ aspectRatio: '3 / 2', borderRadius: '8px', border: '1px solid var(--border)', display: 'block' }}
+                          frameBorder="0"
+                          allowFullScreen
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+            {activeTab !== 'ENTRY' && selectedTfs.length === 0 && <div className="empty-state">Select at least one Timeframe to view charts.</div>}
           </div>
         </div>
       ) : null}
@@ -408,7 +421,11 @@ export function SignalDetailCard({
       ) : null}
 
       {mainTab === "json" ? (
-        <textarea className="snapshot-mono-v2" rows={16} value={response?.raw || response?.text || response?.bars || "{}"} readOnly disabled />
+        <div className="panel" style={{ padding: 14, margin: 0, background: 'rgba(0,0,0,0.2)', overflow: 'auto', maxHeight: '500px' }}>
+           <pre style={{ margin: 0, fontSize: '11px', fontFamily: 'monospace', color: 'var(--muted)' }}>
+             {JSON.stringify(response?.raw_json || response?.raw || response?.metadata || {}, null, 2)}
+           </pre>
+        </div>
       ) : null}
 
       {mainTab === "history" && history?.enabled ? (
@@ -424,17 +441,6 @@ export function SignalDetailCard({
                   ? history.renderItem(item, idx)
                   : renderHistoryItem(item, idx, { formatDateTime })
               ))}
-                {(Array.isArray(history.items) ? history.items : []).length > 0 && (
-                  <article className="panel fadeIn" style={{ padding: 12, borderLeft: "4px solid var(--muted)", background: "rgba(255,255,255,0.02)" }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <span className="badge OTHER">RAW METADATA</span>
-                      <span className="minor-text">Payload Inspection</span>
-                    </div>
-                    <pre style={{ margin: 0, fontSize: '10px', color: 'var(--muted)', whiteSpace: 'pre-wrap', overflow: 'auto', maxHeight: '200px' }}>
-                      {JSON.stringify(response?.raw || response?.metadata || {}, null, 2)}
-                    </pre>
-                  </article>
-                )}
             </div>
           )}
         </div>
