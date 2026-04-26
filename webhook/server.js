@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1112"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1120"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -2713,6 +2713,19 @@ async function mt5InitBackend() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS sources (
+      id BIGSERIAL PRIMARY KEY,
+      sid TEXT UNIQUE,
+      source_id TEXT UNIQUE,
+      user_id TEXT REFERENCES users(user_id) ON DELETE CASCADE,
+      name TEXT,
+      type TEXT,
+      status TEXT DEFAULT 'ACTIVE',
+      metadata JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS logs (
       log_id SERIAL PRIMARY KEY,
       object_id TEXT NULL,
@@ -2802,8 +2815,21 @@ async function mt5InitBackend() {
   await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS risk_money_planned DOUBLE PRECISION NULL`).catch(() => {});
   await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS risk_pct_planned DOUBLE PRECISION NULL`).catch(() => {});
   await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS rejection_reason TEXT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS id BIGSERIAL`).catch(() => {});
+  
   await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS sid TEXT NULL`).catch(() => {});
   await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS rejection_reason TEXT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS id BIGSERIAL`).catch(() => {});
+
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS id BIGSERIAL`).catch(() => {});
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS sid TEXT NULL`).catch(() => {});
+
+  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS id BIGSERIAL`).catch(() => {});
+  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS sid TEXT NULL`).catch(() => {});
+
+  await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS id BIGSERIAL`).catch(() => {});
+  await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS sid TEXT NULL`).catch(() => {});
+
   await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS entry_model TEXT NULL`).catch(() => {});
   await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS name TEXT`).catch(() => {});
   await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS balance DOUBLE PRECISION NULL`).catch(() => {});
@@ -4166,7 +4192,7 @@ async function mt5InitBackend() {
       return res.rows;
     },
     async listTables() {
-      return ['users', 'accounts', 'signals', 'trades', 'logs'];
+      return ['users', 'accounts', 'signals', 'trades', 'logs', 'sources', 'execution_profiles', 'user_settings', 'market_data'];
     },
     async listTableRows(table, limit = 50, offset = 0, query = "") {
       const allowed = await this.listTables();
@@ -6386,6 +6412,7 @@ function mt5DashboardHtml() {
   <title>MT5 Trades</title>
   <style>
     body { font-family: Arial, sans-serif; background:#0b0f14; color:#e6edf3; margin:0; }
+    .logs-list-pane { flex: 0 0 40%; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
     .wrap { max-width:1200px; margin:0 auto; padding:14px; }
     .top { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
     input, select, button { background:#121821; color:#e6edf3; border:1px solid #263244; padding:8px; border-radius:8px; }
