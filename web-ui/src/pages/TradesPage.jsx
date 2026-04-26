@@ -153,10 +153,8 @@ function tradeRiskSize(t) {
 
 function compactStrategy(item = {}) {
   const raw = item?.raw_json && typeof item.raw_json === "object" ? item.raw_json : {};
-  const fromRaw = String(raw?.strategy || raw?.trade_plan?.strategy || "").trim();
-  if (fromRaw) return fromRaw;
-  const fromNote = String(item?.note || "").split("|")[0].trim();
-  return fromNote || "-";
+  const fromRaw = String(item.strategy || raw?.strategy || raw?.trade_plan?.strategy || "").trim();
+  return fromRaw || "-";
 }
 
 function displaySource(item = {}) {
@@ -806,13 +804,12 @@ export default function TradesPage() {
                 metaItems={[
                   { label: "Chart TF", value: formatTimeframe(selectedTrade.chart_tf || "-") },
                   { label: "Signal TF", value: formatTimeframe(selectedTrade.signal_tf || "-") },
-                  { label: "Source", value: displaySource(selectedTrade) },
                   { label: "Strategy", value: compactStrategy(selectedTrade) },
                   { label: "Entry Model", value: selectedTrade.entry_model || "-" },
+                  { label: "Source", value: displaySource(selectedTrade) },
                   { label: "Trade SID", value: selectedTrade.sid || selectedTrade.trade_id || "-" },
-                  { label: "Broker Ticket", value: brokerTicketOf(selectedTrade) },
-                  { label: "Signal ID", value: selectedTrade.signal_id || "-" },
                   { label: "Account", value: accountById.get(String(selectedTrade.account_id || ""))?.name || selectedTrade.account_id || "-" },
+                  { label: "Broker Ticket", value: brokerTicketOf(selectedTrade) },
                   { label: "Note", value: selectedTrade.note || "-", fullWidth: true },
                 ]}
                 history={{

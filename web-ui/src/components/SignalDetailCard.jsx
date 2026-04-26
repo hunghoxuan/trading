@@ -100,7 +100,7 @@ export function SignalDetailCard({
   
   // Chart Multi-TF and Mode State
   const [selectedTfs, setSelectedTfs] = useState([]);
-  const [chartModes, setChartModes] = useState(['static']); // 'static', 'live'
+  const [chartModes, setChartModes] = useState(['static', 'live']); // 'static', 'live'
   const [multiChartData, setMultiChartData] = useState({});
   const [loadingCharts, setLoadingCharts] = useState(false);
 
@@ -374,9 +374,18 @@ export function SignalDetailCard({
                   ? history.renderItem(item, idx)
                   : renderHistoryItem(item, idx, { formatDateTime })
               ))}
-              {(!Array.isArray(history.items) || history.items.length === 0) ? (
-                <div className="muted">{history.emptyText || preset.historyEmptyText}</div>
-              ) : null}
+                {(Array.isArray(history.items) ? history.items : []).length > 0 && (
+                  <article className="panel fadeIn" style={{ padding: 12, borderLeft: "4px solid var(--muted)", background: "rgba(255,255,255,0.02)" }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span className="badge OTHER">RAW METADATA</span>
+                      <span className="minor-text">Payload Inspection</span>
+                    </div>
+                    <pre style={{ margin: 0, fontSize: '10px', color: 'var(--muted)', whiteSpace: 'pre-wrap', overflow: 'auto', maxHeight: '200px' }}>
+                      {JSON.stringify(response?.raw || response?.metadata || {}, null, 2)}
+                    </pre>
+                  </article>
+                )}
+              )}
             </div>
           )}
         </div>

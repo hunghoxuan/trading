@@ -158,10 +158,8 @@ function validateTradePlan(plan = {}) {
 
 function compactStrategy(item = {}) {
   const raw = item?.raw_json && typeof item.raw_json === "object" ? item.raw_json : {};
-  const fromRaw = String(raw?.strategy || raw?.trade_plan?.strategy || "").trim();
-  if (fromRaw) return fromRaw;
-  const fromNote = String(item?.note || "").split("|")[0].trim();
-  return fromNote || "-";
+  const fromRaw = String(item.strategy || raw?.strategy || raw?.trade_plan?.strategy || "").trim();
+  return fromRaw || "-";
 }
 
 function displaySource(item = {}) {
@@ -840,10 +838,11 @@ export default function SignalsPage() {
                     },
               }}
               metaItems={[
+                { label: "Chart TF", value: formatTimeframe(selectedSignal.chart_tf || "-") },
                 { label: "Signal TF", value: formatTimeframe(selectedSignal.signal_tf || "-") },
-                { label: "Source", value: displaySource(selectedSignal) },
                 { label: "Strategy", value: compactStrategy(selectedSignal) },
                 { label: "Entry Model", value: selectedSignal.entry_model || "-" },
+                { label: "Source", value: displaySource(selectedSignal) },
                 { label: "Signal SID", value: selectedSignal.sid || selectedSignal.signal_id || "-" },
                 { label: "Note", value: selectedSignal.note || "-", fullWidth: true },
               ]}
