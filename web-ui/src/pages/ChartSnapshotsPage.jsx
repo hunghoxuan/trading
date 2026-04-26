@@ -805,7 +805,7 @@ OUTPUT_FORMAT:
 }
 \`\`\`
 
-SELECTED_PROFILE: ${profileLabel}\`;
+SELECTED_PROFILE: ${profileLabel}`;
 }
 
 function buildJsonConfig(cfg) {
