@@ -998,6 +998,19 @@ export default function ChartSnapshotsPage() {
   }, [cfg.symbol, provider]);
 
   const promptText = useMemo(() => buildPrompt(cfg), [cfg]);
+
+  useEffect(() => {
+    // Reset analysis data when symbol changes
+    setAnalysisRaw("");
+    setAnalysisJson("");
+    setAnalysisParsed(null);
+    setPosition({ direction: "BUY", entry: "", tp: "", sl: "", rr: "", trade_type: "limit", note: "" });
+    setResponseTab("chart");
+    setUsedFiles([]);
+    setAnalysisFilesDisplay([]);
+    setActionStatus({ action: "", type: "", text: "" });
+    setSessionPrefix("");
+  }, [cfg.symbol]);
   const [selectedEntryTf, setSelectedEntryTf] = useState("");
   const timeframe = useMemo(() => selectedEntryTf || normalizeTfLabelToLower(tfConfig.exec_tfs?.[0] || "15m"), [selectedEntryTf, tfConfig.exec_tfs]);
   const snapshotTfs = useMemo(() => {
@@ -1370,9 +1383,10 @@ export default function ChartSnapshotsPage() {
     });
   };
 
-  const addBySelection = async (mode = "signal") => {
+  const addBySelection = async (mode = "signal", overridePosition = null) => {
     setAddingSignal(true);
     setStatus({ type: "", text: "" });
+    const activePosition = overridePosition || position;
     const activeSessionPrefix = sessionPrefix || makeSessionPrefix();
     if (!sessionPrefix) setSessionPrefix(activeSessionPrefix);
     try {
@@ -1387,15 +1401,15 @@ export default function ChartSnapshotsPage() {
       });
       if (!signals.length) {
         const symbolManual = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
-        const entry = parseNum(position.entry);
-        const sl = parseNum(position.sl);
-        const tp = parseNum(position.tp);
-        const validationErr = validatePosition(position);
+        const entry = parseNum(activePosition.entry);
+        const sl = parseNum(activePosition.sl);
+        const tp = parseNum(activePosition.tp);
+        const validationErr = validatePosition(activePosition);
         if (!symbolManual || !Number.isFinite(entry) || !Number.isFinite(sl) || !Number.isFinite(tp)) {
           throw new Error("No valid signal found. Fill Entry/TP/SL or run Analyze first.");
         }
         if (validationErr) throw new Error(validationErr);
-        const dir = String(position.direction || "").trim().toUpperCase();
+        const dir = String(activePosition.direction || "").trim().toUpperCase();
         signals.push({
           symbol: symbolManual,
           action: dir === "BUY" || dir === "SELL" ? dir : (tp >= entry ? "BUY" : "SELL"),
@@ -1405,19 +1419,19 @@ export default function ChartSnapshotsPage() {
           tf: timeframe,
           model: analysisSource,
           entry_model: analysisSource,
-          order_type: String(position.trade_type || "limit").toLowerCase(),
-          note: position.note || "",
+          order_type: String(activePosition.trade_type || "limit").toLowerCase(),
+          note: activePosition.note || "",
           source: analysisSource,
           strategy: cfg.strategies.join("+") || "ai",
-          rr: parseNum(position.rr),
+          rr: parseNum(activePosition.rr),
         });
       }
-      const validationErr = validatePosition(position);
+      const validationErr = validatePosition(activePosition);
       if (validationErr) throw new Error(validationErr);
       let createdCount = 0;
       for (let i = 0; i < signals.length; i++) {
         const payload = signals[i];
-        const dir = String(position.direction || "").trim().toUpperCase();
+        const dir = String(activePosition.direction || "").trim().toUpperCase();
         const cachedSnapshot = currentBarsSnapshot && typeof currentBarsSnapshot === "object" ? currentBarsSnapshot : null;
         const mergedPdArrays = Array.isArray(parsed?.market_analysis?.pd_arrays) ? parsed.market_analysis.pd_arrays : [];
         const mergedKeyLevels = Array.isArray(parsed?.market_analysis?.key_levels) ? parsed.market_analysis.key_levels : [];
@@ -1432,7 +1446,7 @@ export default function ChartSnapshotsPage() {
               profile: payload?.profile || parsed?.profile || "",
               bias: parsed?.market_analysis?.bias || "",
               trend: parsed?.market_analysis?.trend || "",
-              note: position.note || payload.note || "",
+              note: activePosition.note || payload.note || "",
             },
           }
           : undefined;
@@ -1447,12 +1461,12 @@ export default function ChartSnapshotsPage() {
             return s && p ? `${s}_${p}_${i}` : undefined;
           })(),
           action: dir === "BUY" || dir === "SELL" ? dir : payload.action,
-          entry: parseNum(position.entry) || payload.entry,
-          tp: parseNum(position.tp) || payload.tp,
-          sl: parseNum(position.sl) || payload.sl,
-          rr: parseNum(position.rr) || payload.rr,
-          order_type: String(position.trade_type || payload.order_type || "limit").toLowerCase(),
-          note: String(position.note || payload.note || parsed?.note || "").trim(),
+          entry: parseNum(activePosition.entry) || payload.entry,
+          tp: parseNum(activePosition.tp) || payload.tp,
+          sl: parseNum(activePosition.sl) || payload.sl,
+          rr: parseNum(activePosition.rr) || payload.rr,
+          order_type: String(activePosition.trade_type || payload.order_type || "limit").toLowerCase(),
+          note: String(activePosition.note || payload.note || parsed?.note || "").trim(),
           only_signal: mode === "signal",
           profile: payload?.profile || parsed?.profile || "",
           trade_plan: parsed?.trade_plan && typeof parsed.trade_plan === "object" ? parsed.trade_plan : (Array.isArray(parsed?.trade_plan) ? parsed.trade_plan : undefined),
@@ -2041,8 +2055,8 @@ export default function ChartSnapshotsPage() {
               tradeId: null,
               value: position,
               onChange: updatePositionField,
-              onAddSignal: () => addBySelection("signal"),
-              onAddTrade: () => addBySelection("trade"),
+              onAddSignal: (pos) => addBySelection("signal", pos),
+              onAddTrade: (pos) => addBySelection("trade", pos),
               showSaveButton: false,
               showAddSignalButton: true,
               showAddTradeButton: true,

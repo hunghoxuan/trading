@@ -48,7 +48,6 @@ function toTradingViewSymbol(raw) {
   const s = String(raw || "").trim().toUpperCase();
   if (!s) return "BINANCE:BTCUSDT";
   if (s.includes(":")) return s;
-  // Common mapping for TV iframe
   if (s === "BTCUSD" || s === "BTCUSDT") return "BINANCE:BTCUSDT";
   if (s === "ETHUSD" || s === "ETHUSDT") return "BINANCE:ETHUSDT";
   if (s === "XAUUSD" || s === "GOLD") return "OANDA:XAUUSD";
@@ -76,6 +75,36 @@ function renderFormattedText(text) {
   });
 }
 
+/**
+ * Local helper component for each "Cloned Screen 1" (Trade Plan)
+ */
+function ExtraPlanBlock({ plan, onAddSignal, onAddTrade, busy }) {
+  const [localPos, setLocalPos] = useState({
+    direction: plan.direction || "BUY",
+    trade_type: "limit",
+    entry: String(plan.entry || ""),
+    tp: String(plan.tp || ""),
+    sl: String(plan.sl || ""),
+    rr: String(plan.rr || ""),
+    note: plan.note || ""
+  });
+
+  const update = (key, val) => setLocalPos(prev => ({ ...prev, [key]: val }));
+
+  return (
+    <TradePlanEditor
+      value={localPos}
+      onChange={update}
+      onAddSignal={() => onAddSignal?.(localPos)}
+      onAddTrade={() => onAddTrade?.(localPos)}
+      showAddSignalButton={true}
+      showAddTradeButton={true}
+      showResetButton={false}
+      busy={busy}
+    />
+  );
+}
+
 export function SignalDetailCard({
   mode = "generic",
   emptyText = "Select an item to inspect details.",
@@ -87,7 +116,7 @@ export function SignalDetailCard({
   metaItems = [],
   history = null,
   formatDateTime,
-  hideTabsBeforeResponse = false, // New prop to control tab visibility
+  hideTabsBeforeResponse = false,
 }) {
   const preset = MODE_PRESETS[mode] || MODE_PRESETS.generic;
   if (!showWhenEmpty && !header && !response?.hasData && !tradePlan?.enabled && !chart?.enabled && !metaItems.length && !history?.enabled) {
@@ -105,9 +134,6 @@ export function SignalDetailCard({
   const availableTabs = useMemo(() => {
     const tabs = [];
     const hasResponse = Boolean(response?.text);
-    
-    // Logic: if hideTabsBeforeResponse is true, we hide these until response arrived.
-    // If false (default for signals/trades), we show them if enabled.
     const showAlwaysOrHasResponse = !hideTabsBeforeResponse || hasResponse;
 
     if (chart?.enabled && showAlwaysOrHasResponse) tabs.push("chart");
@@ -117,19 +143,17 @@ export function SignalDetailCard({
       }
       tabs.push("json");
     }
-    if (response?.tradePlans?.length) tabs.push("plans");
     if (history?.enabled) tabs.push("history");
     if (!tabs.length && metaItems?.length) tabs.push("fields");
     return tabs;
-  }, [chart?.enabled, response?.text, response?.tradePlans, response?.raw, response?.bars, history?.enabled, metaItems, hideTabsBeforeResponse]);
+  }, [chart?.enabled, response?.text, response?.raw, response?.bars, history?.enabled, metaItems, hideTabsBeforeResponse]);
 
-  const [mainTab, setMainTab] = useState("fields"); // Default to fields if chart/analysis hidden
+  const [mainTab, setMainTab] = useState("fields");
   
   useEffect(() => {
     if (!availableTabs.includes(mainTab)) setMainTab(availableTabs[0] || "fields");
   }, [availableTabs, mainTab]);
   
-  // Chart Multi-TF and Mode State
   const [selectedTfs, setSelectedTfs] = useState([]);
   const [chartModes, setChartModes] = useState(['live']);
   const [multiChartData, setMultiChartData] = useState({});
@@ -142,20 +166,14 @@ export function SignalDetailCard({
     }
   }, [response?.hasData, chart?.analysisSnapshot]);
 
-  // Initialize selected TFs from signal/profile
   useEffect(() => {
     if (chart?.enabled) {
       const initial = [];
-      // 1. Current selected tab
-      if (chart.detailTfTab && chart.detailTfTab !== 'ENTRY') {
-        initial.push(chart.detailTfTab.toLowerCase());
-      }
-      // 2. Signal TF
+      if (chart.detailTfTab && chart.detailTfTab !== 'ENTRY') initial.push(chart.detailTfTab.toLowerCase());
       if (chart.interval) {
           const sTf = String(chart.interval).toLowerCase();
           if (!initial.includes(sTf)) initial.push(sTf);
       }
-      // 3. Fallbacks
       if (initial.length < 2) {
         ['4h', '1h', '15m'].forEach(f => {
           if (!initial.includes(f) && initial.length < 3) initial.push(f);
@@ -165,7 +183,6 @@ export function SignalDetailCard({
     }
   }, [chart?.enabled, chart?.detailTfTab, chart?.interval]);
 
-  // Fetch Multi-TF Data
   useEffect(() => {
     if (mainTab === 'chart' && chart?.symbol && selectedTfs.length > 0 && chartModes.includes('static')) {
       let isMounted = true;
@@ -177,9 +194,7 @@ export function SignalDetailCard({
           return res.json();
         })
         .then(res => {
-          if (isMounted && res?.ok) {
-            setMultiChartData(res.data || {});
-          }
+          if (isMounted && res?.ok) setMultiChartData(res.data || {});
         })
         .catch(err => {
           if (isMounted) console.warn("Failed to fetch multi-TF charts:", err.message);
@@ -191,13 +206,9 @@ export function SignalDetailCard({
     }
   }, [mainTab, chart?.symbol, selectedTfs, chartModes]);
 
-  // Toggle Mode: Before analysis = Live only. After analysis = Static only.
   useEffect(() => {
-    if (response?.text) {
-      setChartModes(['static']); // "screen 1: hide this (live grid) after got AI response"
-    } else {
-      setChartModes(['live']);
-    }
+    if (response?.text) setChartModes(['static']);
+    else setChartModes(['live']);
   }, [response?.text]);
 
   const toggleTf = (tf) => {
@@ -208,115 +219,85 @@ export function SignalDetailCard({
     });
   };
 
-  const toggleMode = (m) => {
-    setChartModes(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
-  };
+  const toggleMode = (m) => setChartModes(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
 
   useEffect(() => {
     if (canSwitchTab && mainTab === "chart") chart.onDetailTfTabChange("ENTRY");
   }, [mainTab, canSwitchTab, chart]);
-
 
   return (
     <div className="trade-detail-content">
       {header ? (
         <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
-            <div className="cell-major" style={{ minWidth: 0 }}>{header.left}</div>
-            <div className="cell-major" style={{ minWidth: 0 }}>{header.center}</div>
-            <div style={{ textAlign: "right", minWidth: 0 }}>{header.rightTop}</div>
+            <div className="cell-major">{header.left}</div>
+            <div className="cell-major">{header.center}</div>
+            <div style={{ textAlign: "right" }}>{header.rightTop}</div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
-            <div className="minor-text" style={{ minWidth: 0 }}>{header.leftMinor}</div>
-            <div className="minor-text" style={{ minWidth: 0 }}>{header.centerMinor}</div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center", minWidth: 0 }}>{header.rightBottom}</div>
+            <div className="minor-text">{header.leftMinor}</div>
+            <div className="minor-text">{header.centerMinor}</div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>{header.rightBottom}</div>
           </div>
         </div>
       ) : null}
 
-      {tradePlan?.enabled ? (
-        <div className="snapshot-response-footer-v3" style={{ marginBottom: 14 }}>
-          <TradePlanEditor
-            signalId={tradePlan.signalId || null}
-            tradeId={tradePlan.tradeId || null}
-            value={tradePlan.value || {}}
-            onChange={tradePlan.onChange}
-            onReset={tradePlan.onReset}
-            onSave={tradePlan.onSave}
-            onAddSignal={tradePlan.onAddSignal}
-            onAddTrade={tradePlan.onAddTrade}
-            showSaveButton={tradePlan.showSaveButton}
-            showAddSignalButton={tradePlan.showAddSignalButton}
-            showAddTradeButton={tradePlan.showAddTradeButton}
-            showResetButton={tradePlan.showResetButton !== false}
-            saveLabel={tradePlan.saveLabel}
-            addSignalLabel={tradePlan.addSignalLabel}
-            addTradeLabel={tradePlan.addTradeLabel}
-            busy={tradePlan.busy || {}}
-            disabled={Boolean(tradePlan.disabled)}
-            error={tradePlan.error || ""}
-          />
-          {tradePlan.successMessage ? <span className="minor-text msg-success">{tradePlan.successMessage}</span> : null}
+      {/* Multiple Trade Plan Blocks (Duplicates of Screen 1) */}
+      {tradePlan?.enabled && (
+        <div className="stack-layout" style={{ gap: 16, marginBottom: 20 }}>
+          {/* Main Plan (from analysis) or Default Editor */}
+          <div style={{ border: '1px solid var(--accent-soft)', padding: 16, borderRadius: 8, background: 'rgba(255,255,255,0.03)' }}>
+            {Array.isArray(response?.tradePlans) && response.tradePlans.length > 0 && (
+              <div className="minor-text" style={{ marginBottom: 12, fontWeight: 'bold', color: 'var(--accent)' }}>
+                Primary Trade Plan: {response.tradePlans[0].entryModel || response.tradePlans[0].strategy || "Suggested"}
+              </div>
+            )}
+            <TradePlanEditor
+              signalId={tradePlan.signalId || null}
+              tradeId={tradePlan.tradeId || null}
+              value={tradePlan.value || {}}
+              onChange={tradePlan.onChange}
+              onReset={tradePlan.onReset}
+              onSave={tradePlan.onSave}
+              onAddSignal={() => tradePlan.onAddSignal?.(tradePlan.value)}
+              onAddTrade={() => tradePlan.onAddTrade?.(tradePlan.value)}
+              showSaveButton={tradePlan.showSaveButton}
+              showAddSignalButton={tradePlan.showAddSignalButton}
+              showAddTradeButton={tradePlan.showAddTradeButton}
+              showResetButton={tradePlan.showResetButton !== false}
+              busy={tradePlan.busy || {}}
+              disabled={Boolean(tradePlan.disabled)}
+              error={tradePlan.error || ""}
+            />
+            {tradePlan.successMessage ? <span className="minor-text msg-success">{tradePlan.successMessage}</span> : null}
+          </div>
+
+          {/* Additional Plans */}
+          {Array.isArray(response?.tradePlans) && response.tradePlans.length > 1 && 
+            response.tradePlans.slice(1).map((plan, pIdx) => (
+              <div key={`extra_plan_${pIdx}`} style={{ border: '1px solid var(--border)', padding: 16, borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
+                <div className="minor-text" style={{ marginBottom: 12, fontWeight: 'bold', color: 'var(--accent)' }}>
+                  Suggested Plan {pIdx + 2}: {plan.entryModel || plan.strategy || "Alternative Scenario"}
+                </div>
+                <ExtraPlanBlock 
+                   plan={plan} 
+                   onAddSignal={tradePlan?.onAddSignal}
+                   onAddTrade={tradePlan?.onAddTrade}
+                   busy={tradePlan?.busy}
+                />
+              </div>
+            ))
+          }
         </div>
-      ) : null}
+      )}
 
       {availableTabs.length ? (
         <div className="snapshot-tabs-v2" style={{ marginBottom: 14 }}>
           {availableTabs.map((t) => (
             <button key={t} type="button" className={`secondary-button ${mainTab === t ? "active" : ""}`} onClick={() => setMainTab(t)}>
-              {t === "plans" ? "Trade Plans" : (t.charAt(0).toUpperCase() + t.slice(1))}
+              {t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
-        </div>
-      ) : null}
-
-      {mainTab === "plans" && Array.isArray(response?.tradePlans) && response.tradePlans.length ? (
-        <div className="stack-layout" style={{ gap: 12, marginBottom: 14 }}>
-          {response.tradePlans.map((plan, pIdx) => {
-             const sideCls = plan.direction === "SELL" ? "side-sell" : "side-buy";
-             return (
-               <article key={`plan_card_${plan.idx || pIdx}`} className="panel" style={{ padding: 14, margin: 0, position: 'relative' }}>
-                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                   <div className="cell-major">
-                     <span className={sideCls} style={{ marginRight: 8 }}>{plan.direction}</span>
-                     <strong>{plan.entryModel || "AI Trade Plan"}</strong>
-                   </div>
-                   <span className="minor-text">{plan.strategy || "ai"}</span>
-                 </div>
-                 <div className="cell-major" style={{ marginBottom: 6 }}>
-                   {(plan.entry || 0).toLocaleString()} → {(plan.tp || 0).toLocaleString()} / {(plan.sl || 0).toLocaleString()}
-                   <span className="minor-text" style={{ marginLeft: 8 }}>
-                     | RR {(plan.rr || 0).toFixed(2)} {plan.confidence ? `| ${plan.confidence}%` : ""}
-                   </span>
-                 </div>
-                 {plan.note ? (
-                   <div className="minor-text" style={{ marginBottom: 12, lineHeight: 1.4 }}>
-                     {renderFormattedText(plan.note)}
-                   </div>
-                 ) : null}
-                 <button 
-                   type="button" 
-                   className="secondary-button" 
-                   style={{ height: 28, padding: '0 12px', fontSize: '11px' }}
-                   onClick={() => {
-                     if (tradePlan?.onChange) {
-                       const upd = { 
-                          direction: plan.direction, 
-                          entry: String(plan.entry || ""),
-                          tp: String(plan.tp || ""),
-                          sl: String(plan.sl || ""),
-                          rr: String(plan.rr || ""),
-                          note: plan.note || ""
-                       };
-                       Object.entries(upd).forEach(([k, v]) => tradePlan.onChange(k, v));
-                     }
-                   }}
-                 >
-                   Use Plan
-                 </button>
-               </article>
-             );
-          })}
         </div>
       ) : null}
 
@@ -336,7 +317,6 @@ export function SignalDetailCard({
               )}
               {liveTabs.map(tf => {
                 const lowTf = tf.toLowerCase();
-                const displayTf = (lowTf === 'w' || lowTf === 'mn' || lowTf === '1m_month') ? tf.toUpperCase() : lowTf;
                 return (
                   <button 
                     key={tf}
@@ -345,7 +325,7 @@ export function SignalDetailCard({
                     onClick={() => toggleTf(tf)}
                     style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border)', background: (activeTab !== 'ENTRY' && selectedTfs.includes(lowTf)) ? 'var(--accent-soft)' : 'transparent', color: (activeTab !== 'ENTRY' && selectedTfs.includes(lowTf)) ? 'var(--text)' : 'var(--muted)' }}
                   >
-                    {displayTf}
+                    {tf.toLowerCase()}
                   </button>
                 );
               })}
@@ -374,9 +354,7 @@ export function SignalDetailCard({
 
           <div className="multi-chart-grid">
             {activeTab === 'ENTRY' && chart?.entryNode ? (
-              <div className="tf-chart-row">
-                {chart.entryNode}
-              </div>
+              <div className="tf-chart-row">{chart.entryNode}</div>
             ) : (
               selectedTfs.map(tf => (
                 <div key={tf} className="tf-chart-row">
@@ -385,17 +363,11 @@ export function SignalDetailCard({
                     {chartModes.includes('static') && (
                       <div className="chart-wrapper static-wrapper">
                         {loadingCharts && !multiChartData[tf] ? (
-                          <div className="chart-loading" style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>Loading {tf} data...</div>
+                          <div className="chart-loading" style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>Loading {tf}...</div>
                         ) : (
                           <TradeSignalChart 
-                            symbol={chart?.symbol}
-                            interval={tf}
-                            analysisSnapshot={multiChartData[tf]}
-                            entryPrice={chart?.entryPrice}
-                            slPrice={chart?.slPrice}
-                            tpPrice={chart?.tpPrice}
-                            openedAt={chart?.openedAt}
-                            closedAt={chart?.closedAt}
+                            symbol={chart?.symbol} interval={tf} analysisSnapshot={multiChartData[tf]}
+                            entryPrice={chart?.entryPrice} slPrice={chart?.slPrice} tpPrice={chart?.tpPrice}
                           />
                         )}
                       </div>
@@ -404,12 +376,8 @@ export function SignalDetailCard({
                       <div className="chart-wrapper live-wrapper">
                         <iframe
                           title={`TV-${tf}`}
-                          src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_762ae&symbol=${encodeURIComponent(tvSymbol)}&interval=${detailTabToTvInterval(tf)}&hidesidetoolbar=1&symboledit=1&saveimage=1&theme=dark&style=1&timezone=Etc%2FUTC&studies=[]`}
-                          width="100%"
-                          height="100%"
-                          style={{ aspectRatio: '3 / 2', borderRadius: '8px', border: '1px solid var(--border)', display: 'block' }}
-                          frameBorder="0"
-                          allowFullScreen
+                          src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol)}&interval=${detailTabToTvInterval(tf)}&theme=dark&style=1`}
+                          width="100%" height="100%" style={{ aspectRatio: '3 / 2', borderRadius: '8px', border: '1px solid var(--border)' }} frameBorder="0"
                         />
                       </div>
                     )}
@@ -417,26 +385,7 @@ export function SignalDetailCard({
                 </div>
               ))
             )}
-            {activeTab !== 'ENTRY' && selectedTfs.length === 0 && <div className="empty-state">Select at least one Timeframe to view charts.</div>}
           </div>
-        </div>
-      ) : null}
-
-      {mainTab === "snapshots" ? (
-        <div>
-          {response?.snapshotNode || response?.chartNode || (
-            Array.isArray(response?.snapshotFiles) && response.snapshotFiles.length
-              ? (
-                <div className="snapshot-chart-grid-v2">
-                  {response.snapshotFiles.map((f) => (
-                    <a key={f} className="snapshot-chart-card-v2" href={`/v2/chart/snapshots/${encodeURIComponent(f)}`} target="_blank" rel="noreferrer">
-                      <img src={`/v2/chart/snapshots/${encodeURIComponent(f)}`} alt={f} />
-                    </a>
-                  ))}
-                </div>
-              )
-              : <div className="minor-text">No snapshots.</div>
-          )}
         </div>
       ) : null}
 
@@ -449,35 +398,25 @@ export function SignalDetailCard({
       {mainTab === "json" ? (
         <div className="panel" style={{ padding: 14, margin: 0, background: 'rgba(0,0,0,0.2)', overflow: 'auto', maxHeight: '500px' }}>
            <pre style={{ margin: 0, fontSize: '11px', fontFamily: 'monospace', color: 'var(--muted)' }}>
-             {JSON.stringify(response?.raw_json || response?.raw || response?.metadata || {}, null, 2)}
+             {JSON.stringify(response?.raw_json || response?.raw || {}, null, 2)}
            </pre>
         </div>
       ) : null}
 
       {mainTab === "history" && history?.enabled ? (
-        <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10, maxHeight: history.maxHeight || 380, overflow: history.scroll ? "auto" : "visible" }}>
-          {history.loading ? (
-            <div className="loading">{history.loadingText || preset.historyLoadingText}</div>
-          ) : (
-            <div className="stack-layout" style={{ gap: "10px" }}>
-              {(Array.isArray(history.items) && history.items.length
-                ? history.items
-                : []).map((item, idx) => (
-                history.renderItem
-                  ? history.renderItem(item, idx)
-                  : renderHistoryItem(item, idx, { formatDateTime })
-              ))}
-            </div>
-          )}
+        <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+          <div className="stack-layout" style={{ gap: "10px" }}>
+            {(history.items || []).map((item, idx) => renderHistoryItem(item, idx, { formatDateTime }))}
+          </div>
         </div>
       ) : null}
 
       {Array.isArray(metaItems) && metaItems.length && (mainTab === "chart" || mainTab === "fields") ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10, marginTop: 14 }}>
           {metaItems.map((m, idx) => (
-            <div key={`${m.label || "meta"}_${idx}`} style={m.fullWidth ? { gridColumn: "1 / -1" } : undefined}>
+            <div key={idx} style={m.fullWidth ? { gridColumn: "1 / -1" } : undefined}>
               <span className="minor-text">{m.label}</span>
-              <div style={{ wordBreak: "break-word", whiteSpace: "pre-wrap", ...(m.valueStyle || {}) }}>{renderFormattedText(m.value)}</div>
+              <div>{renderFormattedText(m.value)}</div>
             </div>
           ))}
         </div>
