@@ -22,9 +22,12 @@ function brokerTicketOf(t) {
 function formatTimeframe(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return String(value || "-");
-  if (n % 1440 === 0) return `${n / 1440}D`;
-  if (n % 60 === 0) return `${n / 60}H`;
-  return `${n}m`;
+  if (n < 60) return `${n}m`;
+  if (n < 1440) return `${n / 60}h`;
+  if (n < 10080) return `${n / 1440}d`;
+  if (n < 43200) return `${n / 10080}W`;
+  if (n === 43200) return "1M";
+  return `${n / 43200}M`;
 }
 
 function fDateTime(v) {

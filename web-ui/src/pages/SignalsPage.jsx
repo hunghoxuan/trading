@@ -45,7 +45,7 @@ function formatTimeframe(min) {
   if (n < 60) return `${n}m`;
   if (n < 1440) return `${n / 60}h`;
   if (n < 10080) return `${n / 1440}d`;
-  if (n < 43200) return `${n / 10080}w`;
+  if (n < 43200) return `${n / 10080}W`;
   if (n === 43200) return "1M";
   return `${n / 43200}M`;
 }

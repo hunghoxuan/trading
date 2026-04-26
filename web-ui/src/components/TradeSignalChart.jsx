@@ -486,7 +486,7 @@ export const TradeSignalChart = ({
       )}
       <div 
         ref={chartContainerRef} 
-        style={{ width: '100%', borderRadius: '8px', overflow: 'hidden', border: '1px solid #30363d' }} 
+        style={{ width: '100%', borderRadius: '8px', overflow: 'hidden' }} 
       />
     </div>
   );

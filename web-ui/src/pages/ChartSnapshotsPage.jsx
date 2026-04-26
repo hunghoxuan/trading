@@ -35,34 +35,34 @@ const SYMBOLS_SETTING_NAME = "WATCHLIST";
 
 const PROFILE_PRESETS = {
   position: {
-    label: "Position (1M+1W / 1D / 4H)",
-    htf_tfs: ["1M", "1W"],
-    exec_tfs: ["1D"],
-    conf_tfs: ["4H"],
+    label: "Position (1M+W / d / 4h)",
+    htf_tfs: ["1M", "W"],
+    exec_tfs: ["d"],
+    conf_tfs: ["4h"],
     sessions: "All sessions",
     rr: "3",
   },
   swing: {
-    label: "Swing (W+D / 4H / 15M)",
-    htf_tfs: ["W", "D"],
-    exec_tfs: ["4H"],
-    conf_tfs: ["15M"],
+    label: "Swing (W+d / 4h / 15m)",
+    htf_tfs: ["W", "d"],
+    exec_tfs: ["4h"],
+    conf_tfs: ["15m"],
     sessions: "London+NY",
     rr: "2",
   },
   day: {
-    label: "Daily (D+4H / 15M / 5M)",
-    htf_tfs: ["D", "4H"],
-    exec_tfs: ["15M"],
-    conf_tfs: ["5M"],
+    label: "Daily (d+4h / 15m / 5m)",
+    htf_tfs: ["d", "4h"],
+    exec_tfs: ["15m"],
+    conf_tfs: ["5m"],
     sessions: "London+NY",
     rr: "1.5",
   },
   scalper: {
-    label: "Scalping (4H+1H / 5M / 1M)",
-    htf_tfs: ["4H", "1H"],
-    exec_tfs: ["5M"],
-    conf_tfs: ["1M"],
+    label: "Scalping (4h+1h / 5m / 1m)",
+    htf_tfs: ["4h", "1h"],
+    exec_tfs: ["5m"],
+    conf_tfs: ["1m"],
     sessions: "London+NY",
     rr: "1",
   },
@@ -1827,8 +1827,9 @@ export default function ChartSnapshotsPage() {
       </section>
 
       <section className="panel snapshot-col-v3 snapshot-col-settings-v3">
-        <div className="snapshot-control-card-v3 toolbar-panel" style={{ justifyContent: 'space-between', marginBottom: 12, padding: '10px 16px' }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div className="snapshot-control-card-v3 toolbar-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, padding: '12px 16px' }}>
+          {/* Row 1 */}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             {hasResponse && (
               <button className="secondary-button" type="button" onClick={resetAnalyzeSession}>{"<"} Back</button>
             )}
@@ -1866,6 +1867,7 @@ export default function ChartSnapshotsPage() {
             </span>
           </div>
 
+          {/* Row 2 */}
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <select
               value={analysisSource}
@@ -1902,6 +1904,7 @@ export default function ChartSnapshotsPage() {
         </div>
         <SignalDetailCard
           mode="ai"
+          hideTabsBeforeResponse={true}
           chart={{
             enabled: true,
             symbol: cfg.symbol,

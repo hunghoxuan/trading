@@ -7,7 +7,7 @@ const TF_WEIGHTS = {
   '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240, 'd': 1440, 'w': 10080
 };
 
-const DEFAULT_TF_TABS = ["ENTRY", "W", "D", "4H", "1h", "15m", "5m", "1m"];
+const DEFAULT_TF_TABS = ["ENTRY", "W", "d", "4h", "1h", "15m", "5m", "1m"];
 const MODE_PRESETS = {
   generic: {
     headerColumns: "minmax(0, 1fr) minmax(0, 1.25fr) minmax(120px, 0.55fr)",
@@ -36,6 +36,8 @@ function detailTabToTvInterval(tab) {
   if (t === "W") return "W";
   if (t === "D") return "D";
   if (t === "4H") return "240";
+  if (t === "1H") return "60";
+  if (t === "30M") return "30";
   if (t === "15M") return "15";
   if (t === "5M") return "5";
   if (t === "1M") return "1";
@@ -76,6 +78,7 @@ export function SignalDetailCard({
   metaItems = [],
   history = null,
   formatDateTime,
+  hideTabsBeforeResponse = false, // New prop to control tab visibility
 }) {
   const preset = MODE_PRESETS[mode] || MODE_PRESETS.generic;
   if (!showWhenEmpty && !header && !response?.hasData && !tradePlan?.enabled && !chart?.enabled && !metaItems.length && !history?.enabled) {
@@ -93,17 +96,23 @@ export function SignalDetailCard({
   const availableTabs = useMemo(() => {
     const tabs = [];
     const hasResponse = Boolean(response?.text);
-    if (chart?.enabled && hasResponse) tabs.push("chart");
-    if (hasResponse) {
-      tabs.push("analysis");
+    
+    // Logic: if hideTabsBeforeResponse is true, we hide these until response arrived.
+    // If false (default for signals/trades), we show them if enabled.
+    const showAlwaysOrHasResponse = !hideTabsBeforeResponse || hasResponse;
+
+    if (chart?.enabled && showAlwaysOrHasResponse) tabs.push("chart");
+    if (showAlwaysOrHasResponse) {
+      if (hasResponse) {
+        tabs.push("analysis");
+      }
       tabs.push("json");
     }
     if (response?.tradePlans?.length) tabs.push("plans");
-    // Removed "snapshots" tab as requested
     if (history?.enabled) tabs.push("history");
     if (!tabs.length && metaItems?.length) tabs.push("fields");
     return tabs;
-  }, [chart?.enabled, response?.text, response?.tradePlans, response?.raw, response?.bars, history?.enabled, metaItems]);
+  }, [chart?.enabled, response?.text, response?.tradePlans, response?.raw, response?.bars, history?.enabled, metaItems, hideTabsBeforeResponse]);
 
   const [mainTab, setMainTab] = useState("fields"); // Default to fields if chart/analysis hidden
   
