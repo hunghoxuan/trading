@@ -385,7 +385,6 @@ export function SignalDetailCard({
                     </pre>
                   </article>
                 )}
-              )}
             </div>
           )}
         </div>
