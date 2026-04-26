@@ -156,6 +156,7 @@ class PdArrayBoxPrimitive {
               ctx.stroke();
               ctx.restore();
             });
+          },
         };
       },
     }];
