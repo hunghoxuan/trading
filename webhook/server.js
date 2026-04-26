@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1912"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1921"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -5058,30 +5058,37 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
   const timer = setTimeout(() => ctrl.abort(), 14000);
   try {
     let data = {};
-    let usedSymbol = tvSymbol;
+    let usedSymbol = symbol;
     let lastError = "";
+    console.log(`[twelve-fetch] symbol=${symbol} candidates=${primaryCandidates.join(',')} interval=${interval} bars=${outputsize}`);
+
     for (const candidate of primaryCandidates) {
       const endpoint = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(candidate)}&interval=${encodeURIComponent(interval)}&outputsize=${outputsize}&timezone=UTC&order=ASC&apikey=${encodeURIComponent(twelveKey)}`;
       const res = await fetch(endpoint, { signal: ctrl.signal });
       const txt = await res.text();
       let parsed = {};
       try { parsed = JSON.parse(txt); } catch {}
+      
       if (!res.ok) {
-        lastError = `http_${res.status}`;
+        lastError = `http_${res.status}: ${txt.slice(0, 100)}`;
+        console.warn(`[twelve-candidate-fail] candidate=${candidate} error=${lastError}`);
         continue;
       }
       if (String(parsed?.status || "").toLowerCase() === "error") {
         lastError = String(parsed?.message || "provider error");
+        console.warn(`[twelve-candidate-error] candidate=${candidate} msg=${lastError}`);
         continue;
       }
       const vals = Array.isArray(parsed?.values) ? parsed.values : [];
       if (!vals.length) {
         lastError = "empty values";
+        console.warn(`[twelve-candidate-empty] candidate=${candidate}`);
         continue;
       }
       data = parsed;
       usedSymbol = candidate;
       lastError = "";
+      console.log(`[twelve-success] candidate=${candidate}`);
       break;
     }
     if (!data || !Array.isArray(data?.values) || !data.values.length) {

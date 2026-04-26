@@ -330,27 +330,46 @@ export default function TradeSignalChart({
 
           // --- ENTRY / TP / SL as colored zone boxes ---
           const asNum = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
-          const ep = asNum(entryPrice);
-          const sp = asNum(slPrice);
-          const tp = asNum(tpPrice);
-          const tradeOpenTs = openedAt ? Math.floor(new Date(openedAt).getTime() / 1000) : null;
-          const lastBarTs = candles.length ? Number(candles[candles.length - 1]?.time) : null;
-          const boxAnchorTs = tradeOpenTs || (candles.length ? Number(candles[0]?.time) : null);
+          const boxAnchorTs = openedAt ? Math.floor(new Date(openedAt).getTime() / 1000) : (candles.length ? Number(candles[0]?.time) : null);
 
-          // Entry line (solid)
-          if (ep) candleSeries.createPriceLine({ price: ep, color: '#2196f3', lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title: 'ENTRY' });
-          if (sp) candleSeries.createPriceLine({ price: sp, color: '#ef5350', lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'SL' });
-          if (tp) candleSeries.createPriceLine({ price: tp, color: '#26a69a', lineWidth: 2, lineStyle: 1, axisLabelVisible: true, title: 'TP' });
+          // Helper to draw a plan
+          const drawPlan = (p, isPrimary = true, index = 0) => {
+            const ep = asNum(p.entry);
+            const sp = asNum(p.sl);
+            const tp = asNum(p.tp);
+            if (!ep) return;
 
-          // Entry → TP zone box (green)
-          if (ep && tp && boxAnchorTs) {
-            const entryTpPrimitive = new PdArrayBoxPrimitive(boxAnchorTs, Math.min(ep, tp), Math.max(ep, tp), '#26a69a');
-            candleSeries.attachPrimitive(entryTpPrimitive);
-          }
-          // Entry → SL zone box (red)
-          if (ep && sp && boxAnchorTs) {
-            const entrySlPrimitive = new PdArrayBoxPrimitive(boxAnchorTs, Math.min(ep, sp), Math.max(ep, sp), '#ef5350');
-            candleSeries.attachPrimitive(entrySlPrimitive);
+            const entryColor = isPrimary ? '#2196f3' : `rgba(33, 150, 243, 0.6)`;
+            const slColor = isPrimary ? '#ef5350' : `rgba(239, 83, 80, 0.6)`;
+            const tpColor = isPrimary ? '#26a69a' : `rgba(38, 166, 154, 0.6)`;
+            const suffix = isPrimary ? '' : ` (Plan ${index + 1})`;
+
+            // Entry line
+            candleSeries.createPriceLine({ price: ep, color: entryColor, lineWidth: isPrimary ? 2 : 1, lineStyle: 0, axisLabelVisible: true, title: `ENTRY${suffix}` });
+            if (sp) candleSeries.createPriceLine({ price: sp, color: slColor, lineWidth: isPrimary ? 2 : 1, lineStyle: 2, axisLabelVisible: true, title: `SL${suffix}` });
+            if (tp) candleSeries.createPriceLine({ price: tp, color: tpColor, lineWidth: isPrimary ? 2 : 1, lineStyle: 1, axisLabelVisible: true, title: `TP${suffix}` });
+
+            // Entry → TP zone box
+            if (ep && tp && boxAnchorTs) {
+              const primitive = new PdArrayBoxPrimitive(boxAnchorTs, Math.min(ep, tp), Math.max(ep, tp), tpColor);
+              candleSeries.attachPrimitive(primitive);
+            }
+            // Entry → SL zone box
+            if (ep && sp && boxAnchorTs) {
+              const primitive = new PdArrayBoxPrimitive(boxAnchorTs, Math.min(ep, sp), Math.max(ep, sp), slColor);
+              candleSeries.attachPrimitive(primitive);
+            }
+          };
+
+          // Draw primary plan
+          drawPlan({ entry: entryPrice, sl: slPrice, tp: tpPrice }, true);
+
+          // Draw extra plans from analysisSnapshot
+          const extraPlans = Array.isArray(snapshot?.trade_plans) ? snapshot.trade_plans : (Array.isArray(snapshot?.tradePlans) ? snapshot.tradePlans : []);
+          if (extraPlans.length > 1) {
+            extraPlans.slice(1).forEach((p, idx) => {
+              drawPlan(p, false, idx + 1);
+            });
           }
 
           // --- PD ARRAYS as boxes ---
