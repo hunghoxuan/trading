@@ -40,7 +40,7 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-26.0843";
+string EA_BUILD_VERSION = "2026-04-26.0922";
 
 input string InpMappingFile = "TVBridge_Mappings.csv";
 
@@ -2172,17 +2172,19 @@ bool ExecuteSignal(const string signalId,
    g_ackRiskMoneyActual = 0;
    g_ackRewardMoneyPlanned = 0;
    
+   double entryRef = (entry > 0.0) ? entry : ((actionRaw=="BUY") ? SymbolInfoDouble(symbolRaw, SYMBOL_ASK) : SymbolInfoDouble(symbolRaw, SYMBOL_BID));
+   if(entryRef <= 0.0) entryRef = 1.0; // fallback if no prices
+    
    double pps = SymbolInfoDouble(symbolRaw, SYMBOL_POINT);
    double pV = 0;
    if(pps > 0.0)
    {
       double profitOnePip = 0;
-      if(OrderCalcProfit(actionRaw=="BUY"?ORDER_TYPE_BUY:ORDER_TYPE_SELL, symbolRaw, 1.0, 1.0, 1.0 + pps, profitOnePip))
+      if(OrderCalcProfit(actionRaw=="BUY"?ORDER_TYPE_BUY:ORDER_TYPE_SELL, symbolRaw, 1.0, entryRef, entryRef + pps, profitOnePip))
          pV = MathAbs(profitOnePip);
    }
    g_ackPipValuePerLot = pV;
    
-   double entryRef = (entry > 0.0) ? entry : ((actionRaw=="BUY") ? SymbolInfoDouble(symbolRaw, SYMBOL_ASK) : SymbolInfoDouble(symbolRaw, SYMBOL_BID));
    if(pps > 0.0)
    {
       double slDist = (sl > 0.0) ? MathAbs(entryRef - sl) : 0.0;
