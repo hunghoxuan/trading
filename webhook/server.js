@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1623"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1640"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -9688,6 +9688,7 @@ async function start() {
     attachClientErrorHandler(httpServer);
     await new Promise((resolve, reject) => {
       httpServer.once("error", reject);
+      httpServer.setTimeout(180000);
       httpServer.listen(CFG.port, "0.0.0.0", resolve);
     });
     console.log(`telegram-trading-bot listening on http://0.0.0.0:${CFG.port}`);

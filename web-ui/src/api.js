@@ -1,5 +1,5 @@
 const DEFAULT_REMOTE_BASE = "http://139.59.211.192";
-const DEFAULT_API_TIMEOUT_MS = 30000;
+const DEFAULT_API_TIMEOUT_MS = 180000;
 
 function normalizeApiBase(value) {
   const raw = String(value || "").trim();

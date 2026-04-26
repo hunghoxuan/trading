@@ -136,10 +136,11 @@ export function SignalDetailCard({
   const [loadingCharts, setLoadingCharts] = useState(false);
 
   useEffect(() => {
-    if (response?.hasData && !chartModes.includes('static')) {
+    const hasAnalysis = response?.hasData || chart?.analysisSnapshot;
+    if (hasAnalysis && !chartModes.includes('static')) {
       setChartModes(prev => [...prev, 'static']);
     }
-  }, [response?.hasData]);
+  }, [response?.hasData, chart?.analysisSnapshot]);
 
   // Initialize selected TFs from signal/profile
   useEffect(() => {
