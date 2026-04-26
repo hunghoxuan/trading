@@ -611,7 +611,6 @@ export default function TradesPage() {
                     />
                   </th>
                   <th onClick={() => toggleSort("symbol")} style={{ cursor: "pointer" }}>SYMBOL{sortMarker("symbol")}</th>
-                  <th>ACCOUNT</th>
                   <th>POSITION</th>
                   <th onClick={() => toggleSort("audit")} style={{ cursor: "pointer" }}>AUDIT{sortMarker("audit")}</th>
                   <th onClick={() => toggleSort("status")} style={{ cursor: "pointer" }}>STATUS{sortMarker("status")}</th>
@@ -619,9 +618,9 @@ export default function TradesPage() {
               </thead>
               <tbody>
                 {loading && rows.length === 0 ? (
-                  <tr><td colSpan="6" className="loading">Loading trades...</td></tr>
+                  <tr><td colSpan="5" className="loading">Loading trades...</td></tr>
                 ) : sortedRows.length === 0 ? (
-                  <tr><td colSpan="6" className="empty-state">No trades found.</td></tr>
+                  <tr><td colSpan="5" className="empty-state">No trades found.</td></tr>
                 ) : sortedRows.map((t) => {
                   const status = statusUi(t.execution_status);
                   const action = String(t.action || t.side || "-").toUpperCase();
@@ -663,13 +662,7 @@ export default function TradesPage() {
                       <td>
                         <div className="cell-wrap">
                           <div className="cell-major"><span className={actionCls}>{action}</span> {t.symbol}</div>
-                          <div className="cell-minor">{String(t.sid || t.trade_id || "-").slice(-12)}</div>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="cell-wrap">
-                          <div className="cell-major">{accountName}</div>
-                          <div className="cell-minor">{brokerName} | {brokerTicketOf(t)}</div>
+                          <div className="cell-minor">{accountName} - {brokerTicketOf(t)}</div>
                         </div>
                       </td>
                       <td>

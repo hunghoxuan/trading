@@ -662,7 +662,7 @@ export default function SignalsPage() {
                             {fPrice(t.entry, t.target_price || t.entry_price)} → {fPrice(t.tp)} / {fPrice(t.sl)}
                           </div>
                           <div className="cell-minor">
-                            {formatTimeframe(t.chart_tf)} | {formatTimeframe(t.signal_tf)} | {(asNum(t.rr_planned) ?? 0).toFixed(2)} rr
+                            {formatTimeframe(t.signal_tf)} | {t.volume || "-"} vol | {(asNum(t.rr_planned) ?? 0).toFixed(2)} rr
                           </div>
                         </div>
                       </td>
@@ -840,15 +840,11 @@ export default function SignalsPage() {
                     },
               }}
               metaItems={[
-                { label: "Chart TF", value: formatTimeframe(selectedSignal.chart_tf || "-") },
                 { label: "Signal TF", value: formatTimeframe(selectedSignal.signal_tf || "-") },
                 { label: "Source", value: displaySource(selectedSignal) },
                 { label: "Strategy", value: compactStrategy(selectedSignal) },
                 { label: "Entry Model", value: selectedSignal.entry_model || "-" },
-                { label: "Trade SID", value: signalDetails?.trade?.sid || signalDetails?.trade?.trade_id || "-" },
-                { label: "Broker Ticket", value: selectedSignal.ack_ticket || signalDetails?.trade?.broker_trade_id || "-" },
                 { label: "Signal SID", value: selectedSignal.sid || selectedSignal.signal_id || "-" },
-                { label: "Account", value: signalDetails?.trade?.account_id || "-" },
                 { label: "Note", value: selectedSignal.note || "-", fullWidth: true },
               ]}
               history={{

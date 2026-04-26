@@ -108,11 +108,9 @@ export default function SignalDetailPage() {
           }}
           metaItems={[
             { label: "Signal SID", value: t.sid || t.signal_id || "-" },
-            { label: "Trade SID", value: data?.trade?.sid || data?.trade?.trade_id || "-" },
             { label: "Status", value: statusUi(t.status).label },
             { label: "Order Type", value: String(t?.raw_json?.order_type || t?.raw_json?.orderType || "limit").toUpperCase() },
             { label: "Signal TF", value: formatTimeframe(t.signal_tf || "-") },
-            { label: "Chart TF", value: formatTimeframe(t.chart_tf || "-") },
             { label: "Volume", value: `${t.volume ?? "-"} lots` },
             { label: "Created", value: fDateTime(t.created_at) },
             { label: "Note", value: t.note || "-", fullWidth: true },

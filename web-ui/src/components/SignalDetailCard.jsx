@@ -46,11 +46,13 @@ function toTradingViewSymbol(raw) {
 }
 
 function renderFormattedText(text) {
-  if (!text) return null;
-  return String(text).split('\n').map((line, i) => (
+  if (text == null || text === "") return null;
+  const str = String(text);
+  if (!str.includes('\n')) return str;
+  return str.split('\n').map((line, i) => (
     <span key={i}>
       {line}
-      {i < text.split('\n').length - 1 && <br />}
+      {i < str.split('\n').length - 1 && <br />}
     </span>
   ));
 }
@@ -294,7 +296,7 @@ export function SignalDetailCard({
           {metaItems.map((m, idx) => (
             <div key={`${m.label || "meta"}_${idx}`} style={m.fullWidth ? { gridColumn: "1 / -1" } : undefined}>
               <span className="minor-text">{m.label}</span>
-              <div style={m.valueStyle || { wordBreak: "break-word" }}>{renderFormattedText(m.value)}</div>
+              <div style={{ wordBreak: "break-word", whiteSpace: "pre-wrap", ...(m.valueStyle || {}) }}>{renderFormattedText(m.value)}</div>
             </div>
           ))}
         </div>
