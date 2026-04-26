@@ -1910,11 +1910,17 @@ export default function ChartSnapshotsPage() {
               enabled: true,
               symbol: cfg.symbol,
               interval: timeframe,
+              detailTfTab: timeframe,
+              onDetailTfTabChange: setTimeframe,
               entryNode: (
                 <div className="snapshot-live-card-v3">
-                  <div className="minor-text" style={{ marginBottom: 6 }}>Chart 1: Twelve + PD Arrays</div>
-                  <div ref={liteChartRef} className="snapshot-lite-chart-v3" />
-                  <div className="minor-text">{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
+                  <div className="minor-text" style={{ marginBottom: 12 }}>Chart 1: Twelve + PD Arrays</div>
+                  <TradeSignalChart 
+                    symbol={cfg.symbol}
+                    interval={timeframe}
+                    analysisSnapshot={effectiveParsed}
+                  />
+                  <div className="minor-text" style={{ marginTop: 8 }}>{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
                 </div>
               )
             }}

@@ -13,13 +13,13 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "templates/bug-report-template.md",
+                "file": "plans/sprint.md",
                 "mode": "source",
                 "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "bug-report-template"
+              "title": "sprint"
             }
           }
         ]
@@ -137,22 +137,33 @@
   },
   "active": "336f84509bfb892c",
   "lastOpenFiles": [
-    "templates/brainstorm-mode-template.md",
-    "templates/big-pass-template.md",
-    "plans/sprint.md",
     "plans/changelog.md",
-    "plans/backlog.md",
     "plans/bugs.md",
+    "plans/backlog.md",
+    "changelog.md",
+    "sprint.md",
+    "UI_DESIGN_SPEC.md",
+    "Untitled.base",
+    "Untitled.canvas",
+    "INDEX.md",
+    "bugs.md",
+    "workflows/06-execution-discipline.md",
+    "workflows/04-doc-sync.md",
+    "workflows/03-context-ownership.md",
+    "workflows/00-collaboration-rules.md",
+    "workflows/01-backup-workflow.md",
+    "templates/continue-previous-conversation-template.md",
+    "templates/fix-bug-mode-template.md",
+    "templates/context-handoff-template.md",
+    "templates/big-pass-template.md",
+    "templates/brainstorm-mode-template.md",
+    "skills/db-design.md",
+    "skills/deploy.md",
+    "skills/reports.md",
+    "templates/bug-report-template.md",
+    "plans/sprint.md",
     "knowledge/decisions/20260326-wave1-cut2-confluence.md",
     "knowledge/decisions/20260326-ui-trade-model-notes.md",
-    "knowledge/decisions/20260326-trend-priority-entry-gate.md",
-    "knowledge/decisions/20260325-signal-event-semantics-v1.md",
-    "knowledge/decisions/20260325-gate-inventory-v1.md",
-    "knowledge/decisions/20260325-feature-notes.md",
-    "sync/MAILBOX.md",
-    "workflows/09-grok-planning-agent.md",
-    "knowledge/EA_Risk_Execution_Telemetry.md",
-    "knowledge/EA_Development.md",
-    "knowledge/common-errors.md"
+    "knowledge/decisions/20260326-trend-priority-entry-gate.md"
   ]
 }

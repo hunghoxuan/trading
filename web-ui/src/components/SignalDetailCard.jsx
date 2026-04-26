@@ -58,13 +58,22 @@ function toTradingViewSymbol(raw) {
 function renderFormattedText(text) {
   if (text == null || text === "") return null;
   const str = String(text);
-  if (!str.includes('\n')) return str;
-  return str.split('\n').map((line, i) => (
-    <span key={i}>
-      {line}
-      {i < str.split('\n').length - 1 && <br />}
-    </span>
-  ));
+  const lines = str.split("\n");
+  return lines.map((line, i) => {
+    const parts = line.split(". ");
+    return (
+      <span key={i}>
+        {parts.map((part, j) => (
+          <span key={j}>
+            {part}
+            {j < parts.length - 1 ? "." : ""}
+            {j < parts.length - 1 && <br />}
+          </span>
+        ))}
+        {i < lines.length - 1 && <br />}
+      </span>
+    );
+  });
 }
 
 export function SignalDetailCard({
@@ -144,7 +153,7 @@ export function SignalDetailCard({
           if (!initial.includes(f) && initial.length < 3) initial.push(f);
         });
       }
-      setSelectedTfs(initial);
+      setSelectedTfs(initial.sort((a, b) => (TF_WEIGHTS[a.toLowerCase()] || 0) - (TF_WEIGHTS[b.toLowerCase()] || 0)));
     }
   }, [chart?.enabled, chart?.detailTfTab, chart?.interval]);
 
@@ -182,7 +191,7 @@ export function SignalDetailCard({
     const t = tf.toLowerCase();
     setSelectedTfs(prev => {
       const next = prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t];
-      return next.sort((a, b) => (TF_WEIGHTS[a] || 0) - (TF_WEIGHTS[b] || 0));
+      return next.sort((a, b) => (TF_WEIGHTS[a.toLowerCase()] || 0) - (TF_WEIGHTS[b.toLowerCase()] || 0));
     });
   };
 
