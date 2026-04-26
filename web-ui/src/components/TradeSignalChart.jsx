@@ -219,7 +219,7 @@ export default function TradeSignalChart({
   openedAt = null,
   closedAt = null,
   analysisSnapshot = null
-}) => {
+}) {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
@@ -490,4 +490,4 @@ export default function TradeSignalChart({
       />
     </div>
   );
-};
+}
