@@ -279,7 +279,12 @@ export default function TradeSignalChart({
         } else {
           // Try Twelve Data on-demand (for old trades without stored snapshot)
           try {
-            const r = await fetch(`/v2/chart/twelve/candles?symbol=${encodeURIComponent(symbol || "")}&timeframe=${encodeURIComponent(interval || "15m")}&bars=300`, {
+            // FALLBACK: 'ENTRY' is not a real timeframe for API. Use signal interval or '15m'
+            const apiTf = (String(interval).toUpperCase() === 'ENTRY') ? '15m' : interval;
+            // NORMALIZE SYMBOL: Twelve Data usually wants BTCUSD not BTC/USD
+            const apiSym = String(symbol || "").replace(/[\/\s:]/g, "");
+            
+            const r = await fetch(`/v2/chart/twelve/candles?symbol=${encodeURIComponent(apiSym)}&timeframe=${encodeURIComponent(apiTf || "15m")}&bars=300`, {
               credentials: "include",
               cache: "no-store",
             });

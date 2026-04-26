@@ -635,26 +635,34 @@ function parseTradePlanFromRaw(rawText) {
 }
 
 function enrichParsedAnalysis(rawText, parsed) {
-  const fallback = parseTradePlanFromRaw(rawText);
-  if (!fallback) return parsed;
-  if (!parsed || typeof parsed !== "object") return fallback;
+  const fallback = parseTradePlanFromRaw(rawText) || {};
+  let res = parsed && typeof parsed === "object" ? { ...parsed } : { ...fallback };
+  
   if (Array.isArray(parsed)) {
-    return {
-      ...fallback,
-      market_analysis: {
-        pd_arrays: parsed,
-      },
-    };
+    // Check if it's an array of timeframes (Screen 4 issue)
+    if (parsed.length > 0 && (parsed[0]?.tf || parsed[0]?.timeframe)) {
+      res = { 
+        ...fallback,
+        market_analysis: { 
+          ...(fallback.market_analysis || {}),
+          timeframes: parsed 
+        } 
+      };
+    } else {
+      // Assume it's a list of trade plans
+      res = { 
+        ...fallback,
+        trade_plan: parsed 
+      };
+    }
   }
-  if (!parsed.trade_plan && fallback.trade_plan) {
-    return {
-      ...parsed,
-      symbol: parsed.symbol || fallback.symbol,
-      profile: parsed.profile || fallback.profile,
-      trade_plan: fallback.trade_plan,
-    };
-  }
-  return parsed;
+
+  // Ensure top-level fields are populated from fallback if missing in parsed
+  if (!res.symbol && fallback.symbol) res.symbol = fallback.symbol;
+  if (!res.profile && fallback.profile) res.profile = fallback.profile;
+  if (!res.trade_plan && fallback.trade_plan) res.trade_plan = fallback.trade_plan;
+
+  return res;
 }
 
 function getEffectiveTfConfig(cfg) {
@@ -701,7 +709,103 @@ function buildPrompt(cfg) {
     })
     .join("\n");
 
-  return `Act as a Senior ICT + Price Action + Market Structure trader. Analyze uploaded chart(s).\n\nCONFIG:\nSYMBOL: ${symbol} (or auto-detect)\nASSET_CLASS: ${cfg.asset}\nSTRATEGY: ${strategy}\nMIN_RR: ${cfg.rr}\nMAX_RISK_PCT: ${cfg.risk}%\nDAILY_ADR_FILTER: true\n${context.length ? `\nCONTEXT:\n${context.map((x) => `  ${x}`).join("\n")}\n` : ""}\nTIMEFRAME_ARRAY:\n${tfJson}\n\nPHASE 1 — PRIMARY FILTERS\n1. Time alignment killzones: London (02:00-05:00 EST), New York (07:00-10:00 EST).\n2. Draw on Liquidity (DOL): identify HTF target (PDH/PDL, EQH/EQL).\n3. Premium vs Discount: buys in discount (<0.5 fib), sells in premium (>0.5 fib).\n4. SMT divergence: mark institutional sponsorship as Confirmed or None.\n\nPHASE 2 — ARRAYS & KEY LEVELS\n1. PD arrays: OB, FVG, Breaker, Mitigation, Liquidity Void.\n2. Key levels: PDH, PDL, Weekly Open, Midnight Open, ADR High, ADR Low.\n3. Mark each array/level status as active|tested|broken where applicable.\n4. Include bar_start_unix (or bar_start) when possible.\n\nPHASE 3 — PATTERN & RISK LOGIC\n1. Pattern scan: V-Shape, Quasimodo, Flag, Triangle, Pin Bar, Inside Bar, Fakey.\n2. Dynamic risk sizing guide:\n   - >85 confluence: 1.0%\n   - standard: 0.5%\n   - high risk: 0.25%\n3. TP targeting must be realistic relative to daily ADR.\n4. Reject setup when RR < ${cfg.rr}.\n\nCHECKLIST CONDITIONS BY STRATEGY:\n${checklistRules}\n\nOUTPUT RULES\n1. Return STRICT JSON only (no markdown, no prose).\n2. Keep compatibility with existing fields and structure.\n3. trade_plan can contain multiple plans sorted by confidence_pct.\n4. If no valid setup, return trade_plan as empty array.\n\nOUTPUT:\n{\n  "symbol": "",\n  "market_analysis": {\n    "bias": "",\n    "trend": "",\n    "timeframes": [\n      { "tf": "D|4H|1H|15M", "trend": "Bullish|Bearish|Neutral", "bias": "Long|Short|Neutral" }\n    ],\n    "pd_arrays": [\n      { "type": "OB|FVG|Breaker|Mitigation|Void|Liquidity", "bar_start": null, "price_top": null, "price_bottom": null, "status": "active|tested|broken" }\n    ],\n    "key_levels": [\n      { "name": "PDH|PDL|WeeklyOpen|MidnightOpen|ADR_High|ADR_Low", "price": null, "type": "S/R|Liquidity", "bar_start": null }\n    ],\n    "institutional_filters": {\n      "killzone": "Active|Inactive",\n      "dol": "",\n      "p_d_status": "Premium|Discount|Equilibrium",\n      "smt": "Confirmed|None"\n    },\n    "confluence_checklist": [\n      { "item": "Killzone alignment", "checked": true, "note": "" },\n      { "item": "HTF Bias alignment", "checked": true, "note": "" },\n      { "item": "SMT Divergence", "checked": false, "note": "" }\n    ]\n  },\n  "trade_plan": [\n    {\n      "direction": "BUY|SELL|NULL",\n      "profile": "position|swing|daily|scalping",\n      "entry_model": "",\n      "entry": null,\n      "sl": null,\n      "tp_levels": [null, null, null],\n      "tp1": null,\n      "tp2": null,\n      "tp3": null,\n      "invalidation": "",\n      "rr": null,\n      "size_vol_pct": "",\n      "type": "limit|stop|market",\n      "strategy": "",\n      "confidence_pct": null,\n      "checklist_reasons_to_take": ["string reasons"],\n      "checklist_reasons_NOT_to_take": ["string reasons"],\n      "note": ""\n    }\n  ]\n}\n\nSELECTED_PROFILE: ${profileLabel}`;
+  return `Act as a Senior ICT + Price Action + Market Structure trader. Analyze uploaded chart(s).
+
+CONFIG:
+SYMBOL: ${symbol} (or auto-detect)
+ASSET_CLASS: ${cfg.asset}
+STRATEGY: ${strategy}
+MIN_RR: ${cfg.rr}
+MAX_RISK_PCT: ${cfg.risk}%
+DAILY_ADR_FILTER: true
+${context.length ? `
+CONTEXT:
+${context.map((x) => `  ${x}`).join("\n")}
+` : ""}
+TIMEFRAME_ARRAY:
+${tfJson}
+
+PHASE 1 — PRIMARY FILTERS
+1. Time alignment killzones: London (02:00-05:00 EST), New York (07:00-10:00 EST).
+2. Draw on Liquidity (DOL): identify HTF target (PDH/PDL, EQH/EQL).
+3. Premium vs Discount: buys in discount (<0.5 fib), sells in premium (>0.5 fib).
+4. SMT divergence: mark institutional sponsorship as Confirmed or None.
+
+PHASE 2 — ARRAYS & KEY LEVELS
+1. PD arrays: OB, FVG, Breaker, Mitigation, Liquidity Void.
+2. Key levels: PDH, PDL, Weekly Open, Midnight Open, ADR High, ADR Low.
+3. Mark each array/level status as active|tested|broken where applicable.
+4. Include bar_start_unix (or bar_start) when possible.
+
+PHASE 3 — PATTERN & RISK LOGIC
+1. Pattern scan: V-Shape, Quasimodo, Flag, Triangle, Pin Bar, Inside Bar, Fakey.
+2. Dynamic risk sizing guide:
+   - >85 confluence: 1.0%
+   - standard: 0.5%
+   - high risk: 0.25%
+3. TP targeting must be realistic relative to daily ADR.
+4. Reject setup when RR < ${cfg.rr}.
+
+CHECKLIST CONDITIONS BY STRATEGY:
+${checklistRules}
+
+OUTPUT RULES
+1. Return STRICT JSON only. DO NOT include any conversational text, markdown outside the JSON, or partial objects.
+2. Return the FULL JSON STRUCTURE defined below. DO NOT skip fields like market_analysis, pd_arrays, or trade_plan even if empty.
+
+OUTPUT_FORMAT:
+\`\`\`json
+{
+  "symbol": "",
+  "market_analysis": {
+    "bias": "Long|Short|Neutral",
+    "trend": "Bullish|Bearish|Neutral",
+    "timeframes": [
+      { "tf": "D|4H|1H|15M", "trend": "Bullish|Bearish|Neutral", "bias": "Long|Short|Neutral" }
+    ],
+    "pd_arrays": [
+      { "type": "OB|FVG|Breaker|Mitigation|Void|Liquidity", "bar_start": null, "price_top": null, "price_bottom": null, "status": "active|tested|broken", "timeframe": "" }
+    ],
+    "key_levels": [
+      { "name": "PDH|PDL|WeeklyOpen|MidnightOpen|ADR_High|ADR_Low", "price": null, "type": "S/R|Liquidity", "bar_start": null }
+    ],
+    "institutional_filters": {
+      "killzone": "Active|Inactive",
+      "dol": "",
+      "p_d_status": "Premium|Discount|Equilibrium",
+      "smt": "Confirmed|None"
+    },
+    "confluence_checklist": [
+      { "item": "Killzone alignment", "checked": true, "note": "" },
+      { "item": "HTF Bias alignment", "checked": true, "note": "" }
+    ]
+  },
+  "trade_plan": [
+    {
+      "direction": "BUY|SELL",
+      "profile": "position|swing|daily|scalping",
+      "entry_model": "",
+      "entry": null,
+      "sl": null,
+      "tp1": null,
+      "tp2": null,
+      "tp3": null,
+      "invalidation": "",
+      "rr": null,
+      "type": "limit|stop|market",
+      "confidence_pct": null,
+      "note": ""
+    }
+  ],
+  "final_verdict": {
+    "action": "BUY|SELL|WAIT",
+    "confidence": 0,
+    "note": ""
+  }
+}
+\`\`\`
+
+SELECTED_PROFILE: ${profileLabel}\`;
 }
 
 function buildJsonConfig(cfg) {
