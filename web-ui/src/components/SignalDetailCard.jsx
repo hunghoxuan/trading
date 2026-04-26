@@ -156,9 +156,6 @@ export function SignalDetailCard({
     if (canSwitchTab && mainTab === "chart") chart.onDetailTfTabChange("ENTRY");
   }, [mainTab, canSwitchTab, chart]);
 
-  useEffect(() => {
-    if (!liveTabs.includes(liveTab)) setLiveTab(liveTabs[0] || "15m");
-  }, [liveTabs, liveTab]);
 
   return (
     <div className="trade-detail-content">
