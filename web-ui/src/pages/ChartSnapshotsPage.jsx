@@ -1034,7 +1034,7 @@ export default function ChartSnapshotsPage() {
     [analysisParsed, analysisJson, analysisRaw],
   );
   const hasResponse = useMemo(
-    () => Boolean((analysisRaw || "").trim() || (analysisJson || "").trim() || (effectiveParsed && typeof effectiveParsed === "object")),
+    () => Boolean((analysisRaw || "").trim() || (analysisJson || "").trim() || (effectiveParsed && typeof effectiveParsed === "object" && Object.keys(effectiveParsed).length > 0)),
     [analysisRaw, analysisJson, effectiveParsed],
   );
   const responseText = useMemo(() => buildFriendlyResponse(effectiveParsed), [effectiveParsed]);

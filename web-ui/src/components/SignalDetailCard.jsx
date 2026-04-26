@@ -141,17 +141,21 @@ export function SignalDetailCard({
 
   const availableTabs = useMemo(() => {
     const tabs = [];
-    if (!hasResponseData && hideTabsBeforeResponse) return tabs;
+    const hasRaw = response?.raw && typeof response.raw === "object" && Object.keys(response.raw).length > 0;
+    const hasPlans = Array.isArray(response?.tradePlans) && response.tradePlans.length > 0;
+    const trulyHasData = hasRaw || hasPlans;
+
+    if (!trulyHasData && hideTabsBeforeResponse) return tabs;
 
     if (chart?.enabled) tabs.push("chart");
-    if (hasResponseData) {
+    if (trulyHasData) {
       tabs.push("analysis");
     }
     tabs.push("json");
     if (history?.enabled) tabs.push("history");
     if (!tabs.length && metaItems?.length) tabs.push("fields");
     return tabs;
-  }, [chart?.enabled, hasResponseData, response?.raw, response?.bars, history?.enabled, metaItems, hideTabsBeforeResponse]);
+  }, [chart?.enabled, hasResponseData, response?.raw, response?.tradePlans, response?.bars, history?.enabled, metaItems, hideTabsBeforeResponse]);
 
   const [mainTab, setMainTab] = useState("fields");
   
