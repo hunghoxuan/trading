@@ -162,7 +162,7 @@ async function get(path) {
     throw new Error(`Server returned non-JSON response (${res.status})`);
   }
   if (!res.ok || !data.ok) {
-    if (path !== "/auth/login" && isAuthFailure(res.status, data)) {
+    if (path !== "/auth/login" && path !== "/auth/me" && isAuthFailure(res.status, data)) {
       redirectToLogin();
       throw new Error("Session expired. Redirecting to login.");
     }
@@ -229,7 +229,7 @@ async function post(path, body = {}) {
     throw new Error(`Server returned non-JSON response (${res.status})`);
   }
   if (!res.ok || !data.ok) {
-    if (path !== "/auth/login" && isAuthFailure(res.status, data)) {
+    if (path !== "/auth/login" && path !== "/auth/me" && isAuthFailure(res.status, data)) {
       redirectToLogin();
       throw new Error("Session expired. Redirecting to login.");
     }
@@ -296,7 +296,7 @@ async function postWithTimeout(path, body = {}, timeoutMs = DEFAULT_API_TIMEOUT_
     throw new Error(`Server returned non-JSON response (${res.status})`);
   }
   if (!res.ok || !data.ok) {
-    if (path !== "/auth/login" && isAuthFailure(res.status, data)) {
+    if (path !== "/auth/login" && path !== "/auth/me" && isAuthFailure(res.status, data)) {
       redirectToLogin();
       throw new Error("Session expired. Redirecting to login.");
     }
@@ -360,7 +360,7 @@ async function put(path, body = {}) {
     throw new Error(`Server returned non-JSON response (${res.status})`);
   }
   if (!res.ok || !data.ok) {
-    if (path !== "/auth/login" && isAuthFailure(res.status, data)) {
+    if (path !== "/auth/login" && path !== "/auth/me" && isAuthFailure(res.status, data)) {
       redirectToLogin();
       throw new Error("Session expired. Redirecting to login.");
     }
@@ -410,7 +410,7 @@ async function del(path) {
   let data;
   try { data = await res.json(); } catch { throw new Error(`Server returned non-JSON response (${res.status})`); }
   if (!res.ok || !data.ok) {
-    if (path !== "/auth/login" && isAuthFailure(res.status, data)) {
+    if (path !== "/auth/login" && path !== "/auth/me" && isAuthFailure(res.status, data)) {
       redirectToLogin();
       throw new Error("Session expired. Redirecting to login.");
     }

@@ -332,9 +332,12 @@ export function SignalDetailCard({
                   <button 
                     key={tf}
                     type="button"
-                    className={`tf-pill ${activeTab !== 'ENTRY' && selectedTfs.includes(lowTf) ? 'active' : ''}`}
-                    onClick={() => toggleTf(tf)}
-                    style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border)', background: (activeTab !== 'ENTRY' && selectedTfs.includes(lowTf)) ? 'var(--accent-soft)' : 'transparent', color: (activeTab !== 'ENTRY' && selectedTfs.includes(lowTf)) ? 'var(--text)' : 'var(--muted)' }}
+                    className={`tf-pill ${activeTab === tf.toUpperCase() || (activeTab !== 'ENTRY' && selectedTfs.includes(lowTf)) ? 'active' : ''}`}
+                    onClick={() => {
+                      toggleTf(tf);
+                      if (canSwitchTab) chart.onDetailTfTabChange(tf.toUpperCase());
+                    }}
+                    style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border)', background: (activeTab === tf.toUpperCase() || (activeTab !== 'ENTRY' && selectedTfs.includes(lowTf))) ? 'var(--accent-soft)' : 'transparent', color: (activeTab === tf.toUpperCase() || (activeTab !== 'ENTRY' && selectedTfs.includes(lowTf))) ? 'var(--text)' : 'var(--muted)' }}
                   >
                     {tf.toLowerCase()}
                   </button>
@@ -365,7 +368,24 @@ export function SignalDetailCard({
 
           <div className="multi-chart-grid">
             {activeTab === 'ENTRY' && chart?.entryNode ? (
-              <div className="tf-chart-row">{chart.entryNode}</div>
+              <div className="tf-chart-row">
+                <div className={`tf-row-charts ${chartModes.length > 1 ? 'side-by-side' : ''}`} style={{ display: 'grid', gridTemplateColumns: chartModes.length > 1 ? '1fr 1fr' : '1fr', gap: 12 }}>
+                  {chartModes.includes('static') && (
+                    <div className="chart-wrapper static-wrapper">
+                      {chart.entryNode}
+                    </div>
+                  )}
+                  {chartModes.includes('live') && (
+                    <div className="chart-wrapper live-wrapper">
+                      <iframe
+                        title={`TV-LIVE-ENTRY`}
+                        src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol)}&interval=${detailTabToTvInterval(chart.interval || '15m')}&theme=dark&style=1`}
+                        width="100%" height="100%" style={{ aspectRatio: '3 / 2', borderRadius: '8px', border: '1px solid var(--border)' }} frameBorder="0"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
             ) : (
               selectedTfs.map(tf => (
                 <div key={tf} className="tf-chart-row">
