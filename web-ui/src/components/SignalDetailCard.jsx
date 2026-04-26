@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { TradeSignalChart } from "./TradeSignalChart";
+import TradeSignalChart from "./TradeSignalChart";
 import { TradePlanEditor } from "./TradePlanEditor";
 import { renderHistoryItem } from "../utils/signalDetailUtils";
 
@@ -346,7 +346,7 @@ export function SignalDetailCard({
               })}
             </div>
             <div className="mode-toggles" style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.2)', padding: 2, borderRadius: '6px' }}>
-              {response?.text && (
+              {(response?.text || chart?.analysisSnapshot) && (
                 <button 
                   type="button"
                   className={`mode-btn ${chartModes.includes('static') ? 'active' : ''}`}

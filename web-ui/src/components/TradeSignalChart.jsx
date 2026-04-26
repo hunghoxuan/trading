@@ -208,7 +208,7 @@ class SignalCreationLinePrimitive {
 
 
 
-export const TradeSignalChart = ({ 
+export default function TradeSignalChart({ 
   symbol = 'BTCUSDT', 
   interval = '1h', 
   historicalData = [], 

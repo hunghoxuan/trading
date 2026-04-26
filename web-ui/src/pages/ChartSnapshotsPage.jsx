@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createChart } from "lightweight-charts";
 import { api } from "../api";
 import { SignalDetailCard } from "../components/SignalDetailCard";
-import { TradeSignalChart } from "../components/TradeSignalChart";
+import TradeSignalChart from "../components/TradeSignalChart";
 
 const STORAGE_KEY = "chart_prompt_builder_templates_v2";
 
