@@ -32,7 +32,9 @@ export default function StoragePage() {
       ? "CRITICAL ACTION: This will delete ALL your signals and trades. Are you absolutely sure?"
       : target === "hard_disk"
         ? "Run server cleanup now? This will flush PM2 logs, truncate PostgreSQL file logs, clean apt/npm cache, and prune old temp/snapshot files."
-        : `Are you sure you want to delete all ${target}? This cannot be undone.`;
+      : target === "cache"
+        ? "Clean all data caches? This will flush Redis, truncate market_data (bars) table, and clear memory cache. This will force a reload of all chart data."
+      : `Are you sure you want to delete all ${target}? This cannot be undone.`;
 
     if (!window.confirm(confirmMsg)) return;
 
@@ -206,6 +208,24 @@ export default function StoragePage() {
                       disabled={busy || stats.logs_count === 0}
                     >
                       DELETE ALL LOGS
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div style={{ fontWeight: "bold" }}>Data Caches</div>
+                    <div className="minor-text">Redis flush, market_data table truncate, memory cache clear</div>
+                  </td>
+                  <td>
+                    <span className="badge OTHER">Volatile</span>
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    <button
+                      className="danger-button"
+                      onClick={() => handleCleanup("cache")}
+                      disabled={busy}
+                    >
+                      CLEAN CACHE
                     </button>
                   </td>
                 </tr>

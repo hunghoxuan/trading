@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-0518"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-0536"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -4480,6 +4480,20 @@ async function mt5InitBackend() {
         const whereUser = u ? " WHERE user_id = $1" : "";
         const lDel = await pool.query(`DELETE FROM logs${whereUser}`, u ? [u] : []);
         return { ok: true, target, logs_deleted: lDel.rowCount };
+      } else if (target === 'cache') {
+        const results = { redis: false, db_market_data: false };
+        if (CFG.redisEnabled) {
+          const client = await getRedisClient();
+          if (client) {
+            await client.flushAll().catch(() => {});
+            results.redis = true;
+          }
+        }
+        await pool.query(`TRUNCATE TABLE market_data`);
+        results.db_market_data = true;
+        // Also clear memory cache if applicable
+        MARKET_DATA_MEMORY_CACHE.clear();
+        return { ok: true, target, ...results };
       } else {
         throw new Error("unknown target");
       }

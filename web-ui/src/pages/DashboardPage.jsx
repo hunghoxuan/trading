@@ -204,8 +204,12 @@ export default function DashboardPage() {
             <div style={{ fontWeight: 800, fontSize: '16px', color: 'var(--success)' }}>{m.count_filled || 0}</div>
           </div>
           <div className="summary-item">
-            <span className="minor-text" style={{ fontSize: '10px' }}>CLOSED</span>
-            <div style={{ fontWeight: 800, fontSize: '16px', color: 'var(--muted)' }}>{m.count_closed || 0}</div>
+            <span className="minor-text" style={{ fontSize: '10px' }}>WINS</span>
+            <div style={{ fontWeight: 800, fontSize: '16px', color: 'var(--success)' }}>{m.wins || 0}</div>
+          </div>
+          <div className="summary-item">
+            <span className="minor-text" style={{ fontSize: '10px' }}>LOSSES</span>
+            <div style={{ fontWeight: 800, fontSize: '16px', color: 'var(--error)' }}>{m.losses || 0}</div>
           </div>
         </div>
 
