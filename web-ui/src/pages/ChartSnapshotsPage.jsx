@@ -2009,80 +2009,78 @@ export default function ChartSnapshotsPage() {
           </div>
         </div>
 
-        {!hasResponse && (
-          <div className="snapshot-live-grid-v4">
-            {widgetTfs.map((tf) => (
-              <div key={tf} className="snapshot-live-card-v3">
-                <div className="minor-text" style={{ marginBottom: 6 }}>{tf}</div>
-                <iframe
-                  title={`live-chart-${tf}`}
-                  className="snapshot-live-iframe-v3"
-                  src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTfToTradingViewInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-        {hasResponse && (
-          <SignalDetailCard
-            mode="ai"
-            hideTabsBeforeResponse={true}
-            chart={{
-              enabled: true,
-              symbol: cfg.symbol,
-              interval: timeframe,
-              detailTfTab: timeframe,
-              onDetailTfTabChange: setSelectedEntryTf,
-              entryNode: (
-                <div className="snapshot-live-card-v3">
-                  <div className="minor-text" style={{ marginBottom: 12 }}>Chart 1: Twelve + PD Arrays</div>
-                  <TradeSignalChart 
-                    symbol={cfg.symbol}
-                    interval={timeframe}
-                    analysisSnapshot={effectiveParsed}
+        <SignalDetailCard
+          mode="ai"
+          hideTabsBeforeResponse={true}
+          marketCharts={!hasResponse ? (
+            <div className="snapshot-live-grid-v4">
+              {widgetTfs.map((tf) => (
+                <div key={tf} className="snapshot-live-card-v3">
+                  <div className="minor-text" style={{ marginBottom: 6 }}>{tf}</div>
+                  <iframe
+                    title={`live-chart-${tf}`}
+                    className="snapshot-live-iframe-v3"
+                    src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTfToTradingViewInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
                   />
-                  <div className="minor-text" style={{ marginTop: 8 }}>{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
                 </div>
-              )
-            }}
-            response={{
-              enabled: true,
-              hasData: hasResponse,
-              label: "Response",
-              tab: responseTab,
-              onTabChange: setResponseTab,
-              text: responseText,
-              raw: effectiveParsed || analysisRaw || analysisJson,
-              bars: JSON.stringify(currentBarsSnapshot || { status: "no_cached_bars" }, null, 2),
-              tradePlans: analysisTradePlans,
-              snapshotFiles: chartFiles,
-            }}
-            tradePlan={{
-              enabled: true,
-              signalId: null,
-              tradeId: null,
-              value: position,
-              onChange: updatePositionField,
-              onAddSignal: (pos) => addBySelection("signal", pos, "main"),
-              onAddTrade: (pos) => addBySelection("trade", pos, "main"),
-              showSaveButton: false,
-              showAddSignalButton: true,
-              showAddTradeButton: true,
-              showResetButton: true,
-              onReset: resetPositionLocal,
-              busy: { 
-                signal: addingSignal && submittingPlanId === "main", 
-                trade: addingSignal && submittingPlanId === "main" 
-              },
-              submittingPlanId: submittingPlanId,
-              disabled: false,
-              error: !canAddSignal ? validatePosition(position) : "",
-              successMessage: actionStatus.action === "add" && actionStatus.text && actionStatus.type !== "error" && actionStatus.type !== "warning"
-                ? actionStatus.text
-                : "",
-            }}
-          />
-        )}
+              ))}
+            </div>
+          ) : null}
+          chart={{
+            enabled: true,
+            symbol: cfg.symbol,
+            interval: timeframe,
+            detailTfTab: timeframe,
+            onDetailTfTabChange: setSelectedEntryTf,
+            entryNode: (
+              <div className="snapshot-live-card-v3">
+                <div className="minor-text" style={{ marginBottom: 12 }}>Chart 1: Twelve + PD Arrays</div>
+                <TradeSignalChart 
+                  symbol={cfg.symbol}
+                  interval={timeframe}
+                  analysisSnapshot={effectiveParsed}
+                />
+                <div className="minor-text" style={{ marginTop: 8 }}>{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
+              </div>
+            )
+          }}
+          response={{
+            enabled: true,
+            hasData: hasResponse,
+            label: "Response",
+            tab: responseTab,
+            onTabChange: setResponseTab,
+            text: responseText,
+            raw: effectiveParsed || analysisRaw || analysisJson,
+            bars: JSON.stringify(currentBarsSnapshot || { status: "no_cached_bars" }, null, 2),
+            tradePlans: analysisTradePlans,
+            snapshotFiles: chartFiles,
+          }}
+          tradePlan={{
+            enabled: true,
+            signalId: null,
+            tradeId: null,
+            value: position,
+            onChange: updatePositionField,
+            onAddSignal: (pos) => addBySelection("signal", pos, "main"),
+            onAddTrade: (pos) => addBySelection("trade", pos, "main"),
+            showSaveButton: false,
+            showAddSignalButton: true,
+            showAddTradeButton: true,
+            showResetButton: true,
+            onReset: resetPositionLocal,
+            busy: { 
+              signal: addingSignal && submittingPlanId === "main", 
+              trade: addingSignal && submittingPlanId === "main" 
+            },
+            submittingPlanId: submittingPlanId,
+            disabled: false,
+            error: !canAddSignal ? validatePosition(position) : "",
+            successMessage: actionStatus.action === "add" && actionStatus.text && actionStatus.type !== "error" && actionStatus.type !== "warning"
+              ? actionStatus.text
+              : "",
+          }}
+        />
         {actionStatus.action === "add" && actionStatus.text && (actionStatus.type === "error" || actionStatus.type === "warning") ? (
           <span className={`minor-text snapshot-footer-msg-v3 ${actionStatus.type === "error" ? "msg-error" : "msg-warning"}`}>{actionStatus.text}</span>
         ) : null}

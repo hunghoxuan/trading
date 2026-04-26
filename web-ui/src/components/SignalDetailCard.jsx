@@ -123,9 +123,12 @@ export function SignalDetailCard({
   history = null,
   formatDateTime,
   hideTabsBeforeResponse = false,
+  marketCharts = null,
 }) {
   const preset = MODE_PRESETS[mode] || MODE_PRESETS.generic;
-  if (!showWhenEmpty && !header && !response?.hasData && !tradePlan?.enabled && !chart?.enabled && !metaItems.length && !history?.enabled) {
+  const hasResponseData = response?.hasData;
+  
+  if (!showWhenEmpty && !header && !hasResponseData && !tradePlan?.enabled && !chart?.enabled && !metaItems.length && !history?.enabled && !marketCharts) {
     return <div className="empty-state">{emptyText}</div>;
   }
 
@@ -139,7 +142,7 @@ export function SignalDetailCard({
 
   const availableTabs = useMemo(() => {
     const tabs = [];
-    const hasResponse = Boolean(response?.text);
+    const hasResponse = Boolean(response?.text || response?.hasData);
     const showAlwaysOrHasResponse = !hideTabsBeforeResponse || hasResponse;
 
     if (chart?.enabled && showAlwaysOrHasResponse) tabs.push("chart");
@@ -152,7 +155,7 @@ export function SignalDetailCard({
     if (history?.enabled) tabs.push("history");
     if (!tabs.length && metaItems?.length) tabs.push("fields");
     return tabs;
-  }, [chart?.enabled, response?.text, response?.raw, response?.bars, history?.enabled, metaItems, hideTabsBeforeResponse]);
+  }, [chart?.enabled, response?.text, response?.hasData, response?.raw, response?.bars, history?.enabled, metaItems, hideTabsBeforeResponse]);
 
   const [mainTab, setMainTab] = useState("fields");
   
@@ -161,16 +164,17 @@ export function SignalDetailCard({
   }, [availableTabs, mainTab]);
   
   const [selectedTfs, setSelectedTfs] = useState([]);
-  const [chartModes, setChartModes] = useState(['live']);
+  const [chartModes, setChartModes] = useState(['static', 'live']);
   const [multiChartData, setMultiChartData] = useState({});
   const [loadingCharts, setLoadingCharts] = useState(false);
 
   useEffect(() => {
-    const hasAnalysis = response?.hasData || chart?.analysisSnapshot;
-    if (hasAnalysis && !chartModes.includes('static')) {
-      setChartModes(prev => [...prev, 'static']);
+    if (hasResponseData && !chartModes.includes('static')) {
+      setChartModes(['static', 'live']);
+    } else if (!hasResponseData && chartModes.includes('static') && !chart?.analysisSnapshot) {
+      setChartModes(['live']);
     }
-  }, [response?.hasData, chart?.analysisSnapshot]);
+  }, [hasResponseData, chart?.analysisSnapshot]);
 
   useEffect(() => {
     if (chart?.enabled) {
@@ -212,11 +216,6 @@ export function SignalDetailCard({
     }
   }, [mainTab, chart?.symbol, selectedTfs, chartModes]);
 
-  useEffect(() => {
-    if (response?.text) setChartModes(['static']);
-    else setChartModes(['live']);
-  }, [response?.text]);
-
   const toggleTf = (tf) => {
     const t = tf.toLowerCase();
     setSelectedTfs(prev => {
@@ -233,6 +232,8 @@ export function SignalDetailCard({
 
   return (
     <div className="trade-detail-content">
+      {marketCharts}
+      
       {header ? (
         <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
@@ -328,16 +329,14 @@ export function SignalDetailCard({
               )}
               {liveTabs.map(tf => {
                 const lowTf = tf.toLowerCase();
+                const isSelected = selectedTfs.includes(lowTf);
                 return (
                   <button 
                     key={tf}
                     type="button"
-                    className={`tf-pill ${activeTab === tf.toUpperCase() || (activeTab !== 'ENTRY' && selectedTfs.includes(lowTf)) ? 'active' : ''}`}
-                    onClick={() => {
-                      toggleTf(tf);
-                      if (canSwitchTab) chart.onDetailTfTabChange(tf.toUpperCase());
-                    }}
-                    style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border)', background: (activeTab === tf.toUpperCase() || (activeTab !== 'ENTRY' && selectedTfs.includes(lowTf))) ? 'var(--accent-soft)' : 'transparent', color: (activeTab === tf.toUpperCase() || (activeTab !== 'ENTRY' && selectedTfs.includes(lowTf))) ? 'var(--text)' : 'var(--muted)' }}
+                    className={`tf-pill ${isSelected ? 'active' : ''}`}
+                    onClick={() => toggleTf(tf)}
+                    style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border)', background: isSelected ? 'var(--accent-soft)' : 'transparent', color: isSelected ? 'var(--text)' : 'var(--muted)' }}
                   >
                     {tf.toLowerCase()}
                   </button>
@@ -345,7 +344,7 @@ export function SignalDetailCard({
               })}
             </div>
             <div className="mode-toggles" style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.2)', padding: 2, borderRadius: '6px' }}>
-              {(response?.text || chart?.analysisSnapshot) && (
+              {(hasResponseData || chart?.analysisSnapshot) && (
                 <button 
                   type="button"
                   className={`mode-btn ${chartModes.includes('static') ? 'active' : ''}`}
@@ -366,9 +365,11 @@ export function SignalDetailCard({
             </div>
           </div>
 
-          <div className="multi-chart-grid">
-            {activeTab === 'ENTRY' && chart?.entryNode ? (
+          <div className="multi-chart-grid" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            {/* Show ENTRY chart if selected or if activeTab is ENTRY */}
+            {activeTab === 'ENTRY' && chart?.entryNode && (
               <div className="tf-chart-row">
+                <h4 className="tf-row-label">ENTRY (Main)</h4>
                 <div className={`tf-row-charts ${chartModes.length > 1 ? 'side-by-side' : ''}`} style={{ display: 'grid', gridTemplateColumns: chartModes.length > 1 ? '1fr 1fr' : '1fr', gap: 12 }}>
                   {chartModes.includes('static') && (
                     <div className="chart-wrapper static-wrapper">
@@ -386,8 +387,13 @@ export function SignalDetailCard({
                   )}
                 </div>
               </div>
-            ) : (
-              selectedTfs.map(tf => (
+            )}
+
+            {/* Show other selected timeframes */}
+            {selectedTfs.map(tf => {
+              // Avoid duplicate if activeTab is already ENTRY and we have it in selectedTfs?
+              // Usually they are separate concepts.
+              return (
                 <div key={tf} className="tf-chart-row">
                   <h4 className="tf-row-label">{tf}</h4>
                   <div className={`tf-row-charts ${chartModes.length > 1 ? 'side-by-side' : ''}`} style={{ display: 'grid', gridTemplateColumns: chartModes.length > 1 ? '1fr 1fr' : '1fr', gap: 12 }}>
@@ -414,8 +420,8 @@ export function SignalDetailCard({
                     )}
                   </div>
                 </div>
-              ))
-            )}
+              );
+            })}
           </div>
         </div>
       ) : null}
