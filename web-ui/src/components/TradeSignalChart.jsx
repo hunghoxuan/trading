@@ -299,7 +299,9 @@ export default function TradeSignalChart({
         }
 
         if (!candles.length) {
-          throw new Error("No snapshot/Twelve bars available for this symbol/timeframe.");
+          console.warn("No snapshot/Twelve bars available for this symbol/timeframe.");
+          setLoading(false);
+          return;
         }
 
         if (isMounted) {

@@ -172,13 +172,18 @@ export function SignalDetailCard({
       setLoadingCharts(true);
       const tfsParam = selectedTfs.join(',');
       fetch(`/api/charts/multi?symbol=${encodeURIComponent(chart.symbol)}&tfs=${encodeURIComponent(tfsParam)}`)
-        .then(res => res.json())
+        .then(async res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
         .then(res => {
-          if (isMounted && res.ok) {
+          if (isMounted && res?.ok) {
             setMultiChartData(res.data || {});
           }
         })
-        .catch(err => console.error("Failed to fetch multi-TF charts", err))
+        .catch(err => {
+          if (isMounted) console.warn("Failed to fetch multi-TF charts:", err.message);
+        })
         .finally(() => {
           if (isMounted) setLoadingCharts(false);
         });

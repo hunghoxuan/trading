@@ -1056,11 +1056,14 @@ export default function ChartSnapshotsPage() {
         setAnalysisParsed(parsed);
         setAnalysisJson(JSON.stringify(parsed, null, 2));
         setPosition(extractPositionFromAnalysis(parsed));
+        
+        // Fetch bars in background - non-blocking
         const symbolForBars = normalizeSignalSymbol(parsed?.symbol || tvSymbol || cfg.symbol || "");
-        const prefetched = await prefetchBarsPromise;
-        if (!prefetched || normalizeSignalSymbol(symbolForBars) !== normalizeSignalSymbol(prefetchSymbol)) {
-          await fetchBarsSnapshot(symbolForBars, timeframe, Number(cfg.lookbackBars || 300) || 300, true);
-        }
+        prefetchBarsPromise.then(prefetched => {
+          if (!prefetched || normalizeSignalSymbol(symbolForBars) !== normalizeSignalSymbol(prefetchSymbol)) {
+            fetchBarsSnapshot(symbolForBars, timeframe, Number(cfg.lookbackBars || 300) || 300, true).catch(() => null);
+          }
+        }).catch(() => null);
       }
       setUsedFiles(Array.isArray(out?.used_files) ? out.used_files : []);
       if (!files.length) setAnalysisFilesDisplay(Array.isArray(out?.used_files) ? out.used_files : []);
