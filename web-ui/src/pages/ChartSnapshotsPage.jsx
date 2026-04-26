@@ -485,43 +485,49 @@ function extractJsonCandidate(textRaw) {
   let s = text.replace(/^\s*`+json\s*/i, "").replace(/^\s*```json\s*/i, "").replace(/\s*```\s*$/i, "").trim();
   const fenced = s.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   if (fenced?.[1]) s = fenced[1].trim();
-  const findBalanced = (str, openChar, closeChar) => {
-    const start = str.indexOf(openChar);
-    if (start < 0) return "";
+
+  const findBalanced = (str, openChar, closeChar, startAt = 0) => {
+    const start = str.indexOf(openChar, startAt);
+    if (start < 0) return { content: "", start: -1 };
     let depth = 0;
     let inString = false;
     let escaped = false;
     for (let i = start; i < str.length; i += 1) {
       const ch = str[i];
       if (inString) {
-        if (escaped) {
-          escaped = false;
-          continue;
-        }
-        if (ch === "\\") {
-          escaped = true;
-          continue;
-        }
+        if (escaped) { escaped = false; continue; }
+        if (ch === "\\") { escaped = true; continue; }
         if (ch === "\"") inString = false;
         continue;
       }
-      if (ch === "\"") {
-        inString = true;
-        continue;
-      }
+      if (ch === "\"") { inString = true; continue; }
       if (ch === openChar) depth += 1;
       if (ch === closeChar) {
         depth -= 1;
-        if (depth === 0) return str.slice(start, i + 1);
+        if (depth === 0) return { content: str.slice(start, i + 1), start };
       }
     }
-    return "";
+    return { content: "", start: -1 };
   };
-  const obj = findBalanced(s, "{", "}");
-  if (obj) return obj;
-  const arr = findBalanced(s, "[", "]");
-  if (arr) return arr;
-  return s;
+
+  let longest = "";
+  let searchPos = 0;
+  while (searchPos < s.length) {
+    const { content, start } = findBalanced(s, "{", "}", searchPos);
+    if (start < 0) break;
+    if (content.length > longest.length) longest = content;
+    searchPos = start + 1;
+  }
+  
+  searchPos = 0;
+  while (searchPos < s.length) {
+    const { content, start } = findBalanced(s, "[", "]", searchPos);
+    if (start < 0) break;
+    if (content.length > longest.length) longest = content;
+    searchPos = start + 1;
+  }
+
+  return longest || s;
 }
 
 function tryParseJsonLoose(textRaw) {
@@ -530,7 +536,6 @@ function tryParseJsonLoose(textRaw) {
   try {
     return JSON.parse(candidate);
   } catch {
-    // Fallback: repair common LLM JSON issues (raw newlines in strings, trailing commas)
     try {
       let repaired = "";
       let inString = false;
@@ -538,33 +543,14 @@ function tryParseJsonLoose(textRaw) {
       for (let i = 0; i < candidate.length; i += 1) {
         const ch = candidate[i];
         if (inString) {
-          if (escaped) {
-            repaired += ch;
-            escaped = false;
-            continue;
-          }
-          if (ch === "\\") {
-            repaired += ch;
-            escaped = true;
-            continue;
-          }
-          if (ch === "\"") {
-            repaired += ch;
-            inString = false;
-            continue;
-          }
-          if (ch === "\n" || ch === "\r") {
-            repaired += " ";
-            continue;
-          }
+          if (escaped) { repaired += ch; escaped = false; continue; }
+          if (ch === "\\") { repaired += ch; escaped = true; continue; }
+          if (ch === "\"") { repaired += ch; inString = false; continue; }
+          if (ch === "\n" || ch === "\r") { repaired += " "; continue; }
           repaired += ch;
           continue;
         }
-        if (ch === "\"") {
-          repaired += ch;
-          inString = true;
-          continue;
-        }
+        if (ch === "\"") { repaired += ch; inString = true; continue; }
         repaired += ch;
       }
       repaired = repaired.replace(/,\s*([}\]])/g, "$1");
@@ -590,9 +576,9 @@ function parseTradePlanFromRaw(rawText) {
   };
   const symbol = getString(/"symbol"\s*:\s*"([^"]+)"/i);
   const profile = getString(/"profile"\s*:\s*"([^"]+)"/i);
-  let tradePlanBlock = raw.match(/"trade_plan"\s*:\s*\{([\s\S]*?)\}\s*(?:,|\})/i)?.[1] || "";
+  let tradePlanBlock = raw.match(/"trade_plan"\s*:\s*\{([\s\S]*?)\}\s*(?:|,\s*|(?=\s*[}\]]))}/i)?.[1] || "";
   if (!tradePlanBlock) {
-    tradePlanBlock = raw.match(/"trade_plan"\s*:\s*\[\s*\{([\s\S]*?)\}\s*(?:,|\])/i)?.[1] || "";
+    tradePlanBlock = raw.match(/"trade_plan"\s*:\s*\[\s*\{([\s\S]*?)\}\s*(?:|,\s*|(?=\s*\]))/i)?.[1] || "";
   }
   if (!tradePlanBlock) return null;
   const inPlan = (re) => {
@@ -605,14 +591,16 @@ function parseTradePlanFromRaw(rawText) {
     const n = Number(String(m[1]).replace(/,/g, ""));
     return Number.isFinite(n) ? n : null;
   };
-  const direction = inPlan(/"direction"\s*:\s*"([^"]+)"/i);
+
   const entry = inPlanNum(/"entry"\s*:\s*(-?\d+(?:\.\d+)?)/i);
   const sl = inPlanNum(/"sl"\s*:\s*(-?\d+(?:\.\d+)?)/i);
   const tp1 = inPlanNum(/"tp1"\s*:\s*(-?\d+(?:\.\d+)?)/i);
   const tp2 = inPlanNum(/"tp2"\s*:\s*(-?\d+(?:\.\d+)?)/i);
   const tp3 = inPlanNum(/"tp3"\s*:\s*(-?\d+(?:\.\d+)?)/i);
   const rr = inPlanNum(/"rr"\s*:\s*(-?\d+(?:\.\d+)?)/i);
-  const note = inPlan(/"note"\s*:\s*"([\s\S]*?)"/i);
+  const direction = inPlan(/"direction"\s*:\s*"([^"]+)"/i);
+  const note = getString(/"note"\s*:\s*"([^"]+)"/i);
+
   if (!symbol && !direction && !Number.isFinite(entry)) return null;
   return {
     symbol: symbol || "",
@@ -639,7 +627,6 @@ function enrichParsedAnalysis(rawText, parsed) {
   let res = parsed && typeof parsed === "object" ? { ...parsed } : { ...fallback };
   
   if (Array.isArray(parsed)) {
-    // Check if it's an array of timeframes (Screen 4 issue)
     if (parsed.length > 0 && (parsed[0]?.tf || parsed[0]?.timeframe)) {
       res = { 
         ...fallback,
@@ -649,7 +636,6 @@ function enrichParsedAnalysis(rawText, parsed) {
         } 
       };
     } else {
-      // Assume it's a list of trade plans
       res = { 
         ...fallback,
         trade_plan: parsed 
@@ -657,10 +643,13 @@ function enrichParsedAnalysis(rawText, parsed) {
     }
   }
 
-  // Ensure top-level fields are populated from fallback if missing in parsed
   if (!res.symbol && fallback.symbol) res.symbol = fallback.symbol;
   if (!res.profile && fallback.profile) res.profile = fallback.profile;
-  if (!res.trade_plan && fallback.trade_plan) res.trade_plan = fallback.trade_plan;
+  if (!res.trade_plan && fallback.trade_plan) {
+     res.trade_plan = fallback.trade_plan;
+  } else if (Array.isArray(res.trade_plan) && res.trade_plan.length === 0 && fallback.trade_plan) {
+     res.trade_plan = [fallback.trade_plan];
+  }
 
   return res;
 }
@@ -1149,6 +1138,7 @@ export default function ChartSnapshotsPage() {
         model: "claude-sonnet-4-0",
         prompt: composedPrompt,
         session_prefix: activeSessionPrefix,
+        max_tokens: 4096,
       };
       if (Array.isArray(files) && files.length) payload.files = files;
       const out = await api.chartSnapshotsAnalyze(payload);

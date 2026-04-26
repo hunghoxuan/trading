@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1738"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1803"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -8529,7 +8529,7 @@ const appHandler = async (req, res) => {
         apiKey: claudeKey,
         model: requestModel,
         messages: [{ role: "user", content }],
-        maxTokens: Number(body.max_tokens || 1600),
+        maxTokens: Number(body.max_tokens || 4096),
         timeoutMs: 90000,
       });
       const aiRes = out.response;
