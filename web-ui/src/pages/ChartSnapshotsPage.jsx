@@ -913,12 +913,12 @@ export default function ChartSnapshotsPage() {
   const jsonConfigText = useMemo(() => buildJsonConfig(cfg), [cfg]);
   const widgetTfs = useMemo(() => {
     const base = [...new Set([...(tfConfig.htf_tfs || []), ...(tfConfig.exec_tfs || []), ...(tfConfig.conf_tfs || [])]
-      .map((x) => String(x || "").toUpperCase().trim())
+      .map((x) => String(x || "").toLowerCase().trim())
       .filter(Boolean))];
-    const fallback = ["D", "4H", "15M", "5M", "1M", "W"];
+    const fallback = ["d", "4h", "15m", "5m", "1m", "w"];
     for (const tf of fallback) {
       if (base.length >= 4) break;
-      if (!base.includes(tf)) base.push(tf);
+      if (!base.includes(tf.toLowerCase())) base.push(tf.toLowerCase());
     }
     return base.slice(0, 4);
   }, [tfConfig.htf_tfs, tfConfig.exec_tfs, tfConfig.conf_tfs]);

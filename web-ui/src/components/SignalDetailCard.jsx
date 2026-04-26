@@ -4,10 +4,10 @@ import { TradePlanEditor } from "./TradePlanEditor";
 import { renderHistoryItem } from "../utils/signalDetailUtils";
 
 const TF_WEIGHTS = {
-  '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240, 'd': 1440, 'w': 10080
+  '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240, 'd': 1440, 'w': 10080, 'm': 43200
 };
 
-const DEFAULT_TF_TABS = ["W", "d", "4h", "1h", "15m", "5m", "1m"];
+const DEFAULT_TF_TABS = ["ENTRY", "1m", "5m", "15m", "1h", "4h", "d", "W"];
 const MODE_PRESETS = {
   generic: {
     headerColumns: "minmax(0, 1fr) minmax(0, 1.25fr) minmax(120px, 0.55fr)",
@@ -96,6 +96,7 @@ export function SignalDetailCard({
 
   const tfTabs = Array.isArray(chart?.detailTfTabs) && chart.detailTfTabs.length ? chart.detailTfTabs : DEFAULT_TF_TABS;
   const liveTabs = [...tfTabs]
+    .filter(tf => tf !== 'ENTRY')
     .sort((a, b) => (TF_WEIGHTS[a.toLowerCase()] || 0) - (TF_WEIGHTS[b.toLowerCase()] || 0));
   const activeTab = chart?.detailTfTab || "ENTRY";
   const canSwitchTab = typeof chart?.onDetailTfTabChange === "function";
@@ -130,9 +131,15 @@ export function SignalDetailCard({
   
   // Chart Multi-TF and Mode State
   const [selectedTfs, setSelectedTfs] = useState([]);
-  const [chartModes, setChartModes] = useState(['live']); // Default to LIVE only before analysis
+  const [chartModes, setChartModes] = useState(['live']);
   const [multiChartData, setMultiChartData] = useState({});
   const [loadingCharts, setLoadingCharts] = useState(false);
+
+  useEffect(() => {
+    if (response?.hasData && !chartModes.includes('static')) {
+      setChartModes(prev => [...prev, 'static']);
+    }
+  }, [response?.hasData]);
 
   // Initialize selected TFs from signal/profile
   useEffect(() => {
@@ -321,17 +328,21 @@ export function SignalDetailCard({
                   ENTRY
                 </button>
               )}
-              {liveTabs.map(tf => (
-                <button 
-                  key={tf}
-                  type="button"
-                  className={`tf-pill ${activeTab !== 'ENTRY' && selectedTfs.includes(tf.toLowerCase()) ? 'active' : ''}`}
-                  onClick={() => toggleTf(tf)}
-                  style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border)', background: (activeTab !== 'ENTRY' && selectedTfs.includes(tf.toLowerCase())) ? 'var(--accent-soft)' : 'transparent', color: (activeTab !== 'ENTRY' && selectedTfs.includes(tf.toLowerCase())) ? 'var(--text)' : 'var(--muted)' }}
-                >
-                  {tf}
-                </button>
-              ))}
+              {liveTabs.map(tf => {
+                const lowTf = tf.toLowerCase();
+                const displayTf = (lowTf === 'w' || lowTf === 'mn' || lowTf === '1m_month') ? tf.toUpperCase() : lowTf;
+                return (
+                  <button 
+                    key={tf}
+                    type="button"
+                    className={`tf-pill ${activeTab !== 'ENTRY' && selectedTfs.includes(lowTf) ? 'active' : ''}`}
+                    onClick={() => toggleTf(tf)}
+                    style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border)', background: (activeTab !== 'ENTRY' && selectedTfs.includes(lowTf)) ? 'var(--accent-soft)' : 'transparent', color: (activeTab !== 'ENTRY' && selectedTfs.includes(lowTf)) ? 'var(--text)' : 'var(--muted)' }}
+                  >
+                    {displayTf}
+                  </button>
+                );
+              })}
             </div>
             <div className="mode-toggles" style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.2)', padding: 2, borderRadius: '6px' }}>
               {response?.text && (
