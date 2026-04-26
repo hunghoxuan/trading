@@ -2009,23 +2009,24 @@ export default function ChartSnapshotsPage() {
           </div>
         </div>
 
+        {!hasResponse && (
+          <div className="snapshot-live-grid-v4">
+            {widgetTfs.map((tf) => (
+              <div key={tf} className="snapshot-live-card-v3">
+                <div className="minor-text" style={{ marginBottom: 6 }}>{tf}</div>
+                <iframe
+                  title={`live-chart-${tf}`}
+                  className="snapshot-live-iframe-v3"
+                  src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTfToTradingViewInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
         <SignalDetailCard
           mode="ai"
           hideTabsBeforeResponse={true}
-          marketCharts={!hasResponse ? (
-            <div className="snapshot-live-grid-v4">
-              {widgetTfs.map((tf) => (
-                <div key={tf} className="snapshot-live-card-v3">
-                  <div className="minor-text" style={{ marginBottom: 6 }}>{tf}</div>
-                  <iframe
-                    title={`live-chart-${tf}`}
-                    className="snapshot-live-iframe-v3"
-                    src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTfToTradingViewInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-                  />
-                </div>
-              ))}
-            </div>
-          ) : null}
           chart={{
             enabled: true,
             symbol: cfg.symbol,

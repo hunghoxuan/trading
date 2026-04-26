@@ -123,12 +123,11 @@ export function SignalDetailCard({
   history = null,
   formatDateTime,
   hideTabsBeforeResponse = false,
-  marketCharts = null,
 }) {
   const preset = MODE_PRESETS[mode] || MODE_PRESETS.generic;
-  const hasResponseData = response?.hasData;
+  const hasResponseData = Boolean(response?.hasData);
   
-  if (!showWhenEmpty && !header && !hasResponseData && !tradePlan?.enabled && !chart?.enabled && !metaItems.length && !history?.enabled && !marketCharts) {
+  if (!showWhenEmpty && !header && !hasResponseData && !tradePlan?.enabled && !chart?.enabled && !metaItems.length && !history?.enabled) {
     return <div className="empty-state">{emptyText}</div>;
   }
 
@@ -142,20 +141,17 @@ export function SignalDetailCard({
 
   const availableTabs = useMemo(() => {
     const tabs = [];
-    const hasResponse = Boolean(response?.text || response?.hasData);
-    const showAlwaysOrHasResponse = !hideTabsBeforeResponse || hasResponse;
+    if (!hasResponseData && hideTabsBeforeResponse) return tabs;
 
-    if (chart?.enabled && showAlwaysOrHasResponse) tabs.push("chart");
-    if (showAlwaysOrHasResponse) {
-      if (hasResponse) {
-        tabs.push("analysis");
-      }
-      tabs.push("json");
+    if (chart?.enabled) tabs.push("chart");
+    if (hasResponseData) {
+      tabs.push("analysis");
     }
+    tabs.push("json");
     if (history?.enabled) tabs.push("history");
     if (!tabs.length && metaItems?.length) tabs.push("fields");
     return tabs;
-  }, [chart?.enabled, response?.text, response?.hasData, response?.raw, response?.bars, history?.enabled, metaItems, hideTabsBeforeResponse]);
+  }, [chart?.enabled, hasResponseData, response?.raw, response?.bars, history?.enabled, metaItems, hideTabsBeforeResponse]);
 
   const [mainTab, setMainTab] = useState("fields");
   
@@ -171,7 +167,7 @@ export function SignalDetailCard({
   useEffect(() => {
     if (hasResponseData && !chartModes.includes('static')) {
       setChartModes(['static', 'live']);
-    } else if (!hasResponseData && chartModes.includes('static') && !chart?.analysisSnapshot) {
+    } else if (!hasResponseData) {
       setChartModes(['live']);
     }
   }, [hasResponseData, chart?.analysisSnapshot]);
@@ -232,8 +228,6 @@ export function SignalDetailCard({
 
   return (
     <div className="trade-detail-content">
-      {marketCharts}
-      
       {header ? (
         <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
@@ -313,7 +307,7 @@ export function SignalDetailCard({
         </div>
       ) : null}
 
-      {mainTab === "chart" && chart?.enabled ? (
+      {mainTab === "chart" && chart?.enabled && hasResponseData ? (
         <div className="chart-tab-content">
           <div className="chart-controls-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div className="tf-pills" style={{ display: 'flex', gap: 6 }}>
@@ -391,8 +385,6 @@ export function SignalDetailCard({
 
             {/* Show other selected timeframes */}
             {selectedTfs.map(tf => {
-              // Avoid duplicate if activeTab is already ENTRY and we have it in selectedTfs?
-              // Usually they are separate concepts.
               return (
                 <div key={tf} className="tf-chart-row">
                   <h4 className="tf-row-label">{tf}</h4>
@@ -426,13 +418,13 @@ export function SignalDetailCard({
         </div>
       ) : null}
 
-      {mainTab === "analysis" ? (
+      {mainTab === "analysis" && hasResponseData ? (
         <div className="panel" style={{ padding: 14, margin: 0, lineHeight: 1.5, fontSize: '13px' }}>
           {renderFormattedText(response.text)}
         </div>
       ) : null}
 
-      {mainTab === "json" ? (
+      {mainTab === "json" && hasResponseData ? (
         <div className="panel" style={{ padding: 14, margin: 0, background: 'rgba(0,0,0,0.2)', overflow: 'auto', maxHeight: '500px' }}>
            <pre style={{ margin: 0, fontSize: '11px', fontFamily: 'monospace', color: 'var(--muted)' }}>
              {JSON.stringify(response?.raw_json || response?.raw || {}, null, 2)}
@@ -448,7 +440,7 @@ export function SignalDetailCard({
         </div>
       ) : null}
 
-      {Array.isArray(metaItems) && metaItems.length && (mainTab === "chart" || mainTab === "fields") ? (
+      {Array.isArray(metaItems) && metaItems.length && hasResponseData && (mainTab === "chart" || mainTab === "fields") ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10, marginTop: 14 }}>
           {metaItems.map((m, idx) => (
             <div key={idx} style={m.fullWidth ? { gridColumn: "1 / -1" } : undefined}>
