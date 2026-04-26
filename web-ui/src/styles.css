@@ -519,7 +519,7 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   gap: 10px;
 }
 .snapshot-live-grid-v4 .snapshot-live-iframe-v3 {
-  min-height: 200px;
+  min-height: 280px;
 }
 .snapshot-settings-overview-v4 {
   display: flex;
@@ -604,8 +604,11 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .snapshot-note-field-v3 textarea {
   width: 100%;
   min-height: 40px;
-  height: 40px;
-  resize: none;
+  max-height: 300px;
+  resize: vertical;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  line-height: 1.4;
 }
 .snapshot-add-btn-v3 {
   width: auto;

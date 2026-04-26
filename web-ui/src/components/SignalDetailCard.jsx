@@ -95,18 +95,64 @@ export function SignalDetailCard({
 
   return (
     <div className="trade-detail-content">
-      {header ? (
-        <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
-          <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
-            <div className="cell-major" style={{ minWidth: 0 }}>{header.left}</div>
-            <div className="cell-major" style={{ minWidth: 0 }}>{header.center}</div>
-            <div style={{ textAlign: "right", minWidth: 0 }}>{header.rightTop}</div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
-            <div className="minor-text" style={{ minWidth: 0 }}>{header.leftMinor}</div>
-            <div className="minor-text" style={{ minWidth: 0 }}>{header.centerMinor}</div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center", minWidth: 0 }}>{header.rightBottom}</div>
-          </div>
+      {availableTabs.length ? (
+        <div className="snapshot-tabs-v2" style={{ marginBottom: 14 }}>
+          {availableTabs.map((t) => (
+            <button key={t} type="button" className={`secondary-button ${mainTab === t ? "active" : ""}`} onClick={() => setMainTab(t)}>
+              {t === "plans" ? "Trade Plans" : (t.charAt(0).toUpperCase() + t.slice(1))}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {mainTab === "plans" && Array.isArray(response?.tradePlans) && response.tradePlans.length ? (
+        <div className="stack-layout" style={{ gap: 12, marginBottom: 14 }}>
+          {response.tradePlans.map((plan, pIdx) => {
+             const sideCls = plan.direction === "SELL" ? "side-sell" : "side-buy";
+             return (
+               <article key={`plan_card_${plan.idx || pIdx}`} className="panel" style={{ padding: 14, margin: 0, position: 'relative' }}>
+                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                   <div className="cell-major">
+                     <span className={sideCls} style={{ marginRight: 8 }}>{plan.direction}</span>
+                     <strong>{plan.entryModel || "AI Trade Plan"}</strong>
+                   </div>
+                   <span className="minor-text">{plan.strategy || "ai"}</span>
+                 </div>
+                 <div className="cell-major" style={{ marginBottom: 6 }}>
+                   {(plan.entry || 0).toLocaleString()} → {(plan.tp || 0).toLocaleString()} / {(plan.sl || 0).toLocaleString()}
+                   <span className="minor-text" style={{ marginLeft: 8 }}>
+                     | RR {(plan.rr || 0).toFixed(2)} {plan.confidence ? `| ${plan.confidence}%` : ""}
+                   </span>
+                 </div>
+                 {plan.note ? (
+                   <div className="minor-text" style={{ whiteSpace: 'pre-wrap', marginBottom: 12, lineHeight: 1.4 }}>
+                     {plan.note}
+                   </div>
+                 ) : null}
+                 <button 
+                   type="button" 
+                   className="secondary-button" 
+                   style={{ height: 28, padding: '0 12px', fontSize: '11px' }}
+                   onClick={() => {
+                     if (tradePlan?.onChange) {
+                       const raw = plan.raw || {};
+                       const upd = { 
+                          direction: plan.direction, 
+                          entry: String(plan.entry || ""),
+                          tp: String(plan.tp || ""),
+                          sl: String(plan.sl || ""),
+                          rr: String(plan.rr || ""),
+                          note: plan.note || ""
+                       };
+                       Object.entries(upd).forEach(([k, v]) => tradePlan.onChange(k, v));
+                     }
+                   }}
+                 >
+                   Use Plan
+                 </button>
+               </article>
+             );
+          })}
         </div>
       ) : null}
 
@@ -136,14 +182,18 @@ export function SignalDetailCard({
         </div>
       ) : null}
 
-      {availableTabs.length ? (
-        <div className="snapshot-tabs-v2" style={{ marginBottom: 10 }}>
-          {availableTabs.includes("chart") ? <button type="button" className={`secondary-button ${mainTab === "chart" ? "active" : ""}`} onClick={() => setMainTab("chart")}>Chart</button> : null}
-          {availableTabs.includes("live") ? <button type="button" className={`secondary-button ${mainTab === "live" ? "active" : ""}`} onClick={() => setMainTab("live")}>Live Charts</button> : null}
-          {availableTabs.includes("snapshots") ? <button type="button" className={`secondary-button ${mainTab === "snapshots" ? "active" : ""}`} onClick={() => setMainTab("snapshots")}>Snapshots</button> : null}
-          {availableTabs.includes("json") ? <button type="button" className={`secondary-button ${mainTab === "json" ? "active" : ""}`} onClick={() => setMainTab("json")}>Json</button> : null}
-          {availableTabs.includes("history") ? <button type="button" className={`secondary-button ${mainTab === "history" ? "active" : ""}`} onClick={() => setMainTab("history")}>History/Events</button> : null}
-          {availableTabs.includes("fields") ? <button type="button" className={`secondary-button ${mainTab === "fields" ? "active" : ""}`} onClick={() => setMainTab("fields")}>Fields</button> : null}
+      {header ? (
+        <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
+            <div className="cell-major" style={{ minWidth: 0 }}>{header.left}</div>
+            <div className="cell-major" style={{ minWidth: 0 }}>{header.center}</div>
+            <div style={{ textAlign: "right", minWidth: 0 }}>{header.rightTop}</div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
+            <div className="minor-text" style={{ minWidth: 0 }}>{header.leftMinor}</div>
+            <div className="minor-text" style={{ minWidth: 0 }}>{header.centerMinor}</div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center", minWidth: 0 }}>{header.rightBottom}</div>
+          </div>
         </div>
       ) : null}
 

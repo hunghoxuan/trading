@@ -158,7 +158,16 @@ export function TradePlanEditor({
       <div className="snapshot-footer-row2-v3">
         <div className="snapshot-note-field-v3">
           <label className="minor-text">Note</label>
-          <textarea value={value.note || ""} onChange={(e) => update("note", e.target.value)} rows={1} disabled={controlsDisabled} />
+          <textarea 
+            value={value.note || ""} 
+            onChange={(e) => update("note", e.target.value)} 
+            onInput={(e) => {
+              e.target.style.height = 'inherit';
+              e.target.style.height = `${e.target.scrollHeight}px`;
+            }}
+            rows={1} 
+            disabled={controlsDisabled} 
+          />
         </div>
         {showResetButton ? (
           <button className="secondary-button snapshot-add-btn-v3" type="button" onClick={onReset} disabled={controlsDisabled || typeof onReset !== "function"}>

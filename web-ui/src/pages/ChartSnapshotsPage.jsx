@@ -1838,28 +1838,51 @@ export default function ChartSnapshotsPage() {
             </div>
           ))}
         </div>
-        <div className="snapshot-settings-overview-v4">
-          {hasResponse ? (
-            <button className="secondary-button" type="button" onClick={resetAnalyzeSession}>{"<"} Back</button>
-          ) : null}
-          <button type="button" className="secondary-button" onClick={() => setSettingsModalOpen(true)}>Settings</button>
-          <span className="minor-text">
-            Entry Models: {cfg.strategies.join(", ") || "-"} | Profile: {PROFILE_PRESETS[cfg.profile]?.label || PROFILE_PRESETS.day.label}
-          </span>
-          {sessionPrefix ? <span className="minor-text">Session: {sessionPrefix}</span> : null}
-        </div>
-        <div className="panel snapshot-control-card-v3">
-          <div className="snapshot-capture-inline-v2 snapshot-capture-inline-v3">
+        <div className="snapshot-control-card-v3 toolbar-panel" style={{ justifyContent: 'space-between', marginBottom: 12, padding: '10px 16px' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            {hasResponse && (
+              <button className="secondary-button" type="button" onClick={resetAnalyzeSession}>{"<"} Back</button>
+            )}
+            <button type="button" className="secondary-button" onClick={() => setSettingsModalOpen(true)}>Settings</button>
+            <div className="toolbar-separator" />
+            <select
+              value={analysisSource}
+              onChange={(e) => setAnalysisSource(e.target.value)}
+              className="secondary-button"
+              style={{ padding: '0 10px', height: 34, fontSize: '12px' }}
+            >
+              <option value="ai_claude">Claude 3.5 Sonnet</option>
+              <option value="ai_gpt4o">GPT-4o</option>
+              <option value="ai_deepseek">DeepSeek V3</option>
+              <option value="ai_gemini">Gemini 1.5 Pro</option>
+            </select>
+            <span className="minor-text" style={{ marginLeft: 6 }}>
+              {cfg.strategies.join("+") || "ai"} | {PROFILE_PRESETS[cfg.profile]?.label || "day"}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>
-              {capturing ? "Taking snapshots..." : "Take Chart Snapshots"}
+              {capturing ? "Snapshots..." : "Snapshots"}
             </button>
-            <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>{analyzing ? "Analyzing..." : "Analyze"}</button>
-            {actionStatus.action === "capture" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
-            {actionStatus.action === "analyze" && actionStatus.text ? <span className={`minor-text ${actionStatus.type === "error" ? "msg-error" : actionStatus.type === "warning" ? "msg-warning" : "msg-success"}`}>{actionStatus.text}</span> : null}
+            <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>
+              {analyzing ? "Analyzing..." : "Analyze"}
+            </button>
           </div>
         </div>
         <SignalDetailCard
           mode="ai"
+          chart={{
+            enabled: true,
+            symbol: cfg.symbol,
+            interval: timeframe,
+            entryNode: (
+              <div className="snapshot-live-card-v3">
+                <div className="minor-text" style={{ marginBottom: 6 }}>Chart 1: Twelve + PD Arrays</div>
+                <div ref={liteChartRef} className="snapshot-lite-chart-v3" />
+                <div className="minor-text">{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
+              </div>
+            )
+          }}
           response={{
             enabled: true,
             hasData: hasResponse,
@@ -1869,55 +1892,8 @@ export default function ChartSnapshotsPage() {
             text: responseText,
             raw: analysisRaw || analysisJson,
             bars: JSON.stringify(currentBarsSnapshot || { status: "no_cached_bars" }, null, 2),
-            chartNode: (
-              <div className="snapshot-live-grid-v3">
-                <div className="snapshot-live-card-v3">
-                  <div className="minor-text" style={{ marginBottom: 6 }}>Chart 1: Twelve + PD Arrays</div>
-                  <div ref={liteChartRef} className="snapshot-lite-chart-v3" />
-                  <div className="minor-text">{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
-                </div>
-                {analysisTradePlans.length ? (
-                  <div className="snapshot-live-card-v3">
-                    <div className="minor-text" style={{ marginBottom: 8 }}>Trade Plans ({analysisTradePlans.length})</div>
-                    <div className="snapshot-activity-list-v4">
-                      {analysisTradePlans.map((plan) => (
-                        <article key={`plan_${plan.idx}`} className="snapshot-activity-card-v4">
-                          <div className="snapshot-activity-top-v4">
-                            <span className={plan.direction === "SELL" ? "side-sell" : "side-buy"}>{plan.direction || "NULL"}</span>
-                            <span className="cell-major">{plan.entryModel || "-"}</span>
-                            <span className="minor-text">{plan.strategy || "-"}</span>
-                          </div>
-                          <div className="minor-text">
-                            {Number.isFinite(plan.entry) ? formatNum3(plan.entry) : "-"} → {Number.isFinite(plan.tp) ? formatNum3(plan.tp) : "-"} / {Number.isFinite(plan.sl) ? formatNum3(plan.sl) : "-"}
-                            {" | "}RR {Number.isFinite(plan.rr) ? plan.rr.toFixed(2) : "-"}
-                            {Number.isFinite(plan.confidence) ? ` | ${plan.confidence}%` : ""}
-                          </div>
-                          {plan.note ? <div className="minor-text">{plan.note}</div> : null}
-                          <div>
-                            <button type="button" className="secondary-button" onClick={() => applyTradePlanToEditor(plan)}>Use Plan</button>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                {chartFiles.length ? (
-                  <div className="snapshot-chart-grid-v2">
-                    {chartFiles.map((f) => {
-                      const meta = parseSnapshotMeta({ file_name: f }) || {};
-                      return (
-                        <a key={f} className="snapshot-chart-card-v2" href={`/v2/chart/snapshots/${encodeURIComponent(f)}`} target="_blank" rel="noreferrer">
-                          <img src={`/v2/chart/snapshots/${encodeURIComponent(f)}`} alt={f} />
-                          <div className="snapshot-chart-meta-v2">
-                            <span>{intervalTokenToLabel(meta?.tfToken || "-")}</span>
-                          </div>
-                        </a>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </div>
-            ),
+            tradePlans: analysisTradePlans,
+            snapshotFiles: chartFiles,
           }}
           tradePlan={{
             enabled: true,

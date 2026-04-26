@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.25-2255"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-0456"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -2549,6 +2549,7 @@ function mt5MapDbRow(row) {
     chart_tf: String(row.chart_tf || raw.chart_tf || raw.chartTf || raw.chartTimeframe || tfFallback || ""),
     entry_model: normalizedModel,
     status: String(row.status || ""),
+    execution_status: String(row.execution_status || ""),
     locked_at: row.locked_at ?? null,
     ack_at: row.ack_at ?? null,
     opened_at: row.opened_at ?? null,

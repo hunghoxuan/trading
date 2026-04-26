@@ -684,7 +684,8 @@ export default function SignalsPage() {
                               e.stopPropagation();
                               addTradeFromSignal(t);
                             }}
-                            disabled={detailPlanBusy.trade}
+                            disabled={detailPlanBusy.trade || (t.execution_status && t.execution_status !== "")}
+                            title={t.execution_status ? `Trade already exists (${t.execution_status})` : ""}
                           >
                             + Trade
                           </button>
