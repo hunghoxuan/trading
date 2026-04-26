@@ -252,7 +252,7 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .cell-wrap { display: flex; flex-direction: column; gap: 2px; }
 
 .logs-layout-split { display: flex; gap: 12px; flex: 1; min-height: 0; }
-.logs-list-pane { flex: 0 0 66%; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.logs-list-pane { flex: 0 0 50%; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .logs-detail-pane { flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; overflow-y: auto; }
 
 .events-table-wrap { flex: 1; overflow-y: auto; }
