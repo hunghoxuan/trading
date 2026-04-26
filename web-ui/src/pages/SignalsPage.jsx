@@ -535,8 +535,8 @@ export default function SignalsPage() {
           <input 
             value={filter.q} 
             onChange={(e) => setFilter(f => ({ ...f, q: e.target.value, page: 1 }))} 
-            placeholder="Search sid..." 
-            style={{ width: '200px' }}
+            placeholder="Search sid, symbol, note..." 
+            style={{ width: '220px' }}
           />
           <select value={filter.symbol} onChange={(e) => setFilter(f => ({ ...f, symbol: e.target.value, page: 1 }))}>
             <option value="">ALL SYMBOLS</option>
@@ -662,7 +662,7 @@ export default function SignalsPage() {
                             {fPrice(t.entry, t.target_price || t.entry_price)} → {fPrice(t.tp)} / {fPrice(t.sl)}
                           </div>
                           <div className="cell-minor">
-                            {formatTimeframe(t.signal_tf)} | {t.volume || "-"} vol | {(asNum(t.rr_planned) ?? 0).toFixed(2)} rr
+                            {formatTimeframe(t.signal_tf)} | vol {Number(((asNum(t.volume) || 0) * 100).toFixed(2))}% | {(asNum(t.rr_planned) ?? 0).toFixed(2)} rr
                           </div>
                         </div>
                       </td>

@@ -543,7 +543,7 @@ export default function TradesPage() {
         </div>
 
         <div className="toolbar-group toolbar-search-filter" style={{ flexWrap: "wrap" }}>
-          <input value={filter.q} onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value, page: 1 }))} placeholder="Search sid, symbol..." style={{ width: 220 }} />
+          <input value={filter.q} onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value, page: 1 }))} placeholder="Search sid, symbol, note..." style={{ width: 220 }} />
           <select value={filter.account_id} onChange={(e) => setFilter((f) => ({ ...f, account_id: e.target.value, page: 1 }))}>
             <option value="">ALL ACCOUNTS</option>
             {accounts.map((a) => <option key={a.account_id} value={a.account_id}>{a.name || a.account_id}</option>)}

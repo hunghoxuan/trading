@@ -82,7 +82,7 @@ export function SignalDetailCard({
 
   const availableTabs = useMemo(() => {
     const tabs = [];
-    if (chart?.enabled) tabs.push("chart", "live");
+    if (chart?.enabled) tabs.push("chart");
     if (response?.text) tabs.push("analysis");
     if (response?.tradePlans?.length) tabs.push("plans");
     if (response?.chartNode || response?.snapshotNode || response?.snapshotFiles?.length) tabs.push("snapshots");
@@ -121,6 +121,32 @@ export function SignalDetailCard({
             <div className="minor-text" style={{ minWidth: 0 }}>{header.centerMinor}</div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center", minWidth: 0 }}>{header.rightBottom}</div>
           </div>
+        </div>
+      ) : null}
+
+      {tradePlan?.enabled ? (
+        <div className="snapshot-response-footer-v3" style={{ marginBottom: 14 }}>
+          <TradePlanEditor
+            signalId={tradePlan.signalId || null}
+            tradeId={tradePlan.tradeId || null}
+            value={tradePlan.value || {}}
+            onChange={tradePlan.onChange}
+            onReset={tradePlan.onReset}
+            onSave={tradePlan.onSave}
+            onAddSignal={tradePlan.onAddSignal}
+            onAddTrade={tradePlan.onAddTrade}
+            showSaveButton={tradePlan.showSaveButton}
+            showAddSignalButton={tradePlan.showAddSignalButton}
+            showAddTradeButton={tradePlan.showAddTradeButton}
+            showResetButton={tradePlan.showResetButton !== false}
+            saveLabel={tradePlan.saveLabel}
+            addSignalLabel={tradePlan.addSignalLabel}
+            addTradeLabel={tradePlan.addTradeLabel}
+            busy={tradePlan.busy || {}}
+            disabled={Boolean(tradePlan.disabled)}
+            error={tradePlan.error || ""}
+          />
+          {tradePlan.successMessage ? <span className="minor-text msg-success">{tradePlan.successMessage}</span> : null}
         </div>
       ) : null}
 
@@ -184,61 +210,36 @@ export function SignalDetailCard({
         </div>
       ) : null}
 
-      {tradePlan?.enabled ? (
-        <div className="snapshot-response-footer-v3" style={{ marginBottom: 14 }}>
-          <TradePlanEditor
-            signalId={tradePlan.signalId || null}
-            tradeId={tradePlan.tradeId || null}
-            value={tradePlan.value || {}}
-            onChange={tradePlan.onChange}
-            onReset={tradePlan.onReset}
-            onSave={tradePlan.onSave}
-            onAddSignal={tradePlan.onAddSignal}
-            onAddTrade={tradePlan.onAddTrade}
-            showSaveButton={tradePlan.showSaveButton}
-            showAddSignalButton={tradePlan.showAddSignalButton}
-            showAddTradeButton={tradePlan.showAddTradeButton}
-            showResetButton={tradePlan.showResetButton !== false}
-            saveLabel={tradePlan.saveLabel}
-            addSignalLabel={tradePlan.addSignalLabel}
-            addTradeLabel={tradePlan.addTradeLabel}
-            busy={tradePlan.busy || {}}
-            disabled={Boolean(tradePlan.disabled)}
-            error={tradePlan.error || ""}
-          />
-          {tradePlan.successMessage ? <span className="minor-text msg-success">{tradePlan.successMessage}</span> : null}
-        </div>
-      ) : null}
-
       {mainTab === "chart" && chart?.enabled ? (
-        chart.entryNode || (
-          <TradeSignalChart
-            symbol={chart.symbol}
-            interval={chart.interval}
-            live={chart.live !== false}
-            historicalData={chart.historicalData || []}
-            entryPrice={chart.entryPrice}
-            slPrice={chart.slPrice}
-            tpPrice={chart.tpPrice}
-            openedAt={chart.openedAt || null}
-            closedAt={chart.closedAt || null}
-            analysisSnapshot={chart.analysisSnapshot || null}
-          />
-        )
-      ) : null}
+        <div className="stack-layout" style={{ gap: 14 }}>
+          {chart.entryNode || (
+            <TradeSignalChart
+              symbol={chart.symbol}
+              interval={chart.interval}
+              live={chart.live !== false}
+              historicalData={chart.historicalData || []}
+              entryPrice={chart.entryPrice}
+              slPrice={chart.slPrice}
+              tpPrice={chart.tpPrice}
+              openedAt={chart.openedAt || null}
+              closedAt={chart.closedAt || null}
+              analysisSnapshot={chart.analysisSnapshot || null}
+            />
+          )}
 
-      {mainTab === "live" && chart?.enabled ? (
-        <div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-            {liveTabs.map((tab) => (
-              <button key={tab} type="button" className={`secondary-button ${liveTab === tab ? "active" : ""}`} onClick={() => setLiveTab(tab)}>{tab}</button>
-            ))}
+          <div>
+             <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
+               <span className="panel-label small" style={{ margin: 0 }}>LIVE CHART</span>
+               {liveTabs.map((tab) => (
+                 <button key={tab} type="button" className={`secondary-button ${liveTab === tab ? "active" : ""}`} onClick={() => setLiveTab(tab)}>{tab}</button>
+               ))}
+             </div>
+             <iframe
+               title={chart.iframeTitle || `detail-tv-${liveTab}`}
+               style={{ width: "100%", height: 430, border: "1px solid var(--border)", borderRadius: 10, background: "var(--panel)" }}
+               src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol)}&interval=${encodeURIComponent(detailTabToTvInterval(liveTab))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+             />
           </div>
-          <iframe
-            title={chart.iframeTitle || `detail-tv-${liveTab}`}
-            style={{ width: "100%", height: 430, border: "1px solid var(--border)", borderRadius: 10, background: "var(--panel)" }}
-            src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol)}&interval=${encodeURIComponent(detailTabToTvInterval(liveTab))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-          />
         </div>
       ) : null}
 

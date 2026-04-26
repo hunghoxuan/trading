@@ -28,15 +28,29 @@ export function buildRrVolRiskText({ rrRaw, volumeRaw, riskSizeRaw, riskPctRaw, 
   const reward = rewardRaw != null
     ? Math.abs(rewardRaw)
     : (loss != null && rr != null ? loss * rr : null);
-  const volText = plannedVol != null
-    ? `${Number(plannedVol.toFixed(3))} vol`
-    : (riskPct != null ? `${Number(riskPct.toFixed(2))}% vol` : "- vol");
+
+  const volVal = plannedVol ?? (riskPct != null ? riskPct / 100 : null);
+  const volText = volVal != null
+    ? `vol ${Number((volVal * 100).toFixed(2))}%`
+    : "vol -";
+
   const lotsText = vol != null ? `${Number(vol.toFixed(3))} lots` : "- lots";
   const rrText = rr != null ? `${rr.toFixed(2)} rr` : "- rr";
-  const wlText = (reward != null || loss != null)
-    ? `W/L ${reward != null ? `+$${reward.toFixed(2)}` : "+$-"} ${loss != null ? `-$${loss.toFixed(2)}` : "-$-"}`
-    : "W/L +$- -$-";
-  return `${rrText} ${volText} | ${lotsText} ${wlText}`;
+
+  return (
+    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+      <span>{rrText}</span>
+      <span>{volText}</span>
+      <span>|</span>
+      <span>{lotsText}</span>
+      {(reward != null || loss != null) && (
+        <span style={{ display: 'flex', gap: '8px' }}>
+           <span className="money-pos">+{reward != null ? `$${reward.toFixed(2)}` : "$-"}</span>
+           <span className="money-neg">-{loss != null ? `$${loss.toFixed(2)}` : "$-"}</span>
+        </span>
+      )}
+    </div>
+  );
 }
 
 export function buildHeaderMeta({

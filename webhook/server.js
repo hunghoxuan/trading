@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-0618"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-0819"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -3563,9 +3563,26 @@ async function mt5InitBackend() {
       await this.log(aid, 'accounts', { event: 'HEARTBEAT', payload }, uid);
       return { ok: true };
     },
-    async listSignals(limit, statusFilter, userId = null) {
+    async listSignals(limit, filters = {}, userId = null) {
       const clauses = ["signal_id NOT LIKE 'SYSTEM_%'"]; const params = [];
-      if (statusFilter) { params.push(statusFilter); clauses.push(`status = $${params.length}`); }
+      if (typeof filters === 'string') {
+        // Legacy support
+        params.push(filters);
+        clauses.push(`status = $${params.length}`);
+      } else {
+        if (filters.status) { params.push(filters.status); clauses.push(`status = $${params.length}`); }
+        if (filters.symbol) { params.push(filters.symbol); clauses.push(`symbol = $${params.length}`); }
+        if (filters.q) {
+           params.push(`%${String(filters.q)}%`);
+           const p = `$${params.length}`;
+           clauses.push(`(
+             signal_id ILIKE ${p}
+             OR sid ILIKE ${p}
+             OR symbol ILIKE ${p}
+             OR note ILIKE ${p}
+           )`);
+        }
+      }
       if (userId) { params.push(userId); clauses.push(`user_id = $${params.length}`); }
       const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
       params.push(limit);
@@ -5928,6 +5945,7 @@ async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
       || String(r.entry_model || "").toLowerCase().includes(q)
       || String(r.source || "").toLowerCase().includes(q)
       || String(r.source_id || "").toLowerCase().includes(q)
+      || String(r.account_id || "").toLowerCase().includes(q)
       || String(r.action || r.side || "").toLowerCase().includes(q),
     );
   }

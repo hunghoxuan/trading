@@ -156,6 +156,47 @@ class PdArrayBoxPrimitive {
               ctx.stroke();
               ctx.restore();
             });
+        };
+      },
+    }];
+  }
+}
+class SignalCreationLinePrimitive {
+  constructor(timeSec, color) {
+    this._time = timeSec;
+    this._color = color;
+    this._series = null;
+    this._chart = null;
+  }
+  attached({ series, chart }) { this._series = series; this._chart = chart; }
+  detached() { this._series = null; this._chart = null; }
+  updateAllViews() {}
+  priceAxisViews() { return []; }
+  paneViews() {
+    const self = this;
+    return [{
+      renderer() {
+        return {
+          draw: (target) => {
+            if (!self._series || !self._chart) return;
+            target.useBitmapCoordinateSpace((scope) => {
+              const ctx = scope.context;
+              const r = scope.bitmapSize;
+              const ts = self._chart.timeScale();
+              const x = ts.timeToCoordinate(self._time);
+              if (x == null) return;
+              const pixelRatio = scope.horizontalPixelRatio || 1;
+              const xPos = Math.round(x * pixelRatio);
+              ctx.save();
+              ctx.strokeStyle = self._color;
+              ctx.setLineDash([5, 5]);
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.moveTo(xPos, 0);
+              ctx.lineTo(xPos, r.height);
+              ctx.stroke();
+              ctx.restore();
+            });
           },
         };
       },
@@ -192,7 +233,7 @@ export const TradeSignalChart = ({
     // 1. Initialize Chart
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
-      height: 380,
+      height: 420,
       layout: {
         background: { color: '#0d1117' },
         textColor: '#d1d4dc',
@@ -268,6 +309,10 @@ export const TradeSignalChart = ({
           if (openedAt) {
             const openTs = Math.floor(new Date(openedAt).getTime() / 1000);
             markers.push({ time: openTs, position: 'belowBar', color: '#2196f3', shape: 'arrowUp', text: '' });
+            
+            // Vertical line at creation
+            const creationLine = new SignalCreationLinePrimitive(openTs, 'rgba(33, 150, 243, 0.5)');
+            candleSeries.attachPrimitive(creationLine);
           }
           if (closedAt) {
             const closeTs = Math.floor(new Date(closedAt).getTime() / 1000);
