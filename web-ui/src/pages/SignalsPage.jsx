@@ -653,7 +653,7 @@ export default function SignalsPage() {
                       <td>
                         <div className="cell-wrap">
                           <div className="cell-major"><span className={sideCls}>{sideValue}</span> {t.symbol}</div>
-                          <div className="cell-minor">{sourceLabel} | {sourceId} | signal {signalShort}</div>
+                          <div className="cell-minor">{sourceLabel}{sourceLabel !== sourceId ? ` | ${sourceId}` : ""} | {signalShort}</div>
                         </div>
                       </td>
                       <td>
@@ -662,7 +662,7 @@ export default function SignalsPage() {
                             {fPrice(t.entry, t.target_price || t.entry_price)} → {fPrice(t.tp)} / {fPrice(t.sl)}
                           </div>
                           <div className="cell-minor">
-                            {strategyLabel} | {t.entry_model || "-"} | {formatTimeframe(t.chart_tf)} | {formatTimeframe(t.signal_tf)} | {(asNum(t.rr_planned) ?? 0).toFixed(2)} rr
+                            {formatTimeframe(t.chart_tf)} | {formatTimeframe(t.signal_tf)} | {(asNum(t.rr_planned) ?? 0).toFixed(2)} rr
                           </div>
                         </div>
                       </td>

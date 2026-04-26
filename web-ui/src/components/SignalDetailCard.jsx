@@ -45,6 +45,16 @@ function toTradingViewSymbol(raw) {
   return `ICMARKETS:${s.replace(/[^A-Z0-9]/g, "")}`;
 }
 
+function renderFormattedText(text) {
+  if (!text) return null;
+  return String(text).split('\n').map((line, i) => (
+    <span key={i}>
+      {line}
+      {i < text.split('\n').length - 1 && <br />}
+    </span>
+  ));
+}
+
 export function SignalDetailCard({
   mode = "generic",
   emptyText = "Select an item to inspect details.",
@@ -71,12 +81,14 @@ export function SignalDetailCard({
   const availableTabs = useMemo(() => {
     const tabs = [];
     if (chart?.enabled) tabs.push("chart", "live");
+    if (response?.text) tabs.push("analysis");
+    if (response?.tradePlans?.length) tabs.push("plans");
     if (response?.chartNode || response?.snapshotNode || response?.snapshotFiles?.length) tabs.push("snapshots");
     if ((response?.raw || response?.text || response?.bars)) tabs.push("json");
     if (history?.enabled) tabs.push("history");
     if (!tabs.length && metaItems?.length) tabs.push("fields");
     return tabs;
-  }, [chart?.enabled, response?.chartNode, response?.snapshotNode, response?.snapshotFiles, response?.raw, response?.text, response?.bars, history?.enabled, metaItems]);
+  }, [chart?.enabled, response?.text, response?.tradePlans, response?.chartNode, response?.snapshotNode, response?.snapshotFiles, response?.raw, response?.text, response?.bars, history?.enabled, metaItems]);
 
   const [mainTab, setMainTab] = useState(availableTabs[0] || "chart");
   const [liveTab, setLiveTab] = useState(liveTabs[0] || "15m");
@@ -95,6 +107,21 @@ export function SignalDetailCard({
 
   return (
     <div className="trade-detail-content">
+      {header ? (
+        <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
+            <div className="cell-major" style={{ minWidth: 0 }}>{header.left}</div>
+            <div className="cell-major" style={{ minWidth: 0 }}>{header.center}</div>
+            <div style={{ textAlign: "right", minWidth: 0 }}>{header.rightTop}</div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
+            <div className="minor-text" style={{ minWidth: 0 }}>{header.leftMinor}</div>
+            <div className="minor-text" style={{ minWidth: 0 }}>{header.centerMinor}</div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center", minWidth: 0 }}>{header.rightBottom}</div>
+          </div>
+        </div>
+      ) : null}
+
       {availableTabs.length ? (
         <div className="snapshot-tabs-v2" style={{ marginBottom: 14 }}>
           {availableTabs.map((t) => (
@@ -125,8 +152,8 @@ export function SignalDetailCard({
                    </span>
                  </div>
                  {plan.note ? (
-                   <div className="minor-text" style={{ whiteSpace: 'pre-wrap', marginBottom: 12, lineHeight: 1.4 }}>
-                     {plan.note}
+                   <div className="minor-text" style={{ marginBottom: 12, lineHeight: 1.4 }}>
+                     {renderFormattedText(plan.note)}
                    </div>
                  ) : null}
                  <button 
@@ -135,7 +162,6 @@ export function SignalDetailCard({
                    style={{ height: 28, padding: '0 12px', fontSize: '11px' }}
                    onClick={() => {
                      if (tradePlan?.onChange) {
-                       const raw = plan.raw || {};
                        const upd = { 
                           direction: plan.direction, 
                           entry: String(plan.entry || ""),
@@ -179,21 +205,6 @@ export function SignalDetailCard({
             error={tradePlan.error || ""}
           />
           {tradePlan.successMessage ? <span className="minor-text msg-success">{tradePlan.successMessage}</span> : null}
-        </div>
-      ) : null}
-
-      {header ? (
-        <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
-          <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
-            <div className="cell-major" style={{ minWidth: 0 }}>{header.left}</div>
-            <div className="cell-major" style={{ minWidth: 0 }}>{header.center}</div>
-            <div style={{ textAlign: "right", minWidth: 0 }}>{header.rightTop}</div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
-            <div className="minor-text" style={{ minWidth: 0 }}>{header.leftMinor}</div>
-            <div className="minor-text" style={{ minWidth: 0 }}>{header.centerMinor}</div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center", minWidth: 0 }}>{header.rightBottom}</div>
-          </div>
         </div>
       ) : null}
 
@@ -247,6 +258,12 @@ export function SignalDetailCard({
         </div>
       ) : null}
 
+      {mainTab === "analysis" ? (
+        <div className="panel" style={{ padding: 14, margin: 0, lineHeight: 1.5, fontSize: '13px' }}>
+          {renderFormattedText(response.text)}
+        </div>
+      ) : null}
+
       {mainTab === "json" ? (
         <textarea className="snapshot-mono-v2" rows={16} value={response?.raw || response?.text || response?.bars || "{}"} readOnly disabled />
       ) : null}
@@ -277,7 +294,7 @@ export function SignalDetailCard({
           {metaItems.map((m, idx) => (
             <div key={`${m.label || "meta"}_${idx}`} style={m.fullWidth ? { gridColumn: "1 / -1" } : undefined}>
               <span className="minor-text">{m.label}</span>
-              <div style={m.valueStyle || { whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.value}</div>
+              <div style={m.valueStyle || { wordBreak: "break-word" }}>{renderFormattedText(m.value)}</div>
             </div>
           ))}
         </div>

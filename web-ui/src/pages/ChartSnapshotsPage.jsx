@@ -1826,25 +1826,46 @@ export default function ChartSnapshotsPage() {
       </section>
 
       <section className="panel snapshot-col-v3 snapshot-col-settings-v3">
-        <div className="snapshot-live-grid-v4">
-          {widgetTfs.map((tf) => (
-            <div key={tf} className="snapshot-live-card-v3">
-              <div className="minor-text" style={{ marginBottom: 6 }}>{tf}</div>
-              <iframe
-                title={`live-chart-${tf}`}
-                className="snapshot-live-iframe-v3"
-                src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTfToTradingViewInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-              />
-            </div>
-          ))}
-        </div>
         <div className="snapshot-control-card-v3 toolbar-panel" style={{ justifyContent: 'space-between', marginBottom: 12, padding: '10px 16px' }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {hasResponse && (
               <button className="secondary-button" type="button" onClick={resetAnalyzeSession}>{"<"} Back</button>
             )}
+            
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <select 
+                className="secondary-button" 
+                style={{ height: '34px', padding: '0 10px', fontSize: '12px' }}
+                value={templateId} 
+                onChange={(e) => handleSelectTemplate(e.target.value)}
+              >
+                <option value="">New Template</option>
+                <option value={DEFAULT_TEMPLATE_ID}>Default Template</option>
+                {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+
+              <select 
+                className="secondary-button" 
+                style={{ height: '34px', padding: '0 10px', fontSize: '12px' }}
+                value={cfg.profile || "day"} 
+                onChange={(e) => setProfilePreset(e.target.value)}
+              >
+                {Object.entries(PROFILE_PRESETS).map(([k, v]) => (
+                  <option key={k} value={k}>{v.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="v-sep-v3" style={{ height: 20, width: 1, background: 'var(--border)', margin: '0 4px' }} />
+
             <button type="button" className="secondary-button" onClick={() => setSettingsModalOpen(true)}>Settings</button>
-            <div className="toolbar-separator" />
+            
+            <span className="minor-text" style={{ opacity: 0.8 }}>
+               {cfg.strategies.join("+") || "ai"} | {PROFILE_PRESETS[cfg.profile]?.label || cfg.profile}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <select
               value={analysisSource}
               onChange={(e) => setAnalysisSource(e.target.value)}
@@ -1856,11 +1877,7 @@ export default function ChartSnapshotsPage() {
               <option value="ai_deepseek">DeepSeek V3</option>
               <option value="ai_gemini">Gemini 1.5 Pro</option>
             </select>
-            <span className="minor-text" style={{ marginLeft: 6 }}>
-              {cfg.strategies.join("+") || "ai"} | {PROFILE_PRESETS[cfg.profile]?.label || "day"}
-            </span>
-          </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+
             <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>
               {capturing ? "Snapshots..." : "Snapshots"}
             </button>
@@ -1868,6 +1885,19 @@ export default function ChartSnapshotsPage() {
               {analyzing ? "Analyzing..." : "Analyze"}
             </button>
           </div>
+        </div>
+
+        <div className="snapshot-live-grid-v4">
+          {widgetTfs.map((tf) => (
+            <div key={tf} className="snapshot-live-card-v3">
+              <div className="minor-text" style={{ marginBottom: 6 }}>{tf}</div>
+              <iframe
+                title={`live-chart-${tf}`}
+                className="snapshot-live-iframe-v3"
+                src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTfToTradingViewInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+              />
+            </div>
+          ))}
         </div>
         <SignalDetailCard
           mode="ai"
