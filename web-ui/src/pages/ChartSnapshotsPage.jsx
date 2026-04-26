@@ -904,7 +904,8 @@ export default function ChartSnapshotsPage() {
   }, [cfg.symbol, provider]);
 
   const promptText = useMemo(() => buildPrompt(cfg), [cfg]);
-  const timeframe = useMemo(() => normalizeTfLabelToLower(tfConfig.exec_tfs?.[0] || "15m"), [tfConfig.exec_tfs]);
+  const [selectedEntryTf, setSelectedEntryTf] = useState("");
+  const timeframe = useMemo(() => selectedEntryTf || normalizeTfLabelToLower(tfConfig.exec_tfs?.[0] || "15m"), [selectedEntryTf, tfConfig.exec_tfs]);
   const snapshotTfs = useMemo(() => {
     const all = [...(tfConfig.htf_tfs || []), ...(tfConfig.exec_tfs || []), ...(tfConfig.conf_tfs || [])];
     return [...new Set(all.map(configTfToSnapshotTf).filter(Boolean))];
@@ -1911,7 +1912,7 @@ export default function ChartSnapshotsPage() {
               symbol: cfg.symbol,
               interval: timeframe,
               detailTfTab: timeframe,
-              onDetailTfTabChange: setTimeframe,
+              onDetailTfTabChange: setSelectedEntryTf,
               entryNode: (
                 <div className="snapshot-live-card-v3">
                   <div className="minor-text" style={{ marginBottom: 12 }}>Chart 1: Twelve + PD Arrays</div>
