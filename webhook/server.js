@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1803"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.26-1812"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -4778,12 +4778,40 @@ function mt5TfToMinutes(tf) {
   return isNaN(n) ? s : String(n);
 }
 
+const TWELVE_SYMBOL_MAP = {
+  "UK100": "UK100",
+  "UK 100": "UK100",
+  "FTSE": "UK100",
+  "FTSE100": "UK100",
+  "US30": "DJI",
+  "DOW": "DJI",
+  "DJI": "DJI",
+  "NAS100": "NDX",
+  "USTEC": "NDX",
+  "NASDAQ": "NDX",
+  "SPX500": "SPX",
+  "SPX": "SPX",
+  "GER40": "GER40",
+  "GER30": "DAX",
+  "DAX": "DAX",
+  "DAX40": "GER40",
+  "XAUUSD": "XAU/USD",
+  "GOLD": "XAU/USD",
+  "XAGUSD": "XAG/USD",
+  "SILVER": "XAG/USD",
+  "BTCUSD": "BTC/USD",
+  "ETHUSD": "ETH/USD",
+};
+
 function normalizeSymbolForTwelve(rawSymbol) {
   const base = String(rawSymbol || "").trim().toUpperCase();
   if (!base) return "";
   const noProvider = base.includes(":") ? base.split(":").slice(1).join(":") : base;
   const compact = noProvider.replace(/[^A-Z0-9]/g, "");
   if (!compact) return "";
+  
+  if (TWELVE_SYMBOL_MAP[compact]) return TWELVE_SYMBOL_MAP[compact];
+
   if (compact.endsWith("USDT") && compact.length > 4) {
     const left = compact.slice(0, -4);
     return `${left}/USD`;
