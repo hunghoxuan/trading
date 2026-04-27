@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2012"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2044"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -3275,37 +3275,80 @@ async function mt5InitBackend() {
         client.release();
       }
     },
-    async pullAndLockNextSignal() {
+    async pullAndLockNextTask() {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const sel = await client.query(`
+        // 1. Try to find a PENDING modification/close task from Trades first
+        const selTrd = await client.query(`
+          SELECT * FROM trades
+          WHERE execution_status IN ('PENDING_MOD', 'PENDING_CLOSE', 'PENDING_CANCEL')
+          ORDER BY updated_at ASC, created_at ASC
+          LIMIT 1
+          FOR UPDATE SKIP LOCKED
+        `);
+        if (selTrd.rows?.[0]) {
+          const row = selTrd.rows[0];
+          const typeMap = { 'PENDING_MOD': 'MODIFY', 'PENDING_CLOSE': 'CLOSE', 'PENDING_CANCEL': 'CANCEL' };
+          const taskType = typeMap[row.execution_status];
+          
+          await client.query(`
+            UPDATE trades SET execution_status = 'LOCKED' WHERE trade_id = $1
+          `, [row.trade_id]);
+          await client.query("COMMIT");
+          
+          return {
+            task_id: row.trade_id,
+            type: taskType,
+            ticket: row.broker_trade_id,
+            symbol: row.symbol,
+            volume: row.volume,
+            entry: row.entry,
+            sl: row.sl,
+            tp: row.tp,
+            action: String(row.action || "BUY").toUpperCase(),
+            metadata: row.metadata || {}
+          };
+        }
+
+        // 2. Fallback to NEW signals
+        const selSig = await client.query(`
           SELECT * FROM signals
           WHERE status = 'NEW'
           ORDER BY created_at ASC
           LIMIT 1
           FOR UPDATE SKIP LOCKED
         `);
-        const row = sel.rows?.[0] || null;
+        const row = selSig.rows?.[0] || null;
         if (!row) {
           await client.query("COMMIT");
           return null;
         }
         const upd = await client.query(`
-          UPDATE signals
-          SET status = 'LOCKED'
-          WHERE signal_id = $1
-          RETURNING *
+          UPDATE signals SET status = 'LOCKED' WHERE signal_id = $1 RETURNING *
         `, [row.signal_id]);
         const outRow = upd.rows?.[0] || row;
         await client.query("COMMIT");
+        
         const raw = outRow.raw_json && typeof outRow.raw_json === "object" ? outRow.raw_json : {};
         const side = String(outRow.side || raw.action || raw.side || "BUY").toUpperCase();
         const volumeRaw = Number(raw.volume ?? raw.lots ?? CFG.mt5DefaultLot);
+        
         return {
-          ...outRow,
+          task_id: outRow.signal_id,
+          type: 'OPEN',
+          signal_id: outRow.signal_id,
+          timestamp: outRow.created_at ? Math.floor(new Date(outRow.created_at).getTime() / 1000) : null,
+          user_id: outRow.user_id || CFG.mt5DefaultUserId,
           action: side,
+          symbol: outRow.symbol,
           volume: Number.isFinite(volumeRaw) && volumeRaw > 0 ? volumeRaw : CFG.mt5DefaultLot,
+          entry: outRow.entry_price_exec ?? raw.entry ?? raw.price ?? null,
+          order_type: raw.order_type ?? raw.orderType ?? "limit",
+          sl: outRow.sl,
+          tp: outRow.tp,
+          note: outRow.note || "",
+          metadata: raw
         };
       } catch (e) {
         await client.query("ROLLBACK");
@@ -3313,6 +3356,12 @@ async function mt5InitBackend() {
       } finally {
         client.release();
       }
+    },
+    async pullAndLockNextSignal() {
+      // Compatibility wrapper
+      const t = await this.pullAndLockNextTask();
+      if (!t || t.type !== 'OPEN') return null;
+      return t;
     },
     async fanoutSignalTradeV2(payload = {}) {
       const signalIdRaw = String(payload.signal_id || "").trim();
@@ -3682,7 +3731,7 @@ async function mt5InitBackend() {
               FROM logs
               WHERE object_table = 'trades'
                 AND object_id = $1
-                AND metadata->>'event' = 'SYNC_UPDATE'
+                AND metadata->>'event' IN ('SYNC_UPDATE', 'TRADE_SYNC_UPDATE')
               ORDER BY created_at DESC, log_id DESC
               LIMIT 1
             `, [tradeId]);
@@ -3748,9 +3797,28 @@ async function mt5InitBackend() {
     async brokerHeartbeatV2(accountId, payload = {}) {
       const aid = String(accountId || "").trim();
       const now = mt5NowIso();
-      const acc = await pool.query(`SELECT user_id FROM accounts WHERE account_id = $1`, [aid]);
+      const balance = asNum(payload.balance, null);
+      const equity = asNum(payload.equity, null);
+      const margin = asNum(payload.margin, null);
+      const freeMargin = asNum(payload.free_margin, null);
+
+      const acc = await pool.query(`SELECT user_id, metadata FROM accounts WHERE account_id = $1`, [aid]);
       const uid = acc.rows[0]?.user_id || CFG.mt5DefaultUserId;
-      await pool.query(`UPDATE accounts SET updated_at = $1 WHERE account_id = $2`, [now, aid]);
+      const oldMeta = acc.rows[0]?.metadata || {};
+
+      await pool.query(`
+        UPDATE accounts 
+        SET balance = COALESCE($1, balance),
+            metadata = $2,
+            updated_at = $3 
+        WHERE account_id = $4
+      `, [
+        balance, 
+        JSON.stringify({ ...oldMeta, equity, margin, free_margin: freeMargin }), 
+        now, 
+        aid
+      ]);
+
       await this.log(aid, 'accounts', { event: 'ACCOUNT_HEARTBEAT', payload }, uid);
       return { ok: true };
     },
@@ -3858,9 +3926,9 @@ async function mt5InitBackend() {
       if (!tid) return { ok: false, error: "trade_id is required" };
       const numericId = mt5ParseNumericId(tid);
       const stRaw = String(payload.execution_status || payload.status || "").trim().toUpperCase();
-      const allowed = new Set(["PENDING", "OPEN", "CLOSED", "CANCELLED", "REJECTED"]);
+      const allowed = new Set(["PENDING", "OPEN", "CLOSED", "CANCELLED", "REJECTED", "PENDING_MOD", "PENDING_CLOSE", "PENDING_CANCEL"]);
       if (!allowed.has(stRaw)) {
-        return { ok: false, error: "execution_status must be one of: PENDING, OPEN, CLOSED, CANCELLED, REJECTED" };
+        return { ok: false, error: "execution_status must be one of: PENDING, OPEN, CLOSED, CANCELLED, REJECTED, PENDING_MOD, PENDING_CLOSE, PENDING_CANCEL" };
       }
       const pnlRaw = payload.pnl_realized ?? payload.pnl;
       const pnlNum = Number(pnlRaw);
@@ -3914,7 +3982,8 @@ async function mt5InitBackend() {
       const baseOffset = isDelete ? 0 : 2;
       const clauses = [];
       const closeReason = act === "cancel_all" ? "CANCEL" : "MANUAL";
-      const nextStatus = act === "cancel_all" ? "CANCELLED" : "CLOSED";
+      // Change: Mark as PENDING_CLOSE/CANCEL so EA can pick it up
+      const nextStatus = act === "cancel_all" ? "PENDING_CANCEL" : "PENDING_CLOSE";
       const params = isDelete ? [] : [closeReason, nextStatus];
       const tradeIds = Array.isArray(filters.trade_ids) ? filters.trade_ids.map((v) => String(v || "").trim()).filter(Boolean) : [];
       if (tradeIds.length) {
@@ -9293,13 +9362,17 @@ const appHandler = async (req, res) => {
         UPDATE trades
         SET action = COALESCE($1, action),
             entry = COALESCE($2, entry),
-            sl = COALESCE($3, sl),
-            tp = COALESCE($4, tp),
+            sl = $3,
+            tp = $4,
             note = COALESCE($5, note),
-            metadata = COALESCE(metadata, '{}'::jsonb) || $6::jsonb,
+            metadata = metadata || $6,
+            execution_status = CASE 
+              WHEN execution_status IN ('OPEN', 'PENDING') THEN 'PENDING_MOD'
+              ELSE execution_status
+            END,
             updated_at = NOW()
         WHERE trade_id = $7
-        ${whereUser}
+          ${whereUser}
         RETURNING *
       `, userId ? params : params.slice(0, 7));
       const row = resUpd.rows?.[0];
@@ -9604,44 +9677,70 @@ const appHandler = async (req, res) => {
     }
   }
 
+  if (req.method === "POST" && url.pathname === "/v2/ea/trades/sync-bulk") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    try {
+      const payload = await readJson(req);
+      if (!requireEaKey(req, res, url, payload)) return;
+      const updates = payload.updates || [];
+      if (!Array.isArray(updates)) return json(res, 400, { ok: false, error: "updates array required" });
+      const b = await mt5Backend();
+      let updatedCount = 0;
+      for (const u of updates) {
+        const ticket = String(u.ticket || u.ticket_number || "").trim();
+        if (!ticket) continue;
+        const stRaw = String(u.status || u.execution_status || "CLOSED").toUpperCase();
+        const pnl = Number(u.pnl ?? u.profit ?? 0);
+        const closeTime = u.close_time || u.time || null;
+        
+        const resUpd = await pool.query(`
+          UPDATE trades
+          SET execution_status = $1,
+              pnl_realized = $2,
+              closed_at = COALESCE(closed_at, $3, NOW()),
+              updated_at = NOW()
+          WHERE broker_trade_id = $4
+          RETURNING trade_id, user_id
+        `, [stRaw, pnl, closeTime, ticket]);
+        
+        if (resUpd.rowCount > 0) {
+          updatedCount++;
+          const row = resUpd.rows[0];
+          await b.log(row.trade_id, 'trades', {
+            event: 'TRADE_SYNC_UPDATE',
+            ticket,
+            execution_status: stRaw,
+            pnl,
+            source: 'ea_bulk_sync'
+          }, row.user_id || CFG.mt5DefaultUserId);
+        }
+      }
+      return json(res, 200, { ok: true, updated: updatedCount });
+    } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
+  }
+
   if (req.method === "GET" && url.pathname === "/mt5/ea/pull") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireEaKey(req, res, url)) return;
 
     const signalId = String(url.searchParams.get("signal_id") || "").trim();
     const account = String(url.searchParams.get("account") || "");
-    const signal = signalId
-      ? await mt5PullAndLockSignalById(signalId)
-      : await mt5PullAndLockNextSignal();
-    if (!signal) {
-      return json(res, 200, { ok: true, signal: null });
+    const b = await mt5Backend();
+    const task = await b.pullAndLockNextTask();
+    if (!task) {
+      return json(res, 200, { ok: true, task: null, signal: null });
     }
-    await mt5AppendSignalEvent(signal.signal_id, "SIGNAL_FETCH", {
+    const taskId = task.task_id || task.signal_id;
+    await mt5AppendSignalEvent(taskId, "TASK_FETCH", {
+      type: task.type,
       account: account || null
     });
 
     return json(res, 200, {
       ok: true,
-      signal: {
-        signal_id: signal.signal_id,
-        // Keep EA compatibility: `timestamp` must be unix seconds (number), not ISO string.
-        // Older EA parsers read `timestamp` as numeric and can misparse ISO text as year-only.
-        timestamp: signal.created_at ? Math.floor(new Date(signal.created_at).getTime() / 1000) : null,
-        timestamp_iso: signal.created_at || null,
-        created_at_ts: signal.created_at ? Math.floor(new Date(signal.created_at).getTime() / 1000) : null,
-        user_id: signal.user_id || CFG.mt5DefaultUserId,
-        action: signal.action,
-        symbol: signal.symbol,
-        volume: signal.volume,
-        entry: signal.entry_price_exec ?? signal.raw_json?.entry ?? signal.raw_json?.price ?? null,
-        order_type: signal.raw_json?.order_type ?? signal.raw_json?.orderType ?? "limit",
-        sl: signal.sl,
-        tp: signal.tp,
-        rr_planned: signal.rr_planned ?? null,
-        risk_money_planned: signal.risk_money_planned ?? null,
-        note: signal.note || "",
-        account,
-      },
+      task: task,
+      // Backward compatibility for older EAs
+      signal: task.type === 'OPEN' ? task : null
     });
   }
 
