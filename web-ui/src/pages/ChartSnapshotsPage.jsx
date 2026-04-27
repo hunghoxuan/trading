@@ -300,9 +300,11 @@ function tfToSeconds(tfRaw) {
 function normalizeSnapshotBars(snapshot, tfRaw = "") {
   const rawBars = Array.isArray(snapshot?.bars) ? snapshot.bars : [];
   if (!rawBars.length) return snapshot;
+  
   const tfSec = tfToSeconds(tfRaw || snapshot?.tf_norm || snapshot?.timeframe || snapshot?.interval);
   const nowSec = Math.floor(Date.now() / 1000);
   const dedup = new Map();
+
   rawBars.forEach((x) => {
     const t = Number(x?.time);
     const o = Number(x?.open);
@@ -310,26 +312,35 @@ function normalizeSnapshotBars(snapshot, tfRaw = "") {
     const l = Number(x?.low);
     const c = Number(x?.close);
     if (!Number.isFinite(t) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return;
-    if (t > nowSec + (tfSec * 2)) return;
+    
+    // STRICT FUTURE FILTER: Avoid bars more than 1 period into the future
+    if (t > nowSec + tfSec) return;
+    
     dedup.set(t, { time: t, open: o, high: h, low: l, close: c });
   });
+
   let bars = [...dedup.values()].sort((a, b) => a.time - b.time);
+
+  // TINY RANGE FILTER: Remove flat/buggy bars at the end (often artifacts from provider)
   if (bars.length >= 30) {
-    const ranges = bars.map((b) => Math.abs(b.high - b.low)).filter((v) => Number.isFinite(v) && v > 0);
-    const typicalRange = ranges.length ? ranges.sort((a, b) => a - b)[Math.floor(ranges.length / 2)] : 0;
-    if (typicalRange > 0) {
-      const tinyRange = typicalRange * 0.06;
-      let trailingTiny = 0;
+    const ranges = bars.map((b) => Math.abs(b.high - b.low)).filter((v) => v > 0);
+    const medianRange = ranges.length ? ranges.sort((a, b) => a - b)[Math.floor(ranges.length / 2)] : 0;
+    
+    if (medianRange > 0) {
+      const tinyThreshold = medianRange * 0.05;
+      let trimCount = 0;
       for (let i = bars.length - 1; i >= 0; i -= 1) {
-        const r = Math.abs(Number(bars[i].high) - Number(bars[i].low));
-        if (r <= tinyRange) trailingTiny += 1;
+        const r = Math.abs(bars[i].high - bars[i].low);
+        // If bar is basically a flat line AND close is weirdly far from previous close (artifact check)
+        if (r <= tinyThreshold) trimCount += 1;
         else break;
       }
-      if (trailingTiny >= 12) {
-        bars = bars.slice(0, Math.max(10, bars.length - trailingTiny + 2));
+      if (trimCount >= 1) {
+        bars = bars.slice(0, bars.length - trimCount);
       }
     }
   }
+
   if (!bars.length) return snapshot;
   return {
     ...(snapshot || {}),

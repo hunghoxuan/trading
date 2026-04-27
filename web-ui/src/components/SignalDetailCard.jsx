@@ -353,59 +353,88 @@ export function SignalDetailCard({
             </div>
           </div>
 
-          <div className="multi-chart-grid" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            {/* Show all selected timeframes */}
-            {selectedTfs.map(tf => {
-              const isEntryTf = tf.toLowerCase() === (chart.interval || '').toLowerCase();
-              const snapshot = isEntryTf ? (response?.raw || chart?.analysisSnapshot) : multiChartData[tf];
+      {/* CONTENT SECTIONS using display: none for persistence */}
+      <div style={{ display: mainTab === "chart" && hasResponseData ? 'block' : 'none' }}>
+        <div className="multi-chart-grid" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {selectedTfs.map(tf => {
+            const isEntryTf = tf.toLowerCase() === (chart.interval || '').toLowerCase();
+            const snapshot = isEntryTf ? (response?.raw || chart?.analysisSnapshot) : multiChartData[tf];
 
-              return (
-                <div key={tf} className="tf-chart-row">
-                  <h4 className="tf-row-label">{tf.toUpperCase()}</h4>
-                  <div className={`tf-row-charts ${chartModes.length > 1 ? 'side-by-side' : ''}`} style={{ display: 'grid', gridTemplateColumns: chartModes.length > 1 ? '1fr 1fr' : '1fr', gap: 12 }}>
-                    {chartModes.includes('static') && (
-                      <div className="chart-wrapper static-wrapper">
-                        {loadingCharts && !snapshot ? (
-                          <div className="chart-loading" style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>Loading {tf}...</div>
-                        ) : (
-                          <TradeSignalChart 
-                            symbol={chart?.symbol} interval={tf} 
-                            analysisSnapshot={snapshot}
-                            entryPrice={chart?.entryPrice} slPrice={chart?.slPrice} tpPrice={chart?.tpPrice}
-                          />
-                        )}
-                      </div>
-                    )}
-                    {chartModes.includes('live') && (
-                      <div className="chart-wrapper live-wrapper">
-                        <iframe
-                          title={`TV-${tf}`}
-                          src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol)}&interval=${detailTabToTvInterval(tf)}&theme=dark&style=1`}
-                          width="100%" height="100%" style={{ aspectRatio: '3 / 2', borderRadius: '8px', border: '1px solid var(--border)' }} frameBorder="0"
+            return (
+              <div key={tf} className="tf-chart-row">
+                <h4 className="tf-row-label">{tf.toUpperCase()}</h4>
+                <div className={`tf-row-charts ${chartModes.length > 1 ? 'side-by-side' : ''}`} style={{ display: 'grid', gridTemplateColumns: chartModes.length > 1 ? '1fr 1fr' : '1fr', gap: 12 }}>
+                  {chartModes.includes('static') && (
+                    <div className="chart-wrapper static-wrapper">
+                      {loadingCharts && !snapshot ? (
+                        <div className="chart-loading" style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>Loading {tf}...</div>
+                      ) : (
+                        <TradeSignalChart 
+                          symbol={chart?.symbol} interval={tf} 
+                          analysisSnapshot={snapshot}
+                          entryPrice={chart?.entryPrice} slPrice={chart?.slPrice} tpPrice={chart?.tpPrice}
                         />
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  )}
+                  {chartModes.includes('live') && (
+                    <div className="chart-wrapper live-wrapper">
+                      <iframe
+                        title={`TV-${tf}`}
+                        src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol)}&interval=${detailTabToTvInterval(tf)}&theme=dark&style=1`}
+                        width="100%" height="100%" style={{ aspectRatio: '3 / 2', borderRadius: '8px', border: '1px solid var(--border)' }} frameBorder="0"
+                      />
+                    </div>
+                  )}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
-      ) : null}
+      </div>
 
-      {mainTab === "analysis" && hasResponseData ? (
-        <div className="panel" style={{ padding: 14, margin: 0, lineHeight: 1.5, fontSize: '13px' }}>
-          {renderFormattedText(response.text)}
+      <div style={{ display: mainTab === "analysis" && hasResponseData ? 'block' : 'none' }}>
+        <div className="panel" style={{ padding: 16, margin: 0, lineHeight: 1.6, fontSize: '14px', background: 'var(--card-bg)', borderRadius: 12 }}>
+          {(() => {
+             const m = response?.raw?.market_analysis || response?.raw_json?.market_analysis || {};
+             const bias = m.bias || "N/A";
+             const trend = m.trend || "N/A";
+             const confluence = m.confluence || "N/A";
+             const note = response?.raw?.note || response?.raw_json?.note || "";
+             
+             return (
+               <div className="analysis-summary-md">
+                 <div style={{ marginBottom: 16 }}>
+                    <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bias</div>
+                    <div style={{ fontSize: '18px', fontWeight: 600, color: bias.toLowerCase().includes('long') ? '#26a69a' : (bias.toLowerCase().includes('short') ? '#ef5350' : 'inherit') }}>{bias}</div>
+                 </div>
+                 <div style={{ marginBottom: 16 }}>
+                    <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Trend</div>
+                    <div style={{ fontSize: '16px', fontWeight: 500 }}>{trend}</div>
+                 </div>
+                 <div style={{ marginBottom: 16 }}>
+                    <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Confluence</div>
+                    <div style={{ whiteSpace: 'pre-wrap' }}>{confluence}</div>
+                 </div>
+                 {note && (
+                   <div style={{ marginTop: 24, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8, borderLeft: '3px solid var(--accent)' }}>
+                      <div className="minor-text" style={{ fontSize: '10px', marginBottom: 4 }}>NOTE</div>
+                      <div style={{ fontStyle: 'italic', color: 'var(--muted)' }}>{note}</div>
+                   </div>
+                 )}
+               </div>
+             );
+          })()}
         </div>
-      ) : null}
+      </div>
 
-      {mainTab === "json" && hasResponseData ? (
+      <div style={{ display: mainTab === "json" && hasResponseData ? 'block' : 'none' }}>
         <div className="panel" style={{ padding: 14, margin: 0, background: 'rgba(0,0,0,0.2)', overflow: 'auto', maxHeight: '500px' }}>
            <pre style={{ margin: 0, fontSize: '11px', fontFamily: 'monospace', color: 'var(--muted)' }}>
              {JSON.stringify(response?.raw_json || response?.raw || {}, null, 2)}
            </pre>
         </div>
-      ) : null}
+      </div>
 
       {mainTab === "history" && history?.enabled ? (
         <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10 }}>

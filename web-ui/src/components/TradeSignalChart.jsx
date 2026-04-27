@@ -346,37 +346,43 @@ export default function TradeSignalChart({
             const tp = asNum(p.tp);
             if (!ep) return;
 
-            const baseColor = PLAN_COLORS[index % PLAN_COLORS.length];
             const isPrimary = index === 0;
             const tfLabel = String(interval || '').toUpperCase();
-            const suffix = isPrimary ? '' : ` (P${index + 1})`;
-            const opacity = isPrimary ? 1 : 0.6;
-            const color = isPrimary ? baseColor : baseColor; 
+            const suffix = isPrimary ? '' : ` P${index + 1}`;
+            
+            // Determine direction
+            const isBuy = tp > ep;
+            const actionLabel = isBuy ? 'B' : 'S';
+            
+            // Standard colors
+            const greenColor = '#26a69a';
+            const redColor = '#ef5350';
+            const primaryColor = isBuy ? greenColor : redColor;
 
-            // Entry line: solid (0)
+            // Entry line: solid
             candleSeries.createPriceLine({ 
-              price: ep, color, lineWidth: isPrimary ? 2 : 1, lineStyle: 0, 
-              axisLabelVisible: true, title: `${tfLabel} Entry${suffix}` 
+              price: ep, color: 'var(--text)', lineWidth: isPrimary ? 2 : 1, lineStyle: 0, 
+              axisLabelVisible: true, title: `${tfLabel} ${actionLabel}${suffix}` 
             });
-            // SL line: dashed (2)
+            // SL line: dashed, always RED
             if (sp) candleSeries.createPriceLine({ 
-              price: sp, color, lineWidth: isPrimary ? 2 : 1, lineStyle: 2, 
+              price: sp, color: redColor, lineWidth: isPrimary ? 2 : 1, lineStyle: 2, 
               axisLabelVisible: true, title: `${tfLabel} SL${suffix}` 
             });
-            // TP line: dotted (1)
+            // TP line: dotted, always GREEN
             if (tp) candleSeries.createPriceLine({ 
-              price: tp, color, lineWidth: isPrimary ? 2 : 1, lineStyle: 1, 
+              price: tp, color: greenColor, lineWidth: isPrimary ? 2 : 1, lineStyle: 1, 
               axisLabelVisible: true, title: `${tfLabel} TP${suffix}` 
             });
 
-            // Entry → TP zone box (using base color with very low alpha)
+            // Entry → TP zone box: Reward zone = Green
             if (ep && tp && boxAnchorTs) {
-              const primitive = new PdArrayBoxPrimitive(boxAnchorTs, Math.min(ep, tp), Math.max(ep, tp), color);
+              const primitive = new PdArrayBoxPrimitive(boxAnchorTs, Math.min(ep, tp), Math.max(ep, tp), greenColor);
               candleSeries.attachPrimitive(primitive);
             }
-            // Entry → SL zone box
+            // Entry → SL zone box: Risk zone = Red
             if (ep && sp && boxAnchorTs) {
-              const primitive = new PdArrayBoxPrimitive(boxAnchorTs, Math.min(ep, sp), Math.max(ep, sp), color);
+              const primitive = new PdArrayBoxPrimitive(boxAnchorTs, Math.min(ep, sp), Math.max(ep, sp), redColor);
               candleSeries.attachPrimitive(primitive);
             }
           };
