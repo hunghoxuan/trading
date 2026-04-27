@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-1851"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-1948"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -3102,6 +3102,22 @@ async function mt5InitBackend() {
     return String(fallbackRes.rows?.[0]?.sid || base.slice(0, 64));
   }
 
+  let LOG_ENABLED_PREFIXES = [];
+  async function loadLoggingConfig() {
+    try {
+      const res = await pool.query(`SELECT value FROM user_settings WHERE name = 'enabled_log_prefixes' LIMIT 1`);
+      if (res.rows.length > 0) {
+        const val = res.rows[0].value;
+        LOG_ENABLED_PREFIXES = Array.isArray(val) ? val : [];
+      } else {
+        LOG_ENABLED_PREFIXES = []; // Default empty
+      }
+    } catch (e) {
+      LOG_ENABLED_PREFIXES = [];
+    }
+  }
+  await loadLoggingConfig();
+
   const storage = "postgres";
   MT5_BACKEND = {
     storage,
@@ -3109,11 +3125,18 @@ async function mt5InitBackend() {
     query: (q, p) => pool.query(q, p),
     info: { url: CFG.mt5PostgresUrl.replace(/:[^:@/]+@/, ":***@") },
     async log(objectId, objectTable, metadata = {}, userId = null) {
+      const eventName = String(metadata.event || metadata.event_type || "INFO").toUpperCase();
+      const isEnabled = LOG_ENABLED_PREFIXES.some(p => eventName.startsWith(p));
+      if (!isEnabled) {
+        // console.log(`[LOG_SKIPPED] ${eventName}`); // Debug
+        return;
+      }
       await pool.query(`
         INSERT INTO logs (object_id, object_table, metadata, user_id, created_at)
         VALUES ($1, $2, $3, $4, NOW())
       `, [objectId, objectTable, JSON.stringify(metadata), userId]);
     },
+    refreshLogConfig: loadLoggingConfig,
     async upsertSignal(signal) {
       const signalSid = await allocateUniqueSid(pool, "signals", signal.sid || signal.signal_id, "SIG");
       const r = await pool.query(`
@@ -3404,7 +3427,7 @@ async function mt5InitBackend() {
        ]);
        if (res.rowCount > 0) {
          await this.log(payload.trade_id, 'trades', {
-           event: 'ACK',
+           event: 'TRADE_ACK',
            status: payload.execution_status,
            pnl: isClosed ? payload.pnl_realized : null,
            requested_volume: payload.requested_volume ?? payload.requestedVolume ?? null,
@@ -3447,7 +3470,7 @@ async function mt5InitBackend() {
 
         await client.query("COMMIT");
         if (res.rowCount > 0) {
-          await this.log(signalId, 'signals', { event: 'EA_ACK', status: s, trade_execution_status: tradeExec, ticket, error }, res.rows[0].user_id);
+          await this.log(signalId, 'signals', { event: 'SIGNAL_EA_ACK', status: s, trade_execution_status: tradeExec, ticket, error }, res.rows[0].user_id);
         }
         return { ok: res.rowCount > 0 };
       } catch (e) {
@@ -3461,7 +3484,7 @@ async function mt5InitBackend() {
       const aid = String(accountId || "").trim();
       const acc = await pool.query(`SELECT user_id FROM accounts WHERE account_id = $1`, [aid]);
       const uid = acc.rows[0]?.user_id || CFG.mt5DefaultUserId;
-      await this.log(aid, 'accounts', { event: 'SYNC', data: payload }, uid);
+      await this.log(aid, 'accounts', { event: 'ACCOUNT_SYNC', data: payload }, uid);
 
       const merged = new Map();
       const seenTickets = new Set();
@@ -3614,7 +3637,7 @@ async function mt5InitBackend() {
           const tid = String(res.rows?.[0]?.trade_id || "").trim();
           if (tid) {
             await this.log(tid, 'trades', {
-              event: 'SYNC_UPDATE',
+              event: 'TRADE_SYNC_UPDATE',
               status_raw: it.status_raw,
               execution_status: it.execution_status,
               ticket: it.ticket || null,
@@ -3653,7 +3676,7 @@ async function mt5InitBackend() {
             }
           }
           await this.log(tradeId, 'trades', {
-            event: 'SYNC_SNAPSHOT_CLOSE',
+            event: 'TRADE_SYNC_CLOSE',
             ticket: row?.broker_trade_id || null,
             execution_status: row?.execution_status || null,
             close_reason: row?.close_reason || null,
@@ -3705,7 +3728,7 @@ async function mt5InitBackend() {
       const acc = await pool.query(`SELECT user_id FROM accounts WHERE account_id = $1`, [aid]);
       const uid = acc.rows[0]?.user_id || CFG.mt5DefaultUserId;
       await pool.query(`UPDATE accounts SET updated_at = $1 WHERE account_id = $2`, [now, aid]);
-      await this.log(aid, 'accounts', { event: 'HEARTBEAT', payload }, uid);
+      await this.log(aid, 'accounts', { event: 'ACCOUNT_HEARTBEAT', payload }, uid);
       return { ok: true };
     },
     async listSignals(limit, filters = {}, userId = null) {
@@ -3851,7 +3874,7 @@ async function mt5InitBackend() {
       if ((res.rowCount || 0) === 0) return { ok: false, error: "trade not found" };
       const row = res.rows[0];
       await this.log(row.trade_id, "trades", {
-        event: "MANUAL_EDIT",
+        event: "TRADE_MANUAL_EDIT",
         execution_status: row.execution_status,
         pnl_realized: row.pnl_realized,
         close_reason: row.close_reason || null,
@@ -7523,7 +7546,7 @@ const appHandler = async (req, res) => {
       const updated = await mt5CancelSignalsByIds(ids);
       const cleanup = await mt5CleanupSignalTradeArtifacts({ signalRows: rows, signalIds: ids });
       for (const signalId of (updated.updated_ids || [])) {
-        await mt5AppendSignalEvent(signalId, "MANUAL_CANCEL", {
+        await mt5AppendSignalEvent(signalId, "SIGNAL_MANUAL_CANCEL", {
           via: "ui_bulk_cancel",
         });
       }
@@ -8015,7 +8038,7 @@ const appHandler = async (req, res) => {
       if (updates.length > 0) {
         await mt5BulkAckSignals(updates);
         
-        await mt5AppendSignalEvent('SYSTEM_SYNC_PUSH', 'EA_SYNC_PUSH', { 
+        await mt5AppendSignalEvent('SYSTEM_SYNC_PUSH', 'SIGNAL_EA_SYNC_PUSH', { 
           account: payload.account_id, 
           active_count: activeSignals.length,
           updates_count: updates.length,
@@ -8036,7 +8059,7 @@ const appHandler = async (req, res) => {
       if (!Array.isArray(updates)) return json(res, 400, { ok: false, error: "updates array required" });
       const result = await mt5BulkAckSignals(updates);
       for (const u of updates) {
-        await mt5AppendSignalEvent(u.signal_id, `EA_SYNC_${u.status}`, { ticket: u.ticket, pnl: u.pnl, account: payload.account_id });
+        await mt5AppendSignalEvent(u.signal_id, `SIGNAL_EA_SYNC_${u.status}`, { ticket: u.ticket, pnl: u.pnl, account: payload.account_id });
       }
       return json(res, 200, { ok: true, updated: result.updated });
     } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
@@ -8282,14 +8305,20 @@ const appHandler = async (req, res) => {
         data = encryptObject({ value: rawValue });
       }
       
-      await db.query(`
-        INSERT INTO user_settings (user_id, type, name, data, status)
-        VALUES ($1, $2, $3, $4, $5)
+      const res2 = await db.query(`
+        INSERT INTO user_settings (user_id, type, name, data, status, value)
+        VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (user_id, type, name)
-        DO UPDATE SET data = $4, status = $5, updated_at = NOW()
-      `, [userId, body.type, settingName || body.type, data, body.status || 'active']);
+        DO UPDATE SET data = EXCLUDED.data, status = EXCLUDED.status, value = EXCLUDED.value, updated_at = NOW()
+        RETURNING *
+      `, [userId, body.type, settingName || body.type, data, body.status || 'active', body.value || null]);
       
-      return json(res, 200, { ok: true });
+      if (body.type === "system_config" && settingName === "enabled_log_prefixes") {
+        const b = await mt5Backend();
+        if (b.refreshLogConfig) await b.refreshLogConfig();
+      }
+
+      return json(res, 200, { ok: true, item: res2.rows[0] });
     } catch (e) {
       return json(res, 500, { ok: false, error: e.message });
     }
@@ -8334,6 +8363,8 @@ const appHandler = async (req, res) => {
       const { templateId, customPrompt, service, provider: bodyProvider, model, context } = body;
       const db = await mt5InitBackend();
       const userId = CFG.mt5DefaultUserId;
+      const sessionId = `ai_gen_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      await (await mt5Backend()).log(sessionId, 'ai', { event: 'AI_ANALYSIS', payload: body }, userId);
       
       let finalPrompt = customPrompt || "";
       if (templateId) {
@@ -8488,6 +8519,8 @@ const appHandler = async (req, res) => {
       // If it still has markdown prefix (sometimes LLMs ignore instructions), strip it manually
       cleanJson = cleanJson.replace(/^```json/, "").replace(/```$/, "").trim();
 
+      await (await mt5Backend()).log(sessionId, 'ai', { event: 'AI_RESPONSE', raw_json: aiJson }, userId);
+
       let signals = [];
       try {
         const parsed = JSON.parse(cleanJson);
@@ -8639,6 +8672,8 @@ const appHandler = async (req, res) => {
       const reqSessionPrefix = sanitizeSessionPrefix(body.session_prefix || body.sessionPrefix || "");
       ensureChartSnapshotDir();
       const userId = sess.user_id || CFG.mt5DefaultUserId;
+      const sessionId = `ai_analyze_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      await (await mt5Backend()).log(sessionId, 'ai', { event: 'AI_ANALYSIS', payload: body }, userId);
       const cfgRows = await (await mt5InitBackend()).query(
         "SELECT name, data FROM user_settings WHERE user_id = $1 AND type = 'api_key'",
         [userId],
@@ -8714,6 +8749,7 @@ const appHandler = async (req, res) => {
         ? aiJson.content.filter((x) => x?.type === "text").map((x) => String(x?.text || "")).join("\n")
         : String(aiJson?.content || "");
       const extracted = extractJsonFromAiText(rawResponse);
+      await (await mt5Backend()).log(sessionId, 'ai', { event: 'AI_RESPONSE', raw_json: aiJson }, userId);
       return json(res, 200, {
         ok: true,
         model: resolvedModel,
@@ -9688,7 +9724,7 @@ const appHandler = async (req, res) => {
         risk_money_actual: Number.isFinite(riskMoneyActual) && riskMoneyActual > 0 ? riskMoneyActual : null,
         reward_money_planned: Number.isFinite(rewardMoneyPlanned) && rewardMoneyPlanned > 0 ? rewardMoneyPlanned : null,
       });
-      const eventType = retryableConnectivityFail ? "EA_REQUEUE_CONNECTION" : `EA_ACK_${status}`;
+      const eventType = retryableConnectivityFail ? "SIGNAL_EA_REQUEUE" : `SIGNAL_EA_ACK_${status}`;
       await mt5AppendSignalEvent(signalId, eventType, {
         ticket: payload.ticket ?? null,
         error: ackErrorCombined,

@@ -59,9 +59,11 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
     route: "ea",
     account_id: "",
     source_ids_csv: "signal,tradingview",
-    ctrader_mode: "demo",
     ctrader_account_id: "",
   });
+  const [logConfig, setLogConfig] = useState([]);
+  const [logBusy, setLogBusy] = useState(false);
+  const LOG_GROUPS = ["TRADE_", "SIGNAL_", "ACCOUNT_", "AI_", "SYSTEM_"];
 
   const getSettingKey = (s) => `${String(s?.type || "")}::${String(s?.name || "")}`;
 
@@ -112,6 +114,8 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
           if (prev && list.some((x) => getSettingKey(x) === prev)) return prev;
           return getSettingKey(list[0]);
         });
+        const logSet = list.find((x) => x?.type === "system_config" && x?.name === "enabled_log_prefixes");
+        setLogConfig(Array.isArray(logSet?.value) ? logSet.value : []);
       }
       setMsg(""); // Clear potential "Not found" or error from previous load
     } catch (err) {
@@ -276,6 +280,25 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
     }
   }
 
+  async function saveLoggingConfig(next) {
+    setLogBusy(true);
+    try {
+      await api.upsertSetting({
+        type: "system_config",
+        name: "enabled_log_prefixes",
+        value: next,
+        status: "active",
+      });
+      setLogConfig(next);
+      setMsg("Logging configuration updated.");
+    } catch (err) {
+      setMsg(err.message);
+    } finally {
+      setLogBusy(false);
+      window.setTimeout(() => setMsg(""), 3000);
+    }
+  }
+
   const selectedSetting = useMemo(
     () => settings.find((s) => getSettingKey(s) === activeSettingKey),
     [settings, activeSettingKey],
@@ -313,7 +336,7 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
       <h2 className="page-title">{isProfileMode ? "Profile" : "Settings"}</h2>
 
       {/* Top Grid: Profile, Password, Execution */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, alignItems: "start" }}>
         <UserDetailSection
           title="UPDATE PROFILE"
           form={profileForm}
@@ -427,6 +450,52 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
             </label>
             <div className="minor-text" style={{ marginTop: 4 }}>
               Controls how often the Dashboard, Trades, and Signals pages update automatically.
+            </div>
+          </div>
+        </section>
+
+        <section className="panel" style={{ height: "100%" }}>
+          <div className="panel-label">LOGGING CONFIGURATION</div>
+          <div className="stack-layout" style={{ gap: 12 }}>
+            <div style={{ display: "flex", gap: 10, marginBottom: 4 }}>
+              <button 
+                className="secondary-button" 
+                style={{ padding: "4px 8px", fontSize: 10 }}
+                onClick={() => saveLoggingConfig(LOG_GROUPS)}
+              >
+                CHECK ALL
+              </button>
+              <button 
+                className="secondary-button" 
+                style={{ padding: "4px 8px", fontSize: 10 }}
+                onClick={() => saveLoggingConfig([])}
+              >
+                UNCHECK ALL
+              </button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {LOG_GROUPS.map(prefix => {
+                const checked = logConfig.includes(prefix);
+                return (
+                  <label key={prefix} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                    <input 
+                      type="checkbox" 
+                      checked={checked} 
+                      onChange={(e) => {
+                        const next = e.target.checked 
+                          ? [...logConfig, prefix]
+                          : logConfig.filter(x => x !== prefix);
+                        saveLoggingConfig(next);
+                      }}
+                    />
+                    <span style={{ fontSize: 13, fontWeight: 500 }}>{prefix}*</span>
+                  </label>
+                );
+              })}
+            </div>
+            {logBusy && <div className="minor-text" style={{ marginTop: 4 }}>Saving...</div>}
+            <div className="minor-text" style={{ marginTop: 8, fontSize: 10 }}>
+              Enable/disable database logging for different event groups. Uncheck all for maximum performance.
             </div>
           </div>
         </section>
