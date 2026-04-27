@@ -38,7 +38,7 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-27.2044";
+string EA_BUILD_VERSION = "2026-04-27.2051";
 
 input string InpMappingFile = "TVBridge_Mappings.csv";
 
@@ -129,6 +129,7 @@ bool     g_posMapOpenedAckSent[];
 ulong    g_ordMapTicket[];
 string   g_ordMapSignalId[];
 datetime g_syncLastTime = 0;
+datetime g_syncHistoryLastTime = 0;
 datetime g_lastClosedDealSyncTime = 0;
 
 string   g_lastPullPayload = "None";
@@ -2621,8 +2622,15 @@ void OnTimer()
       SyncWithVps();
       g_syncLastTime = now;
    }
+   
+   // Periodic History Sync (PUSH CLOSED) - every 5 minutes
+   if(now - g_syncHistoryLastTime >= 300)
+   {
+      SyncClosedHistory();
+      g_syncHistoryLastTime = now;
+   }
 
-   string url = BuildApiUrl("/v2/broker/pull?account=" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)));
+   string url = BuildApiUrl("/mt5/ea/pull?account=" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)));
    string resp;
    if(!HttpGet(url, resp))
    {
@@ -2645,91 +2653,106 @@ void OnTimer()
       return;
    }
 
-   string itemPart = JsonExtractFirstArrayObject(resp, "items");
-   if(itemPart == "")
-   {
-      g_lastPullSummary = "OK but cannot parse items payload";
-      RefreshDebugPanel();
-      return;
-   }
-
-   string leaseToken = JsonGetString(itemPart, "lease_token");
-   string tradeId = JsonGetString(itemPart, "trade_id");
-   string signalId = JsonGetString(itemPart, "signal_id");
-   if(signalId == "")
-      signalId = tradeId;
-   
-   // Track V2 context
-   if(signalId != "" && leaseToken != "") {
-      int nL = ArraySize(g_leaseTokenMapSignalId);
-      ArrayResize(g_leaseTokenMapSignalId, nL+1);
-      ArrayResize(g_leaseTokenMapValue, nL+1);
-      g_leaseTokenMapSignalId[nL] = signalId;
-      g_leaseTokenMapValue[nL] = leaseToken;
-   }
-   if(signalId != "" && tradeId != "") {
-      int nT = ArraySize(g_tradeIdMapSignalId);
-      ArrayResize(g_tradeIdMapSignalId, nT+1);
-      ArrayResize(g_tradeIdMapValue, nT+1);
-      g_tradeIdMapSignalId[nT] = signalId;
-      g_tradeIdMapValue[nT] = tradeId;
-   }
-
-   string action   = JsonGetString(itemPart, "action");
-   if(action == "") action = JsonGetString(itemPart, "side"); // V2 mapping
-   
-   string symbolIn = JsonGetString(itemPart, "symbol");
-   string comment  = JsonGetString(itemPart, "note");
-   if(comment == "") comment = JsonGetString(itemPart, "intent_note");
-   
-   double volume   = JsonGetNumber(itemPart, "volume", 0.0);
-   if(volume <= 0) volume = JsonGetNumber(itemPart, "intent_volume", 0.0);
-   if(volume <= 0) volume = 0.01;
-   
-   double entry    = JsonGetNumber(itemPart, "entry", 0.0);
-   if(entry <= 0) entry = JsonGetNumber(itemPart, "intent_entry", 0.0);
-   
-   string orderType = JsonGetString(itemPart, "order_type");
-   if(StringLen(orderType) == 0) orderType = "market";
-   int itemCount = CountOccurrences(resp, "\"trade_id\"");
-   g_lastPullSummary = "OK items=" + IntegerToString(itemCount) +
-                       " trade=" + tradeId +
-                       " " + action + " " + symbolIn +
-                       " " + orderType;
-   
-   double sl       = JsonGetNumber(itemPart, "sl", 0.0);
-   if(sl <= 0) sl = JsonGetNumber(itemPart, "intent_sl", 0.0);
-   
-   double tp       = JsonGetNumber(itemPart, "tp", 0.0);
-   if(tp <= 0) tp = JsonGetNumber(itemPart, "intent_tp", 0.0);
-   
-   datetime signalTs = (datetime)JsonGetNumber(itemPart, "created_at_ts", 0.0);
-   if(!IsPlausibleEpochTs(signalTs))
-      signalTs = (datetime)JsonGetNumber(itemPart, "timestamp", 0.0);
-   if(!IsPlausibleEpochTs(signalTs))
-   {
-      string tsIso = JsonGetString(itemPart, "timestamp_iso");
-      if(StringLen(tsIso) == 0)
-         tsIso = JsonGetString(itemPart, "timestamp");
-      signalTs = ParseSignalTime(tsIso);
-   }
-   if(!IsPlausibleEpochTs(signalTs))
-      signalTs = 0;
-
-   string ticket;
-   string err;
-   bool ok = ExecuteSignal(signalId, action, symbolIn, comment, volume, entry, orderType, sl, tp, signalTs, ticket, err);
-   if(ok)
-    {
-       string initialStatus = (orderType == "market") ? "START" : "PLACED";
-       Ack(signalId, initialStatus, ticket, "exec_ok_" + orderType);
+    // Handle Unified Task Object
+    string taskType = JsonGetString(resp, "type");
+    if(taskType == "") taskType = "OPEN"; // Fallback for old signals
+    
+    string leaseToken = JsonGetString(resp, "lease_token");
+    string tradeId = JsonGetString(resp, "trade_id");
+    string signalId = JsonGetString(resp, "signal_id");
+    if(signalId == "") signalId = tradeId;
+    if(signalId == "") signalId = JsonGetString(resp, "task_id");
+    
+    // Track V2 context
+    if(signalId != "" && leaseToken != "") {
+       int nL = ArraySize(g_leaseTokenMapSignalId);
+       ArrayResize(g_leaseTokenMapSignalId, nL+1);
+       ArrayResize(g_leaseTokenMapValue, nL+1);
+       g_leaseTokenMapSignalId[nL] = signalId;
+       g_leaseTokenMapValue[nL] = leaseToken;
     }
-   else
+
+    string action   = JsonGetString(resp, "action");
+    string symbolIn = JsonGetString(resp, "symbol");
+    string comment  = JsonGetString(resp, "note");
+    ulong  ticketNum = (ulong)JsonGetNumber(resp, "ticket", 0);
+    double volume   = JsonGetNumber(resp, "volume", 0.0);
+    double entry    = JsonGetNumber(resp, "entry", 0.0);
+    double sl       = JsonGetNumber(resp, "sl", 0.0);
+    double tp       = JsonGetNumber(resp, "tp", 0.0);
+    string orderType = JsonGetString(resp, "order_type");
+    if(orderType == "") orderType = "market";
+
+    g_lastPullSummary = "TASK=" + taskType + " ID=" + signalId + " " + action + " " + symbolIn;
+
+    bool ok = false;
+    string err = "";
+    string outTicket = "";
+
+    if(taskType == "OPEN") {
+       ok = ExecuteSignal(signalId, action, symbolIn, comment, volume, entry, orderType, sl, tp, 0, outTicket, err);
+       if(ok) {
+          string initialStatus = (orderType == "market") ? "START" : "PLACED";
+          Ack(signalId, initialStatus, outTicket, "exec_ok_" + orderType);
+       } else {
+          Ack(signalId, (StringFind(err, "Expired") == 0) ? "EXPIRED" : "FAIL", "", err);
+       }
+    }
+    else if(taskType == "MODIFY") {
+       if(ticketNum > 0) {
+          ok = trade.PositionModify(ticketNum, sl, tp);
+          if(ok) Ack(signalId, "OPEN", IntegerToString((int)ticketNum), "modify_ok");
+          else Ack(signalId, "ERROR", IntegerToString((int)ticketNum), "modify_fail");
+       }
+    }
+    else if(taskType == "CLOSE") {
+       if(ticketNum > 0) {
+          ok = trade.PositionClose(ticketNum);
+          if(ok) Ack(signalId, "CLOSED", IntegerToString((int)ticketNum), "close_ok");
+          else Ack(signalId, "ERROR", IntegerToString((int)ticketNum), "close_fail");
+       }
+    }
+    else if(taskType == "CANCEL") {
+       if(ticketNum > 0) {
+          ok = trade.OrderDelete(ticketNum);
+          if(ok) Ack(signalId, "CANCELLED", IntegerToString((int)ticketNum), "cancel_ok");
+          else Ack(signalId, "ERROR", IntegerToString((int)ticketNum), "cancel_fail");
+       }
+    }
+    
+    RefreshDebugPanel();
+}
+
+void SyncClosedHistory()
+{
+   if(!HistorySelect(TimeCurrent() - 86400 * 3, TimeCurrent()))
+      return;
+
+   int total = HistoryDealsTotal();
+   string updates = "";
+   int count = 0;
+
+   for(int i = total - 1; i >= 0; i--)
    {
-      string ackStatus = (StringFind(err, "Expired") == 0) ? "EXPIRED" : "FAIL";
-      Ack(signalId, ackStatus, "", err);
+      ulong ticket = HistoryDealGetTicket(i);
+      if(HistoryDealGetInteger(ticket, DEAL_ENTRY) != DEAL_ENTRY_OUT)
+         continue;
+
+      long posId = HistoryDealGetInteger(ticket, DEAL_POSITION_ID);
+      double pnl = HistoryDealGetDouble(ticket, DEAL_PROFIT) + HistoryDealGetDouble(ticket, DEAL_COMMISSION) + HistoryDealGetDouble(ticket, DEAL_SWAP);
+      datetime time = (datetime)HistoryDealGetInteger(ticket, DEAL_TIME);
+
+      if(updates != "") updates += ",";
+      updates += "{\"ticket\":\"" + IntegerToString((int)posId) + "\",\"pnl\":" + DoubleToString(pnl, 2) + ",\"status\":\"CLOSED\",\"close_time\":" + IntegerToString((int)time) + "}";
+      count++;
+      if(count >= 20) break; 
    }
-   RefreshDebugPanel();
+
+   if(count > 0)
+   {
+      string body = "{\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",\"updates\":[" + updates + "]}";
+      HttpPostJson(BuildApiUrl("/v2/ea/trades/sync-bulk"), body);
+   }
 }
 
 void OnTick()
@@ -3040,6 +3063,10 @@ void SyncWithVps()
 
    string body = "{";
    body += "\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",";
+   body += "\"balance\":" + DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2) + ",";
+   body += "\"equity\":" + DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY), 2) + ",";
+   body += "\"margin\":" + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN), 2) + ",";
+   body += "\"free_margin\":" + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN_FREE), 2) + ",";
    body += "\"positions\":[" + posUpdates + "],";
    body += "\"orders\":[" + ordUpdates + "],";
    body += "\"closed\":[" + closedUpdates + "]";

@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2044"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2051"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -3275,7 +3275,8 @@ async function mt5InitBackend() {
         client.release();
       }
     },
-    async pullAndLockNextTask() {
+    async pullAndLockNextTask(accountId = null) {
+      const aid = String(accountId || "").trim();
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
@@ -3283,10 +3284,11 @@ async function mt5InitBackend() {
         const selTrd = await client.query(`
           SELECT * FROM trades
           WHERE execution_status IN ('PENDING_MOD', 'PENDING_CLOSE', 'PENDING_CANCEL')
-          ORDER BY updated_at ASC, created_at ASC
+            AND (account_id = $1 OR account_id IS NULL OR account_id = '')
+          ORDER BY updated_at ASC
           LIMIT 1
           FOR UPDATE SKIP LOCKED
-        `);
+        `, [aid]);
         if (selTrd.rows?.[0]) {
           const row = selTrd.rows[0];
           const typeMap = { 'PENDING_MOD': 'MODIFY', 'PENDING_CLOSE': 'CLOSE', 'PENDING_CANCEL': 'CANCEL' };
@@ -9726,7 +9728,7 @@ const appHandler = async (req, res) => {
     const signalId = String(url.searchParams.get("signal_id") || "").trim();
     const account = String(url.searchParams.get("account") || "");
     const b = await mt5Backend();
-    const task = await b.pullAndLockNextTask();
+    const task = await b.pullAndLockNextTask(account);
     if (!task) {
       return json(res, 200, { ok: true, task: null, signal: null });
     }
