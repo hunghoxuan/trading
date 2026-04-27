@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2103"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2104"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -7962,7 +7962,7 @@ const appHandler = async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/mt5/ea/sync") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!(await requireEaKey(req, res, url)) return;
+    if (!(await requireEaKey(req, res, url))) return;
     try {
       const signals = await mt5ListActiveSignals();
       const data = signals.map(s => ({
@@ -8086,7 +8086,7 @@ const appHandler = async (req, res) => {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
-      if (!(await requireEaKey(req, res, url, payload)) return;
+      if (!(await requireEaKey(req, res, url, payload))) return;
       
       const activeSignals = payload.active_signals || []; 
       
@@ -8154,7 +8154,7 @@ const appHandler = async (req, res) => {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
-      if (!(await requireEaKey(req, res, url, payload)) return;
+      if (!(await requireEaKey(req, res, url, payload))) return;
       const updates = payload.updates || [];
       if (!Array.isArray(updates)) return json(res, 400, { ok: false, error: "updates array required" });
       const result = await mt5BulkAckSignals(updates);
@@ -9689,7 +9689,7 @@ const appHandler = async (req, res) => {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
-      if (!(await requireEaKey(req, res, url, payload)) return;
+      if (!(await requireEaKey(req, res, url, payload))) return;
       const updates = payload.updates || [];
       if (!Array.isArray(updates)) return json(res, 400, { ok: false, error: "updates array required" });
       const b = await mt5Backend();
@@ -9729,7 +9729,7 @@ const appHandler = async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/mt5/ea/pull") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!(await requireEaKey(req, res, url)) return;
+    if (!(await requireEaKey(req, res, url))) return;
 
     const signalId = String(url.searchParams.get("signal_id") || "").trim();
     const account = String(url.searchParams.get("account") || "");
@@ -9756,7 +9756,7 @@ const appHandler = async (req, res) => {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
-      if (!(await requireEaKey(req, res, url, payload)) return;
+      if (!(await requireEaKey(req, res, url, payload))) return;
       
       const accountId = String(payload.account_id || "");
       if (!accountId) {
@@ -9787,7 +9787,7 @@ const appHandler = async (req, res) => {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
-      if (!(await requireEaKey(req, res, url, payload)) return;
+      if (!(await requireEaKey(req, res, url, payload))) return;
 
       const status = mt5NormalizeAckStatus(payload.status);
 
