@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-1948"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2012"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -2972,6 +2972,29 @@ async function mt5InitBackend() {
   await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS pulled_at`).catch(() => {});
   await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS error_code`).catch(() => {});
   await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS error_message`).catch(() => {});
+
+  // Performance Indexes
+  const idxSql = [
+    // Signals
+    `CREATE INDEX IF NOT EXISTS idx_signals_created_at ON signals(created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_signals_symbol ON signals(symbol)`,
+    `CREATE INDEX IF NOT EXISTS idx_signals_status ON signals(status)`,
+    `CREATE INDEX IF NOT EXISTS idx_signals_sid ON signals(sid)`,
+    // Trades
+    `CREATE INDEX IF NOT EXISTS idx_trades_created_at ON trades(created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)`,
+    `CREATE INDEX IF NOT EXISTS idx_trades_exec_status ON trades(execution_status)`,
+    `CREATE INDEX IF NOT EXISTS idx_trades_account ON trades(account_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_trades_signal ON trades(signal_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_trades_broker_ticket ON trades(broker_trade_id)`,
+    // Logs
+    `CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_logs_object ON logs(object_id, object_table)`,
+    `CREATE INDEX IF NOT EXISTS idx_logs_user ON logs(user_id)`
+  ];
+  for (const sql of idxSql) {
+    await pool.query(sql).catch(e => console.error(`[db-idx] failed: ${sql}`, e.message));
+  }
   await pool.query(`
     UPDATE trades t
     SET entry_model = COALESCE(NULLIF(t.entry_model, ''), NULLIF(s.entry_model, ''), s.raw_json->>'entry_model'),
