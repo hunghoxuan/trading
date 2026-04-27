@@ -2,7 +2,13 @@ import { api } from "../api";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { SignalDetailCard } from "../components/SignalDetailCard";
 import { buildDetailHeader } from "../components/SignalDetailHeaderBuilder";
-import { buildHeaderMeta, buildRrVolRiskText, renderHistoryItem } from "../utils/signalDetailUtils";
+import { 
+  asNum, 
+  buildHeaderMeta, 
+  buildRrVolRiskText, 
+  renderHistoryItem,
+  extractTradePlanFromTrade,
+} from "../utils/signalDetailUtils";
 
 const STATUS_OPTIONS = [
   { value: "", label: "ALL STATUSES" },
@@ -58,10 +64,6 @@ function statusUi(statusRaw) {
   return { cls: "OTHER", label: s || "PENDING" };
 }
 
-function asNum(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
 
 function calcRr(t) {
   const entry = asNum(t?.entry);
@@ -187,6 +189,14 @@ export default function TradesPage() {
   const [editMsg, setEditMsg] = useState({ type: "", text: "" });
   const [editForm, setEditForm] = useState({ execution_status: "PENDING", pnl_realized: "0" });
   const [detailTfTab, setDetailTfTab] = useState("ENTRY");
+  const [detailPlan, setDetailPlan] = useState({ direction: "BUY", trade_type: "limit", entry: "", tp: "", sl: "", rr: "", note: "" });
+
+  function PnlDisplay({ value }) {
+    const n = asNum(value);
+    if (n == null) return <span className="minor-text">-</span>;
+    const cls = n < 0 ? "money-neg" : "money-pos";
+    return <span className={cls} style={{ fontWeight: 800 }}>${n.toFixed(2)}</span>;
+  }
   const DEFAULT_CREATE_FORM = {
     action: "BUY",
     symbol: "",
@@ -393,8 +403,14 @@ export default function TradesPage() {
   }, [selectedTrade?.id, selectedTrade?.trade_id]);
   useEffect(() => {
     const ref = tradeKeyOf(selectedTrade);
-    if (ref) loadTradeEvents(ref);
-    else setTradeEvents([]);
+    if (ref) {
+      loadTradeEvents(ref);
+      setDetailPlan(extractTradePlanFromTrade(selectedTrade));
+    }
+    else {
+      setTradeEvents([]);
+      setDetailPlan({ direction: "BUY", trade_type: "limit", entry: "", tp: "", sl: "", rr: "", note: "" });
+    }
   }, [selectedTrade?.id, selectedTrade?.trade_id]);
   useEffect(() => {
     if (!selectedTrade) {
@@ -736,6 +752,14 @@ export default function TradesPage() {
             <>
               <SignalDetailCard
                 mode="trade"
+                tradePlan={{
+                  enabled: true,
+                  hideEditor: true,
+                  value: detailPlan,
+                  status: statusUi(selectedTrade.execution_status),
+                  volume: `${selectedTrade.volume ?? "-"} lots`,
+                  pnl: <PnlDisplay value={selectedTrade.pnl_realized} />,
+                }}
                 header={(() => {
                   const action = String(selectedTrade.action || selectedTrade.side || "-").toUpperCase();
                   const actionCls = action === "BUY" ? "side-buy" : "side-sell";

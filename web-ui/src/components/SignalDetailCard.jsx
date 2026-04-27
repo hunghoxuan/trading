@@ -287,7 +287,7 @@ export function SignalDetailCard({
                   volume={tradePlan.volume}
                   pnl={tradePlan.pnl}
                 />
-                {isMain ? (
+                {isMain && !tradePlan.hideEditor ? (
                   <TradePlanEditor
                     signalId={tradePlan.signalId || null}
                     tradeId={tradePlan.tradeId || null}

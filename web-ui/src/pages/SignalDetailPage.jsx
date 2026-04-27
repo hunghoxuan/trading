@@ -3,8 +3,20 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import { SignalDetailCard } from "../components/SignalDetailCard";
 import { buildDetailHeader } from "../components/SignalDetailHeaderBuilder";
-import { asNum, buildHeaderMeta, renderHistoryItem } from "../utils/signalDetailUtils";
+import { 
+  asNum, 
+  buildHeaderMeta, 
+  renderHistoryItem,
+  extractTradePlanFromSignal,
+} from "../utils/signalDetailUtils";
 import { showDateTime } from "../utils/format";
+
+function PnlDisplay({ value }) {
+  const n = asNum(value);
+  if (n == null) return <span className="minor-text">-</span>;
+  const cls = n < 0 ? "money-neg" : "money-pos";
+  return <span className={cls} style={{ fontWeight: 800 }}>${n.toFixed(2)}</span>;
+}
 
 function statusUi(statusRaw) {
   const s = String(statusRaw || "").toUpperCase();
@@ -36,6 +48,7 @@ export default function SignalDetailPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [detailTfTab, setDetailTfTab] = useState("ENTRY");
+  const [detailPlan, setDetailPlan] = useState({ direction: "BUY", trade_type: "limit", entry: "", tp: "", sl: "", rr: "", note: "" });
 
   useEffect(() => {
     let live = true;
@@ -43,6 +56,9 @@ export default function SignalDetailPage() {
       .then((res) => {
         if (!live) return;
         setData(res);
+        if (res?.trade) {
+          setDetailPlan(extractTradePlanFromSignal(res.trade));
+        }
       })
       .catch((e) => {
         if (!live) return;
@@ -97,6 +113,14 @@ export default function SignalDetailPage() {
           mode="signal"
           header={header}
           response={t}
+          tradePlan={{
+            enabled: true,
+            hideEditor: true,
+            value: detailPlan,
+            status: statusUi(t.status),
+            volume: `${t.volume ?? "-"} lots`,
+            pnl: <PnlDisplay value={t.pnl_money_realized} />,
+          }}
           chart={{
             enabled: true,
             detailTfTab,

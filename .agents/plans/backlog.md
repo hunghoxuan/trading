@@ -3,6 +3,7 @@
 ## Completed
 - [x] [2026-04-16 11:30] [Reliability] [Author: Hung] Task: Implement "Deadlock Breaker" (Stale Lock Recovery) in Postgres backend for signals locked > 5 mins.
 - [x] [2026-04-16 12:45] [Reliability] [Author: Hung] Task: Update EA status mapping (START/SUBMITTED) and increase timezone drift tolerance to 2 hours.
+- [x] [2026-04-27 15:30] [Web-UI/Architecture] [Author: Antigravity] Task: Restore Signal Detail header density, fix Master-Detail data sync bugs, and implement mandatory Session Worklog protocol.
 
 ## High Priority (`P0` / `P1`)
 - [x] [2026-04-16 13:10] [Reliability] [Author: Hung] Feature: **Full State Reconciliation System**. Implement `/mt5/ea/sync` (active list) and `/mt5/ea/bulk-sync` to ensure VPS and MT5 always maintain identical trade states. (`P0`)

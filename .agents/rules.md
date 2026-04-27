@@ -40,3 +40,8 @@
 - Track active work in [plans/sprint.md](./plans/sprint.md).
 - Put domain lessons in `knowledge/` to avoid repeated debugging.
 - Respect ownership in sprint tasks (`[TODO: ...]`).
+
+## 7) Session & Context Hygiene
+- **Mandatory Summary**: Before ending a conversation (or when requested), ALWAYS update `.agents/worklog.md` with a summary of work done and pending backlog.
+- **Resuming Context**: At the start of EVERY new conversation, the first step MUST be to read `.agents/worklog.md`.
+- Follow [skills/session-management.md](./skills/session-management.md).

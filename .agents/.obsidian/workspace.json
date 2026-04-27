@@ -137,6 +137,9 @@
   },
   "active": "4bf2b34a6a4ef4d8",
   "lastOpenFiles": [
+    "knowledge/popular_entry_models.md",
+    "worklog.md",
+    "skills/session-management.md",
     "skills/browser-testing.md",
     "plans/changelog.md",
     "plans/bugs.md",
@@ -161,9 +164,6 @@
     "skills/db-design.md",
     "skills/deploy.md",
     "skills/reports.md",
-    "templates/bug-report-template.md",
-    "plans/sprint.md",
-    "knowledge/decisions/20260326-wave1-cut2-confluence.md",
-    "knowledge/decisions/20260326-ui-trade-model-notes.md"
+    "templates/bug-report-template.md"
   ]
 }

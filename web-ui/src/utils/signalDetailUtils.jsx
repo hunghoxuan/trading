@@ -94,6 +94,80 @@ export function historyWhen(item, formatDateTime) {
   return typeof formatDateTime === "function" ? formatDateTime(dt) : formatDetailDateTime(dt);
 }
 
+export function formatNum3(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "";
+  return String(Number(n.toFixed(3)));
+}
+
+export function calcRrFromSignal(s) {
+  const entry = asNum(s?.entry || s?.target_price || s?.entry_price || s?.entry_price_raw);
+  const sl = asNum(s?.sl || s?.sl_price || s?.sl_price_raw);
+  const tp = asNum(s?.tp || s?.tp_price || s?.tp_price_raw);
+  if (entry == null || sl == null || tp == null) return null;
+  const risk = Math.abs(entry - sl);
+  const reward = Math.abs(tp - entry);
+  if (!risk) return null;
+  return reward / risk;
+}
+
+export function extractTradePlanFromSignal(signal = {}) {
+  const raw = signal?.raw_json && typeof signal.raw_json === "object" ? signal.raw_json : {};
+  const tradePlan = raw?.trade_plan && typeof raw.trade_plan === "object" && !Array.isArray(raw.trade_plan) ? raw.trade_plan : {};
+  const sideRaw = String(signal?.action || signal?.side || tradePlan?.direction || "").toUpperCase();
+  const entry = asNum(signal?.entry || signal?.target_price || signal?.entry_price) ?? asNum(raw?.entry ?? raw?.price);
+  const tp = asNum(signal?.tp || signal?.tp_price) ?? asNum(tradePlan?.tp1 ?? tradePlan?.tp);
+  const sl = asNum(signal?.sl || signal?.sl_price) ?? asNum(tradePlan?.sl);
+  const rr = asNum(signal?.rr_planned) ?? asNum(tradePlan?.rr) ?? calcRrFromSignal(signal);
+  return {
+    direction: sideRaw.includes("SELL") ? "SELL" : "BUY",
+    trade_type: String(tradePlan?.type || raw?.order_type || "limit").toLowerCase(),
+    entry: formatNum3(entry ?? NaN),
+    tp: formatNum3(tp ?? NaN),
+    sl: formatNum3(sl ?? NaN),
+    rr: formatNum3(rr ?? NaN),
+    note: String(tradePlan?.note || signal?.note || "").trim(),
+  };
+}
+
+export function extractTradePlanFromTrade(trade = {}) {
+  const meta = trade?.metadata && typeof trade.metadata === "object" ? trade.metadata : {};
+  const raw = trade?.raw_json && typeof trade.raw_json === "object" ? trade.raw_json : {};
+  const sideRaw = String(trade.action || trade.side || meta.direction || "").toUpperCase();
+  const entry = asNum(trade.entry);
+  const tp = asNum(trade.tp);
+  const sl = asNum(trade.sl);
+  const rr = asNum(trade.rr_planned) ?? calcRrFromSignal(trade);
+  return {
+    direction: sideRaw.includes("SELL") ? "SELL" : "BUY",
+    trade_type: String(meta.trade_type || meta.order_type || raw.order_type || "limit").toLowerCase(),
+    entry: formatNum3(entry ?? NaN),
+    tp: formatNum3(tp ?? NaN),
+    sl: formatNum3(sl ?? NaN),
+    rr: formatNum3(rr ?? NaN),
+    note: String(trade.note || "").trim(),
+  };
+}
+
+export function validateTradePlan(plan = {}, opts = {}) {
+  const entry = asNum(plan.entry);
+  const tp = asNum(plan.tp);
+  const sl = asNum(plan.sl);
+  const rr = asNum(plan.rr);
+  const direction = String(plan.direction || "").trim().toUpperCase();
+  if (!["BUY", "SELL"].includes(direction)) return "Direction must be Buy or Sell.";
+  if (entry == null || tp == null || sl == null) return "Entry/TP/SL must be numeric values.";
+  if (!opts.skipRrCheck && rr != null && (rr < 0.1 || rr > 20)) return "RR must be between 0.1 and 20.";
+  if (direction === "BUY") {
+    if (!(tp > entry)) return "For BUY, TP must be greater than Entry.";
+    if (!(sl < entry)) return "For BUY, SL must be lower than Entry.";
+  } else if (direction === "SELL") {
+    if (!(tp < entry)) return "For SELL, TP must be lower than Entry.";
+    if (!(sl > entry)) return "For SELL, SL must be greater than Entry.";
+  }
+  return "";
+}
+
 export function renderHistoryItem(item, idx, opts = {}) {
   const payload = historyPayload(item);
   const type = historyType(item, payload);

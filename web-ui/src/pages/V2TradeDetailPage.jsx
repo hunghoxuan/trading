@@ -3,8 +3,20 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import { SignalDetailCard } from "../components/SignalDetailCard";
 import { buildDetailHeader } from "../components/SignalDetailHeaderBuilder";
-import { asNum, buildHeaderMeta, renderHistoryItem } from "../utils/signalDetailUtils";
+import { 
+  asNum, 
+  buildHeaderMeta, 
+  renderHistoryItem,
+  extractTradePlanFromTrade,
+} from "../utils/signalDetailUtils";
 import { showDateTime } from "../utils/format";
+
+function PnlDisplay({ value }) {
+  const n = asNum(value);
+  if (n == null) return <span className="minor-text">-</span>;
+  const cls = n < 0 ? "money-neg" : "money-pos";
+  return <span className={cls} style={{ fontWeight: 800 }}>${n.toFixed(2)}</span>;
+}
 
 function statusUi(statusRaw) {
   const s = String(statusRaw || "").toUpperCase();
@@ -41,6 +53,7 @@ export default function TradeDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [detailTfTab, setDetailTfTab] = useState("ENTRY");
+  const [detailPlan, setDetailPlan] = useState({ direction: "BUY", trade_type: "limit", entry: "", tp: "", sl: "", rr: "", note: "" });
 
   useEffect(() => {
     async function loadData() {
@@ -51,7 +64,11 @@ export default function TradeDetailPage() {
           api.v2Trades({ q: tradeId }),
         ]);
         setEvents(Array.isArray(evs?.items) ? evs.items : []);
-        setTrade(Array.isArray(data?.items) && data.items.length ? data.items[0] : null);
+        const t = Array.isArray(data?.items) && data.items.length ? data.items[0] : null;
+        setTrade(t);
+        if (t) {
+          setDetailPlan(extractTradePlanFromTrade(t));
+        }
       } catch (e) {
         setError(e?.message || "Load failed");
       } finally {
@@ -106,6 +123,14 @@ export default function TradeDetailPage() {
           mode="trade"
           header={header}
           response={trade}
+          tradePlan={{
+            enabled: true,
+            hideEditor: true, // Hide editor in detail view for now
+            value: detailPlan,
+            status: statusUi(trade.execution_status),
+            volume: `${trade.volume ?? "-"} lots`,
+            pnl: <PnlDisplay value={trade.pnl_realized} />,
+          }}
           chart={{
             enabled: true,
             detailTfTab,
