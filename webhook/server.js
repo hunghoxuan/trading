@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2110"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2116"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -3280,80 +3280,87 @@ async function mt5InitBackend() {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        // 1. Try to find a PENDING modification/close task from Trades first
+
+        // 1. Unified Trades table: Pending Actions (Mod/Close/Cancel) OR New Signals
         const selTrd = await client.query(`
           SELECT * FROM trades
-          WHERE execution_status IN ('PENDING_MOD', 'PENDING_CLOSE', 'PENDING_CANCEL')
-            AND (account_id = $1 OR account_id IS NULL OR account_id = '')
-          ORDER BY updated_at ASC
+          WHERE (
+            (execution_status IN ('PENDING_MOD', 'PENDING_CLOSE', 'PENDING_CANCEL'))
+            OR (dispatch_status = 'NEW' AND execution_status = 'PENDING')
+          )
+          AND (account_id = $1::TEXT OR account_id IS NULL OR account_id = '')
+          ORDER BY 
+            CASE WHEN dispatch_status = 'NEW' THEN 1 ELSE 2 END ASC,
+            created_at ASC
           LIMIT 1
           FOR UPDATE SKIP LOCKED
         `, [aid]);
-        if (selTrd.rows?.[0]) {
+
+        if (selTrd.rows.length > 0) {
           const row = selTrd.rows[0];
-          const typeMap = { 'PENDING_MOD': 'MODIFY', 'PENDING_CLOSE': 'CLOSE', 'PENDING_CANCEL': 'CANCEL' };
-          const taskType = typeMap[row.execution_status];
           
+          let taskType = 'OPEN';
+          if (row.execution_status === 'PENDING_MOD') taskType = 'MODIFY';
+          else if (row.execution_status === 'PENDING_CLOSE') taskType = 'CLOSE';
+          else if (row.execution_status === 'PENDING_CANCEL') taskType = 'CANCEL';
+
           await client.query(`
-            UPDATE trades SET execution_status = 'LOCKED' WHERE trade_id = $1
-          `, [row.trade_id]);
+            UPDATE trades 
+            SET dispatch_status = 'LEASED', 
+                lease_token = $1, 
+                lease_expires_at = NOW() + INTERVAL '1 minute',
+                updated_at = NOW()
+            WHERE trade_id = $2
+          `, [mt5GenerateId("LT"), row.trade_id]);
+
           await client.query("COMMIT");
-          
+
           return {
             task_id: row.trade_id,
             type: taskType,
-            ticket: row.broker_trade_id,
             symbol: row.symbol,
+            action: row.action,
             volume: row.volume,
-            entry: row.entry,
+            price: row.entry,
             sl: row.sl,
             tp: row.tp,
-            action: String(row.action || "BUY").toUpperCase(),
-            metadata: row.metadata || {}
+            signal_id: row.signal_id || row.trade_id,
+            ticket: row.broker_trade_id
           };
         }
 
-        // 2. Fallback to NEW signals
+        // 2. Legacy Signals table fallback
         const selSig = await client.query(`
           SELECT * FROM signals
-          WHERE status = 'NEW'
+          WHERE dispatch_status = 'NEW'
           ORDER BY created_at ASC
           LIMIT 1
           FOR UPDATE SKIP LOCKED
         `);
-        const row = selSig.rows?.[0] || null;
-        if (!row) {
+        
+        if (selSig.rows.length > 0) {
+          const row = selSig.rows[0];
+          await client.query(`UPDATE signals SET dispatch_status = 'LEASED' WHERE signal_id = $1`, [row.signal_id]);
           await client.query("COMMIT");
-          return null;
+
+          return {
+            task_id: row.signal_id,
+            type: 'OPEN',
+            symbol: row.symbol,
+            action: row.side,
+            volume: row.volume || 0.01,
+            price: row.price,
+            sl: row.sl,
+            tp: row.tp,
+            signal_id: row.signal_id
+          };
         }
-        const upd = await client.query(`
-          UPDATE signals SET status = 'LOCKED' WHERE signal_id = $1 RETURNING *
-        `, [row.signal_id]);
-        const outRow = upd.rows?.[0] || row;
+
         await client.query("COMMIT");
-        
-        const raw = outRow.raw_json && typeof outRow.raw_json === "object" ? outRow.raw_json : {};
-        const side = String(outRow.side || raw.action || raw.side || "BUY").toUpperCase();
-        const volumeRaw = Number(raw.volume ?? raw.lots ?? CFG.mt5DefaultLot);
-        
-        return {
-          task_id: outRow.signal_id,
-          type: 'OPEN',
-          signal_id: outRow.signal_id,
-          timestamp: outRow.created_at ? Math.floor(new Date(outRow.created_at).getTime() / 1000) : null,
-          user_id: outRow.user_id || CFG.mt5DefaultUserId,
-          action: side,
-          symbol: outRow.symbol,
-          volume: Number.isFinite(volumeRaw) && volumeRaw > 0 ? volumeRaw : CFG.mt5DefaultLot,
-          entry: outRow.entry_price_exec ?? raw.entry ?? raw.price ?? null,
-          order_type: raw.order_type ?? raw.orderType ?? "limit",
-          sl: outRow.sl,
-          tp: outRow.tp,
-          note: outRow.note || "",
-          metadata: raw
-        };
+        return null;
       } catch (e) {
         await client.query("ROLLBACK");
+        console.error('[MT5 Backend] pullAndLockNextTask error:', e);
         throw e;
       } finally {
         client.release();
