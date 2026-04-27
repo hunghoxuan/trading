@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2128"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2130"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -6918,9 +6918,6 @@ const appHandler = async (req, res) => {
   if (tryServeUi(incomingUrl, req, res, hostname)) {
     return;
   }
-
-  const url = new URL(incomingUrl.toString());
-  url.pathname = stripWebhookPrefix(incomingUrl.pathname);
 
   if (req.method === "GET" && url.pathname === "/auth/me") {
     const sess = getUiSessionFromReq(req);
