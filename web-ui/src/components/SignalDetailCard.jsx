@@ -78,7 +78,7 @@ function renderFormattedText(text) {
 /**
  * Local helper component for each "Cloned Screen 1" (Trade Plan)
  */
-function ExtraPlanBlock({ planId, plan, onAddSignal, onAddTrade, busy, submittingPlanId }) {
+function ExtraPlanBlock({ planId, plan, onAddSignal, onAddTrade, busy, submittingPlanId, successMessage }) {
   const [localPos, setLocalPos] = useState({
     direction: plan.direction || "BUY",
     trade_type: "limit",
@@ -90,24 +90,50 @@ function ExtraPlanBlock({ planId, plan, onAddSignal, onAddTrade, busy, submittin
   });
 
   const update = (key, val) => setLocalPos(prev => ({ ...prev, [key]: val }));
-  const isAdding = busy?.signal || busy?.trade;
-  const isThisPlanAdding = isAdding && submittingPlanId === planId;
+  const isThisPlanAdding = submittingPlanId === planId;
+  const isSignalAdding = busy?.signal && isThisPlanAdding;
+  const isTradeAdding = busy?.trade && isThisPlanAdding;
 
+  const isBuy = String(localPos.direction).toUpperCase() === "BUY";
+  
   return (
-    <TradePlanEditor
-      value={localPos}
-      onChange={update}
-      onAddSignal={() => onAddSignal?.(localPos, planId)}
-      onAddTrade={() => onAddTrade?.(localPos, planId)}
-      showAddSignalButton={true}
-      showAddTradeButton={true}
-      showResetButton={false}
-      busy={{
-        signal: isThisPlanAdding,
-        trade: isThisPlanAdding
-      }}
-      disabled={isAdding && !isThisPlanAdding} // disable others while one is adding
-    />
+    <div style={{ border: '2px solid var(--accent-soft)', padding: 20, borderRadius: 12, background: 'rgba(255,255,255,0.03)' }}>
+      <div style={{ marginBottom: 16, borderBottom: '1px solid var(--accent-soft)', paddingBottom: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "center", marginBottom: 4 }}>
+          <div className="cell-major" style={{ color: isBuy ? '#26a69a' : '#ef5350' }}>
+            {String(localPos.direction).toUpperCase()} <span style={{ color: 'var(--foreground)', marginLeft: 4 }}>{plan.symbol || "Suggested"}</span>
+          </div>
+          <div className="cell-major" style={{ textAlign: "right", fontSize: '14px' }}>
+            {localPos.entry || "-"} → {localPos.tp || "-"} / {localPos.sl || "-"}
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "center" }}>
+          <div className="minor-text" style={{ fontSize: '12px' }}>
+            {planId.toUpperCase()} · <span style={{ color: 'var(--muted)' }}>{plan.entryModel || "Secondary"}</span>
+          </div>
+          <div className="minor-text" style={{ textAlign: "right", fontSize: '11px' }}>
+            {localPos.rr || "0.0"} RR | CONF {plan.confidence || "0"}%
+          </div>
+        </div>
+      </div>
+      <TradePlanEditor
+        value={localPos}
+        onChange={update}
+        onAddSignal={() => onAddSignal?.(localPos, planId)}
+        onAddTrade={() => onAddTrade?.(localPos, planId)}
+        showAddSignalButton={true}
+        showAddTradeButton={true}
+        showResetButton={false}
+        busy={{
+          signal: isSignalAdding,
+          trade: isTradeAdding
+        }}
+        disabled={Boolean(submittingPlanId && !isThisPlanAdding)}
+      />
+      {successMessage && isThisPlanAdding && (
+        <div style={{ marginTop: 12 }}><span className="minor-text msg-success">{successMessage}</span></div>
+      )}
+    </div>
   );
 }
 
@@ -255,14 +281,30 @@ export function SignalDetailCard({
         <div className="stack-layout" style={{ gap: 24, marginBottom: 32 }}>
           {/* Main Plan (from analysis) or Default Editor */}
           <div style={{ border: '2px solid var(--accent-soft)', padding: 20, borderRadius: 12, background: 'rgba(255,255,255,0.03)' }}>
-            {Array.isArray(response?.tradePlans) && response.tradePlans.length > 0 && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center", marginBottom: 16, borderBottom: '1px solid var(--accent-soft)', paddingBottom: 10 }}>
-                <div style={{ fontWeight: '700', color: 'var(--accent)', fontSize: '14px', letterSpacing: '0.02em' }}>
-                  Trade Plan 1: <span style={{ fontWeight: '400', color: 'var(--muted)', marginLeft: 8 }}>{response.tradePlans[0].entryModel || response.tradePlans[0].strategy || "Primary Setup"}</span>
+            {Array.isArray(response?.tradePlans) && response.tradePlans.length > 0 && (() => {
+              const p = response.tradePlans[0];
+              const isBuy = String(p.direction).toUpperCase() === "BUY";
+              return (
+                <div style={{ marginBottom: 16, borderBottom: '1px solid var(--accent-soft)', paddingBottom: 12 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "center", marginBottom: 4 }}>
+                    <div className="cell-major" style={{ color: isBuy ? '#26a69a' : '#ef5350' }}>
+                      {String(p.direction).toUpperCase()} <span style={{ color: 'var(--foreground)', marginLeft: 4 }}>{chart?.symbol || "Plan 1"}</span>
+                    </div>
+                    <div className="cell-major" style={{ textAlign: "right", fontSize: '14px' }}>
+                      {p.entry || "-"} → {p.tp || "-"} / {p.sl || "-"}
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "center" }}>
+                    <div className="minor-text" style={{ fontSize: '12px' }}>
+                      Plan 1 · <span style={{ color: 'var(--muted)' }}>{p.entryModel || p.strategy || "Primary"}</span>
+                    </div>
+                    <div className="minor-text" style={{ textAlign: "right", fontSize: '11px' }}>
+                      {p.rr || "0.0"} RR | CONF {p.confidence || "0"}%
+                    </div>
+                  </div>
                 </div>
-                <div className="minor-text" style={{ fontSize: '10px', textTransform: 'uppercase', opacity: 0.6 }}>PRIMARY</div>
-              </div>
-            )}
+              );
+            })()}
             <TradePlanEditor
               signalId={tradePlan.signalId || null}
               tradeId={tradePlan.tradeId || null}
@@ -289,11 +331,29 @@ export function SignalDetailCard({
               const planId = `suggested_${pIdx + 1}`;
               return (
                 <div key={planId} style={{ border: '1px solid var(--border)', padding: 20, borderRadius: 12, background: 'rgba(255,255,255,0.015)' }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center", marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
-                    <div style={{ fontWeight: '700', color: 'var(--foreground)', fontSize: '14px', letterSpacing: '0.02em' }}>
-                      Trade Plan {pIdx + 2}: <span style={{ fontWeight: '400', color: 'var(--muted)', marginLeft: 8 }}>{plan.entryModel || plan.strategy || "Alternative Scenario"}</span>
-                    </div>
-                  </div>
+                  {(() => {
+                    const isBuy = String(plan.direction).toUpperCase() === "BUY";
+                    return (
+                      <div style={{ marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "center", marginBottom: 4 }}>
+                          <div className="cell-major" style={{ color: isBuy ? '#26a69a' : '#ef5350' }}>
+                            {String(plan.direction).toUpperCase()} <span style={{ color: 'var(--foreground)', marginLeft: 4 }}>{chart?.symbol || `Plan ${pIdx + 2}`}</span>
+                          </div>
+                          <div className="cell-major" style={{ textAlign: "right", fontSize: '14px' }}>
+                            {plan.entry || "-"} → {plan.tp || "-"} / {plan.sl || "-"}
+                          </div>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "center" }}>
+                          <div className="minor-text" style={{ fontSize: '12px' }}>
+                            Plan {pIdx + 2} · <span style={{ color: 'var(--muted)' }}>{plan.entryModel || plan.strategy || "Suggested"}</span>
+                          </div>
+                          <div className="minor-text" style={{ textAlign: "right", fontSize: '11px' }}>
+                            {plan.rr || "0.0"} RR | CONF {plan.confidence || "0"}%
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <ExtraPlanBlock 
                      planId={planId}
                      plan={plan} 
@@ -301,6 +361,7 @@ export function SignalDetailCard({
                      onAddTrade={tradePlan?.onAddTrade}
                      busy={tradePlan?.busy}
                      submittingPlanId={tradePlan?.submittingPlanId}
+                     successMessage={tradePlan?.successMessage}
                   />
                 </div>
               );
@@ -332,19 +393,39 @@ export function SignalDetailCard({
               >
                 {entryTfLabel}
               </button>
-              {liveTabs.map(tf => {
-                const lowTf = tf.toLowerCase();
-                if (lowTf === (chart.interval || '').toLowerCase()) return null;
-                const isSelected = selectedTfs.includes(lowTf);
+              {['1m', '5m', '15m', '1h', '4h', 'd', 'w'].map(tf => {
+                const isSelected = selectedTfs.includes(tf.toLowerCase());
+                
+                // Extract trend/bias for this TF from analysis
+                const tfData = (chart?.analysisSnapshot?.market_analysis?.timeframes || []).find(x => String(x.tf || '').toLowerCase() === tf.toLowerCase());
+                const trend = String(tfData?.trend || '').toLowerCase();
+                const isBullish = trend.includes('bull');
+                const isBearish = trend.includes('bear');
+                
+                let bg = 'transparent';
+                if (isBullish) bg = 'rgba(38, 166, 154, 0.15)';
+                else if (isBearish) bg = 'rgba(239, 83, 80, 0.15)';
+
                 return (
                   <button 
                     key={tf}
                     type="button"
                     className={`tf-pill ${isSelected ? 'active' : ''}`}
                     onClick={() => toggleTf(tf)}
-                    style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border)', background: isSelected ? 'var(--accent-soft)' : 'transparent', color: isSelected ? 'var(--text)' : 'var(--muted)' }}
+                    style={{ 
+                      padding: '4px 12px', 
+                      fontSize: '11px', 
+                      borderRadius: '4px', 
+                      border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)', 
+                      background: bg,
+                      backdropFilter: 'blur(4px)',
+                      color: isSelected ? 'var(--text)' : 'var(--muted)',
+                      transition: 'all 0.2s ease',
+                      fontWeight: isSelected ? 'bold' : 'normal',
+                      boxShadow: isSelected ? '0 0 8px var(--accent-soft)' : 'none'
+                    }}
                   >
-                    {tf.toLowerCase()}
+                    {tf.toUpperCase()}
                   </button>
                 );
               })}
@@ -376,9 +457,30 @@ export function SignalDetailCard({
               const isEntryTf = tf.toLowerCase() === (chart.interval || '').toLowerCase();
               const snapshot = isEntryTf ? (response?.raw || chart?.analysisSnapshot) : multiChartData[tf];
 
+              // Extract trend/bias for this TF from analysis
+              const tfData = (chart?.analysisSnapshot?.market_analysis?.timeframes || []).find(x => String(x.tf || '').toLowerCase() === tf.toLowerCase());
+              const trend = tfData?.trend || '';
+              const bias = tfData?.bias || '';
+              const isBullishTrend = String(trend).toLowerCase().includes('bull');
+              const isBearishTrend = String(trend).toLowerCase().includes('bear');
+              const isLongBias = String(bias).toLowerCase().includes('long') || String(bias).toLowerCase().includes('buy');
+              const isShortBias = String(bias).toLowerCase().includes('short') || String(bias).toLowerCase().includes('sell');
+
               return (
                 <div key={tf} className="tf-chart-row">
-                  <h4 className="tf-row-label">{tf.toUpperCase()}</h4>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                    <h4 className="tf-row-label" style={{ margin: 0 }}>{tf.toUpperCase()}</h4>
+                    {trend && (
+                       <span style={{ fontSize: '12px', color: isBullishTrend ? '#26a69a' : (isBearishTrend ? '#ef5350' : 'var(--muted)') }}>
+                         {trend}
+                       </span>
+                    )}
+                    {bias && (
+                       <span style={{ fontSize: '12px', color: isLongBias ? '#26a69a' : (isShortBias ? '#ef5350' : 'var(--muted)'), display: 'flex', alignItems: 'center', gap: 4 }}>
+                         {bias} {isLongBias ? '↑' : (isShortBias ? '↓' : '')}
+                       </span>
+                    )}
+                  </div>
                   <div className={`tf-row-charts ${chartModes.length > 1 ? 'side-by-side' : ''}`} style={{ display: 'grid', gridTemplateColumns: chartModes.length > 1 ? '1fr 1fr' : '1fr', gap: 12 }}>
                     {chartModes.includes('static') && (
                       <div className="chart-wrapper static-wrapper">

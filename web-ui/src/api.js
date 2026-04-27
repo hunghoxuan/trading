@@ -1,4 +1,4 @@
-const DEFAULT_REMOTE_BASE = "http://139.59.211.192";
+const DEFAULT_REMOTE_BASE = "http://localhost";
 const DEFAULT_API_TIMEOUT_MS = 180000;
 
 function normalizeApiBase(value) {
@@ -20,7 +20,7 @@ function runtimeApiBase() {
     localStorage.setItem("tvbridge_api_base", apiBaseQuery);
     return apiBaseQuery;
   }
-  const { protocol, hostname, port, origin } = window.location;
+  const { hostname, origin } = window.location;
 
   // On deployed server UI, always use same-origin API to avoid stale/bad saved API URLs.
   if (hostname !== "localhost" && hostname !== "127.0.0.1") {
@@ -29,6 +29,7 @@ function runtimeApiBase() {
 
   const apiBaseStored = normalizeApiBase(localStorage.getItem("tvbridge_api_base"));
   if (apiBaseStored) return apiBaseStored;
+
   if (hostname === "localhost" || hostname === "127.0.0.1") {
     return DEFAULT_REMOTE_BASE;
   }

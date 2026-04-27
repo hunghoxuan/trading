@@ -347,7 +347,7 @@ export default function TradeSignalChart({
             if (!ep) return;
 
             const isPrimary = index === 0;
-            const isBuy = tp > ep;
+            const isBuy = String(p.direction || "").toUpperCase() === "SELL" ? false : true;
             const actionLabel = isBuy ? 'Buy' : 'Sell';
             const pNum = index + 1;
             
@@ -355,20 +355,35 @@ export default function TradeSignalChart({
             const greenColor = '#26a69a';
             const redColor = '#ef5350';
 
+            const alpha = isPrimary ? 1.0 : 0.6;
+            const lineWidth = isPrimary ? 2 : 1;
+
             // Entry line: solid
             candleSeries.createPriceLine({ 
-              price: ep, color: '#d1d4dc', lineWidth: isPrimary ? 2 : 1, lineStyle: 0, 
-              axisLabelVisible: true, title: `${actionLabel}${pNum}` 
+              price: ep, 
+              color: isPrimary ? '#d1d4dc' : 'rgba(209, 212, 220, 0.6)', 
+              lineWidth, 
+              lineStyle: 0, 
+              axisLabelVisible: true, 
+              title: `${actionLabel}${pNum}` 
             });
             // SL line: dashed, always RED
             if (sp) candleSeries.createPriceLine({ 
-              price: sp, color: redColor, lineWidth: isPrimary ? 2 : 1, lineStyle: 2, 
-              axisLabelVisible: true, title: `SL${pNum}` 
+              price: sp, 
+              color: `rgba(239, 83, 80, ${alpha})`, 
+              lineWidth, 
+              lineStyle: 2, 
+              axisLabelVisible: true, 
+              title: `SL${pNum}` 
             });
             // TP line: dotted, always GREEN
             if (tp) candleSeries.createPriceLine({ 
-              price: tp, color: greenColor, lineWidth: isPrimary ? 2 : 1, lineStyle: 1, 
-              axisLabelVisible: true, title: `TP${pNum}` 
+              price: tp, 
+              color: `rgba(38, 166, 154, ${alpha})`, 
+              lineWidth, 
+              lineStyle: 1, 
+              axisLabelVisible: true, 
+              title: `TP${pNum}` 
             });
 
             // Entry → TP zone box: Reward zone = Green
@@ -385,13 +400,17 @@ export default function TradeSignalChart({
 
           // Get all plans: manual one + analysis ones
           const allPlans = [];
-          if (entryPrice) allPlans.push({ entry: entryPrice, sl: slPrice, tp: tpPrice });
+          if (entryPrice) {
+            allPlans.push({ entry: entryPrice, sl: slPrice, tp: tpPrice, direction: tpPrice > entryPrice ? "BUY" : "SELL" });
+          }
           
-          const extraPlans = Array.isArray(snapshot?.trade_plans) ? snapshot.trade_plans : (Array.isArray(snapshot?.tradePlans) ? snapshot.tradePlans : []);
-          extraPlans.forEach(p => {
-             // Avoid duplicate of primary if already added? 
-             // Usually manual entryPrice matches extraPlans[0] if it was parsed.
-             const isDuplicate = allPlans.some(x => Math.abs(x.entry - Number(p.entry)) < 0.0000001 && Math.abs(x.tp - Number(p.tp)) < 0.0000001);
+          const rawPlans = Array.isArray(snapshot?.trade_plan) ? snapshot.trade_plan : (Array.isArray(snapshot?.trade_plans) ? snapshot.trade_plans : (Array.isArray(snapshot?.tradePlans) ? snapshot.tradePlans : []));
+          rawPlans.forEach(p => {
+             const ep = Number(p.entry);
+             const tp = Number(p.tp);
+             if (!ep) return;
+             // Avoid duplicate of primary if already added
+             const isDuplicate = allPlans.some(x => Math.abs(x.entry - ep) < 0.000001 && Math.abs(x.tp - tp) < 0.000001);
              if (!isDuplicate) allPlans.push(p);
           });
 

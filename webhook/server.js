@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-0805"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-1137"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -406,30 +406,21 @@ function estimateRequestedBarsRange({ tfNorm, bars, nowSec = nowUnixSec() }) {
 }
 
 function serializeSnapshotForDb(snapshot) {
-  if (!snapshot || typeof snapshot !== 'object') return snapshot;
+  if (!snapshot || typeof snapshot !== 'object') return "";
   const bars = Array.isArray(snapshot.bars) ? snapshot.bars : [];
-  
-  // Store ONLY bars, sl, tp. Strip everything else.
-  return {
-    sl: Number.isFinite(snapshot.sl) ? snapshot.sl : null,
-    tp: Number.isFinite(snapshot.tp) ? snapshot.tp : null,
-    bars: bars.map(b => {
-      if (typeof b === 'string') return b;
-      // l,h,o,t,c
-      return `${b.low},${b.high},${b.open},${b.time},${b.close}`;
-    })
-  };
+  // Return just the bars as multiline CSV: l,h,o,t,c
+  return bars.map(b => {
+    if (typeof b === 'string') return b;
+    return `${b.low},${b.high},${b.open},${b.time},${b.close}`;
+  }).join('\n');
 }
 
 function deserializeSnapshotFromDb(dbData) {
-  if (!dbData || typeof dbData !== 'object') return null;
-  const barsRaw = Array.isArray(dbData.bars) ? dbData.bars : [];
+  if (!dbData || typeof dbData !== 'string') return { bars: [] };
+  const lines = dbData.split('\n').filter(l => l.trim().length > 0);
   
   const snapshot = {
-    sl: dbData.sl,
-    tp: dbData.tp,
-    bars: barsRaw.map(s => {
-      if (typeof s !== 'string') return s;
+    bars: lines.map(s => {
       const parts = s.split(',');
       if (parts.length < 5) return null;
       return {
@@ -656,8 +647,8 @@ async function marketDataDbUpsert(symbolNorm, tfNorm, snapshot) {
     }
     await client.query(
       `INSERT INTO market_data (symbol, tf, bar_start, bar_end, data, updated_at)
-       VALUES ($1, $2, $3, $4, $5::jsonb, NOW())`,
-      [symbolNorm, tfNorm, newStart, newEnd, JSON.stringify(dbData)]
+       VALUES ($1, $2, $3, $4, $5, NOW())`,
+      [symbolNorm, tfNorm, newStart, newEnd, dbData]
     );
     await client.query('COMMIT');
   } catch (err) {
@@ -2854,7 +2845,7 @@ async function mt5InitBackend() {
       tf TEXT NOT NULL,
       bar_start BIGINT NOT NULL,
       bar_end BIGINT NOT NULL,
-      data JSONB NOT NULL,
+      data TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT market_data_symbol_tf_range_key UNIQUE (symbol, tf, bar_start, bar_end)
@@ -6718,6 +6709,20 @@ async function executeMt5(signal) {
 }
 
 const appHandler = async (req, res) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key, x-active-user-id, Cache-Control, Pragma");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  }
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   const proto = req?.socket?.encrypted ? "https" : "http";
   const incomingUrl = new URL(req.url, `${proto}://${req.headers.host || "localhost"}`);
   if (req.method === "GET" && incomingUrl.pathname === "/api/proxy/binance") {

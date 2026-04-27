@@ -7,15 +7,8 @@ import TradeSignalChart from "../components/TradeSignalChart";
 const STORAGE_KEY = "chart_prompt_builder_templates_v2";
 
 const STRATEGY_OPTIONS = [
-  "ICT",
-  "SMC",
-  "Price Action",
-  "Market Structure",
-  "Wyckoff",
-  "EMA Trend",
-  "Breakout",
-  "VWAP",
-
+  "ICT", "SMC", "Price Action", "Market Structure", "Wyckoff", "EMA Trend", "Breakout", "VWAP", 
+  "Mean Reversion", "Order Flow", "Volatility", "Trend Following", "Divergence"
 ];
 
 const STRATEGY_CHECKLIST = {
@@ -113,14 +106,24 @@ PHASE 2 — PD ARRAYS & LEVELS
 - Mark each item: active | tested | broken.
 
 PHASE 3 — PATTERN & RISK
-- Patterns: V-Shape, QM, Flag, Triangle, Pin Bar, Inside Bar, Fakey.
+- Strategies (High-Level): ICT, SMC, Price Action, Market Structure, Wyckoff, Trend Following, Mean Reversion, Momentum Breakout, Volume Profile, Order Flow.
+- Entry Model Enums (Specific Triggers):
+  * ICT/SMC: ICT_OB_FVG, ICT_OTE_FIB, ICT_MMXM, ICT_SILVER_BULLET, SMC_BOS_RETEST, SMC_MSS_CHOCH, SMC_SFP_SWEEP, SMC_IDM_ENTRY, LIQUIDITY_VOID_FILL.
+  * Price Action: PA_PIN_BAR_REJECTION, PA_ENGULFING_REVERSAL, PA_INSIDE_BAR_BREAK, PA_SR_FLIP, PA_DOUBLE_TOP_BOT, PA_FAKE_BREAKOUT.
+  * Trend/MomentUM: MOMENTUM_BOS, TREND_EMA_BOUNCE, TREND_LINE_TOUCH, VOLATILITY_EXPANSION.
+  * Value/Volume: VAL_VAH_REJECT, VWAP_REBOUND, POC_RETEST.
+  * Confluence: SMT_DIVERGENCE, RSI_DIVERGENCE.
 - Dynamic risk sizing: 1.0% (high confluence), 0.5% (standard), 0.25% (high risk).
 - If setup is weak or RR < 2.0, return empty trade_plan.
 
 OUTPUT RULE
 - STRICT JSON ONLY (no markdown, no prose).
 - Keep market_analysis + trade_plan structure compatible with existing app fields.
-- Prefer trade_plan as array; multiple plans allowed and ranked by confidence_pct.`;
+- entry_model: MUST be SHORT (max 100 chars). Select one or more (comma separated) from the Enums above. NO prices or TFs in the name.
+- note: Use this for detailed explanations, pullback targets, and logic.
+- Prefer trade_plan as array; multiple plans allowed and ranked by confidence_pct.
+- rank trade plans: Primary (idx 0), Secondary (idx 1).
+- rank timeframes: Multi-timeframe trend/bias MUST be provided for ALL requested timeframes (HTF, Exec, Conf).
 
 function normalizeTemplateConfig(raw) {
   const strategyValue = raw?.strategies || raw?.strategy || ["ICT"];
@@ -756,9 +759,11 @@ PHASE 3 — PATTERN & RISK LOGIC
 CHECKLIST CONDITIONS BY STRATEGY:
 ${checklistRules}
 
-OUTPUT RULES
-1. Return STRICT JSON only. DO NOT include any conversational text, markdown outside the JSON, or partial objects.
-2. Return the FULL JSON STRUCTURE defined below. DO NOT skip fields like market_analysis, pd_arrays, or trade_plan even if empty.
+OUTPUT RULES:
+1. Return STRICT JSON only.
+2. entry_model: SHORT name only (e.g. "ICT Unicorn", "OTE + SMT"). MAX 100 chars.
+3. note: Detailed explanation of the trade idea, confluence, and narrative.
+4. Return FULL JSON STRUCTURE.
 
 OUTPUT_FORMAT:
 \`\`\`json
@@ -791,7 +796,7 @@ OUTPUT_FORMAT:
     {
       "direction": "BUY|SELL",
       "profile": "position|swing|daily|scalping",
-      "entry_model": "",
+      "entry_model": "SHORT model name only (max 100 chars)",
       "entry": null,
       "sl": null,
       "tp1": null,
@@ -801,7 +806,7 @@ OUTPUT_FORMAT:
       "rr": null,
       "type": "limit|stop|market",
       "confidence_pct": null,
-      "note": ""
+      "note": "FULL detailed narrative and logic here"
     }
   ],
   "final_verdict": {
