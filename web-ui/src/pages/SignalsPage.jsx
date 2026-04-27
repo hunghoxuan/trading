@@ -766,9 +766,10 @@ export default function SignalsPage() {
             <div className="empty-state minor-text">SELECT A SIGNAL TO INSPECT HISTORY</div>
           ) : (
             <SignalDetailCard
+              key={signalRefOf(selectedSignal)}
               mode="signal"
               header={(() => {
-                const rr = calcRrFromSignal(selectedSignal);
+                const rr = asNum(selectedSignal.rr_planned) ?? calcRrFromSignal(selectedSignal);
                 const vol = asNum(selectedSignal.volume);
                 const risk = signalRiskSize(selectedSignal, signalDetails);
                 const raw = selectedSignal?.raw_json && typeof selectedSignal.raw_json === "object" ? selectedSignal.raw_json : {};
@@ -812,6 +813,9 @@ export default function SignalsPage() {
                 disabled: !isDetailPlanDirty,
                 error: detailPlanMsg.type === "error" ? detailPlanMsg.text : "",
                 successMessage: detailPlanMsg.text && detailPlanMsg.type !== "error" ? detailPlanMsg.text : "",
+                status: statusUi(selectedSignal.status),
+                volume: `${Number(((asNum(selectedSignal.volume) || 0) * 100).toFixed(2))}% | ${asNum(selectedSignal.volume_lots) || 0.01} lots`,
+                pnl: <PnlDisplay value={selectedSignal.pnl_money_realized} />,
               }}
               chart={{
                 enabled: true,

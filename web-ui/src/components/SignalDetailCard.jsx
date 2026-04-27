@@ -54,8 +54,19 @@ function toTradingViewSymbol(raw) {
   return `OANDA:${s.replace(/[^A-Z0-9]/g, "")}`;
 }
 
-function PlanHeader({ plan, planLabel, symbol, isBuy, simplified = false }) {
+function PlanHeader({ plan, planLabel, symbol, isBuy, simplified = false, status = null, volume = null, pnl = null }) {
   const directionColor = isBuy ? '#26a69a' : '#ef5350';
+  
+  const renderMeta = () => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '11px', color: 'var(--muted)' }}>
+      {volume && <span>{volume}</span>}
+      {pnl && pnl}
+      <span>{plan.rr || "0.0"} RR</span>
+      <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{plan.confidence || "0"}%</span>
+      {status && <span className={`badge ${status.cls} badge-mini`}>{status.label}</span>}
+    </div>
+  );
+
   if (simplified) {
     return (
       <div style={{ 
@@ -74,10 +85,7 @@ function PlanHeader({ plan, planLabel, symbol, isBuy, simplified = false }) {
             {plan.entry || "-"} → {plan.tp || "-"} / {plan.sl || "-"}
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '11px', color: 'var(--muted)' }}>
-          <span>{plan.rr || "0.0"} RR</span>
-          <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{plan.confidence || "0"}%</span>
-        </div>
+        {renderMeta()}
       </div>
     );
   }
@@ -103,8 +111,7 @@ function PlanHeader({ plan, planLabel, symbol, isBuy, simplified = false }) {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '11px', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         <span style={{ color: 'var(--muted-bright)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{plan.entryModel || plan.strategy || ""}</span>
-        <span>{plan.rr || "0.0"} RR</span>
-        <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{plan.confidence || "0"}%</span>
+        {renderMeta()}
       </div>
     </div>
   );
@@ -238,8 +245,8 @@ export function SignalDetailCard({
 
   return (
     <div className="trade-detail-content">
-      {/* Header - ALWAYS SHOW FULL 6 SLOTS */}
-      {header && (
+      {/* Header - hide if trade plan is showing to avoid duplication */}
+      {header && !tradePlan?.enabled && (
         <div style={{ display: "grid", gap: 6, marginBottom: 20 }}>
           <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
             <div className="cell-major">{header.left}</div>
@@ -270,7 +277,16 @@ export function SignalDetailCard({
                 borderRadius: 10, 
                 background: isMain ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.015)' 
               }}>
-                <PlanHeader plan={p} planLabel={`Plan ${i + 1}`} symbol={chart?.symbol || "Plan"} isBuy={isBuy} simplified={isSimplified} />
+                <PlanHeader 
+                  plan={p} 
+                  planLabel={`Plan ${i + 1}`} 
+                  symbol={chart?.symbol || "Plan"} 
+                  isBuy={isBuy} 
+                  simplified={isSimplified}
+                  status={tradePlan.status}
+                  volume={tradePlan.volume}
+                  pnl={tradePlan.pnl}
+                />
                 {isMain ? (
                   <TradePlanEditor
                     signalId={tradePlan.signalId || null}
