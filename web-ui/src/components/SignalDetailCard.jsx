@@ -311,7 +311,8 @@ export function SignalDetailCard({
         </div>
       ) : null}
 
-      {mainTab === "chart" && chart?.enabled && hasResponseData ? (
+      {/* CONTENT SECTIONS using display: none for persistence */}
+      <div style={{ display: mainTab === "chart" && hasResponseData ? 'block' : 'none' }}>
         <div className="chart-tab-content">
           <div className="chart-controls-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div className="tf-pills" style={{ display: 'flex', gap: 6 }}>
@@ -353,43 +354,42 @@ export function SignalDetailCard({
             </div>
           </div>
 
-      {/* CONTENT SECTIONS using display: none for persistence */}
-      <div style={{ display: mainTab === "chart" && hasResponseData ? 'block' : 'none' }}>
-        <div className="multi-chart-grid" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {selectedTfs.map(tf => {
-            const isEntryTf = tf.toLowerCase() === (chart.interval || '').toLowerCase();
-            const snapshot = isEntryTf ? (response?.raw || chart?.analysisSnapshot) : multiChartData[tf];
+          <div className="multi-chart-grid" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            {selectedTfs.map(tf => {
+              const isEntryTf = tf.toLowerCase() === (chart.interval || '').toLowerCase();
+              const snapshot = isEntryTf ? (response?.raw || chart?.analysisSnapshot) : multiChartData[tf];
 
-            return (
-              <div key={tf} className="tf-chart-row">
-                <h4 className="tf-row-label">{tf.toUpperCase()}</h4>
-                <div className={`tf-row-charts ${chartModes.length > 1 ? 'side-by-side' : ''}`} style={{ display: 'grid', gridTemplateColumns: chartModes.length > 1 ? '1fr 1fr' : '1fr', gap: 12 }}>
-                  {chartModes.includes('static') && (
-                    <div className="chart-wrapper static-wrapper">
-                      {loadingCharts && !snapshot ? (
-                        <div className="chart-loading" style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>Loading {tf}...</div>
-                      ) : (
-                        <TradeSignalChart 
-                          symbol={chart?.symbol} interval={tf} 
-                          analysisSnapshot={snapshot}
-                          entryPrice={chart?.entryPrice} slPrice={chart?.slPrice} tpPrice={chart?.tpPrice}
+              return (
+                <div key={tf} className="tf-chart-row">
+                  <h4 className="tf-row-label">{tf.toUpperCase()}</h4>
+                  <div className={`tf-row-charts ${chartModes.length > 1 ? 'side-by-side' : ''}`} style={{ display: 'grid', gridTemplateColumns: chartModes.length > 1 ? '1fr 1fr' : '1fr', gap: 12 }}>
+                    {chartModes.includes('static') && (
+                      <div className="chart-wrapper static-wrapper">
+                        {loadingCharts && !snapshot ? (
+                          <div className="chart-loading" style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>Loading {tf}...</div>
+                        ) : (
+                          <TradeSignalChart 
+                            symbol={chart?.symbol} interval={tf} 
+                            analysisSnapshot={snapshot}
+                            entryPrice={chart?.entryPrice} slPrice={chart?.slPrice} tpPrice={chart?.tpPrice}
+                          />
+                        )}
+                      </div>
+                    )}
+                    {chartModes.includes('live') && (
+                      <div className="chart-wrapper live-wrapper">
+                        <iframe
+                          title={`TV-${tf}`}
+                          src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol)}&interval=${detailTabToTvInterval(tf)}&theme=dark&style=1`}
+                          width="100%" height="100%" style={{ aspectRatio: '3 / 2', borderRadius: '8px', border: '1px solid var(--border)' }} frameBorder="0"
                         />
-                      )}
-                    </div>
-                  )}
-                  {chartModes.includes('live') && (
-                    <div className="chart-wrapper live-wrapper">
-                      <iframe
-                        title={`TV-${tf}`}
-                        src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol)}&interval=${detailTabToTvInterval(tf)}&theme=dark&style=1`}
-                        width="100%" height="100%" style={{ aspectRatio: '3 / 2', borderRadius: '8px', border: '1px solid var(--border)' }} frameBorder="0"
-                      />
-                    </div>
-                  )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -436,15 +436,15 @@ export function SignalDetailCard({
         </div>
       </div>
 
-      {mainTab === "history" && history?.enabled ? (
+      {mainTab === "history" && history?.enabled && (
         <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
           <div className="stack-layout" style={{ gap: "10px" }}>
             {(history.items || []).map((item, idx) => renderHistoryItem(item, idx, { formatDateTime }))}
           </div>
         </div>
-      ) : null}
+      )}
 
-      {Array.isArray(metaItems) && metaItems.length && hasResponseData && (mainTab === "chart" || mainTab === "fields") ? (
+      {Array.isArray(metaItems) && metaItems.length && hasResponseData && (mainTab === "chart" || mainTab === "fields") && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10, marginTop: 14 }}>
           {metaItems.map((m, idx) => (
             <div key={idx} style={m.fullWidth ? { gridColumn: "1 / -1" } : undefined}>
@@ -453,7 +453,7 @@ export function SignalDetailCard({
             </div>
           ))}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
