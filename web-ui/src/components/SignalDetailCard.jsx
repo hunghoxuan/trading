@@ -184,16 +184,25 @@ export function SignalDetailCard({
   useEffect(() => {
     if (chart?.enabled) {
       const initial = [];
-      const currentTf = (chart.detailTfTab || chart.interval || '').toLowerCase();
-      if (currentTf && currentTf !== 'entry') initial.push(currentTf);
-      if (initial.length < 2) {
-        ['4h', '1h', '15m'].forEach(f => {
-          if (!initial.includes(f) && initial.length < 3) initial.push(f);
+      
+      // Use profile-specific TFs if provided (higher priority)
+      if (Array.isArray(chart.profileTfs) && chart.profileTfs.length > 0) {
+        chart.profileTfs.forEach(tf => {
+          const t = String(tf || '').toLowerCase().trim();
+          if (t && !initial.includes(t)) initial.push(t);
         });
+      } else {
+        const currentTf = (chart.detailTfTab || chart.interval || '').toLowerCase();
+        if (currentTf && currentTf !== 'entry') initial.push(currentTf);
+        if (initial.length < 2) {
+          ['4h', '1h', '15m'].forEach(f => {
+            if (!initial.includes(f) && initial.length < 3) initial.push(f);
+          });
+        }
       }
       setSelectedTfs(initial.sort((a, b) => (TF_WEIGHTS[a.toLowerCase()] || 0) - (TF_WEIGHTS[b.toLowerCase()] || 0)));
     }
-  }, [chart?.enabled, chart?.detailTfTab, chart?.interval]);
+  }, [chart?.enabled, chart?.detailTfTab, chart?.interval, JSON.stringify(chart?.profileTfs)]);
 
   useEffect(() => {
     if (mainTab === 'chart' && chart?.symbol && selectedTfs.length > 0 && chartModes.includes('static')) {

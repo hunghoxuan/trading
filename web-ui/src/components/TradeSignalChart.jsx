@@ -401,17 +401,30 @@ export default function TradeSignalChart({
 
           // Get all plans: manual one + analysis ones
           const allPlans = [];
-          if (entryPrice) {
-            allPlans.push({ entry: entryPrice, sl: slPrice, tp: tpPrice, direction: tpPrice > entryPrice ? "BUY" : "SELL" });
-          }
           
           const rawPlans = Array.isArray(snapshot?.trade_plan) ? snapshot.trade_plan : (Array.isArray(snapshot?.trade_plans) ? snapshot.trade_plans : (Array.isArray(snapshot?.tradePlans) ? snapshot.tradePlans : []));
+          
+          // Helper to check if a plan roughly matches an existing one
+          const isMatching = (p1, p2) => {
+            const e1 = Number(p1.entry), e2 = Number(p2.entry);
+            const t1 = Number(p1.tp), t2 = Number(p2.tp);
+            if (!e1 || !e2) return false;
+            // Proximity check (0.01% difference allowed)
+            const entryMatch = Math.abs(e1 - e2) / Math.max(e1, e2) < 0.0001;
+            const tpMatch = t1 && t2 ? (Math.abs(t1 - t2) / Math.max(t1, t2) < 0.0001) : true;
+            return entryMatch && tpMatch;
+          };
+
+          if (entryPrice) {
+            const primary = { entry: entryPrice, sl: slPrice, tp: tpPrice, direction: tpPrice > entryPrice ? "BUY" : "SELL" };
+            allPlans.push(primary);
+          }
+          
           rawPlans.forEach(p => {
              const ep = Number(p.entry);
-             const tp = Number(p.tp);
              if (!ep) return;
              // Avoid duplicate of primary if already added
-             const isDuplicate = allPlans.some(x => Math.abs(x.entry - ep) < 0.000001 && Math.abs(x.tp - tp) < 0.000001);
+             const isDuplicate = allPlans.some(x => isMatching(x, p));
              if (!isDuplicate) allPlans.push(p);
           });
 

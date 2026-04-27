@@ -70,7 +70,7 @@ const PROFILE_PRESETS = {
 };
 
 const DEFAULT_CONFIG = {
-  symbol: "UK100",
+  symbol: "",
   asset: "Auto detect",
   session: "Any",
   rr: "2",
@@ -89,7 +89,7 @@ const DEFAULT_CONFIG = {
 
 const GUIDE_TEXT = `FIELD GUIDE (ICT + PRICE ACTION + MARKET STRUCTURE)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SYMBOL: Prefer UK100 unless chart clearly shows another symbol.
+SYMBOL: Detect from chart.
 MIN_RR: 2.0 minimum.
 MAX_RISK_PCT: 1.0 max per trade.
 DAILY_ADR_FILTER: enabled. TP must remain realistic vs current daily ADR boundaries.
@@ -1001,6 +1001,7 @@ export default function ChartSnapshotsPage() {
   const [addingSignal, setAddingSignal] = useState(false);
   const [settingsTab, setSettingsTab] = useState("settings");
   const [responseTab, setResponseTab] = useState("text");
+  const [searchTerm, setSearchTerm] = useState("");
   const [status, setStatus] = useState({ type: "", text: "" });
   const [actionStatus, setActionStatus] = useState({ action: "", type: "", text: "" });
 
@@ -1691,7 +1692,7 @@ export default function ChartSnapshotsPage() {
   }, []);
 
   useEffect(() => {
-    const q = String(cfg.symbol || "").trim().toUpperCase();
+    const q = String(searchTerm || "").trim().toUpperCase();
     if (!q || q.length < 1) {
       setSymbolOptions([]);
       return;
@@ -1721,7 +1722,7 @@ export default function ChartSnapshotsPage() {
       }
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [cfg.symbol, provider, watchlist]);
+  }, [searchTerm, provider, watchlist]);
 
   useEffect(() => {
     if (!effectiveParsed || typeof effectiveParsed !== "object") return;
@@ -2018,18 +2019,36 @@ export default function ChartSnapshotsPage() {
           <span className="panel-label" style={{ margin: 0 }}>Symbols</span>
           <input
             list="tv-symbol-options"
-            value={cfg.symbol}
-            onChange={(e) => setCfgField("symbol", normalizeWatchSymbol(e.target.value))}
-            placeholder="Symbol (e.g. EURUSD)"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && searchTerm.trim()) {
+                setCfgField("symbol", normalizeWatchSymbol(searchTerm.trim()));
+              }
+            }}
+            placeholder="Search..."
           />
-          <button className="secondary-button snapshot-plus-btn-v2" type="button" onClick={addCurrentSymbolToWatchlist} title="Add current symbol">+</button>
+          <button 
+            className="secondary-button snapshot-plus-btn-v2" 
+            type="button" 
+            onClick={() => {
+              if (searchTerm.trim()) {
+                const s = normalizeWatchSymbol(searchTerm.trim());
+                setCfgField("symbol", s);
+                // Add to watchlist
+                const next = [...new Set([...watchlist, s])];
+                saveWatchlistToDb(next).then(() => setWatchlist(next));
+              }
+            }} 
+            title="Add current symbol"
+          >+</button>
         </div>
         <datalist id="tv-symbol-options">
           {symbolOptions.map((opt) => <option key={opt} value={opt} />)}
         </datalist>
         <div className="snapshot-watchlist-v2">
           {(() => {
-            const query = String(cfg.symbol || "").trim().toUpperCase();
+            const query = String(searchTerm || "").trim().toUpperCase();
             const filtered = watchlist.filter(s => s.toUpperCase().includes(query));
             if (filtered.length === 0) return <span className="minor-text">No matching symbols.</span>;
             return filtered.map((s) => (
@@ -2161,6 +2180,11 @@ export default function ChartSnapshotsPage() {
             slPrice: position.sl,
             tpPrice: position.tp,
             detailTfTab: timeframe,
+            profileTfs: [
+              ...(PROFILE_PRESETS[cfg.profile]?.htf_tfs || []),
+              ...(PROFILE_PRESETS[cfg.profile]?.exec_tfs || []),
+              ...(PROFILE_PRESETS[cfg.profile]?.conf_tfs || [])
+            ],
             onDetailTfTabChange: setSelectedEntryTf,
             entryNode: (
               <div className="snapshot-live-card-v3">
