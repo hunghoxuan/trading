@@ -1010,9 +1010,41 @@ export default function ChartSnapshotsPage() {
   const tfConfig = useMemo(() => getEffectiveTfConfig(cfg), [cfg]);
 
   const tvSymbol = useMemo(() => {
-    const base = String(cfg.symbol || "").trim();
-    if (!base) return "";
-    return base.includes(":") ? base : `${provider}:${base}`;
+    const raw = String(cfg.symbol || "").trim().toUpperCase();
+    if (!raw) return "";
+
+    let p = String(provider || "ICMARKETS").toUpperCase();
+    let s = raw;
+    if (raw.includes(":")) {
+      const parts = raw.split(":");
+      p = parts[0];
+      s = parts[1];
+    }
+
+    // Common fixes for TradingView indices/commodities by provider
+    const FIXES = {
+      "OANDA": {
+        "US30": "US30USD",
+        "NAS100": "NAS100USD",
+        "SPX500": "SP500USD",
+        "GER30": "DE30EUR",
+        "GER40": "DE40EUR",
+        "UK100": "UK100GBP",
+        "HK33": "HK33HKD",
+        "JP225": "JP225USD",
+      },
+      "ICMARKETS": {
+        "NAS100": "USTEC",
+        "SPX500": "US500",
+      },
+      "EIGHTCAP": {
+        "NAS100": "NAS100",
+        "SPX500": "SPX500",
+      }
+    };
+
+    const fixed = FIXES[p]?.[s] || s;
+    return `${p}:${fixed}`;
   }, [cfg.symbol, provider]);
 
   const promptText = useMemo(() => buildPrompt(cfg), [cfg]);

@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-0719"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-0804"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -4908,21 +4908,28 @@ const TWELVE_SYMBOL_MAP = {
   "GER30": "DAX",
   "DAX": "DAX",
   "DAX40": "GER40",
+  "HK33": "HSI",
+  "HSI": "HSI",
+  "HKG33": "HSI",
   "HK50": "HSI",
+  "JPN225": "NI225",
   "JP225": "NI225",
   "NI225": "NI225",
+  "N225": "NI225",
   "FRA40": "FRA40",
   "CAC40": "FRA40",
   "EUSTX50": "STX50",
-  // Metals / Commodities
   "XAUUSD": "XAU/USD",
   "GOLD": "XAU/USD",
   "XAGUSD": "XAG/USD",
   "SILVER": "XAG/USD",
+  "XPDUSD": "XPD/USD",
+  "XPTUSD": "XPT/USD",
   "WTI": "WTI/USD",
   "BRENT": "BRENT/USD",
   "USOIL": "WTI/USD",
   "UKOIL": "BRENT/USD",
+};
   // Crypto Fallbacks (if regex fails)
   "BTCUSD": "BTC/USD",
   "ETHUSD": "ETH/USD",
