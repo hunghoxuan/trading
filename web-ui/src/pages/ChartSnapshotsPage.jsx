@@ -123,7 +123,7 @@ OUTPUT RULE
 - note: Use this for detailed explanations, pullback targets, and logic.
 - Prefer trade_plan as array; multiple plans allowed and ranked by confidence_pct.
 - rank trade plans: Primary (idx 0), Secondary (idx 1).
-- rank timeframes: Multi-timeframe trend/bias MUST be provided for ALL requested timeframes (HTF, Exec, Conf).
+- rank timeframes: Multi-timeframe trend/bias MUST be provided for ALL requested timeframes (HTF, Exec, Conf).`;
 
 function normalizeTemplateConfig(raw) {
   const strategyValue = raw?.strategies || raw?.strategy || ["ICT"];
