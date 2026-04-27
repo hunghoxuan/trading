@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2117"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2128"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -6867,7 +6867,16 @@ const appHandler = async (req, res) => {
 
   const proto = req?.socket?.encrypted ? "https" : "http";
   const incomingUrl = new URL(req.url, `${proto}://${req.headers.host || "localhost"}`);
-  if (req.method === "GET" && incomingUrl.pathname === "/api/proxy/binance") {
+  
+  // NORMALIZE PATH: Support both /webhook/path and /path for routing
+  if (incomingUrl.pathname.startsWith("/webhook/")) {
+    incomingUrl.pathname = incomingUrl.pathname.substring(8);
+  } else if (incomingUrl.pathname === "/webhook") {
+    incomingUrl.pathname = "/";
+  }
+  const url = incomingUrl;
+
+  if (req.method === "GET" && url.pathname === "/api/proxy/binance") {
     const target = "https://api.binance.com/api/v3/klines?" + incomingUrl.searchParams.toString();
     https.get(target, (proxyRes) => {
       res.writeHead(proxyRes.statusCode || 200, {
@@ -9617,7 +9626,7 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "POST" && url.pathname === "/v2/broker/sync") {
+  if (req.method === "POST" && /^\/(webhook\/)?v2\/broker\/sync$/.test(url.pathname)) {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!CFG.mt5V2BrokerApiEnabled) return json(res, 404, { ok: false, error: "v2 broker api disabled" });
     try {
