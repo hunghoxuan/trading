@@ -13,8 +13,23 @@ export function shouldShowPnl(statusRaw, pnlRaw) {
   const status = String(statusRaw || "").toUpperCase();
   const pnl = asNum(pnlRaw);
   if (pnl == null) return false;
-  if (Math.abs(pnl) > 0.000001) return true;
-  return status === "CLOSED" || status === "CANCELLED" || status === "TP" || status === "SL";
+  
+  // Terminal statuses always show PnL if present
+  const isTerminal = ["CLOSED", "CANCELLED", "TP", "SL", "FAIL", "EXPIRED"].includes(status);
+  if (isTerminal) return true;
+
+  // Active trades (START) should show PnL if non-zero
+  if (status === "START" || status === "OPEN" || status === "FILLED") {
+    return Math.abs(pnl) > 0.000001;
+  }
+
+  // Otherwise (NEW, LOCKED, PLACED), don't show PnL even if backend returns it (might be stale)
+  return false;
+}
+
+export function formatNote(note) {
+  if (!note) return "";
+  return String(note).split(". ").filter(Boolean).join(".<br/>");
 }
 
 export function buildRrVolRiskText({ rrRaw, volumeRaw, riskSizeRaw, riskPctRaw, rewardSizeRaw, plannedVolRaw }) {

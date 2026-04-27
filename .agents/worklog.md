@@ -10,7 +10,12 @@
   - **AI Entry Model Standardization**:
     - Created `.agents/knowledge/popular_entry_models.md` with official enums from `server.js`.
     - Created `ai-agent/prompts/signal_generator.prompt` using these enums to guide AI agents.
-  - **Build & Deploy**: Bumped versions and synchronized build: `2026.04.27-1601`.
+  - **Build & Deploy**: Bumped versions and synchronized build: `2026.04.27-1715`.
+  - **Bug Fixes (UI Regressions)**:
+    - Fixed PnL data leak in `SignalsPage` by refining `shouldShowPnl` logic.
+    - Fixed auto-refresh selection "jumping" in Signals and Trades lists by updating object references.
+    - Restored editable Trade form in `TradesPage` and `V2TradeDetailPage`.
+    - Standardized note formatting using `formatNote` utility across all surfaces.
 
 - **Pending Tasks / Backlog**:
   - [x] [P1] [AI-Agent/Prompts] Update `ai-agent/prompts/` with official enums from `popular_entry_models.md`.

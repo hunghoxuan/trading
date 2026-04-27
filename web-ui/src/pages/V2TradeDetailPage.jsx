@@ -110,6 +110,61 @@ export default function TradeDetailPage() {
       ...headerMeta,
     });
   }, [trade]);
+  const isClosed = useMemo(() => {
+    return ["CLOSED", "CANCELLED", "TP", "SL", "FAIL", "EXPIRED"].includes(String(trade?.execution_status || "").toUpperCase());
+  }, [trade?.execution_status]);
+
+  async function onUpdateTradePlan() {
+    if (!trade) return;
+    try {
+      setLoading(true);
+      const payload = {
+        side: detailPlan.direction,
+        order_type: detailPlan.trade_type,
+        price: asNum(detailPlan.entry),
+        tp: asNum(detailPlan.tp),
+        sl: asNum(detailPlan.sl),
+        rr: asNum(detailPlan.rr),
+        note: detailPlan.note,
+      };
+      await api.saveTradePlan(tradeId, payload);
+      // Reload
+      const [evs, data] = await Promise.all([
+        api.v2TradeEvents(tradeId),
+        api.v2Trades({ q: tradeId }),
+      ]);
+      setEvents(Array.isArray(evs?.items) ? evs.items : []);
+      const t = Array.isArray(data?.items) && data.items.length ? data.items[0] : null;
+      setTrade(t);
+    } catch (e) {
+      setError(e?.message || "Update failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onReEntryTrade() {
+    if (!trade) return;
+    try {
+      setLoading(true);
+      const payload = {
+        side: detailPlan.direction,
+        order_type: detailPlan.trade_type,
+        price: asNum(detailPlan.entry),
+        tp: asNum(detailPlan.tp),
+        sl: asNum(detailPlan.sl),
+        rr: asNum(detailPlan.rr),
+        note: detailPlan.note,
+        symbol: trade.symbol,
+        volume: asNum(trade.volume),
+      };
+      await api.createTradeDirect(payload);
+    } catch (e) {
+      setError(e?.message || "Re-entry failed");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   if (loading) return <div className="loading">Loading trade {tradeId}...</div>;
   if (error) return <div className="error">{error}</div>;
@@ -125,8 +180,15 @@ export default function TradeDetailPage() {
           response={trade}
           tradePlan={{
             enabled: true,
-            hideEditor: true, // Hide editor in detail view for now
+            hideEditor: false,
+            mode: "trade",
+            tradeId: trade.trade_id || trade.id,
             value: detailPlan,
+            onChange: (k, v) => setDetailPlan(p => ({ ...p, [k]: v })),
+            onSave: onUpdateTradePlan,
+            onAddTrade: onReEntryTrade,
+            showAddSignalButton: false,
+            showSaveButton: !isClosed,
             status: statusUi(trade.execution_status),
             volume: `${trade.volume ?? "-"} lots`,
             pnl: <PnlDisplay value={trade.pnl_realized} />,

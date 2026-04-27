@@ -262,8 +262,14 @@ export default function SignalsPage() {
       setLastRefreshAt(new Date());
       const selectedSignalId = String(selectedSignalIdRef.current || "").trim();
       if (selectedSignalId) {
-        const exists = nextRows.some((x) => signalRefOf(x) === selectedSignalId);
-        if (!exists) setSelectedSignal(null);
+        const updated = nextRows.find((x) => signalRefOf(x) === selectedSignalId);
+        if (updated) {
+          setSelectedSignal(updated);
+        } else {
+          // If not in current page, we might want to keep it or null it.
+          // User said it jumps, so probably because it's being nulled when on a different page.
+          // For now, let's only null if we are SURE it's gone or if it's a fresh manual reload.
+        }
       }
     } catch (e) {
       setError(e?.message || "Failed to load signals");
@@ -686,7 +692,7 @@ export default function SignalsPage() {
                       <td>
                         <div className="cell-wrap">
                           <div className="cell-major"><span className={`badge ${status.cls} badge-fixed`}>{status.label}</span></div>
-                          <PnlDisplay value={t.pnl_money_realized} />
+                          {shouldShowPnl(t.status, t.pnl_money_realized) && <PnlDisplay value={t.pnl_money_realized} />}
                           <button
                             type="button"
                             className="secondary-button"

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import TradeSignalChart from "./TradeSignalChart";
 import { TradePlanEditor } from "./TradePlanEditor";
-import { renderHistoryItem } from "../utils/signalDetailUtils";
+import { asNum, buildHeaderMeta, formatNote, renderHistoryItem, shouldShowPnl } from "../utils/signalDetailUtils";
 
 const TF_WEIGHTS = {
   '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240, 'd': 1440, 'w': 10080, 'm': 43200
@@ -300,6 +300,7 @@ export function SignalDetailCard({
                     showSaveButton={tradePlan.showSaveButton}
                     showAddSignalButton={tradePlan.showAddSignalButton}
                     showAddTradeButton={tradePlan.showAddTradeButton}
+                    addTradeLabel={tradePlan.addTradeLabel}
                     showResetButton={tradePlan.showResetButton !== false}
                     busy={tradePlan.busy || {}}
                     disabled={Boolean(tradePlan.disabled)}
@@ -360,7 +361,11 @@ export function SignalDetailCard({
                     fontWeight: 500,
                     ...(item.valueStyle || {})
                   }}>
-                    {item.value}
+                    {String(item.label || "").toLowerCase() === "note" ? (
+                      <div dangerouslySetInnerHTML={{ __html: formatNote(item.value) }} />
+                    ) : (
+                      item.value
+                    )}
                   </div>
                 </div>
               )
@@ -396,7 +401,7 @@ export function SignalDetailCard({
                  {confluence && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Confluence</div><div style={{ whiteSpace: 'pre-wrap', marginBottom: 12 }}>{confluence}</div></div>}
                  {Array.isArray(checklist) && checklist.length > 0 && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Checklist</div><ul style={{ margin: 0, paddingLeft: 18, listStyleType: 'disc', color: 'var(--muted)', fontSize: '13px' }}>{checklist.map((item, idx) => <li key={idx} style={{ marginBottom: 6 }}>{typeof item === 'object' ? `${item.item || item.condition || ''}${item.note ? `: ${item.note}` : ''}` : String(item)}</li>)}</ul></div>}
                  {verdictText && <div style={{ marginBottom: 20, padding: 12, background: 'rgba(38, 166, 154, 0.05)', borderRadius: 8, border: '1px solid rgba(38, 166, 154, 0.2)' }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Final Verdict</div><div style={{ fontWeight: 600, color: '#26a69a', fontSize: '15px' }}>{verdictText}</div></div>}
-                 {note && <div style={{ marginTop: 24, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8, borderLeft: '3px solid var(--accent)' }}><div className="minor-text" style={{ fontSize: '10px', marginBottom: 4 }}>NOTE</div><div style={{ fontStyle: 'italic', color: 'var(--muted)' }}>{note}</div></div>}
+                 {note && <div style={{ marginTop: 24, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8, borderLeft: '3px solid var(--accent)' }}><div className="minor-text" style={{ fontSize: '10px', marginBottom: 4 }}>NOTE</div><div style={{ fontStyle: 'italic', color: 'var(--muted)' }} dangerouslySetInnerHTML={{ __html: formatNote(note) }} /></div>}
                </div>
              );
           })()}

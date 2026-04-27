@@ -102,6 +102,30 @@ export default function SignalDetailPage() {
     });
   }, [t]);
 
+  const isClosed = useMemo(() => {
+    return ["CLOSED", "CANCELLED", "TP", "SL", "FAIL", "EXPIRED"].includes(String(t?.status || "").toUpperCase());
+  }, [t?.status]);
+
+  async function onSaveSignalPlan() {
+    if (!t) return;
+    try {
+      setData(prev => ({ ...prev, trade: { ...prev.trade, note: detailPlan.note } })); // Optimistic
+      await api.saveSignalTradePlan(signalId, {
+        entry: asNum(detailPlan.entry),
+        tp: asNum(detailPlan.tp),
+        sl: asNum(detailPlan.sl),
+        rr: asNum(detailPlan.rr),
+        note: detailPlan.note,
+        direction: detailPlan.direction,
+      });
+      // reload
+      const res = await api.trade(signalId);
+      setData(res);
+    } catch (e) {
+      setError(e?.message || "Save failed");
+    }
+  }
+
   if (error) return <div className="error">{error}</div>;
   if (!t) return <div className="loading">Loading signal...</div>;
 
@@ -115,8 +139,11 @@ export default function SignalDetailPage() {
           response={t}
           tradePlan={{
             enabled: true,
-            hideEditor: true,
+            hideEditor: false,
             value: detailPlan,
+            onChange: (k, v) => setDetailPlan(p => ({ ...p, [k]: v })),
+            onSave: onSaveSignalPlan,
+            showSaveButton: !isClosed,
             status: statusUi(t.status),
             volume: `${t.volume ?? "-"} lots`,
             pnl: <PnlDisplay value={t.pnl_money_realized} />,

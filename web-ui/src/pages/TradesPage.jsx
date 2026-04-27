@@ -296,10 +296,12 @@ export default function TradesPage() {
       setPages(data.pages || 1);
       setError("");
       setLastRefreshAt(new Date());
-      // List-scope auto-refresh only: do not mutate currently selected detail row.
-      // Keep initial auto-select behavior only when nothing is selected yet.
-      const selectedTradeId = String(selectedTradeIdRef.current || "").trim();
-      if (items.length > 0 && !selectedTradeId) {
+      if (selectedTradeIdRef.current) {
+        const updated = (data.items || []).find(r => tradeKeyOf(r) === selectedTradeIdRef.current);
+        if (updated) {
+          setSelectedTrade(updated);
+        }
+      } else if (items.length > 0) {
         setSelectedTrade(items[0]);
         selectedTradeIdRef.current = tradeKeyOf(items[0]);
       }
@@ -437,6 +439,57 @@ export default function TradesPage() {
     }, AUTO_REFRESH_MS);
     return () => window.clearInterval(timer);
   }, [query]);
+
+  async function onUpdateTradePlan() {
+    if (!selectedTrade) return;
+    const ref = tradeKeyOf(selectedTrade);
+    if (!ref) return;
+    try {
+      setEditBusy(true);
+      const payload = {
+        side: detailPlan.direction,
+        order_type: detailPlan.trade_type,
+        price: asNum(detailPlan.entry),
+        tp: asNum(detailPlan.tp),
+        sl: asNum(detailPlan.sl),
+        rr: asNum(detailPlan.rr),
+        note: detailPlan.note,
+      };
+      await api.saveTradePlan(ref, payload);
+      await loadTrades();
+      await loadTradeEvents(ref);
+    } catch (e) {
+      setError(e?.message || "Failed to update trade plan");
+    } finally {
+      setEditBusy(false);
+    }
+  }
+
+  async function onReEntryTrade() {
+    if (!selectedTrade) return;
+    const ref = tradeKeyOf(selectedTrade);
+    if (!ref) return;
+    try {
+      setEditBusy(true);
+      const payload = {
+        side: detailPlan.direction,
+        order_type: detailPlan.trade_type,
+        price: asNum(detailPlan.entry),
+        tp: asNum(detailPlan.tp),
+        sl: asNum(detailPlan.sl),
+        rr: asNum(detailPlan.rr),
+        note: detailPlan.note,
+        symbol: selectedTrade.symbol,
+        volume: asNum(selectedTrade.volume),
+      };
+      await api.createTradeDirect(payload);
+      await loadTrades();
+    } catch (e) {
+      setError(e?.message || "Failed to create re-entry trade");
+    } finally {
+      setEditBusy(false);
+    }
+  }
 
   const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(tradeKeyOf(r)));
   const sortedRows = useMemo(() => {
@@ -754,11 +807,15 @@ export default function TradesPage() {
                 mode="trade"
                 tradePlan={{
                   enabled: true,
-                  hideEditor: true,
+                  hideEditor: false,
+                  mode: "trade",
+                  tradeId: selectedTrade.trade_id || selectedTrade.id,
                   value: detailPlan,
-                  status: statusUi(selectedTrade.execution_status),
-                  volume: `${selectedTrade.volume ?? "-"} lots`,
-                  pnl: <PnlDisplay value={selectedTrade.pnl_realized} />,
+                  onChange: (k, v) => setDetailPlan((p) => ({ ...p, [k]: v })),
+                  onSave: onUpdateTradePlan,
+                  onAddTrade: onReEntryTrade,
+                  showAddSignalButton: false,
+                  showSaveButton: !["CLOSED", "CANCELLED", "TP", "SL", "FAIL", "EXPIRED"].includes(String(selectedTrade.execution_status || "").toUpperCase()),
                 }}
                 header={(() => {
                   const action = String(selectedTrade.action || selectedTrade.side || "-").toUpperCase();
