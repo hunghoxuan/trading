@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-1715"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-1851"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -7329,7 +7329,7 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "GET" && url.pathname === "/mt5/trades/search") {
+  if (req.method === "GET" && (url.pathname === "/v2/signals" || url.pathname === "/mt5/trades/search")) {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
@@ -7349,7 +7349,7 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "POST" && (url.pathname === "/mt5/trades/create" || url.pathname === "/v2/signals/create")) {
+  if (req.method === "POST" && url.pathname === "/v2/signals/create") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     const sess = getUiSessionFromReq(req);
     if (!requireAdminKey(req, res, url)) return;
@@ -7836,9 +7836,6 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "GET" && url.pathname === "/mt5/ui") {
-    return json(res, 404, { ok: false, error: "Not found" });
-  }
 
   if (req.method === "GET" && url.pathname === "/mt5/ea/sync") {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });

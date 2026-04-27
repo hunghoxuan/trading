@@ -539,7 +539,7 @@ export const api = {
     Object.entries(params || {}).forEach(([k, v]) => {
       if (v !== undefined && v !== null && String(v) !== "") q.set(k, String(v));
     });
-    return get(`/mt5/trades/search?${q.toString()}`);
+    return get(`/v2/signals?${q.toString()}`);
   },
   trade: (signalId) => get(`/mt5/trades/${encodeURIComponent(signalId)}`),
   createTrade: (payload = {}) => post("/v2/signals/create", payload),

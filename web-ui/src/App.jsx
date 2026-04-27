@@ -7,7 +7,6 @@ import DatabasePage from "./pages/DatabasePage";
 import SettingsPage from "./pages/SettingsPage";
 import UsersPage from "./pages/UsersPage";
 import SourcesPage from "./pages/SourcesPage";
-import ExecutionV2Page from "./pages/ExecutionV2Page";
 import AccountsV2Page from "./pages/AccountsV2Page";
 import SignalsPage from "./pages/SignalsPage";
 import SignalDetailPage from "./pages/SignalDetailPage";

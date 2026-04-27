@@ -10,7 +10,11 @@
   - **AI Entry Model Standardization**:
     - Created `.agents/knowledge/popular_entry_models.md` with official enums from `server.js`.
     - Created `ai-agent/prompts/signal_generator.prompt` using these enums to guide AI agents.
-  - **Build & Deploy**: Bumped versions and synchronized build: `2026.04.27-1715`.
+  - **Build & Deploy**: Bumped versions and synchronized build: `2026.04.27-1851`.
+  - **Cleanup & API Refactoring**:
+    - Renamed Signals API from `/mt5/trades/search` to `/v2/signals` (with legacy alias).
+    - Removed unused `ExecutionV2Page.jsx` and `TradeCard.jsx`.
+    - Removed unused legacy endpoints `/mt5/ui` and `/mt5/trades/create`.
   - **Bug Fixes (UI Regressions)**:
     - Fixed PnL data leak in `SignalsPage` by refining `shouldShowPnl` logic.
     - Fixed auto-refresh selection "jumping" in Signals and Trades lists by updating object references.
