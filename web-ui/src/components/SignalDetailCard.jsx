@@ -54,8 +54,33 @@ function toTradingViewSymbol(raw) {
   return `OANDA:${s.replace(/[^A-Z0-9]/g, "")}`;
 }
 
-function PlanHeader({ plan, planLabel, symbol, isBuy }) {
+function PlanHeader({ plan, planLabel, symbol, isBuy, simplified = false }) {
   const directionColor = isBuy ? '#26a69a' : '#ef5350';
+  if (simplified) {
+    return (
+      <div style={{ 
+        display: "flex", 
+        justifyContent: "space-between", 
+        alignItems: "center", 
+        marginBottom: 8, 
+        borderBottom: '1px solid var(--accent-soft)', 
+        paddingBottom: 8,
+        gap: 12
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ color: directionColor, fontWeight: 700, fontSize: '13px' }}>{String(plan.direction || "BUY").toUpperCase()}</span>
+          <span style={{ fontWeight: 600, fontSize: '13px' }}>{symbol}</span>
+          <span style={{ fontSize: '13px', color: 'var(--foreground)' }}>
+            {plan.entry || "-"} → {plan.tp || "-"} / {plan.sl || "-"}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '11px', color: 'var(--muted)' }}>
+          <span>{plan.rr || "0.0"} RR</span>
+          <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{plan.confidence || "0"}%</span>
+        </div>
+      </div>
+    );
+  }
   return (
     <div style={{ 
       display: "flex", 
@@ -77,7 +102,7 @@ function PlanHeader({ plan, planLabel, symbol, isBuy }) {
         </span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '11px', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        <span style={{ color: 'var(--muted-bright)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{plan.entryModel || plan.strategy || "Secondary"}</span>
+        <span style={{ color: 'var(--muted-bright)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{plan.entryModel || plan.strategy || ""}</span>
         <span>{plan.rr || "0.0"} RR</span>
         <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{plan.confidence || "0"}%</span>
       </div>
@@ -153,19 +178,16 @@ export function SignalDetailCard({
     const hasPlans = Array.isArray(response?.tradePlans) && response.tradePlans.length > 0;
     const trulyHasData = hasRaw || hasPlans;
 
-    if (!trulyHasData && hideTabsBeforeResponse) return tabs;
-
     if (chart?.enabled) tabs.push("chart");
-    if (trulyHasData) tabs.push("analysis");
+    if (trulyHasData || metaItems?.length) tabs.push("info");
     tabs.push("json");
     if (history?.enabled) tabs.push("history");
-    if (!tabs.length && metaItems?.length) tabs.push("fields");
     return tabs;
-  }, [chart?.enabled, response?.raw, response?.tradePlans, history?.enabled, metaItems, hideTabsBeforeResponse]);
+  }, [chart?.enabled, response?.raw, response?.tradePlans, history?.enabled, metaItems]);
 
-  const [mainTab, setMainTab] = useState("fields");
+  const [mainTab, setMainTab] = useState("info");
   useEffect(() => {
-    if (!availableTabs.includes(mainTab)) setMainTab(availableTabs[0] || "fields");
+    if (!availableTabs.includes(mainTab)) setMainTab(availableTabs[0] || "info");
   }, [availableTabs, mainTab]);
    const [selectedTfs, setSelectedTfs] = useState([]);
   const [chartModes, setChartModes] = useState(['static', 'live']);
@@ -216,16 +238,21 @@ export function SignalDetailCard({
 
   return (
     <div className="trade-detail-content">
-      {/* Header - hide if trade plan is showing and it's a main signal/trade view to avoid duplication */}
-      {header && !tradePlan?.enabled ? (
-        <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+      {/* Header - ALWAYS SHOW FULL 6 SLOTS */}
+      {header && (
+        <div style={{ display: "grid", gap: 6, marginBottom: 20 }}>
           <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
             <div className="cell-major">{header.left}</div>
             <div className="cell-major">{header.center}</div>
             <div style={{ textAlign: "right" }}>{header.rightTop}</div>
           </div>
+          <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
+            <div className="minor-text">{header.leftMinor}</div>
+            <div className="minor-text">{header.centerMinor}</div>
+            <div style={{ textAlign: "right" }}>{header.rightBottom}</div>
+          </div>
         </div>
-      ) : null}
+      )}
 
       {/* Trade Plans */}
       {tradePlan?.enabled && (
@@ -234,6 +261,8 @@ export function SignalDetailCard({
             const isMain = i === 0;
             const planId = isMain ? "main" : `suggested_${i}`;
             const isBuy = String(p.direction).toUpperCase() === "BUY";
+            // User requested to remove Plan 1, Secondary labels in Signal Detail
+            const isSimplified = mode === "signal" && isMain;
             return (
               <div key={planId} style={{ 
                 border: isMain ? '2px solid var(--accent-soft)' : '1px solid var(--accent-soft)', 
@@ -241,7 +270,7 @@ export function SignalDetailCard({
                 borderRadius: 10, 
                 background: isMain ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.015)' 
               }}>
-                <PlanHeader plan={p} planLabel={`Plan ${i + 1}`} symbol={chart?.symbol || "Plan"} isBuy={isBuy} />
+                <PlanHeader plan={p} planLabel={`Plan ${i + 1}`} symbol={chart?.symbol || "Plan"} isBuy={isBuy} simplified={isSimplified} />
                 {isMain ? (
                   <TradePlanEditor
                     signalId={tradePlan.signalId || null}
@@ -285,36 +314,76 @@ export function SignalDetailCard({
         </div>
       ) : null}
 
-      {/* FIELDS TAB */}
-      <div style={{ display: mainTab === "fields" ? 'block' : 'none' }}>
-        <div className="fields-grid" style={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
-          gap: '20px',
-          padding: '20px',
-          background: 'rgba(255,255,255,0.02)',
-          borderRadius: '12px',
-          border: '1px solid var(--border)'
-        }}>
-          {metaItems.map((item, i) => (
-            <div key={i} style={{ 
-              gridColumn: item.fullWidth ? '1 / -1' : 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px'
-            }}>
-              <span className="minor-text" style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted-bright)' }}>{item.label}</span>
-              <div style={{ 
-                fontSize: '13px', 
-                color: 'var(--foreground)',
-                wordBreak: 'break-word',
-                fontWeight: 500,
-                ...(item.valueStyle || {})
-              }}>
-                {item.value}
-              </div>
-            </div>
-          ))}
+      {/* INFO TAB (Fields + Analysis) */}
+      <div style={{ display: mainTab === "info" ? 'block' : 'none' }}>
+        {/* Fields at the top of Info tab */}
+        {metaItems.length > 0 && (
+          <div className="fields-grid" style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', 
+            gap: '16px',
+            padding: '16px',
+            background: 'rgba(255,255,255,0.02)',
+            borderRadius: '10px',
+            border: '1px solid var(--border)',
+            marginBottom: 20
+          }}>
+            {metaItems.map((item, i) => (
+              item.label !== "Raw JSON" && (
+                <div key={i} style={{ 
+                  gridColumn: item.fullWidth ? '1 / -1' : 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px'
+                }}>
+                  <span className="minor-text" style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--muted-bright)' }}>{item.label}</span>
+                  <div style={{ 
+                    fontSize: '12.5px', 
+                    color: 'var(--foreground)',
+                    wordBreak: 'break-word',
+                    fontWeight: 500,
+                    ...(item.valueStyle || {})
+                  }}>
+                    {item.value}
+                  </div>
+                </div>
+              )
+            ))}
+          </div>
+        )}
+
+        {/* Analysis content below fields */}
+        <div className="panel" style={{ padding: 16, margin: 0, lineHeight: 1.6, fontSize: '14px', background: 'var(--card-bg)', borderRadius: 12 }}>
+          {(() => {
+             const raw = rawData;
+             const m = raw.market_analysis || {};
+             const bias = m.bias || raw.bias || "N/A";
+             const trend = m.trend || raw.trend || "N/A";
+             const confluence = m.confluence || raw.confluence || "";
+             let checklist = m.confluence_checklist || raw.confluence_checklist || m.checklist || raw.checklist || [];
+             if (typeof checklist === 'string') checklist = [checklist];
+             const verdictObj = raw.final_verdict || m.final_verdict || {};
+             const verdictText = typeof verdictObj === 'string' ? verdictObj : (verdictObj.action ? `${verdictObj.action}${verdictObj.confidence ? ` (${verdictObj.confidence}%)` : ''}` : "");
+             const note = raw.note || m.note || (verdictObj && verdictObj.note) || (raw.trade_plan && raw.trade_plan.note) || "";
+             const analysis = raw.analysis || m.analysis || "";
+             return (
+               <div className="analysis-summary-md">
+                 <div style={{ marginBottom: 20 }}>
+                    <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Bias & Trend</div>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                      <div style={{ fontSize: '18px', fontWeight: 600, color: bias.toLowerCase().includes('long') ? '#26a69a' : (bias.toLowerCase().includes('short') ? '#ef5350' : 'inherit') }}>{bias}</div>
+                      <div style={{ color: 'var(--muted)' }}>•</div>
+                      <div style={{ fontSize: '16px', fontWeight: 500 }}>{trend}</div>
+                    </div>
+                 </div>
+                 {analysis && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Analysis</div><div style={{ whiteSpace: 'pre-wrap', marginBottom: 12, color: 'var(--foreground)', fontSize: '14px', lineHeight: 1.6 }}>{analysis}</div></div>}
+                 {confluence && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Confluence</div><div style={{ whiteSpace: 'pre-wrap', marginBottom: 12 }}>{confluence}</div></div>}
+                 {Array.isArray(checklist) && checklist.length > 0 && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Checklist</div><ul style={{ margin: 0, paddingLeft: 18, listStyleType: 'disc', color: 'var(--muted)', fontSize: '13px' }}>{checklist.map((item, idx) => <li key={idx} style={{ marginBottom: 6 }}>{typeof item === 'object' ? `${item.item || item.condition || ''}${item.note ? `: ${item.note}` : ''}` : String(item)}</li>)}</ul></div>}
+                 {verdictText && <div style={{ marginBottom: 20, padding: 12, background: 'rgba(38, 166, 154, 0.05)', borderRadius: 8, border: '1px solid rgba(38, 166, 154, 0.2)' }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Final Verdict</div><div style={{ fontWeight: 600, color: '#26a69a', fontSize: '15px' }}>{verdictText}</div></div>}
+                 {note && <div style={{ marginTop: 24, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8, borderLeft: '3px solid var(--accent)' }}><div className="minor-text" style={{ fontSize: '10px', marginBottom: 4 }}>NOTE</div><div style={{ fontStyle: 'italic', color: 'var(--muted)' }}>{note}</div></div>}
+               </div>
+             );
+          })()}
         </div>
       </div>
 
@@ -401,43 +470,6 @@ export function SignalDetailCard({
               );
             })}
           </div>
-        </div>
-      </div>
-
-      {/* ANALYSIS TAB */}
-      <div style={{ display: mainTab === "analysis" ? 'block' : 'none' }}>
-        <div className="panel" style={{ padding: 16, margin: 0, lineHeight: 1.6, fontSize: '14px', background: 'var(--card-bg)', borderRadius: 12 }}>
-          {(() => {
-             const raw = rawData;
-             const m = raw.market_analysis || {};
-             const bias = m.bias || raw.bias || "N/A";
-             const trend = m.trend || raw.trend || "N/A";
-             const confluence = m.confluence || raw.confluence || "";
-             let checklist = m.confluence_checklist || raw.confluence_checklist || m.checklist || raw.checklist || [];
-             if (typeof checklist === 'string') checklist = [checklist];
-             let filters = m.institutional_filters || raw.institutional_filters || [];
-             const verdictObj = raw.final_verdict || m.final_verdict || {};
-             const verdictText = typeof verdictObj === 'string' ? verdictObj : (verdictObj.action ? `${verdictObj.action}${verdictObj.confidence ? ` (${verdictObj.confidence}%)` : ''}` : "");
-             const note = raw.note || m.note || (verdictObj && verdictObj.note) || (raw.trade_plan && raw.trade_plan.note) || "";
-             const analysis = raw.analysis || m.analysis || "";
-             return (
-               <div className="analysis-summary-md">
-                 <div style={{ marginBottom: 20 }}>
-                    <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Bias & Trend</div>
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                      <div style={{ fontSize: '18px', fontWeight: 600, color: bias.toLowerCase().includes('long') ? '#26a69a' : (bias.toLowerCase().includes('short') ? '#ef5350' : 'inherit') }}>{bias}</div>
-                      <div style={{ color: 'var(--muted)' }}>•</div>
-                      <div style={{ fontSize: '16px', fontWeight: 500 }}>{trend}</div>
-                    </div>
-                 </div>
-                 {analysis && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Analysis</div><div style={{ whiteSpace: 'pre-wrap', marginBottom: 12, color: 'var(--foreground)', fontSize: '14px', lineHeight: 1.6 }}>{analysis}</div></div>}
-                 {confluence && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Confluence</div><div style={{ whiteSpace: 'pre-wrap', marginBottom: 12 }}>{confluence}</div></div>}
-                 {Array.isArray(checklist) && checklist.length > 0 && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Checklist</div><ul style={{ margin: 0, paddingLeft: 18, listStyleType: 'disc', color: 'var(--muted)', fontSize: '13px' }}>{checklist.map((item, idx) => <li key={idx} style={{ marginBottom: 6 }}>{typeof item === 'object' ? `${item.item || item.condition || ''}${item.note ? `: ${item.note}` : ''}` : String(item)}</li>)}</ul></div>}
-                 {verdictText && <div style={{ marginBottom: 20, padding: 12, background: 'rgba(38, 166, 154, 0.05)', borderRadius: 8, border: '1px solid rgba(38, 166, 154, 0.2)' }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Final Verdict</div><div style={{ fontWeight: 600, color: '#26a69a', fontSize: '15px' }}>{verdictText}</div></div>}
-                 {note && <div style={{ marginTop: 24, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8, borderLeft: '3px solid var(--accent)' }}><div className="minor-text" style={{ fontSize: '10px', marginBottom: 4 }}>NOTE</div><div style={{ fontStyle: 'italic', color: 'var(--muted)' }}>{note}</div></div>}
-               </div>
-             );
-          })()}
         </div>
       </div>
 
