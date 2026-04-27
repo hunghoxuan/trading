@@ -1544,9 +1544,27 @@ export default function ChartSnapshotsPage() {
       const list = Array.isArray(out?.settings) ? out.settings : [];
       const row = list.find((x) => String(x?.type || "").toUpperCase() === SYMBOLS_SETTING_TYPE && String(x?.name || "").toUpperCase() === SYMBOLS_SETTING_NAME);
       const arr = Array.isArray(row?.data?.symbols) ? row.data.symbols : [];
-      setWatchlist([...new Set(arr.map(normalizeWatchSymbol).filter(Boolean))]);
-    } catch {
+      const final = [...new Set(arr.map(normalizeWatchSymbol).filter(Boolean))];
+      console.log("[watchlist] Loaded from DB:", final);
+      setWatchlist(final);
+    } catch (err) {
+      console.warn("[watchlist] Load failed:", err.message);
       setWatchlist([]);
+    }
+  };
+
+  const saveWatchlistToDb = async (nextList) => {
+    try {
+      await api.upsertSetting({
+        type: SYMBOLS_SETTING_TYPE,
+        name: SYMBOLS_SETTING_NAME,
+        data: { symbols: nextList },
+        status: "active",
+      });
+      console.log("[watchlist] Saved to DB:", nextList);
+    } catch (e) {
+      console.error("[watchlist] Save failed:", e.message);
+      throw e;
     }
   };
 
@@ -1558,16 +1576,22 @@ export default function ChartSnapshotsPage() {
     }
     const next = [...new Set([...watchlist, s])];
     try {
-      await api.upsertSetting({
-        type: SYMBOLS_SETTING_TYPE,
-        name: SYMBOLS_SETTING_NAME,
-        data: { symbols: next },
-        status: "active",
-      });
+      await saveWatchlistToDb(next);
       setWatchlist(next);
       setStatus({ type: "success", text: `Added to watchlist: ${s}` });
     } catch (e) {
       setStatus({ type: "error", text: String(e?.message || e || "Failed to save watchlist.") });
+    }
+  };
+
+  const removeFromWatchlist = async (s) => {
+    const next = watchlist.filter(x => x !== s);
+    try {
+      await saveWatchlistToDb(next);
+      setWatchlist(next);
+      setStatus({ type: "success", text: `Removed from watchlist: ${s}` });
+    } catch (e) {
+      setStatus({ type: "error", text: String(e?.message || e || "Failed to remove from watchlist.") });
     }
   };
 
@@ -2031,15 +2055,21 @@ export default function ChartSnapshotsPage() {
             enabled: true,
             symbol: cfg.symbol,
             interval: timeframe,
+            entryPrice: position.entry,
+            slPrice: position.sl,
+            tpPrice: position.tp,
             detailTfTab: timeframe,
             onDetailTfTabChange: setSelectedEntryTf,
             entryNode: (
               <div className="snapshot-live-card-v3">
-                <div className="minor-text" style={{ marginBottom: 12 }}>Chart 1: Twelve + PD Arrays</div>
+                <div className="minor-text" style={{ marginBottom: 12 }}>Chart ({timeframe}): Twelve + PD Arrays</div>
                 <TradeSignalChart 
                   symbol={cfg.symbol}
                   interval={timeframe}
                   analysisSnapshot={effectiveParsed}
+                  entryPrice={position.entry}
+                  slPrice={position.sl}
+                  tpPrice={position.tp}
                 />
                 <div className="minor-text" style={{ marginTop: 8 }}>{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
               </div>

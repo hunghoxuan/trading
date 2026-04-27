@@ -348,24 +348,25 @@ export default function TradeSignalChart({
 
             const baseColor = PLAN_COLORS[index % PLAN_COLORS.length];
             const isPrimary = index === 0;
+            const tfLabel = String(interval || '').toUpperCase();
             const suffix = isPrimary ? '' : ` (P${index + 1})`;
             const opacity = isPrimary ? 1 : 0.6;
-            const color = isPrimary ? baseColor : baseColor; // could adjust brightness here if needed
+            const color = isPrimary ? baseColor : baseColor; 
 
             // Entry line: solid (0)
             candleSeries.createPriceLine({ 
               price: ep, color, lineWidth: isPrimary ? 2 : 1, lineStyle: 0, 
-              axisLabelVisible: true, title: `ENTRY${suffix}` 
+              axisLabelVisible: true, title: `${tfLabel} Entry${suffix}` 
             });
             // SL line: dashed (2)
             if (sp) candleSeries.createPriceLine({ 
               price: sp, color, lineWidth: isPrimary ? 2 : 1, lineStyle: 2, 
-              axisLabelVisible: true, title: `SL${suffix}` 
+              axisLabelVisible: true, title: `${tfLabel} SL${suffix}` 
             });
             // TP line: dotted (1)
             if (tp) candleSeries.createPriceLine({ 
               price: tp, color, lineWidth: isPrimary ? 2 : 1, lineStyle: 1, 
-              axisLabelVisible: true, title: `TP${suffix}` 
+              axisLabelVisible: true, title: `${tfLabel} TP${suffix}` 
             });
 
             // Entry → TP zone box (using base color with very low alpha)
