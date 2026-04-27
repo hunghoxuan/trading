@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2104"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2110"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -3556,8 +3556,20 @@ async function mt5InitBackend() {
     },
     async brokerSyncV2(accountId, payload = {}) {
       const aid = String(accountId || "").trim();
-      const acc = await pool.query(`SELECT user_id FROM accounts WHERE account_id = $1`, [aid]);
+      const acc = await pool.query(`SELECT user_id, metadata FROM accounts WHERE account_id = $1`, [aid]);
       const uid = acc.rows[0]?.user_id || CFG.mt5DefaultUserId;
+      const existingMeta = acc.rows[0]?.metadata || {};
+      
+      const newMeta = {
+        ...existingMeta,
+        balance: Number(payload.balance || existingMeta.balance || 0),
+        equity: Number(payload.equity || existingMeta.equity || 0),
+        margin: Number(payload.margin || existingMeta.margin || 0),
+        free_margin: Number(payload.free_margin || existingMeta.free_margin || 0),
+        health_updated_at: new Date().toISOString()
+      };
+
+      await pool.query(`UPDATE accounts SET metadata = $1, updated_at = NOW() WHERE account_id = $2`, [JSON.stringify(newMeta), aid]);
       await this.log(aid, 'accounts', { event: 'ACCOUNT_SYNC', data: payload }, uid);
 
       const merged = new Map();
