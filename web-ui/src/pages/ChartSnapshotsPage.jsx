@@ -34,6 +34,13 @@ const DEFAULT_TEMPLATE_ID = "__default__";
 const SYMBOLS_SETTING_TYPE = "SYMBOLS";
 const SYMBOLS_SETTING_NAME = "WATCHLIST";
 
+const DEFAULT_WATCHLIST = [
+  "ADAUSD", "AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD", "BTCUSD", "CADJPY", "DE40", "ETHUSD", 
+  "EURAUD", "EURCAD", "EURGBP", "EURJPY", "EURSGD", "EURUSD", "GBPAUD", "GBPCAD", "GBPJPY", "GBPNZD", 
+  "GBPUSD", "NZDCAD", "NZDUSD", "UK100", "US30", "USDCAD", "USDCHF", "USDJPY", "USDSGD", "XAGUSD", 
+  "XAUEUR", "XAUGBP", "XAUJPY", "XTIUSD"
+];
+
 const PROFILE_PRESETS = {
   position: {
     label: "Position (1M+W / d / 4h)",
@@ -1023,7 +1030,13 @@ export default function ChartSnapshotsPage() {
     setSessionPrefix("");
   }, [cfg.symbol]);
   const [selectedEntryTf, setSelectedEntryTf] = useState("");
-  const timeframe = useMemo(() => selectedEntryTf || normalizeTfLabelToLower(tfConfig.exec_tfs?.[0] || "15m"), [selectedEntryTf, tfConfig.exec_tfs]);
+  const timeframe = useMemo(() => {
+    const raw = selectedEntryTf || "";
+    if (!raw || raw.toUpperCase() === "ENTRY") {
+      return normalizeTfLabelToLower(tfConfig.exec_tfs?.[0] || "15m");
+    }
+    return raw;
+  }, [selectedEntryTf, tfConfig.exec_tfs]);
   const snapshotTfs = useMemo(() => {
     const all = [...(tfConfig.htf_tfs || []), ...(tfConfig.exec_tfs || []), ...(tfConfig.conf_tfs || [])];
     return [...new Set(all.map(configTfToSnapshotTf).filter(Boolean))];
@@ -1555,12 +1568,16 @@ export default function ChartSnapshotsPage() {
       const list = Array.isArray(out?.settings) ? out.settings : [];
       const row = list.find((x) => String(x?.type || "").toUpperCase() === SYMBOLS_SETTING_TYPE && String(x?.name || "").toUpperCase() === SYMBOLS_SETTING_NAME);
       const arr = Array.isArray(row?.data?.symbols) ? row.data.symbols : [];
-      const final = [...new Set(arr.map(normalizeWatchSymbol).filter(Boolean))];
-      console.log("[watchlist] Loaded from DB:", final);
+      
+      // Combine with default watchlist and filter duplicates
+      const final = [...new Set([...DEFAULT_WATCHLIST, ...arr].map(normalizeWatchSymbol).filter(Boolean))];
+      
+      console.log("[watchlist] Loaded from DB + Default:", final);
       setWatchlist(final);
     } catch (err) {
-      console.warn("[watchlist] Load failed:", err.message);
-      setWatchlist([]);
+      console.warn("[watchlist] Load failed, using defaults:", err.message);
+      const defaults = [...new Set(DEFAULT_WATCHLIST.map(normalizeWatchSymbol).filter(Boolean))];
+      setWatchlist(defaults);
     }
   };
 

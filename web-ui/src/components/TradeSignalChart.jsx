@@ -361,7 +361,7 @@ export default function TradeSignalChart({
 
             // Entry line: solid
             candleSeries.createPriceLine({ 
-              price: ep, color: 'var(--text)', lineWidth: isPrimary ? 2 : 1, lineStyle: 0, 
+              price: ep, color: '#d1d4dc', lineWidth: isPrimary ? 2 : 1, lineStyle: 0, 
               axisLabelVisible: true, title: `${tfLabel} ${actionLabel}${suffix}` 
             });
             // SL line: dashed, always RED

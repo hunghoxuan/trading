@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-0534"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-0653"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -405,6 +405,39 @@ function estimateRequestedBarsRange({ tfNorm, bars, nowSec = nowUnixSec() }) {
   return { start, end: alignedEnd, sec };
 }
 
+function serializeSnapshotForDb(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') return snapshot;
+  const bars = Array.isArray(snapshot.bars) ? snapshot.bars : [];
+  if (!bars.length || typeof bars[0] === 'string') return snapshot;
+  
+  const optimized = { ...snapshot };
+  // Store as l,h,o,t,c (csv no header)
+  optimized.bars = bars.map(b => `${b.low},${b.high},${b.open},${b.time},${b.close}`);
+  optimized.format = "csv_v1";
+  return optimized;
+}
+
+function deserializeSnapshotFromDb(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') return snapshot;
+  const bars = Array.isArray(snapshot.bars) ? snapshot.bars : [];
+  if (!bars.length || typeof bars[0] !== 'string') return snapshot;
+  
+  const restored = { ...snapshot };
+  restored.bars = bars.map(s => {
+    const parts = String(s).split(',');
+    if (parts.length < 5) return null;
+    return {
+      low: Number(parts[0]),
+      high: Number(parts[1]),
+      open: Number(parts[2]),
+      time: Number(parts[3]),
+      close: Number(parts[4])
+    };
+  }).filter(Boolean);
+  delete restored.format;
+  return restored;
+}
+
 function marketDataMemoryKey(symbolNorm, tfNorm) {
   return `${symbolNorm}|${tfNorm}`;
 }
@@ -541,7 +574,7 @@ async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
   );
   const row = res.rows?.[0];
   if (!row || !row.data || typeof row.data !== "object") return null;
-  return row.data;
+  return deserializeSnapshotFromDb(row.data);
 }
 
 async function marketDataDbUpsert(symbolNorm, tfNorm, snapshot) {
@@ -549,13 +582,15 @@ async function marketDataDbUpsert(symbolNorm, tfNorm, snapshot) {
   const e = Number(snapshot?.bar_end);
   const bars = Array.isArray(snapshot?.bars) ? snapshot.bars : [];
   if (!Number.isFinite(s) || !Number.isFinite(e) || !bars.length) return;
+  
+  const dbSnapshot = serializeSnapshotForDb(snapshot);
   const db = await mt5InitBackend();
   await db.query(
     `INSERT INTO market_data (symbol, tf, bar_start, bar_end, data, updated_at)
      VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
      ON CONFLICT (symbol, tf, bar_start, bar_end)
      DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
-    [symbolNorm, tfNorm, s, e, JSON.stringify(snapshot)],
+    [symbolNorm, tfNorm, s, e, JSON.stringify(dbSnapshot)],
   );
 }
 

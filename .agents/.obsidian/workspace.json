@@ -135,8 +135,9 @@
       "bases:Create new base": false
     }
   },
-  "active": "336f84509bfb892c",
+  "active": "4bf2b34a6a4ef4d8",
   "lastOpenFiles": [
+    "skills/browser-testing.md",
     "plans/changelog.md",
     "plans/bugs.md",
     "plans/backlog.md",
@@ -163,7 +164,6 @@
     "templates/bug-report-template.md",
     "plans/sprint.md",
     "knowledge/decisions/20260326-wave1-cut2-confluence.md",
-    "knowledge/decisions/20260326-ui-trade-model-notes.md",
-    "knowledge/decisions/20260326-trend-priority-entry-gate.md"
+    "knowledge/decisions/20260326-ui-trade-model-notes.md"
   ]
 }

@@ -135,7 +135,12 @@ export function SignalDetailCard({
   const liveTabs = [...tfTabs]
     .filter(tf => tf !== 'ENTRY')
     .sort((a, b) => (TF_WEIGHTS[a.toLowerCase()] || 0) - (TF_WEIGHTS[b.toLowerCase()] || 0));
-  const activeTab = chart?.detailTfTab || "ENTRY";
+  // Resolve 'ENTRY' to a real TF label for display
+  const entryTfLabel = useMemo(() => {
+    if (chart?.interval && chart.interval.toUpperCase() !== 'ENTRY') return chart.interval.toUpperCase();
+    return 'ENTRY';
+  }, [chart?.interval]);
+
   const canSwitchTab = typeof chart?.onDetailTfTabChange === "function";
   const tvSymbol = String(chart?.tvSymbol || toTradingViewSymbol(chart?.symbol || "")).trim();
 
@@ -155,7 +160,7 @@ export function SignalDetailCard({
     if (history?.enabled) tabs.push("history");
     if (!tabs.length && metaItems?.length) tabs.push("fields");
     return tabs;
-  }, [chart?.enabled, hasResponseData, response?.raw, response?.tradePlans, response?.bars, history?.enabled, metaItems, hideTabsBeforeResponse]);
+  }, [chart?.enabled, response?.raw, response?.tradePlans, history?.enabled, metaItems, hideTabsBeforeResponse]);
 
   const [mainTab, setMainTab] = useState("fields");
   
@@ -179,11 +184,9 @@ export function SignalDetailCard({
   useEffect(() => {
     if (chart?.enabled) {
       const initial = [];
-      if (chart.detailTfTab && chart.detailTfTab !== 'ENTRY') initial.push(chart.detailTfTab.toLowerCase());
-      if (chart.interval) {
-          const sTf = String(chart.interval).toLowerCase();
-          if (!initial.includes(sTf)) initial.push(sTf);
-      }
+      const currentTf = (chart.detailTfTab || chart.interval || '').toLowerCase();
+      if (currentTf && currentTf !== 'entry') initial.push(currentTf);
+      
       if (initial.length < 2) {
         ['4h', '1h', '15m'].forEach(f => {
           if (!initial.includes(f) && initial.length < 3) initial.push(f);
@@ -316,8 +319,17 @@ export function SignalDetailCard({
         <div className="chart-tab-content">
           <div className="chart-controls-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div className="tf-pills" style={{ display: 'flex', gap: 6 }}>
+              {/* Force ENTRY tab first if not already present or replace it with real TF */}
+              <button 
+                type="button"
+                className={`tf-pill active`}
+                style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--accent)', background: 'var(--accent-soft)', color: 'var(--text)' }}
+              >
+                {entryTfLabel}
+              </button>
               {liveTabs.map(tf => {
                 const lowTf = tf.toLowerCase();
+                if (lowTf === (chart.interval || '').toLowerCase()) return null;
                 const isSelected = selectedTfs.includes(lowTf);
                 return (
                   <button 
@@ -396,26 +408,79 @@ export function SignalDetailCard({
       <div style={{ display: mainTab === "analysis" && hasResponseData ? 'block' : 'none' }}>
         <div className="panel" style={{ padding: 16, margin: 0, lineHeight: 1.6, fontSize: '14px', background: 'var(--card-bg)', borderRadius: 12 }}>
           {(() => {
-             const m = response?.raw?.market_analysis || response?.raw_json?.market_analysis || {};
-             const bias = m.bias || "N/A";
-             const trend = m.trend || "N/A";
-             const confluence = m.confluence || "N/A";
-             const note = response?.raw?.note || response?.raw_json?.note || "";
+             const raw = response?.raw || response?.raw_json || {};
+             const m = raw.market_analysis || {};
+             const bias = m.bias || raw.bias || "N/A";
+             const trend = m.trend || raw.trend || "N/A";
+             
+             // Extract confluence - try nested first then top-level
+             const confluence = m.confluence || raw.confluence || "";
+             
+             // Extract checklist - try nested under market_analysis first
+             let checklist = m.confluence_checklist || raw.confluence_checklist || m.checklist || raw.checklist || [];
+             if (typeof checklist === 'string') checklist = [checklist];
+             
+             // Extract filters
+             let filters = m.institutional_filters || raw.institutional_filters || [];
+             if (typeof filters === 'string') filters = [filters];
+             
+             // Extract verdict
+             const verdictObj = raw.final_verdict || m.final_verdict || {};
+             const verdictText = typeof verdictObj === 'string' ? verdictObj : (verdictObj.action ? `${verdictObj.action}${verdictObj.confidence ? ` (${verdictObj.confidence}%)` : ''}` : "");
+             
+             // Extract note
+             const note = raw.note || m.note || (verdictObj && verdictObj.note) || (raw.trade_plan && raw.trade_plan.note) || "";
              
              return (
                <div className="analysis-summary-md">
-                 <div style={{ marginBottom: 16 }}>
-                    <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bias</div>
-                    <div style={{ fontSize: '18px', fontWeight: 600, color: bias.toLowerCase().includes('long') ? '#26a69a' : (bias.toLowerCase().includes('short') ? '#ef5350' : 'inherit') }}>{bias}</div>
+                 <div style={{ marginBottom: 20 }}>
+                    <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Bias & Trend</div>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                      <div style={{ fontSize: '18px', fontWeight: 600, color: bias.toLowerCase().includes('long') ? '#26a69a' : (bias.toLowerCase().includes('short') ? '#ef5350' : 'inherit') }}>{bias}</div>
+                      <div style={{ color: 'var(--muted)' }}>•</div>
+                      <div style={{ fontSize: '16px', fontWeight: 500 }}>{trend}</div>
+                    </div>
                  </div>
-                 <div style={{ marginBottom: 16 }}>
-                    <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Trend</div>
-                    <div style={{ fontSize: '16px', fontWeight: 500 }}>{trend}</div>
-                 </div>
-                 <div style={{ marginBottom: 16 }}>
-                    <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Confluence</div>
-                    <div style={{ whiteSpace: 'pre-wrap' }}>{confluence}</div>
-                 </div>
+
+                 {confluence && (
+                   <div style={{ marginBottom: 20 }}>
+                      <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Confluence</div>
+                      <div style={{ whiteSpace: 'pre-wrap', marginBottom: 12 }}>{confluence}</div>
+                   </div>
+                 )}
+
+                 {Array.isArray(checklist) && checklist.length > 0 && (
+                   <div style={{ marginBottom: 20 }}>
+                      {!confluence && <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Confluence Checklist</div>}
+                      <ul style={{ margin: 0, paddingLeft: 18, listStyleType: 'disc', color: 'var(--muted)', fontSize: '13px' }}>
+                        {checklist.map((item, idx) => {
+                          const text = typeof item === 'object' ? `${item.item || item.condition || ''}${item.note ? `: ${item.note}` : ''}` : String(item);
+                          if (!text) return null;
+                          return <li key={idx} style={{ marginBottom: 6 }}>{text}</li>;
+                        })}
+                      </ul>
+                   </div>
+                 )}
+
+                 {((Array.isArray(filters) && filters.length > 0) || (filters && typeof filters === 'object' && Object.keys(filters).length > 0)) && (
+                   <div style={{ marginBottom: 20 }}>
+                      <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Institutional Filters</div>
+                      <ul style={{ margin: 0, paddingLeft: 18, listStyleType: 'circle', color: 'var(--muted)', fontSize: '13px' }}>
+                        {Array.isArray(filters) ? 
+                          filters.map((f, idx) => <li key={idx} style={{ marginBottom: 6 }}>{String(f)}</li>) :
+                          Object.entries(filters).map(([k, v], idx) => <li key={idx} style={{ marginBottom: 6 }}><strong>{k}:</strong> {String(v)}</li>)
+                        }
+                      </ul>
+                   </div>
+                 )}
+
+                 {verdictText && (
+                   <div style={{ marginBottom: 20, padding: 12, background: 'rgba(38, 166, 154, 0.05)', borderRadius: 8, border: '1px solid rgba(38, 166, 154, 0.2)' }}>
+                      <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Final Verdict</div>
+                      <div style={{ fontWeight: 600, color: '#26a69a', fontSize: '15px' }}>{verdictText}</div>
+                   </div>
+                 )}
+
                  {note && (
                    <div style={{ marginTop: 24, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8, borderLeft: '3px solid var(--accent)' }}>
                       <div className="minor-text" style={{ fontSize: '10px', marginBottom: 4 }}>NOTE</div>
