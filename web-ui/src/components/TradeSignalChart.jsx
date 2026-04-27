@@ -328,49 +328,71 @@ export default function TradeSignalChart({
           }
           if (markers.length > 0) candleSeries.setMarkers(markers);
 
-          // --- ENTRY / TP / SL as colored zone boxes ---
+          // --- ENTRY / TP / SL for all plans ---
           const asNum = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
           const boxAnchorTs = openedAt ? Math.floor(new Date(openedAt).getTime() / 1000) : (candles.length ? Number(candles[0]?.time) : null);
 
-          // Helper to draw a plan
-          const drawPlan = (p, isPrimary = true, index = 0) => {
+          const PLAN_COLORS = [
+            '#2196f3', // Blue (Primary)
+            '#a855f7', // Purple
+            '#f59e0b', // Amber
+            '#ec4899', // Pink
+            '#10b981', // Emerald
+          ];
+
+          const drawPlan = (p, index = 0) => {
             const ep = asNum(p.entry);
             const sp = asNum(p.sl);
             const tp = asNum(p.tp);
             if (!ep) return;
 
-            const entryColor = isPrimary ? '#2196f3' : `rgba(33, 150, 243, 0.6)`;
-            const slColor = isPrimary ? '#ef5350' : `rgba(239, 83, 80, 0.6)`;
-            const tpColor = isPrimary ? '#26a69a' : `rgba(38, 166, 154, 0.6)`;
-            const suffix = isPrimary ? '' : ` (Plan ${index + 1})`;
+            const baseColor = PLAN_COLORS[index % PLAN_COLORS.length];
+            const isPrimary = index === 0;
+            const suffix = isPrimary ? '' : ` (P${index + 1})`;
+            const opacity = isPrimary ? 1 : 0.6;
+            const color = isPrimary ? baseColor : baseColor; // could adjust brightness here if needed
 
-            // Entry line
-            candleSeries.createPriceLine({ price: ep, color: entryColor, lineWidth: isPrimary ? 2 : 1, lineStyle: 0, axisLabelVisible: true, title: `ENTRY${suffix}` });
-            if (sp) candleSeries.createPriceLine({ price: sp, color: slColor, lineWidth: isPrimary ? 2 : 1, lineStyle: 2, axisLabelVisible: true, title: `SL${suffix}` });
-            if (tp) candleSeries.createPriceLine({ price: tp, color: tpColor, lineWidth: isPrimary ? 2 : 1, lineStyle: 1, axisLabelVisible: true, title: `TP${suffix}` });
+            // Entry line: solid (0)
+            candleSeries.createPriceLine({ 
+              price: ep, color, lineWidth: isPrimary ? 2 : 1, lineStyle: 0, 
+              axisLabelVisible: true, title: `ENTRY${suffix}` 
+            });
+            // SL line: dashed (2)
+            if (sp) candleSeries.createPriceLine({ 
+              price: sp, color, lineWidth: isPrimary ? 2 : 1, lineStyle: 2, 
+              axisLabelVisible: true, title: `SL${suffix}` 
+            });
+            // TP line: dotted (1)
+            if (tp) candleSeries.createPriceLine({ 
+              price: tp, color, lineWidth: isPrimary ? 2 : 1, lineStyle: 1, 
+              axisLabelVisible: true, title: `TP${suffix}` 
+            });
 
-            // Entry → TP zone box
+            // Entry → TP zone box (using base color with very low alpha)
             if (ep && tp && boxAnchorTs) {
-              const primitive = new PdArrayBoxPrimitive(boxAnchorTs, Math.min(ep, tp), Math.max(ep, tp), tpColor);
+              const primitive = new PdArrayBoxPrimitive(boxAnchorTs, Math.min(ep, tp), Math.max(ep, tp), color);
               candleSeries.attachPrimitive(primitive);
             }
             // Entry → SL zone box
             if (ep && sp && boxAnchorTs) {
-              const primitive = new PdArrayBoxPrimitive(boxAnchorTs, Math.min(ep, sp), Math.max(ep, sp), slColor);
+              const primitive = new PdArrayBoxPrimitive(boxAnchorTs, Math.min(ep, sp), Math.max(ep, sp), color);
               candleSeries.attachPrimitive(primitive);
             }
           };
 
-          // Draw primary plan
-          drawPlan({ entry: entryPrice, sl: slPrice, tp: tpPrice }, true);
-
-          // Draw extra plans from analysisSnapshot
+          // Get all plans: manual one + analysis ones
+          const allPlans = [];
+          if (entryPrice) allPlans.push({ entry: entryPrice, sl: slPrice, tp: tpPrice });
+          
           const extraPlans = Array.isArray(snapshot?.trade_plans) ? snapshot.trade_plans : (Array.isArray(snapshot?.tradePlans) ? snapshot.tradePlans : []);
-          if (extraPlans.length > 1) {
-            extraPlans.slice(1).forEach((p, idx) => {
-              drawPlan(p, false, idx + 1);
-            });
-          }
+          extraPlans.forEach(p => {
+             // Avoid duplicate of primary if already added? 
+             // Usually manual entryPrice matches extraPlans[0] if it was parsed.
+             const isDuplicate = allPlans.some(x => Math.abs(x.entry - Number(p.entry)) < 0.0000001 && Math.abs(x.tp - Number(p.tp)) < 0.0000001);
+             if (!isDuplicate) allPlans.push(p);
+          });
+
+          allPlans.forEach((p, idx) => drawPlan(p, idx));
 
           // --- PD ARRAYS as boxes ---
           // Support both old signal format (nested under market_analysis) and new (top-level)

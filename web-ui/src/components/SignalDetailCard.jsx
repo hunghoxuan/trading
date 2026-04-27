@@ -315,16 +315,6 @@ export function SignalDetailCard({
         <div className="chart-tab-content">
           <div className="chart-controls-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div className="tf-pills" style={{ display: 'flex', gap: 6 }}>
-              {chart?.entryNode && (
-                <button 
-                  type="button"
-                  className={`tf-pill ${activeTab === 'ENTRY' ? 'active' : ''}`}
-                  onClick={() => canSwitchTab && chart.onDetailTfTabChange('ENTRY')}
-                  style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border)', background: activeTab === 'ENTRY' ? 'var(--accent-soft)' : 'transparent', color: activeTab === 'ENTRY' ? 'var(--text)' : 'var(--muted)' }}
-                >
-                  ENTRY
-                </button>
-              )}
               {liveTabs.map(tf => {
                 const lowTf = tf.toLowerCase();
                 const isSelected = selectedTfs.includes(lowTf);
@@ -364,42 +354,23 @@ export function SignalDetailCard({
           </div>
 
           <div className="multi-chart-grid" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            {/* Show ENTRY chart if selected or if activeTab is ENTRY */}
-            {activeTab === 'ENTRY' && chart?.entryNode && (
-              <div className="tf-chart-row">
-                <h4 className="tf-row-label">ENTRY (Main)</h4>
-                <div className={`tf-row-charts ${chartModes.length > 1 ? 'side-by-side' : ''}`} style={{ display: 'grid', gridTemplateColumns: chartModes.length > 1 ? '1fr 1fr' : '1fr', gap: 12 }}>
-                  {chartModes.includes('static') && (
-                    <div className="chart-wrapper static-wrapper">
-                      {chart.entryNode}
-                    </div>
-                  )}
-                  {chartModes.includes('live') && (
-                    <div className="chart-wrapper live-wrapper">
-                      <iframe
-                        title={`TV-LIVE-ENTRY`}
-                        src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol)}&interval=${detailTabToTvInterval(chart.interval || '15m')}&theme=dark&style=1`}
-                        width="100%" height="100%" style={{ aspectRatio: '3 / 2', borderRadius: '8px', border: '1px solid var(--border)' }} frameBorder="0"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Show other selected timeframes */}
+            {/* Show all selected timeframes */}
             {selectedTfs.map(tf => {
+              const isEntryTf = tf.toLowerCase() === (chart.interval || '').toLowerCase();
+              const snapshot = isEntryTf ? (response?.raw || chart?.analysisSnapshot) : multiChartData[tf];
+
               return (
                 <div key={tf} className="tf-chart-row">
-                  <h4 className="tf-row-label">{tf}</h4>
+                  <h4 className="tf-row-label">{tf.toUpperCase()}</h4>
                   <div className={`tf-row-charts ${chartModes.length > 1 ? 'side-by-side' : ''}`} style={{ display: 'grid', gridTemplateColumns: chartModes.length > 1 ? '1fr 1fr' : '1fr', gap: 12 }}>
                     {chartModes.includes('static') && (
                       <div className="chart-wrapper static-wrapper">
-                        {loadingCharts && !multiChartData[tf] ? (
+                        {loadingCharts && !snapshot ? (
                           <div className="chart-loading" style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>Loading {tf}...</div>
                         ) : (
                           <TradeSignalChart 
-                            symbol={chart?.symbol} interval={tf} analysisSnapshot={multiChartData[tf]}
+                            symbol={chart?.symbol} interval={tf} 
+                            analysisSnapshot={snapshot}
                             entryPrice={chart?.entryPrice} slPrice={chart?.slPrice} tpPrice={chart?.tpPrice}
                           />
                         )}
