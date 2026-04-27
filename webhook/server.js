@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2116"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2117"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -3332,7 +3332,7 @@ async function mt5InitBackend() {
         // 2. Legacy Signals table fallback
         const selSig = await client.query(`
           SELECT * FROM signals
-          WHERE dispatch_status = 'NEW'
+          WHERE status = 'NEW'
           ORDER BY created_at ASC
           LIMIT 1
           FOR UPDATE SKIP LOCKED
@@ -3340,7 +3340,7 @@ async function mt5InitBackend() {
         
         if (selSig.rows.length > 0) {
           const row = selSig.rows[0];
-          await client.query(`UPDATE signals SET dispatch_status = 'LEASED' WHERE signal_id = $1`, [row.signal_id]);
+          await client.query(`UPDATE signals SET status = 'LEASED' WHERE signal_id = $1`, [row.signal_id]);
           await client.query("COMMIT");
 
           return {
