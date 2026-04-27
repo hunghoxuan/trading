@@ -1,5 +1,15 @@
 # Changelog (Latest first)
 
+## 2026.04.27
+- [x] [12:55] [Web-UI/AI] [Author: Gemini] Task: **AI Analysis UI & Prompt Hardening**.
+  - **Screen 1 (Symbol Search)**: Implemented client-side filtering for symbol chips; only matches the current search query are shown.
+  - **Screen 2 (Status Inline)**: Moved "No snapshots/Analyzing" status messages inline with action buttons for a compact 1-line toolbar.
+  - **Screen 3 (AI Config)**: Removed "Assets", defaulted "Sessions" to "Any", and consolidated "Sessions/MinRR" onto the same line as the TF profile selector.
+  - **Screen 4 (Trade Plan Headers)**: Rewrote `SignalDetailCard` trade plan headers to be single-line, compact, and free of redundant borders/padding.
+  - **Screen 5 (TF Visuals)**: Added color-coded blur backgrounds (Trend) and directional arrows (Bias) to Timeframe chips and chart row labels.
+  - **AI Prompt**: Restored the full JSON schema (including `market_analysis`), enforced strict 60-char `entry_model` names, and improved parsing to prevent data loss.
+- Version: 2026.04.27-1255
+
 ## 2026.04.26
 - [x] [16:22] [Web-UI/Charts] [Author: Gemini] Task: **Multi-TF Chart UI Hardening**. 
   - Overhauled `SignalDetailCard` with side-by-side Chart/Live view.

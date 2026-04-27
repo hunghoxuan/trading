@@ -292,7 +292,8 @@ export default function TradeSignalChart({
             const snap = j?.snapshot && typeof j.snapshot === "object" ? j.snapshot : null;
             const bars = parseSnapshotBars(snap);
             if (r.ok && bars.length > 0) {
-              snapshot = snap;
+              // Merge: keep original snapshot analysis (plans, levels) but use new bars
+              snapshot = { ...snapshot, ...(snap || {}) };
               snapshotBars = bars;
               hasSnapshotBars = true;
               candles = bars;

@@ -54,30 +54,37 @@ function toTradingViewSymbol(raw) {
   return `OANDA:${s.replace(/[^A-Z0-9]/g, "")}`;
 }
 
-function renderFormattedText(text) {
-  if (text == null || text === "") return null;
-  const str = String(text);
-  const lines = str.split("\n");
-  return lines.map((line, i) => {
-    const parts = line.split(". ");
-    return (
-      <span key={i}>
-        {parts.map((part, j) => (
-          <span key={j}>
-            {part}
-            {j < parts.length - 1 ? "." : ""}
-            {j < parts.length - 1 && <br />}
-          </span>
-        ))}
-        {i < lines.length - 1 && <br />}
-      </span>
-    );
-  });
+function PlanHeader({ plan, planLabel, symbol, isBuy }) {
+  const directionColor = isBuy ? '#26a69a' : '#ef5350';
+  return (
+    <div style={{ 
+      display: "flex", 
+      justifyContent: "space-between", 
+      alignItems: "center", 
+      marginBottom: 8, 
+      borderBottom: '1px solid var(--accent-soft)', 
+      paddingBottom: 8,
+      flexWrap: 'nowrap',
+      gap: 12,
+      overflow: 'hidden'
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        <span style={{ color: directionColor, fontWeight: 700, fontSize: '13px' }}>{String(plan.direction || "BUY").toUpperCase()}</span>
+        <span style={{ color: 'var(--muted)', fontSize: '11px' }}>{planLabel}</span>
+        <span style={{ fontWeight: 600, fontSize: '13px' }}>{symbol}</span>
+        <span style={{ marginLeft: 4, fontSize: '13px', color: 'var(--foreground)', whiteSpace: 'nowrap' }}>
+          {plan.entry || "-"} → {plan.tp || "-"} / {plan.sl || "-"}
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '11px', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ color: 'var(--muted-bright)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{plan.entryModel || plan.strategy || "Secondary"}</span>
+        <span>{plan.rr || "0.0"} RR</span>
+        <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{plan.confidence || "0"}%</span>
+      </div>
+    </div>
+  );
 }
 
-/**
- * Local helper component for each "Cloned Screen 1" (Trade Plan)
- */
 function ExtraPlanBlock({ planId, plan, onAddSignal, onAddTrade, busy, submittingPlanId, successMessage }) {
   const [localPos, setLocalPos] = useState({
     direction: plan.direction || "BUY",
@@ -94,28 +101,8 @@ function ExtraPlanBlock({ planId, plan, onAddSignal, onAddTrade, busy, submittin
   const isSignalAdding = busy?.signal && isThisPlanAdding;
   const isTradeAdding = busy?.trade && isThisPlanAdding;
 
-  const isBuy = String(localPos.direction).toUpperCase() === "BUY";
-  
   return (
-    <div style={{ border: '2px solid var(--accent-soft)', padding: 20, borderRadius: 12, background: 'rgba(255,255,255,0.03)' }}>
-      <div style={{ marginBottom: 16, borderBottom: '1px solid var(--accent-soft)', paddingBottom: 12 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "center", marginBottom: 4 }}>
-          <div className="cell-major" style={{ color: isBuy ? '#26a69a' : '#ef5350' }}>
-            {String(localPos.direction).toUpperCase()} <span style={{ color: 'var(--foreground)', marginLeft: 4 }}>{plan.symbol || "Suggested"}</span>
-          </div>
-          <div className="cell-major" style={{ textAlign: "right", fontSize: '14px' }}>
-            {localPos.entry || "-"} → {localPos.tp || "-"} / {localPos.sl || "-"}
-          </div>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "center" }}>
-          <div className="minor-text" style={{ fontSize: '12px' }}>
-            {planId.toUpperCase()} · <span style={{ color: 'var(--muted)' }}>{plan.entryModel || "Secondary"}</span>
-          </div>
-          <div className="minor-text" style={{ textAlign: "right", fontSize: '11px' }}>
-            {localPos.rr || "0.0"} RR | CONF {plan.confidence || "0"}%
-          </div>
-        </div>
-      </div>
+    <div>
       <TradePlanEditor
         value={localPos}
         onChange={update}
@@ -158,16 +145,6 @@ export function SignalDetailCard({
   }
 
   const tfTabs = Array.isArray(chart?.detailTfTabs) && chart.detailTfTabs.length ? chart.detailTfTabs : DEFAULT_TF_TABS;
-  const liveTabs = [...tfTabs]
-    .filter(tf => tf !== 'ENTRY')
-    .sort((a, b) => (TF_WEIGHTS[a.toLowerCase()] || 0) - (TF_WEIGHTS[b.toLowerCase()] || 0));
-  // Resolve 'ENTRY' to a real TF label for display
-  const entryTfLabel = useMemo(() => {
-    if (chart?.interval && chart.interval.toUpperCase() !== 'ENTRY') return chart.interval.toUpperCase();
-    return 'ENTRY';
-  }, [chart?.interval]);
-
-  const canSwitchTab = typeof chart?.onDetailTfTabChange === "function";
   const tvSymbol = String(chart?.tvSymbol || toTradingViewSymbol(chart?.symbol || "")).trim();
 
   const availableTabs = useMemo(() => {
@@ -179,9 +156,7 @@ export function SignalDetailCard({
     if (!trulyHasData && hideTabsBeforeResponse) return tabs;
 
     if (chart?.enabled) tabs.push("chart");
-    if (trulyHasData) {
-      tabs.push("analysis");
-    }
+    if (trulyHasData) tabs.push("analysis");
     tabs.push("json");
     if (history?.enabled) tabs.push("history");
     if (!tabs.length && metaItems?.length) tabs.push("fields");
@@ -189,7 +164,6 @@ export function SignalDetailCard({
   }, [chart?.enabled, response?.raw, response?.tradePlans, history?.enabled, metaItems, hideTabsBeforeResponse]);
 
   const [mainTab, setMainTab] = useState("fields");
-  
   useEffect(() => {
     if (!availableTabs.includes(mainTab)) setMainTab(availableTabs[0] || "fields");
   }, [availableTabs, mainTab]);
@@ -205,14 +179,13 @@ export function SignalDetailCard({
     } else if (!hasResponseData) {
       setChartModes(['live']);
     }
-  }, [hasResponseData, chart?.analysisSnapshot]);
+  }, [hasResponseData]);
 
   useEffect(() => {
     if (chart?.enabled) {
       const initial = [];
       const currentTf = (chart.detailTfTab || chart.interval || '').toLowerCase();
       if (currentTf && currentTf !== 'entry') initial.push(currentTf);
-      
       if (initial.length < 2) {
         ['4h', '1h', '15m'].forEach(f => {
           if (!initial.includes(f) && initial.length < 3) initial.push(f);
@@ -226,21 +199,10 @@ export function SignalDetailCard({
     if (mainTab === 'chart' && chart?.symbol && selectedTfs.length > 0 && chartModes.includes('static')) {
       let isMounted = true;
       setLoadingCharts(true);
-      const tfsParam = selectedTfs.join(',');
-      fetch(`/api/charts/multi?symbol=${encodeURIComponent(chart.symbol)}&tfs=${encodeURIComponent(tfsParam)}`)
-        .then(async res => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          return res.json();
-        })
-        .then(res => {
-          if (isMounted && res?.ok) setMultiChartData(res.data || {});
-        })
-        .catch(err => {
-          if (isMounted) console.warn("Failed to fetch multi-TF charts:", err.message);
-        })
-        .finally(() => {
-          if (isMounted) setLoadingCharts(false);
-        });
+      fetch(`/api/charts/multi?symbol=${encodeURIComponent(chart.symbol)}&tfs=${encodeURIComponent(selectedTfs.join(','))}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(res => { if (isMounted && res?.ok) setMultiChartData(res.data || {}); })
+        .finally(() => { if (isMounted) setLoadingCharts(false); });
       return () => { isMounted = false; };
     }
   }, [mainTab, chart?.symbol, selectedTfs, chartModes]);
@@ -255,10 +217,6 @@ export function SignalDetailCard({
 
   const toggleMode = (m) => setChartModes(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
 
-  useEffect(() => {
-    if (canSwitchTab && mainTab === "chart") chart.onDetailTfTabChange("ENTRY");
-  }, [mainTab, canSwitchTab, chart]);
-
   return (
     <div className="trade-detail-content">
       {header ? (
@@ -268,105 +226,54 @@ export function SignalDetailCard({
             <div className="cell-major">{header.center}</div>
             <div style={{ textAlign: "right" }}>{header.rightTop}</div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
-            <div className="minor-text">{header.leftMinor}</div>
-            <div className="minor-text">{header.centerMinor}</div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>{header.rightBottom}</div>
-          </div>
         </div>
       ) : null}
 
-      {/* Multiple Trade Plan Blocks (Duplicates of Screen 1) */}
+      {/* Trade Plans */}
       {tradePlan?.enabled && (
-        <div className="stack-layout" style={{ gap: 24, marginBottom: 32 }}>
-          {/* Main Plan (from analysis) or Default Editor */}
-          <div style={{ border: '2px solid var(--accent-soft)', padding: 20, borderRadius: 12, background: 'rgba(255,255,255,0.03)' }}>
-            {Array.isArray(response?.tradePlans) && response.tradePlans.length > 0 && (() => {
-              const p = response.tradePlans[0];
-              const isBuy = String(p.direction).toUpperCase() === "BUY";
-              return (
-                <div style={{ marginBottom: 16, borderBottom: '1px solid var(--accent-soft)', paddingBottom: 12 }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "center", marginBottom: 4 }}>
-                    <div className="cell-major" style={{ color: isBuy ? '#26a69a' : '#ef5350' }}>
-                      {String(p.direction).toUpperCase()} <span style={{ color: 'var(--foreground)', marginLeft: 4 }}>{chart?.symbol || "Plan 1"}</span>
-                    </div>
-                    <div className="cell-major" style={{ textAlign: "right", fontSize: '14px' }}>
-                      {p.entry || "-"} → {p.tp || "-"} / {p.sl || "-"}
-                    </div>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "center" }}>
-                    <div className="minor-text" style={{ fontSize: '12px' }}>
-                      Plan 1 · <span style={{ color: 'var(--muted)' }}>{p.entryModel || p.strategy || "Primary"}</span>
-                    </div>
-                    <div className="minor-text" style={{ textAlign: "right", fontSize: '11px' }}>
-                      {p.rr || "0.0"} RR | CONF {p.confidence || "0"}%
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-            <TradePlanEditor
-              signalId={tradePlan.signalId || null}
-              tradeId={tradePlan.tradeId || null}
-              value={tradePlan.value || {}}
-              onChange={tradePlan.onChange}
-              onReset={tradePlan.onReset}
-              onSave={tradePlan.onSave}
-              onAddSignal={(pos) => tradePlan.onAddSignal?.(pos || tradePlan.value, "main")}
-              onAddTrade={(pos) => tradePlan.onAddTrade?.(pos || tradePlan.value, "main")}
-              showSaveButton={tradePlan.showSaveButton}
-              showAddSignalButton={tradePlan.showAddSignalButton}
-              showAddTradeButton={tradePlan.showAddTradeButton}
-              showResetButton={tradePlan.showResetButton !== false}
-              busy={tradePlan.busy || {}}
-              disabled={Boolean(tradePlan.disabled)}
-              error={tradePlan.error || ""}
-            />
-            {tradePlan.successMessage ? <div style={{ marginTop: 12 }}><span className="minor-text msg-success">{tradePlan.successMessage}</span></div> : null}
-          </div>
-
-          {/* Additional Plans */}
-          {Array.isArray(response?.tradePlans) && response.tradePlans.length > 1 && 
-            response.tradePlans.slice(1).map((plan, pIdx) => {
-              const planId = `suggested_${pIdx + 1}`;
-              return (
-                <div key={planId} style={{ border: '1px solid var(--border)', padding: 20, borderRadius: 12, background: 'rgba(255,255,255,0.015)' }}>
-                  {(() => {
-                    const isBuy = String(plan.direction).toUpperCase() === "BUY";
-                    return (
-                      <div style={{ marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "center", marginBottom: 4 }}>
-                          <div className="cell-major" style={{ color: isBuy ? '#26a69a' : '#ef5350' }}>
-                            {String(plan.direction).toUpperCase()} <span style={{ color: 'var(--foreground)', marginLeft: 4 }}>{chart?.symbol || `Plan ${pIdx + 2}`}</span>
-                          </div>
-                          <div className="cell-major" style={{ textAlign: "right", fontSize: '14px' }}>
-                            {plan.entry || "-"} → {plan.tp || "-"} / {plan.sl || "-"}
-                          </div>
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "center" }}>
-                          <div className="minor-text" style={{ fontSize: '12px' }}>
-                            Plan {pIdx + 2} · <span style={{ color: 'var(--muted)' }}>{plan.entryModel || plan.strategy || "Suggested"}</span>
-                          </div>
-                          <div className="minor-text" style={{ textAlign: "right", fontSize: '11px' }}>
-                            {plan.rr || "0.0"} RR | CONF {plan.confidence || "0"}%
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                  <ExtraPlanBlock 
-                     planId={planId}
-                     plan={plan} 
-                     onAddSignal={tradePlan?.onAddSignal}
-                     onAddTrade={tradePlan?.onAddTrade}
-                     busy={tradePlan?.busy}
-                     submittingPlanId={tradePlan?.submittingPlanId}
-                     successMessage={tradePlan?.successMessage}
+        <div className="stack-layout" style={{ gap: 16, marginBottom: 24 }}>
+          {(response?.tradePlans || [{ direction: tradePlan.value.direction, entry: tradePlan.value.entry, sl: tradePlan.value.sl, tp: tradePlan.value.tp, rr: tradePlan.value.rr, strategy: tradePlan.value.strategy, entryModel: tradePlan.value.entry_model, confidence: tradePlan.value.confidence_pct }]).map((p, i) => {
+            const isMain = i === 0;
+            const planId = isMain ? "main" : `suggested_${i}`;
+            const isBuy = String(p.direction).toUpperCase() === "BUY";
+            return (
+              <div key={planId} style={{ 
+                border: isMain ? '2px solid var(--accent-soft)' : '1px solid var(--accent-soft)', 
+                padding: '12px 16px', 
+                borderRadius: 10, 
+                background: isMain ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.015)' 
+              }}>
+                <PlanHeader plan={p} planLabel={`Plan ${i + 1}`} symbol={chart?.symbol || "Plan"} isBuy={isBuy} />
+                {isMain ? (
+                  <TradePlanEditor
+                    signalId={tradePlan.signalId || null}
+                    tradeId={tradePlan.tradeId || null}
+                    value={tradePlan.value || {}}
+                    onChange={tradePlan.onChange}
+                    onReset={tradePlan.onReset}
+                    onSave={tradePlan.onSave}
+                    onAddSignal={(pos) => tradePlan.onAddSignal?.(pos || tradePlan.value, "main")}
+                    onAddTrade={(pos) => tradePlan.onAddTrade?.(pos || tradePlan.value, "main")}
+                    showSaveButton={tradePlan.showSaveButton}
+                    showAddSignalButton={tradePlan.showAddSignalButton}
+                    showAddTradeButton={tradePlan.showAddTradeButton}
+                    showResetButton={tradePlan.showResetButton !== false}
+                    busy={tradePlan.busy || {}}
+                    disabled={Boolean(tradePlan.disabled)}
+                    error={tradePlan.error || ""}
                   />
-                </div>
-              );
-            })
-          }
+                ) : (
+                  <ExtraPlanBlock 
+                    planId={planId} plan={p} 
+                    onAddSignal={tradePlan?.onAddSignal} onAddTrade={tradePlan?.onAddTrade}
+                    busy={tradePlan?.busy} submittingPlanId={tradePlan?.submittingPlanId}
+                    successMessage={tradePlan?.successMessage}
+                  />
+                )}
+                {isMain && tradePlan.successMessage && <div style={{ marginTop: 8 }}><span className="minor-text msg-success">{tradePlan.successMessage}</span></div>}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -380,75 +287,48 @@ export function SignalDetailCard({
         </div>
       ) : null}
 
-      {/* CONTENT SECTIONS using display: none for persistence */}
-      <div style={{ display: mainTab === "chart" && hasResponseData ? 'block' : 'none' }}>
+      {/* CHART TAB */}
+      <div style={{ display: mainTab === "chart" ? 'block' : 'none' }}>
         <div className="chart-tab-content">
           <div className="chart-controls-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div className="tf-pills" style={{ display: 'flex', gap: 6 }}>
-              {/* Force ENTRY tab first if not already present or replace it with real TF */}
-              <button 
-                type="button"
-                className={`tf-pill active`}
-                style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--accent)', background: 'var(--accent-soft)', color: 'var(--text)' }}
-              >
-                {entryTfLabel}
-              </button>
               {['1m', '5m', '15m', '1h', '4h', 'd', 'w'].map(tf => {
                 const isSelected = selectedTfs.includes(tf.toLowerCase());
-                
-                // Extract trend/bias for this TF from analysis
-                const tfData = (chart?.analysisSnapshot?.market_analysis?.timeframes || []).find(x => String(x.tf || '').toLowerCase() === tf.toLowerCase());
-                const trend = String(tfData?.trend || '').toLowerCase();
-                const isBullish = trend.includes('bull');
-                const isBearish = trend.includes('bear');
-                
-                let bg = 'transparent';
-                if (isBullish) bg = 'rgba(38, 166, 154, 0.15)';
-                else if (isBearish) bg = 'rgba(239, 83, 80, 0.15)';
+                const analysisObj = response?.raw || chart?.analysisSnapshot;
+                const tfData = (analysisObj?.market_analysis?.timeframes || []).find(x => String(x.tf || '').toLowerCase() === tf.toLowerCase());
+                const trend = tfData?.trend || '';
+                const bias = tfData?.bias || '';
+                const isBullishTrend = String(trend).toLowerCase().includes('bull');
+                const isBearishTrend = String(trend).toLowerCase().includes('bear');
+                const isLongBias = String(bias).toLowerCase().includes('long') || String(bias).toLowerCase().includes('buy');
+                const isShortBias = String(bias).toLowerCase().includes('short') || String(bias).toLowerCase().includes('sell');
+
+                let bg = isSelected ? 'var(--accent-soft)' : 'rgba(255,255,255,0.03)';
+                if (trend) bg = isBullishTrend ? 'rgba(38, 166, 154, 0.2)' : (isBearishTrend ? 'rgba(239, 83, 80, 0.2)' : bg);
 
                 return (
-                  <button 
-                    key={tf}
-                    type="button"
-                    className={`tf-pill ${isSelected ? 'active' : ''}`}
-                    onClick={() => toggleTf(tf)}
+                  <button key={tf} type="button" onClick={() => toggleTf(tf)}
                     style={{ 
-                      padding: '4px 12px', 
-                      fontSize: '11px', 
-                      borderRadius: '4px', 
-                      border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)', 
-                      background: bg,
-                      backdropFilter: 'blur(4px)',
-                      color: isSelected ? 'var(--text)' : 'var(--muted)',
-                      transition: 'all 0.2s ease',
-                      fontWeight: isSelected ? 'bold' : 'normal',
-                      boxShadow: isSelected ? '0 0 8px var(--accent-soft)' : 'none'
+                      padding: '4px 10px', fontSize: '11px', borderRadius: '4px', 
+                      border: isSelected ? '1.5px solid var(--accent)' : '1px solid var(--border)', 
+                      background: bg, backdropFilter: 'blur(4px)', color: isSelected ? 'var(--text)' : 'var(--muted)',
+                      transition: 'all 0.2s ease', fontWeight: isSelected ? 'bold' : 'normal',
+                      display: 'flex', alignItems: 'center', gap: 4
                     }}
                   >
                     {tf.toUpperCase()}
+                    {bias && (
+                      <span style={{ color: isLongBias ? '#26a69a' : (isShortBias ? '#ef5350' : 'inherit'), fontWeight: 900 }}>
+                        {isLongBias ? '↑' : (isShortBias ? '↓' : '')}
+                      </span>
+                    )}
                   </button>
                 );
               })}
             </div>
             <div className="mode-toggles" style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.2)', padding: 2, borderRadius: '6px' }}>
-              {(hasResponseData || chart?.analysisSnapshot) && (
-                <button 
-                  type="button"
-                  className={`mode-btn ${chartModes.includes('static') ? 'active' : ''}`}
-                  onClick={() => toggleMode('static')}
-                  style={{ padding: '4px 12px', fontSize: '11px', border: 'none', background: chartModes.includes('static') ? 'var(--surface-light)' : 'transparent', borderRadius: '4px', color: chartModes.includes('static') ? 'var(--text)' : 'var(--muted)' }}
-                >
-                  CHART
-                </button>
-              )}
-              <button 
-                type="button"
-                className={`mode-btn ${chartModes.includes('live') ? 'active' : ''}`}
-                onClick={() => toggleMode('live')}
-                style={{ padding: '4px 12px', fontSize: '11px', border: 'none', background: chartModes.includes('live') ? 'var(--surface-light)' : 'transparent', borderRadius: '4px', color: chartModes.includes('live') ? 'var(--text)' : 'var(--muted)' }}
-              >
-                LIVE
-              </button>
+              <button type="button" className={`mode-btn ${chartModes.includes('static') ? 'active' : ''}`} onClick={() => toggleMode('static')} style={{ padding: '4px 12px', fontSize: '11px', border: 'none', background: chartModes.includes('static') ? 'var(--surface-light)' : 'transparent', borderRadius: '4px', color: chartModes.includes('static') ? 'var(--text)' : 'var(--muted)' }}>CHART</button>
+              <button type="button" className={`mode-btn ${chartModes.includes('live') ? 'active' : ''}`} onClick={() => toggleMode('live')} style={{ padding: '4px 12px', fontSize: '11px', border: 'none', background: chartModes.includes('live') ? 'var(--surface-light)' : 'transparent', borderRadius: '4px', color: chartModes.includes('live') ? 'var(--text)' : 'var(--muted)' }}>LIVE</button>
             </div>
           </div>
 
@@ -456,9 +336,8 @@ export function SignalDetailCard({
             {selectedTfs.map(tf => {
               const isEntryTf = tf.toLowerCase() === (chart.interval || '').toLowerCase();
               const snapshot = isEntryTf ? (response?.raw || chart?.analysisSnapshot) : multiChartData[tf];
-
-              // Extract trend/bias for this TF from analysis
-              const tfData = (chart?.analysisSnapshot?.market_analysis?.timeframes || []).find(x => String(x.tf || '').toLowerCase() === tf.toLowerCase());
+              const analysisObj = response?.raw || chart?.analysisSnapshot;
+              const tfData = (analysisObj?.market_analysis?.timeframes || []).find(x => String(x.tf || '').toLowerCase() === tf.toLowerCase());
               const trend = tfData?.trend || '';
               const bias = tfData?.bias || '';
               const isBullishTrend = String(trend).toLowerCase().includes('bull');
@@ -469,39 +348,21 @@ export function SignalDetailCard({
               return (
                 <div key={tf} className="tf-chart-row">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                    <h4 className="tf-row-label" style={{ margin: 0 }}>{tf.toUpperCase()}</h4>
-                    {trend && (
-                       <span style={{ fontSize: '12px', color: isBullishTrend ? '#26a69a' : (isBearishTrend ? '#ef5350' : 'var(--muted)') }}>
-                         {trend}
-                       </span>
-                    )}
-                    {bias && (
-                       <span style={{ fontSize: '12px', color: isLongBias ? '#26a69a' : (isShortBias ? '#ef5350' : 'var(--muted)'), display: 'flex', alignItems: 'center', gap: 4 }}>
-                         {bias} {isLongBias ? '↑' : (isShortBias ? '↓' : '')}
-                       </span>
-                    )}
+                    <h4 className="tf-row-label" style={{ margin: 0, minWidth: '40px', fontSize: '13px' }}>{tf.toUpperCase()}</h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      {trend && <span style={{ fontSize: '13px', fontWeight: 600, color: isBullishTrend ? '#26a69a' : (isBearishTrend ? '#ef5350' : 'var(--muted)') }}>{trend}</span>}
+                      {bias && <span style={{ fontSize: '14px', fontWeight: 700, color: isLongBias ? '#26a69a' : (isShortBias ? '#ef5350' : 'var(--muted)'), display: 'flex', alignItems: 'center' }}>{isLongBias ? '↑' : (isShortBias ? '↓' : '')}</span>}
+                    </div>
                   </div>
-                  <div className={`tf-row-charts ${chartModes.length > 1 ? 'side-by-side' : ''}`} style={{ display: 'grid', gridTemplateColumns: chartModes.length > 1 ? '1fr 1fr' : '1fr', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: chartModes.length > 1 ? '1fr 1fr' : '1fr', gap: 12 }}>
                     {chartModes.includes('static') && (
                       <div className="chart-wrapper static-wrapper">
-                        {loadingCharts && !snapshot ? (
-                          <div className="chart-loading" style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>Loading {tf}...</div>
-                        ) : (
-                          <TradeSignalChart 
-                            symbol={chart?.symbol} interval={tf} 
-                            analysisSnapshot={snapshot}
-                            entryPrice={chart?.entryPrice} slPrice={chart?.slPrice} tpPrice={chart?.tpPrice}
-                          />
-                        )}
+                        {loadingCharts && !snapshot ? <div className="chart-loading" style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>Loading {tf}...</div> : <TradeSignalChart symbol={chart?.symbol} interval={tf} analysisSnapshot={snapshot} entryPrice={chart?.entryPrice} slPrice={chart?.slPrice} tpPrice={chart?.tpPrice} />}
                       </div>
                     )}
                     {chartModes.includes('live') && (
                       <div className="chart-wrapper live-wrapper">
-                        <iframe
-                          title={`TV-${tf}`}
-                          src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol)}&interval=${detailTabToTvInterval(tf)}&theme=dark&style=1`}
-                          width="100%" height="100%" style={{ aspectRatio: '3 / 2', borderRadius: '8px', border: '1px solid var(--border)' }} frameBorder="0"
-                        />
+                        <iframe title={`TV-${tf}`} src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol)}&interval=${detailTabToTvInterval(tf)}&theme=dark&style=1`} width="100%" height="100%" style={{ aspectRatio: '3 / 2', borderRadius: '8px', border: '1px solid var(--border)' }} frameBorder="0" />
                       </div>
                     )}
                   </div>
@@ -512,32 +373,21 @@ export function SignalDetailCard({
         </div>
       </div>
 
-      <div style={{ display: mainTab === "analysis" && hasResponseData ? 'block' : 'none' }}>
+      {/* ANALYSIS TAB */}
+      <div style={{ display: mainTab === "analysis" ? 'block' : 'none' }}>
         <div className="panel" style={{ padding: 16, margin: 0, lineHeight: 1.6, fontSize: '14px', background: 'var(--card-bg)', borderRadius: 12 }}>
           {(() => {
              const raw = response?.raw || response?.raw_json || {};
              const m = raw.market_analysis || {};
              const bias = m.bias || raw.bias || "N/A";
              const trend = m.trend || raw.trend || "N/A";
-             
-             // Extract confluence - try nested first then top-level
              const confluence = m.confluence || raw.confluence || "";
-             
-             // Extract checklist - try nested under market_analysis first
              let checklist = m.confluence_checklist || raw.confluence_checklist || m.checklist || raw.checklist || [];
              if (typeof checklist === 'string') checklist = [checklist];
-             
-             // Extract filters
              let filters = m.institutional_filters || raw.institutional_filters || [];
-             if (typeof filters === 'string') filters = [filters];
-             
-             // Extract verdict
              const verdictObj = raw.final_verdict || m.final_verdict || {};
              const verdictText = typeof verdictObj === 'string' ? verdictObj : (verdictObj.action ? `${verdictObj.action}${verdictObj.confidence ? ` (${verdictObj.confidence}%)` : ''}` : "");
-             
-             // Extract note
              const note = raw.note || m.note || (verdictObj && verdictObj.note) || (raw.trade_plan && raw.trade_plan.note) || "";
-             
              return (
                <div className="analysis-summary-md">
                  <div style={{ marginBottom: 20 }}>
@@ -548,84 +398,33 @@ export function SignalDetailCard({
                       <div style={{ fontSize: '16px', fontWeight: 500 }}>{trend}</div>
                     </div>
                  </div>
-
-                 {confluence && (
-                   <div style={{ marginBottom: 20 }}>
-                      <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Confluence</div>
-                      <div style={{ whiteSpace: 'pre-wrap', marginBottom: 12 }}>{confluence}</div>
-                   </div>
-                 )}
-
-                 {Array.isArray(checklist) && checklist.length > 0 && (
-                   <div style={{ marginBottom: 20 }}>
-                      {!confluence && <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Confluence Checklist</div>}
-                      <ul style={{ margin: 0, paddingLeft: 18, listStyleType: 'disc', color: 'var(--muted)', fontSize: '13px' }}>
-                        {checklist.map((item, idx) => {
-                          const text = typeof item === 'object' ? `${item.item || item.condition || ''}${item.note ? `: ${item.note}` : ''}` : String(item);
-                          if (!text) return null;
-                          return <li key={idx} style={{ marginBottom: 6 }}>{text}</li>;
-                        })}
-                      </ul>
-                   </div>
-                 )}
-
-                 {((Array.isArray(filters) && filters.length > 0) || (filters && typeof filters === 'object' && Object.keys(filters).length > 0)) && (
-                   <div style={{ marginBottom: 20 }}>
-                      <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Institutional Filters</div>
-                      <ul style={{ margin: 0, paddingLeft: 18, listStyleType: 'circle', color: 'var(--muted)', fontSize: '13px' }}>
-                        {Array.isArray(filters) ? 
-                          filters.map((f, idx) => <li key={idx} style={{ marginBottom: 6 }}>{String(f)}</li>) :
-                          Object.entries(filters).map(([k, v], idx) => <li key={idx} style={{ marginBottom: 6 }}><strong>{k}:</strong> {String(v)}</li>)
-                        }
-                      </ul>
-                   </div>
-                 )}
-
-                 {verdictText && (
-                   <div style={{ marginBottom: 20, padding: 12, background: 'rgba(38, 166, 154, 0.05)', borderRadius: 8, border: '1px solid rgba(38, 166, 154, 0.2)' }}>
-                      <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Final Verdict</div>
-                      <div style={{ fontWeight: 600, color: '#26a69a', fontSize: '15px' }}>{verdictText}</div>
-                   </div>
-                 )}
-
-                 {note && (
-                   <div style={{ marginTop: 24, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8, borderLeft: '3px solid var(--accent)' }}>
-                      <div className="minor-text" style={{ fontSize: '10px', marginBottom: 4 }}>NOTE</div>
-                      <div style={{ fontStyle: 'italic', color: 'var(--muted)' }}>{note}</div>
-                   </div>
-                 )}
+                 {confluence && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Confluence</div><div style={{ whiteSpace: 'pre-wrap', marginBottom: 12 }}>{confluence}</div></div>}
+                 {Array.isArray(checklist) && checklist.length > 0 && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Checklist</div><ul style={{ margin: 0, paddingLeft: 18, listStyleType: 'disc', color: 'var(--muted)', fontSize: '13px' }}>{checklist.map((item, idx) => <li key={idx} style={{ marginBottom: 6 }}>{typeof item === 'object' ? `${item.item || item.condition || ''}${item.note ? `: ${item.note}` : ''}` : String(item)}</li>)}</ul></div>}
+                 {verdictText && <div style={{ marginBottom: 20, padding: 12, background: 'rgba(38, 166, 154, 0.05)', borderRadius: 8, border: '1px solid rgba(38, 166, 154, 0.2)' }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Final Verdict</div><div style={{ fontWeight: 600, color: '#26a69a', fontSize: '15px' }}>{verdictText}</div></div>}
+                 {note && <div style={{ marginTop: 24, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8, borderLeft: '3px solid var(--accent)' }}><div className="minor-text" style={{ fontSize: '10px', marginBottom: 4 }}>NOTE</div><div style={{ fontStyle: 'italic', color: 'var(--muted)' }}>{note}</div></div>}
                </div>
              );
           })()}
         </div>
       </div>
 
-      <div style={{ display: mainTab === "json" && hasResponseData ? 'block' : 'none' }}>
-        <div className="panel" style={{ padding: 14, margin: 0, background: 'rgba(0,0,0,0.2)', overflow: 'auto', maxHeight: '500px' }}>
-           <pre style={{ margin: 0, fontSize: '11px', fontFamily: 'monospace', color: 'var(--muted)' }}>
-             {JSON.stringify(response?.raw_json || response?.raw || {}, null, 2)}
-           </pre>
-        </div>
+      {/* JSON TAB */}
+      <div style={{ display: mainTab === "json" ? 'block' : 'none' }}>
+        <pre className="snapshot-mono-v2" style={{ padding: 16, background: 'rgba(0,0,0,0.3)', borderRadius: 12, overflow: 'auto', fontSize: '12px' }}>
+          {JSON.stringify(response?.raw || response?.raw_json || {}, null, 2)}
+        </pre>
       </div>
 
-      {mainTab === "history" && history?.enabled && (
-        <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-          <div className="stack-layout" style={{ gap: "10px" }}>
-            {(history.items || []).map((item, idx) => renderHistoryItem(item, idx, { formatDateTime }))}
+      {/* HISTORY TAB */}
+      <div style={{ display: mainTab === "history" ? 'block' : 'none' }}>
+        {history?.loading ? <div className="minor-text">{preset.historyLoadingText}</div> : (
+          <div className="telemetry-list">
+            {(!history?.items || history.items.length === 0) ? <div className="minor-text">{preset.historyEmptyText}</div> : 
+              history.items.map((item, i) => <div key={i} className="telemetry-item">{renderHistoryItem(item, formatDateTime)}</div>)
+            }
           </div>
-        </div>
-      )}
-
-      {Array.isArray(metaItems) && metaItems.length && hasResponseData && (mainTab === "chart" || mainTab === "fields") && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10, marginTop: 14 }}>
-          {metaItems.map((m, idx) => (
-            <div key={idx} style={m.fullWidth ? { gridColumn: "1 / -1" } : undefined}>
-              <span className="minor-text">{m.label}</span>
-              <div>{renderFormattedText(m.value)}</div>
-            </div>
-          ))}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

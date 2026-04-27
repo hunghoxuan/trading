@@ -36,19 +36,19 @@ const DEFAULT_WATCHLIST = [
 
 const PROFILE_PRESETS = {
   position: {
-    label: "Position (1M+W / d / 4h)",
-    htf_tfs: ["1M", "W"],
-    exec_tfs: ["d"],
-    conf_tfs: ["4h"],
-    sessions: "All sessions",
+    label: "Position (w+d / 4h / 1h)",
+    htf_tfs: ["w", "d"],
+    exec_tfs: ["4h"],
+    conf_tfs: ["1h"],
+    sessions: "Any",
     rr: "3",
   },
   swing: {
-    label: "Swing (W+d / 4h / 15m)",
-    htf_tfs: ["W", "d"],
-    exec_tfs: ["4h"],
+    label: "Swing (d+4h / 1h / 15m)",
+    htf_tfs: ["d", "4h"],
+    exec_tfs: ["1h"],
     conf_tfs: ["15m"],
-    sessions: "London+NY",
+    sessions: "Any",
     rr: "2",
   },
   day: {
@@ -56,7 +56,7 @@ const PROFILE_PRESETS = {
     htf_tfs: ["d", "4h"],
     exec_tfs: ["15m"],
     conf_tfs: ["5m"],
-    sessions: "London+NY",
+    sessions: "Any",
     rr: "1.5",
   },
   scalper: {
@@ -64,7 +64,7 @@ const PROFILE_PRESETS = {
     htf_tfs: ["4h", "1h"],
     exec_tfs: ["5m"],
     conf_tfs: ["1m"],
-    sessions: "London+NY",
+    sessions: "Any",
     rr: "1",
   },
 };
@@ -72,7 +72,7 @@ const PROFILE_PRESETS = {
 const DEFAULT_CONFIG = {
   symbol: "UK100",
   asset: "Auto detect",
-  session: "London+NY",
+  session: "Any",
   rr: "2",
   risk: "1",
   lookbackBars: "600",
@@ -645,31 +645,44 @@ function parseTradePlanFromRaw(rawText) {
 
 function enrichParsedAnalysis(rawText, parsed) {
   const fallback = parseTradePlanFromRaw(rawText) || {};
-  let res = parsed && typeof parsed === "object" ? { ...parsed } : { ...fallback };
   
+  // If parsed is null or not an object/array, use fallback
+  if (!parsed || typeof parsed !== 'object') {
+    return fallback;
+  }
+
+  let res = {};
+
+  // Case 1: AI returned an array of trade plans directly
   if (Array.isArray(parsed)) {
-    if (parsed.length > 0 && (parsed[0]?.tf || parsed[0]?.timeframe)) {
-      res = { 
-        ...fallback,
-        market_analysis: { 
-          ...(fallback.market_analysis || {}),
-          timeframes: parsed 
-        } 
-      };
-    } else {
-      res = { 
-        ...fallback,
-        trade_plan: parsed 
-      };
+    res = {
+      ...fallback,
+      trade_plan: parsed
+    };
+  } else {
+    // Case 2: AI returned a full object
+    res = { ...parsed };
+    
+    // Ensure trade_plan is an array if it's a single object
+    if (res.trade_plan && !Array.isArray(res.trade_plan)) {
+      res.trade_plan = [res.trade_plan];
     }
   }
 
+  // Merge market_analysis from fallback if missing in res
+  if (!res.market_analysis && fallback.market_analysis) {
+    res.market_analysis = fallback.market_analysis;
+  }
+
+  // Merge symbol/profile if missing
   if (!res.symbol && fallback.symbol) res.symbol = fallback.symbol;
   if (!res.profile && fallback.profile) res.profile = fallback.profile;
+
+  // Final check for trade_plan
   if (!res.trade_plan && fallback.trade_plan) {
-     res.trade_plan = fallback.trade_plan;
+    res.trade_plan = Array.isArray(fallback.trade_plan) ? fallback.trade_plan : [fallback.trade_plan];
   } else if (Array.isArray(res.trade_plan) && res.trade_plan.length === 0 && fallback.trade_plan) {
-     res.trade_plan = [fallback.trade_plan];
+    res.trade_plan = Array.isArray(fallback.trade_plan) ? fallback.trade_plan : [fallback.trade_plan];
   }
 
   return res;
@@ -761,9 +774,9 @@ ${checklistRules}
 
 OUTPUT RULES:
 1. Return STRICT JSON only.
-2. entry_model: SHORT name only (e.g. "ICT Unicorn", "OTE + SMT"). MAX 100 chars.
+2. entry_model: SHORT name only (e.g. "ICT Unicorn", "OTE + SMT"). MAX 60 chars.
 3. note: Detailed explanation of the trade idea, confluence, and narrative.
-4. Return FULL JSON STRUCTURE.
+4. Return FULL JSON STRUCTURE including "market_analysis", "trade_plan", and "final_verdict".
 
 OUTPUT_FORMAT:
 \`\`\`json
@@ -796,7 +809,7 @@ OUTPUT_FORMAT:
     {
       "direction": "BUY|SELL",
       "profile": "position|swing|daily|scalping",
-      "entry_model": "SHORT model name only (max 100 chars)",
+      "entry_model": "SHORT model name only (max 60 chars)",
       "entry": null,
       "sl": null,
       "tp1": null,
@@ -1000,7 +1013,7 @@ export default function ChartSnapshotsPage() {
 
   const [selectedFiles, setSelectedFiles] = useState(new Set());
   const [symbolOptions, setSymbolOptions] = useState([]);
-  const [watchlist, setWatchlist] = useState([]);
+  const [watchlist, setWatchlist] = useState(DEFAULT_WATCHLIST);
   const [analysisFilesDisplay, setAnalysisFilesDisplay] = useState([]);
   const [position, setPosition] = useState({ direction: "BUY", entry: "", tp: "", sl: "", rr: "", trade_type: "limit", note: "" });
   const [barsCache, setBarsCache] = useState({});
@@ -1678,23 +1691,37 @@ export default function ChartSnapshotsPage() {
   }, []);
 
   useEffect(() => {
-    const q = String(cfg.symbol || "").trim();
-    const plain = q.includes(":") ? q.split(":").slice(1).join(":") : q;
-    if (!plain || plain.length < 2) {
+    const q = String(cfg.symbol || "").trim().toUpperCase();
+    if (!q || q.length < 1) {
       setSymbolOptions([]);
       return;
     }
+
+    // Immediate local filtering
+    const localMatches = watchlist.filter(s => s.toUpperCase().includes(q));
+    setSymbolOptions(prev => {
+      const next = [...new Set([...localMatches, ...prev])];
+      return next.slice(0, 15);
+    });
+
+    // Debounced API search
+    const plain = q.includes(":") ? q.split(":").slice(1).join(":") : q;
     const timer = window.setTimeout(async () => {
       try {
-        const out = await api.chartSymbols(plain, provider || "ICMARKETS", 8);
+        const out = await api.chartSymbols(plain, provider || "ICMARKETS", 10);
         const arr = Array.isArray(out?.items) ? out.items : [];
-        setSymbolOptions(arr.map((x) => x.full_symbol || x.symbol).filter(Boolean));
+        const remoteMatches = arr.map((x) => x.full_symbol || x.symbol).filter(Boolean);
+        
+        setSymbolOptions(prev => {
+          const combined = [...new Set([...localMatches, ...remoteMatches])];
+          return combined.slice(0, 20);
+        });
       } catch {
-        setSymbolOptions([]);
+        // fail silently
       }
-    }, 250);
+    }, 300);
     return () => window.clearTimeout(timer);
-  }, [cfg.symbol, provider]);
+  }, [cfg.symbol, provider, watchlist]);
 
   useEffect(() => {
     if (!effectiveParsed || typeof effectiveParsed !== "object") return;
@@ -1775,10 +1802,7 @@ export default function ChartSnapshotsPage() {
         <button className="primary-button snapshot-template-save-btn-v2" type="button" onClick={saveTemplate}>Save</button>
       </div>
       <div className="snapshot-fields-v2 compact">
-        <div><label className="minor-text">Assets</label><select value={cfg.asset} onChange={(e) => setCfgField("asset", e.target.value)}><option>Auto detect</option><option>Commodity</option><option>Forex</option><option>Crypto</option><option>Index</option><option>Stock</option></select></div>
-        <div><label className="minor-text">Sessions</label><select value={cfg.session} onChange={(e) => setCfgField("session", e.target.value)}><option>Any</option><option>London</option><option>New York</option><option>Asian</option><option>London+NY</option></select></div>
-        <div><label className="minor-text">MinRR</label><input type="number" min="0.5" step="0.5" value={cfg.rr} onChange={(e) => setCfgField("rr", e.target.value)} /></div>
-        <div className="snapshot-col-span-2">
+        <div className="snapshot-col-span-4">
           <label className="minor-text">Bias / Execution / Confirm TFs</label>
           <select value={cfg.profile || "day"} onChange={(e) => setProfilePreset(e.target.value)}>
             <option value="position">{PROFILE_PRESETS.position.label}</option>
@@ -1787,6 +1811,8 @@ export default function ChartSnapshotsPage() {
             <option value="scalper">{PROFILE_PRESETS.scalper.label}</option>
           </select>
         </div>
+        <div className="snapshot-col-span-2"><label className="minor-text">Sessions</label><select value={cfg.session} onChange={(e) => setCfgField("session", e.target.value)}><option>Any</option><option>London</option><option>New York</option><option>Asian</option><option>London+NY</option></select></div>
+        <div className="snapshot-col-span-2"><label className="minor-text">MinRR</label><input type="number" min="0.5" step="0.5" value={cfg.rr} onChange={(e) => setCfgField("rr", e.target.value)} /></div>
       </div>
       <div>
         <label className="minor-text">Strategy (multi-select)</label>
@@ -2002,16 +2028,21 @@ export default function ChartSnapshotsPage() {
           {symbolOptions.map((opt) => <option key={opt} value={opt} />)}
         </datalist>
         <div className="snapshot-watchlist-v2">
-          {watchlist.length === 0 ? <span className="minor-text">No watchlist symbols yet.</span> : watchlist.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
-              onClick={() => setCfgField("symbol", normalizeWatchSymbol(s))}
-            >
-              {s}
-            </button>
-          ))}
+          {(() => {
+            const query = String(cfg.symbol || "").trim().toUpperCase();
+            const filtered = watchlist.filter(s => s.toUpperCase().includes(query));
+            if (filtered.length === 0) return <span className="minor-text">No matching symbols.</span>;
+            return filtered.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
+                onClick={() => setCfgField("symbol", normalizeWatchSymbol(s))}
+              >
+                {s}
+              </button>
+            ));
+          })()}
         </div>
         <div className="snapshot-live-card-v3">
           <div className="snapshot-gallery-head-v2">
@@ -2076,7 +2107,7 @@ export default function ChartSnapshotsPage() {
           </div>
 
           {/* Row 2 */}
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', width: '100%', justifyContent: 'flex-start' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', width: '100%', justifyContent: 'flex-start', flexWrap: 'wrap' }}>
             <select
               value={analysisSource}
               onChange={(e) => setAnalysisSource(e.target.value)}
@@ -2095,6 +2126,12 @@ export default function ChartSnapshotsPage() {
             <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>
               {analyzing ? "Analyzing..." : "Analyze"}
             </button>
+
+            {status.text && (
+              <span className={`minor-text ${status.type === 'error' ? 'msg-error' : (status.type === 'warning' ? 'msg-warning' : 'msg-success')}`} style={{ marginLeft: 8, fontSize: '13px' }}>
+                {status.text}
+              </span>
+            )}
           </div>
         </div>
 
