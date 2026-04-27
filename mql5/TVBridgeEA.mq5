@@ -4,7 +4,7 @@
 #include <Trade/Trade.mqh>
 
 input string InpServerBaseUrl = "https://trade.mozasolution.com/webhook";
-input string InpEaApiKey      = "";
+input string InpEaApiKey      = "acc_fab38ed32ecde9b28b3dd33d8be10a77da6a";
 input int    InpPollSeconds   = 2;
 input string InpSymbolSuffix  = "";   // Example: ".m" or "-pro"
 input long   InpMagic         = 20260411;
@@ -38,7 +38,7 @@ input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comm
 input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-27.2051";
+string EA_BUILD_VERSION = "2026-04-27.2103";
 
 input string InpMappingFile = "TVBridge_Mappings.csv";
 
