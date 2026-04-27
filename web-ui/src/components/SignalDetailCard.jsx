@@ -167,42 +167,27 @@ export function SignalDetailCard({
   useEffect(() => {
     if (!availableTabs.includes(mainTab)) setMainTab(availableTabs[0] || "fields");
   }, [availableTabs, mainTab]);
-  
-  const [selectedTfs, setSelectedTfs] = useState([]);
+   const [selectedTfs, setSelectedTfs] = useState([]);
   const [chartModes, setChartModes] = useState(['static', 'live']);
   const [multiChartData, setMultiChartData] = useState({});
   const [loadingCharts, setLoadingCharts] = useState(false);
 
   useEffect(() => {
-    if (hasResponseData && !chartModes.includes('static')) {
-      setChartModes(['static', 'live']);
-    } else if (!hasResponseData) {
-      setChartModes(['live']);
-    }
-  }, [hasResponseData]);
-
-  useEffect(() => {
     if (chart?.enabled) {
       const initial = [];
       
-      // Use profile-specific TFs if provided (higher priority)
-      if (Array.isArray(chart.profileTfs) && chart.profileTfs.length > 0) {
-        chart.profileTfs.forEach(tf => {
-          const t = String(tf || '').toLowerCase().trim();
-          if (t && !initial.includes(t)) initial.push(t);
-        });
-      } else {
-        const currentTf = (chart.detailTfTab || chart.interval || '').toLowerCase();
-        if (currentTf && currentTf !== 'entry') initial.push(currentTf);
-        if (initial.length < 2) {
-          ['4h', '1h', '15m'].forEach(f => {
-            if (!initial.includes(f) && initial.length < 3) initial.push(f);
-          });
-        }
-      }
+      // Default TFs based on User Request: { signal_TF, 15m, 4h, 1d }
+      const signalTf = (chart.interval || '').toLowerCase();
+      const defaults = [signalTf, '15m', '4h', 'd'];
+      
+      defaults.forEach(tf => {
+        const t = String(tf || '').toLowerCase().trim();
+        if (t && t !== 'entry' && !initial.includes(t)) initial.push(t);
+      });
+
       setSelectedTfs(initial.sort((a, b) => (TF_WEIGHTS[a.toLowerCase()] || 0) - (TF_WEIGHTS[b.toLowerCase()] || 0)));
     }
-  }, [chart?.enabled, chart?.detailTfTab, chart?.interval, JSON.stringify(chart?.profileTfs)]);
+  }, [chart?.enabled, chart?.interval]);
 
   useEffect(() => {
     if (mainTab === 'chart' && chart?.symbol && selectedTfs.length > 0 && chartModes.includes('static')) {
@@ -226,9 +211,13 @@ export function SignalDetailCard({
 
   const toggleMode = (m) => setChartModes(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
 
+  // Use raw data from multiple possible fields
+  const rawData = response?.raw || response?.raw_json || response?.metadata || {};
+
   return (
     <div className="trade-detail-content">
-      {header ? (
+      {/* Header - hide if trade plan is showing and it's a main signal/trade view to avoid duplication */}
+      {header && !tradePlan?.enabled ? (
         <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: header.columns || preset.headerColumns, gap: 12, alignItems: "center" }}>
             <div className="cell-major">{header.left}</div>
@@ -296,6 +285,39 @@ export function SignalDetailCard({
         </div>
       ) : null}
 
+      {/* FIELDS TAB */}
+      <div style={{ display: mainTab === "fields" ? 'block' : 'none' }}>
+        <div className="fields-grid" style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
+          gap: '20px',
+          padding: '20px',
+          background: 'rgba(255,255,255,0.02)',
+          borderRadius: '12px',
+          border: '1px solid var(--border)'
+        }}>
+          {metaItems.map((item, i) => (
+            <div key={i} style={{ 
+              gridColumn: item.fullWidth ? '1 / -1' : 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px'
+            }}>
+              <span className="minor-text" style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted-bright)' }}>{item.label}</span>
+              <div style={{ 
+                fontSize: '13px', 
+                color: 'var(--foreground)',
+                wordBreak: 'break-word',
+                fontWeight: 500,
+                ...(item.valueStyle || {})
+              }}>
+                {item.value}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* CHART TAB */}
       <div style={{ display: mainTab === "chart" ? 'block' : 'none' }}>
         <div className="chart-tab-content">
@@ -303,7 +325,7 @@ export function SignalDetailCard({
             <div className="tf-pills" style={{ display: 'flex', gap: 6 }}>
               {['1m', '5m', '15m', '1h', '4h', 'd', 'w'].map(tf => {
                 const isSelected = selectedTfs.includes(tf.toLowerCase());
-                const analysisObj = response?.raw || chart?.analysisSnapshot;
+                const analysisObj = rawData;
                 const tfData = (analysisObj?.market_analysis?.timeframes || []).find(x => String(x.tf || '').toLowerCase() === tf.toLowerCase());
                 const trend = tfData?.trend || '';
                 const bias = tfData?.bias || '';
@@ -344,8 +366,8 @@ export function SignalDetailCard({
           <div className="multi-chart-grid" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
             {selectedTfs.map(tf => {
               const isEntryTf = tf.toLowerCase() === (chart.interval || '').toLowerCase();
-              const snapshot = isEntryTf ? (response?.raw || chart?.analysisSnapshot) : multiChartData[tf];
-              const analysisObj = response?.raw || chart?.analysisSnapshot;
+              const snapshot = isEntryTf ? rawData : multiChartData[tf];
+              const analysisObj = rawData;
               const tfData = (analysisObj?.market_analysis?.timeframes || []).find(x => String(x.tf || '').toLowerCase() === tf.toLowerCase());
               const trend = tfData?.trend || '';
               const bias = tfData?.bias || '';
@@ -386,7 +408,7 @@ export function SignalDetailCard({
       <div style={{ display: mainTab === "analysis" ? 'block' : 'none' }}>
         <div className="panel" style={{ padding: 16, margin: 0, lineHeight: 1.6, fontSize: '14px', background: 'var(--card-bg)', borderRadius: 12 }}>
           {(() => {
-             const raw = response?.raw || response?.raw_json || {};
+             const raw = rawData;
              const m = raw.market_analysis || {};
              const bias = m.bias || raw.bias || "N/A";
              const trend = m.trend || raw.trend || "N/A";
@@ -397,6 +419,7 @@ export function SignalDetailCard({
              const verdictObj = raw.final_verdict || m.final_verdict || {};
              const verdictText = typeof verdictObj === 'string' ? verdictObj : (verdictObj.action ? `${verdictObj.action}${verdictObj.confidence ? ` (${verdictObj.confidence}%)` : ''}` : "");
              const note = raw.note || m.note || (verdictObj && verdictObj.note) || (raw.trade_plan && raw.trade_plan.note) || "";
+             const analysis = raw.analysis || m.analysis || "";
              return (
                <div className="analysis-summary-md">
                  <div style={{ marginBottom: 20 }}>
@@ -407,6 +430,7 @@ export function SignalDetailCard({
                       <div style={{ fontSize: '16px', fontWeight: 500 }}>{trend}</div>
                     </div>
                  </div>
+                 {analysis && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Analysis</div><div style={{ whiteSpace: 'pre-wrap', marginBottom: 12, color: 'var(--foreground)', fontSize: '14px', lineHeight: 1.6 }}>{analysis}</div></div>}
                  {confluence && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Confluence</div><div style={{ whiteSpace: 'pre-wrap', marginBottom: 12 }}>{confluence}</div></div>}
                  {Array.isArray(checklist) && checklist.length > 0 && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Checklist</div><ul style={{ margin: 0, paddingLeft: 18, listStyleType: 'disc', color: 'var(--muted)', fontSize: '13px' }}>{checklist.map((item, idx) => <li key={idx} style={{ marginBottom: 6 }}>{typeof item === 'object' ? `${item.item || item.condition || ''}${item.note ? `: ${item.note}` : ''}` : String(item)}</li>)}</ul></div>}
                  {verdictText && <div style={{ marginBottom: 20, padding: 12, background: 'rgba(38, 166, 154, 0.05)', borderRadius: 8, border: '1px solid rgba(38, 166, 154, 0.2)' }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Final Verdict</div><div style={{ fontWeight: 600, color: '#26a69a', fontSize: '15px' }}>{verdictText}</div></div>}
@@ -420,7 +444,7 @@ export function SignalDetailCard({
       {/* JSON TAB */}
       <div style={{ display: mainTab === "json" ? 'block' : 'none' }}>
         <pre className="snapshot-mono-v2" style={{ padding: 16, background: 'rgba(0,0,0,0.3)', borderRadius: 12, overflow: 'auto', fontSize: '12px' }}>
-          {JSON.stringify(response?.raw || response?.raw_json || {}, null, 2)}
+          {JSON.stringify(rawData, null, 2)}
         </pre>
       </div>
 
@@ -429,7 +453,7 @@ export function SignalDetailCard({
         {history?.loading ? <div className="minor-text">{preset.historyLoadingText}</div> : (
           <div className="telemetry-list">
             {(!history?.items || history.items.length === 0) ? <div className="minor-text">{preset.historyEmptyText}</div> : 
-              history.items.map((item, i) => <div key={i} className="telemetry-item">{renderHistoryItem(item, formatDateTime)}</div>)
+              history.items.map((item, i) => <div key={i} className="telemetry-item">{renderHistoryItem(item, i, { formatDateTime })}</div>)
             }
           </div>
         )}

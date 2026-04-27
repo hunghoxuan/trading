@@ -96,6 +96,7 @@ export default function SignalDetailPage() {
         <SignalDetailCard
           mode="signal"
           header={header}
+          response={t}
           chart={{
             enabled: true,
             detailTfTab,
@@ -111,6 +112,8 @@ export default function SignalDetailPage() {
           }}
           metaItems={[
             { label: "Signal SID", value: t.sid || t.signal_id || "-" },
+            { label: "Strategy", value: t.strategy || t.raw_json?.strategy || "-" },
+            { label: "Entry Model", value: t.entry_model || t.raw_json?.entry_model || "-" },
             { label: "Status", value: statusUi(t.status).label },
             { label: "Order Type", value: String(t?.raw_json?.order_type || t?.raw_json?.orderType || "limit").toUpperCase() },
             { label: "Signal TF", value: formatTimeframe(t.signal_tf || "-") },

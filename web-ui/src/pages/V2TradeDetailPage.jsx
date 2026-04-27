@@ -105,6 +105,7 @@ export default function TradeDetailPage() {
         <SignalDetailCard
           mode="trade"
           header={header}
+          response={trade}
           chart={{
             enabled: true,
             detailTfTab,
@@ -123,6 +124,8 @@ export default function TradeDetailPage() {
           metaItems={[
             { label: "Trade SID", value: trade.sid || trade.trade_id || "-" },
             { label: "Signal SID", value: trade.signal_id || "-" },
+            { label: "Strategy", value: trade.strategy || trade.metadata?.strategy || trade.raw_json?.strategy || "-" },
+            { label: "Entry Model", value: trade.entry_model || trade.metadata?.entry_model || trade.raw_json?.entry_model || "-" },
             { label: "Broker Ticket", value: brokerTicketOf(trade) },
             { label: "Account", value: trade.account_id || "-" },
             { label: "Source", value: trade.source_id || "-" },

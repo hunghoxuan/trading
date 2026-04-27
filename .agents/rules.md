@@ -1,6 +1,7 @@
 # Project Rules (Short)
 
 ## 1) Execution Defaults
+- never change UI, feature WITHOUT asking / confirm first. Always PLAN and CONFIRM the layout, ui, design, solution, db schema.. before implementation.
 - Use one-pass execution for clear requests.
 - Auto test + auto deploy when technically possible unless user says otherwise.
 - For code changes, run real checks and report actual results.

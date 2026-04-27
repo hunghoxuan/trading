@@ -1,6 +1,14 @@
 # Changelog (Latest first)
 
 ## 2026.04.27
+- [x] [13:36] [Web-UI/AI] [Author: Gemini] Task: **Signal & Trade Detail Data Restoration**.
+  - **Data Integrity**: Restored missing detail fields (Entry Model, Strategy, Signal SID, Note, Account, Ticket) to `metaItems` in Signal and Trade detail views.
+  - **Analysis UI**: Added a dedicated text section in the "Analysis" tab to display the full AI rationale rationale alongside trend/bias metrics.
+  - **History Logs**: Fixed timeframe selection logic for detail charts to ensure fallback to `{ signal_TF, 15m, 4H, 1D }` with proper sorting/deduplication.
+  - **Date Formatting**: Implemented "Today" and "Yesterday" labels in `showDateTime` utility for better readability in lists.
+  - **Header Cleanup**: Consolidated duplicate headers in `SignalDetailCard` to save space.
+- Version: 2026.04.27-1336
+
 - [x] [13:35] [Web-UI/AI] [Author: Gemini] Task: **Symbol Search & Profile Sync Hardening**.
   - **Search Box**: Decoupled `searchTerm` from `cfg.symbol`; search results filter as you type, but charts only update on selection or Enter. Removed 'UK100' as default.
   - **Symbol Chips**: Preserve visibility of other chips when one is selected; clicking a chip updates the selected symbol without narrowing the list to only that chip.
