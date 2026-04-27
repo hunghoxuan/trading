@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2133"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2135"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -9769,11 +9769,6 @@ const appHandler = async (req, res) => {
       account: account || null
     });
 
-    const taskId = task.task_id || task.signal_id;
-    await mt5AppendSignalEvent(taskId, "TASK_FETCH", {
-      type: task.type,
-      account: account || null
-    });
 
     // Flatten task for EA compatibility (top-level fields)
     return json(res, 200, {
