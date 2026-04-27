@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-0804"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-0805"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -4929,7 +4929,6 @@ const TWELVE_SYMBOL_MAP = {
   "BRENT": "BRENT/USD",
   "USOIL": "WTI/USD",
   "UKOIL": "BRENT/USD",
-};
   // Crypto Fallbacks (if regex fails)
   "BTCUSD": "BTC/USD",
   "ETHUSD": "ETH/USD",
