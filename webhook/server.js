@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-0705"); // Real AI Integrated
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-0719"); // Real AI Integrated
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -408,34 +408,40 @@ function estimateRequestedBarsRange({ tfNorm, bars, nowSec = nowUnixSec() }) {
 function serializeSnapshotForDb(snapshot) {
   if (!snapshot || typeof snapshot !== 'object') return snapshot;
   const bars = Array.isArray(snapshot.bars) ? snapshot.bars : [];
-  if (!bars.length || typeof bars[0] === 'string') return snapshot;
   
-  const optimized = { ...snapshot };
-  // Store as l,h,o,t,c (csv no header)
-  optimized.bars = bars.map(b => `${b.low},${b.high},${b.open},${b.time},${b.close}`);
-  optimized.format = "csv_v1";
-  return optimized;
+  // Store ONLY bars, sl, tp. Strip everything else.
+  return {
+    sl: Number.isFinite(snapshot.sl) ? snapshot.sl : null,
+    tp: Number.isFinite(snapshot.tp) ? snapshot.tp : null,
+    bars: bars.map(b => {
+      if (typeof b === 'string') return b;
+      // l,h,o,t,c
+      return `${b.low},${b.high},${b.open},${b.time},${b.close}`;
+    })
+  };
 }
 
-function deserializeSnapshotFromDb(snapshot) {
-  if (!snapshot || typeof snapshot !== 'object') return snapshot;
-  const bars = Array.isArray(snapshot.bars) ? snapshot.bars : [];
-  if (!bars.length || typeof bars[0] !== 'string') return snapshot;
+function deserializeSnapshotFromDb(dbData) {
+  if (!dbData || typeof dbData !== 'object') return null;
+  const barsRaw = Array.isArray(dbData.bars) ? dbData.bars : [];
   
-  const restored = { ...snapshot };
-  restored.bars = bars.map(s => {
-    const parts = String(s).split(',');
-    if (parts.length < 5) return null;
-    return {
-      low: Number(parts[0]),
-      high: Number(parts[1]),
-      open: Number(parts[2]),
-      time: Number(parts[3]),
-      close: Number(parts[4])
-    };
-  }).filter(Boolean);
-  delete restored.format;
-  return restored;
+  const snapshot = {
+    sl: dbData.sl,
+    tp: dbData.tp,
+    bars: barsRaw.map(s => {
+      if (typeof s !== 'string') return s;
+      const parts = s.split(',');
+      if (parts.length < 5) return null;
+      return {
+        low: Number(parts[0]),
+        high: Number(parts[1]),
+        open: Number(parts[2]),
+        time: Number(parts[3]),
+        close: Number(parts[4])
+      };
+    }).filter(Boolean)
+  };
+  return snapshot;
 }
 
 function marketDataMemoryKey(symbolNorm, tfNorm) {
@@ -561,37 +567,105 @@ async function marketDataRedisWrite(symbolNorm, tfNorm, snapshot) {
 
 async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
   const db = await mt5InitBackend();
+  // Find ANY overlapping rows
   const res = await db.query(
     `SELECT data
        FROM market_data
       WHERE symbol = $1
         AND tf = $2
-        AND bar_start <= $3
-        AND bar_end >= $4
-      ORDER BY updated_at DESC
-      LIMIT 1`,
+        AND NOT (bar_end < $3 OR bar_start > $4)
+      ORDER BY bar_start ASC`,
     [symbolNorm, tfNorm, reqStart, reqEnd],
   );
-  const row = res.rows?.[0];
-  if (!row || !row.data || typeof row.data !== "object") return null;
-  return deserializeSnapshotFromDb(row.data);
+  
+  if (!res.rows.length) return null;
+  
+  // Merge all found rows
+  const dedup = new Map();
+  let firstSl = null;
+  let firstTp = null;
+
+  res.rows.forEach(row => {
+    const snap = deserializeSnapshotFromDb(row.data);
+    if (!snap) return;
+    if (firstSl === null) firstSl = snap.sl;
+    if (firstTp === null) firstTp = snap.tp;
+    snap.bars.forEach(b => dedup.set(b.time, b));
+  });
+
+  const mergedBars = [...dedup.values()].sort((a, b) => a.time - b.time);
+  if (!mergedBars.length) return null;
+
+  return {
+    symbol_norm: symbolNorm,
+    tf_norm: tfNorm,
+    bar_start: mergedBars[0].time,
+    bar_end: mergedBars[mergedBars.length - 1].time,
+    bars: mergedBars,
+    sl: firstSl,
+    tp: firstTp
+  };
 }
 
 async function marketDataDbUpsert(symbolNorm, tfNorm, snapshot) {
-  const s = Number(snapshot?.bar_start);
-  const e = Number(snapshot?.bar_end);
   const bars = Array.isArray(snapshot?.bars) ? snapshot.bars : [];
-  if (!Number.isFinite(s) || !Number.isFinite(e) || !bars.length) return;
-  
-  const dbSnapshot = serializeSnapshotForDb(snapshot);
+  if (!bars.length) return;
+
   const db = await mt5InitBackend();
-  await db.query(
-    `INSERT INTO market_data (symbol, tf, bar_start, bar_end, data, updated_at)
-     VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
-     ON CONFLICT (symbol, tf, bar_start, bar_end)
-     DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
-    [symbolNorm, tfNorm, s, e, JSON.stringify(dbSnapshot)],
+  
+  // 1. Fetch existing overlapping or adjacent data to merge
+  // We expand the range slightly to catch nearby segments
+  const s = bars[0].time;
+  const e = bars[bars.length - 1].time;
+  
+  const existing = await db.query(
+    `SELECT id, data FROM market_data 
+      WHERE symbol = $1 AND tf = $2
+        AND NOT (bar_end < $3 OR bar_start > $4)`,
+    [symbolNorm, tfNorm, s - 3600, e + 3600]
   );
+
+  const dedup = new Map();
+  // Add existing bars
+  existing.rows.forEach(row => {
+    const snap = deserializeSnapshotFromDb(row.data);
+    if (snap?.bars) snap.bars.forEach(b => dedup.set(b.time, b));
+  });
+  // Add new bars
+  bars.forEach(b => dedup.set(b.time, b));
+
+  const mergedBars = [...dedup.values()].sort((a, b) => a.time - b.time);
+  const newStart = mergedBars[0].time;
+  const newEnd = mergedBars[mergedBars.length - 1].time;
+
+  // 2. Prepare minimal DB object
+  const finalSnapshot = {
+    sl: snapshot.sl,
+    tp: snapshot.tp,
+    bars: mergedBars
+  };
+  const dbData = serializeSnapshotForDb(finalSnapshot);
+
+  // 3. Replace all old overlapping rows with one consolidated row
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    if (existing.rows.length > 0) {
+      const ids = existing.rows.map(r => r.id);
+      await client.query('DELETE FROM market_data WHERE id = ANY($1)', [ids]);
+    }
+    await client.query(
+      `INSERT INTO market_data (symbol, tf, bar_start, bar_end, data, updated_at)
+       VALUES ($1, $2, $3, $4, $5::jsonb, NOW())`,
+      [symbolNorm, tfNorm, newStart, newEnd, JSON.stringify(dbData)]
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 function normalizeEmail(emailRaw) {
