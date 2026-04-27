@@ -1,0 +1,10 @@
+{
+    "ag-auto.clickPatterns": [
+        "Allow",
+        "Always Allow",
+        "Run",
+        "Keep Waiting",
+        "Accept",
+        "Accept all"
+    ]
+}

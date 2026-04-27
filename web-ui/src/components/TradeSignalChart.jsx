@@ -347,32 +347,28 @@ export default function TradeSignalChart({
             if (!ep) return;
 
             const isPrimary = index === 0;
-            const tfLabel = String(interval || '').toUpperCase();
-            const suffix = isPrimary ? '' : ` P${index + 1}`;
-            
-            // Determine direction
             const isBuy = tp > ep;
-            const actionLabel = isBuy ? 'B' : 'S';
+            const actionLabel = isBuy ? 'Buy' : 'Sell';
+            const pNum = index + 1;
             
             // Standard colors
             const greenColor = '#26a69a';
             const redColor = '#ef5350';
-            const primaryColor = isBuy ? greenColor : redColor;
 
             // Entry line: solid
             candleSeries.createPriceLine({ 
               price: ep, color: '#d1d4dc', lineWidth: isPrimary ? 2 : 1, lineStyle: 0, 
-              axisLabelVisible: true, title: `${tfLabel} ${actionLabel}${suffix}` 
+              axisLabelVisible: true, title: `${actionLabel}${pNum}` 
             });
             // SL line: dashed, always RED
             if (sp) candleSeries.createPriceLine({ 
               price: sp, color: redColor, lineWidth: isPrimary ? 2 : 1, lineStyle: 2, 
-              axisLabelVisible: true, title: `${tfLabel} SL${suffix}` 
+              axisLabelVisible: true, title: `SL${pNum}` 
             });
             // TP line: dotted, always GREEN
             if (tp) candleSeries.createPriceLine({ 
               price: tp, color: greenColor, lineWidth: isPrimary ? 2 : 1, lineStyle: 1, 
-              axisLabelVisible: true, title: `${tfLabel} TP${suffix}` 
+              axisLabelVisible: true, title: `TP${pNum}` 
             });
 
             // Entry → TP zone box: Reward zone = Green

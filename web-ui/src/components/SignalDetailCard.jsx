@@ -256,8 +256,11 @@ export function SignalDetailCard({
           {/* Main Plan (from analysis) or Default Editor */}
           <div style={{ border: '2px solid var(--accent-soft)', padding: 20, borderRadius: 12, background: 'rgba(255,255,255,0.03)' }}>
             {Array.isArray(response?.tradePlans) && response.tradePlans.length > 0 && (
-              <div className="minor-text" style={{ marginBottom: 16, fontWeight: '900', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '10px' }}>
-                Primary Trade Plan: {response.tradePlans[0].entryModel || response.tradePlans[0].strategy || "Suggested"}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center", marginBottom: 16, borderBottom: '1px solid var(--accent-soft)', paddingBottom: 10 }}>
+                <div style={{ fontWeight: '700', color: 'var(--accent)', fontSize: '14px', letterSpacing: '0.02em' }}>
+                  Trade Plan 1: <span style={{ fontWeight: '400', color: 'var(--muted)', marginLeft: 8 }}>{response.tradePlans[0].entryModel || response.tradePlans[0].strategy || "Primary Setup"}</span>
+                </div>
+                <div className="minor-text" style={{ fontSize: '10px', textTransform: 'uppercase', opacity: 0.6 }}>PRIMARY</div>
               </div>
             )}
             <TradePlanEditor
@@ -286,8 +289,10 @@ export function SignalDetailCard({
               const planId = `suggested_${pIdx + 1}`;
               return (
                 <div key={planId} style={{ border: '1px solid var(--border)', padding: 20, borderRadius: 12, background: 'rgba(255,255,255,0.015)' }}>
-                  <div className="minor-text" style={{ marginBottom: 16, fontWeight: '900', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '10px' }}>
-                    Suggested Plan {pIdx + 2}: {plan.entryModel || plan.strategy || "Alternative Scenario"}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center", marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+                    <div style={{ fontWeight: '700', color: 'var(--foreground)', fontSize: '14px', letterSpacing: '0.02em' }}>
+                      Trade Plan {pIdx + 2}: <span style={{ fontWeight: '400', color: 'var(--muted)', marginLeft: 8 }}>{plan.entryModel || plan.strategy || "Alternative Scenario"}</span>
+                    </div>
                   </div>
                   <ExtraPlanBlock 
                      planId={planId}
