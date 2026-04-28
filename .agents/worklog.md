@@ -1,7 +1,34 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-28 16:20
+- **Work Accomplished**:
+  - **Cron Engine Implementation**: Developed a 1-minute heartbeat cron system in `server.js` for background tasks.
+  - **Market Data Sync**: Implemented automated candle data synchronization for multiple symbols and timeframes, storing data in the `market_data` table.
+  - **Automated AI Analysis**: Created a framework for scheduled AI setup detection across symbol watchlists.
+  - **Settings UI Enhancement**: Added specialized forms in `SettingsPage.jsx` for managing `market_data_cron` and `ai_analysis_cron` settings, including status toggles and visual configuration previews.
+- **Pending Tasks**:
+  - [ ] Finalize the full automated execution bridge (AI analysis -> Trade creation).
+  - [ ] Add visual health indicators for the Cron engine in the dashboard.
+
+# Session Log: 2026-04-28 15:30
+- **Work Accomplished**:
+  - **Settings Redesign**: Refactored `SettingsPage.jsx` to a unified sidebar-detail layout. Consolidated Profile, Password, Execution, UI, and Logging into a modern, high-density navigation menu.
+  - **AI Chart Browser**: Implemented a multi-symbol live chart grid in `ChartSnapshotsPage.jsx` for the empty-state symbol view. Added global timeframe selection and pagination for the watchlist browser.
+  - **Design System**: Added new CSS tokens and components in `styles.css` for the sidebar and browser grid.
+- **Pending Tasks**:
+  - [ ] Implement asynchronous bar-data fetching (market-data cron).
+  - [ ] Implement AI Auto-Analysis cron.
+
+
 # Session Log: 2026-04-28 13:20
 - **Work Accomplished**:
+  - Started backlog item 2 market-data cron implementation:
+    - Added BullMQ dependency for Redis-backed queued bar-fetch jobs.
+    - Implemented chunked market-data storage using existing `market_data` rows with max 500 bars per chunk.
+    - Normalized provider bars to UTC timestamps and kept timezone as display/settings concern, defaulting to `America/New_York`.
+    - Added user_settings-backed market-data cron state updates (`last_sync`) instead of a new sync-state table.
+    - Added async/batched market data cron queue with inline fallback if BullMQ/Redis is unavailable.
+  - Added user-requested backlog items for Settings page redesign, AI page chart browser, market-data bar cron/cache sync, and AI auto-analysis cron.
   - Added mandatory planning/confirmation rule to `AI.md` and `.agents/rules.md`: agents must propose detailed design/plan/solution and ask confirmation questions before implementing UI/layout/feature/DB/schema/tech-stack/architecture changes.
   - Verified EA bulk closed-history sync is actively posting to `/v2/ea/trades/sync-bulk`.
   - Found production bulk sync failure: server route crashed with `pool is not defined`, so EA requests arrived but could not update VPS rows.
