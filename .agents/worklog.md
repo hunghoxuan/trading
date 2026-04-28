@@ -1,5 +1,21 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-28 09:58
+- **Conversation ID**: current Codex session
+- **Work Accomplished**:
+  - **EA/VPS Sync Review**:
+    - Reviewed EA history sync, active state sync, broker sync reconciliation, and Trades UI PnL display path.
+    - Confirmed production DB has two recent closed trades still missing realized PnL: BTCUSD ticket `1611966110` and UK100 ticket `1613165038`.
+  - **Sync Hardening Deployed**:
+    - Confirmed robust server-side ticket candidate reconciliation is present for position/deal/order ticket matching.
+    - Fixed EA active sync JSON construction to escape `signal_id` and avoid ticket truncation by using long ticket formatting.
+    - Bumped and deployed builds through production: server/EA `2026.04.28-0753`.
+    - Verified production health at `https://trade.mozasolution.com/webhook/mt5/health` returns version `2026.04.28-0753`.
+- **Pending Tasks / Backlog**:
+  - [ ] User must compile/load the updated `mql5/TVBridgeEA.mq5` build `2026-04-28.0753` in MT5 so the terminal stops sending malformed `/mt5/ea/sync-v2` payloads and resends 7-day closed history.
+  - [ ] After the updated EA runs for one history-sync cycle (~5 minutes), verify BTCUSD `1611966110` and UK100 `1613165038` receive `pnl_realized`.
+  - [ ] If still missing, collect MT5 Experts log lines for `SYNC`, `sync-bulk`, and tickets `1611966110` / `1613165038`.
+
 # Session Log: 2026-04-27 16:00
 - **Conversation ID**: 97a220ca-bbdc-4502-9c38-09672fa77008
 - **Work Accomplished**:
