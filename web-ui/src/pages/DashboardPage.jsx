@@ -130,6 +130,7 @@ function TableBlock({ title, rows, noun = "ITEMS", nameFormatter = null }) {
 
 export default function DashboardPage() {
   const [data, setData] = useState(null);
+  const [accounts, setAccounts] = useState([]);
   const [error, setError] = useState("");
   const [lastRefreshAt, setLastRefreshAt] = useState(null);
   const [filters, setFilters] = useState({
@@ -148,8 +149,12 @@ export default function DashboardPage() {
     if (inFlightRef.current) return;
     inFlightRef.current = true;
     try {
-      const resp = await api.dashboardAdvanced(filters);
+      const [resp, accs] = await Promise.all([
+        api.dashboardAdvanced(filters),
+        api.v2Accounts()
+      ]);
       setData(resp);
+      setAccounts(Array.isArray(accs?.items) ? accs.items : []);
       setError("");
       setLastRefreshAt(new Date());
     } catch (e) {
@@ -189,6 +194,28 @@ export default function DashboardPage() {
           Last refreshed: {lastRefreshAt ? showDateTime(lastRefreshAt) : "-"} (auto {Math.round(AUTO_REFRESH_MS/1000)}s)
         </span>
       </div>
+      <div className="heartbeat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
+        {accounts.filter(a => a.status === 'ACTIVE').map(acc => {
+          const lastSync = acc.updated_at || acc.created_at;
+          const lastSyncDate = lastSync ? new Date(lastSync) : null;
+          const diffMin = lastSyncDate ? (new Date() - lastSyncDate) / 60000 : 999;
+          const isOnline = diffMin < 5;
+          const isIdle = diffMin >= 5 && diffMin < 60;
+          
+          return (
+            <div key={acc.account_id} className="panel heartbeat-card" style={{ padding: '10px 14px', borderLeft: `3px solid ${isOnline ? 'var(--success)' : isIdle ? 'var(--warning)' : 'var(--error)'}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700 }}>{acc.name || acc.account_id}</span>
+                <span className={`status-dot ${isOnline ? 'online' : isIdle ? 'idle' : 'offline'}`} />
+              </div>
+              <div className="minor-text" style={{ fontSize: '10px', marginTop: 4 }}>
+                {isOnline ? 'SYNCED' : isIdle ? 'IDLE' : 'OFFLINE'} · {lastSyncDate ? showDateTime(lastSyncDate) : 'Never'}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       <div className="toolbar-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px' }}>
         <div className="toolbar-group dashboard-summary-highlights" style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
           <div className="summary-item">

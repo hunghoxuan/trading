@@ -179,18 +179,18 @@ export function TradePlanEditor({
             </button>
           ) : null}
           {effectiveShowSave ? (
-            <button className="secondary-button" type="button" onClick={onSave} disabled={controlsDisabled || typeof onSave !== "function"}>
-              {busy?.save ? "Saving..." : resolvedSaveLabel}
+            <button className={`secondary-button ${busy?.save ? "btn-busy" : ""}`} type="button" onClick={onSave} disabled={controlsDisabled || typeof onSave !== "function"}>
+              {busy?.save ? <div className="spinner" style={{ width: 14, height: 14 }} /> : resolvedSaveLabel}
             </button>
           ) : null}
           {effectiveShowAddSignal ? (
-            <button className="secondary-button" type="button" onClick={() => onAddSignal?.(value)} disabled={controlsDisabled || typeof onAddSignal !== "function"}>
-              {busy?.signal ? "Adding..." : addSignalLabel}
+            <button className={`secondary-button ${busy?.signal ? "btn-busy" : ""}`} type="button" onClick={() => onAddSignal?.(value)} disabled={controlsDisabled || typeof onAddSignal !== "function"}>
+              {busy?.signal ? <div className="spinner" style={{ width: 14, height: 14 }} /> : addSignalLabel}
             </button>
           ) : null}
           {effectiveShowAddTrade ? (
-            <button className="primary-button" type="button" onClick={() => onAddTrade?.(value)} disabled={controlsDisabled || typeof onAddTrade !== "function"}>
-              {busy?.trade ? "Adding..." : addTradeLabel}
+            <button className={`primary-button ${busy?.trade ? "btn-busy" : ""}`} type="button" onClick={() => onAddTrade?.(value)} disabled={controlsDisabled || typeof onAddTrade !== "function"}>
+              {busy?.trade ? <div className="spinner" style={{ width: 14, height: 14 }} /> : addTradeLabel}
             </button>
           ) : null}
         </div>

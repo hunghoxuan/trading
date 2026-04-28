@@ -3,44 +3,55 @@
 
 #include <Trade/Trade.mqh>
 
-input string InpServerBaseUrl = "https://trade.mozasolution.com/webhook";
-input string InpEaApiKey      = "acc_fab38ed32ecde9b28b3dd33d8be10a77da6a";
-input int    InpPollSeconds   = 2;
-input string InpSymbolSuffix  = "";   // Example: ".m" or "-pro"
-input long   InpMagic         = 20260411;
-input int    InpDeviationPts  = 20;
-input int    InpStopBufferPts = 50;   // Extra safety distance (points) on top of broker min stop distance.
-input bool   InpUseMarginPercentSizing = false; // Set false to prioritize Risk USD / Stop Loss gap distance over strict arbitrary broker Margin caps.
-input double InpMarginPercentOfBalance = 100.0; // Margin budget as % of ACCOUNT_BALANCE.
-input double InpMarginSafetyPercent    = 98.0; // Also cap by this % of current free margin to avoid broker margin-outs.
-input bool   InpUseRiskPercentSizing = true; // true: lots = risk% of balance / SL distance.
-input double InpMaxRiskPct           = 1.0;  // Strict max risk % of ACCOUNT_BALANCE per trade.
-input double InpFallbackFixedLot     = 0.01; // Used when risk sizing cannot be calculated.
-input bool   InpHardFailOnMarginPrecheck = false; // true: stop immediately on margin precheck fail; false: still try broker with min lot once.
-input int    InpStopRetrySeconds = 5; // Retry interval for attaching SL/TP after order open.
-input int    InpStopRetryMaxAttempts = 24; // Max retry attempts (24 * 5s = 2 minutes by default).
-input bool   InpEnableVirtualGuard = true; // Track and close positions by virtual SL/TP rules.
-input int    InpVirtualFallbackSLPts = 300; // If SL missing, use this fallback distance in points.
-input double InpVirtualFallbackRR = 1.5; // If TP missing, TP = entry +/- risk * RR.
-input double InpVirtualMinRR = 1.0; // Enforce minimum RR by extending TP if needed.
-input double InpVirtualBreakEvenR = 1.0; // Move virtual SL to entry at this R multiple.
-input double InpVirtualTrailStartR = 1.5; // Start trailing after this R multiple.
-input double InpVirtualTrailGivebackR = 0.7; // Keep this much R as giveback while trailing.
-input int    InpVirtualMaxHoldMinutes = 0; // 0=disable time stop, else close after minutes.
-input bool   InpStrictSymbolResolve = true;   // Ignore signal if symbol cannot be resolved.
-input bool   InpEnableDuplicateGate = true;   // Ignore duplicated signal_id.
-input int    InpDedupKeepSeconds    = 86400;  // Keep processed signal_id cache for this many seconds.
-input int    InpMaxSignalAgeSeconds = 7200;   // 0 = disable. Ignore signal if too old.
-input bool   InpBacktestMode        = false;  // Replay signals from file in Strategy Tester.
-input string InpBacktestFileCommon  = "tvbridge_signals.csv"; // Common/Files CSV.
-input bool   InpBacktestHasHeader   = true;
-input bool   InpShowDebugPanel      = true;   // Show EA state on chart via Comment().
-input bool   InpEnableTradeEventAck = true; // Send START/TP/SL updates from trade transactions.
+//--- 1. CONNECTION & IDENTITY
+input string InpServerBaseUrl = "https://trade.mozasolution.com/webhook"; // VPS Webhook URL
+input string InpEaApiKey      = "acc_fab38ed32ecde9b28b3dd33d8be10a77da6a"; // EA API Key
+input int    InpPollSeconds   = 2;           // Polling Frequency (seconds)
+input long   InpMagic         = 20260411;    // Magic Number (Unique ID for this EA)
+
+//--- 2. FEATURES (ON/OFF)
+input bool   InpDisableRemoteLog    = false; // Disable Remote Logging (VPS)
+input bool   InpEnableTradeEventAck = true;  // Sync Trade Events to VPS (START/TP/SL)
+input bool   InpEnableVirtualGuard  = true;  // Enable Virtual SL/TP & Trailing
+input bool   InpEnableDuplicateGate = true;  // Prevent Duplicate Signals
+input bool   InpStrictSymbolResolve = true;  // Strict Symbol Matching
+input bool   InpShowDebugPanel      = true;  // Show EA State on Chart
+
+//--- 3. RISK & FORMULA VARIABLES
+input bool   InpUseRiskPercentSizing = true; // Use % Risk Sizing
+input double InpMaxRiskPct           = 1.0;  // Max Risk % per Trade
+input bool   InpUseMarginPercentSizing = false; // Use Margin Cap Sizing
+input double InpMarginPercentOfBalance = 100.0; // Margin Budget (% of Balance)
+input double InpMarginSafetyPercent    = 98.0; // Margin Safety Cap (%)
+input double InpFallbackFixedLot     = 0.01; // Fallback Lot (if sizing fails)
+input bool   InpHardFailOnMarginPrecheck = false; // Stop on Margin Fail
+
+//--- 4. VIRTUAL GUARD & TRAILING RULES
+input double InpVirtualBreakEvenR    = 1.0;  // BE Profit (R-Multiple)
+input double InpVirtualTrailStartR   = 1.5;  // Trail Start (R-Multiple)
+input double InpVirtualTrailGivebackR = 0.7; // Trail Giveback (R-Multiple)
+input int    InpVirtualMaxHoldMinutes = 0;   // Time Stop (0=Disabled)
+input int    InpVirtualFallbackSLPts = 300; // Fallback SL distance
+input double InpVirtualFallbackRR    = 1.5; // Fallback RR for TP
+input double InpVirtualMinRR         = 1.0; // Min RR enforcement
+
+//--- 5. EXECUTION & SAFETY DEFAULTS
+input string InpSymbolSuffix         = "";   // Symbol Suffix (e.g. .m, -pro)
+input int    InpDeviationPts         = 20;   // Max Slippage (Points)
+input int    InpStopBufferPts        = 50;   // Broker Stop Buffer (Points)
+input int    InpMaxSignalAgeSeconds  = 7200; // Max Signal Age (Seconds)
+input int    InpDedupKeepSeconds     = 86400; // Duplicate Cache Duration (Seconds)
+input int    InpStopRetrySeconds     = 5;    // SL/TP Retry Interval
+input int    InpStopRetryMaxAttempts = 24;   // SL/TP Max Retries
+
+//--- 6. SYSTEM & SIMULATION
+sinput string InpMappingFile         = "TVBridge_Mappings.csv"; // Internal ticket mapping file
+input bool    InpBacktestMode        = false; // Replay signals from CSV
+input string  InpBacktestFileCommon  = "tvbridge_signals.csv";
+input bool    InpBacktestHasHeader   = true;
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-27.2135";
-
-input string InpMappingFile = "TVBridge_Mappings.csv";
+string EA_BUILD_VERSION = "2026-04-28.0620";
 
 CTrade trade;
 
@@ -360,7 +371,7 @@ bool HttpGet(const string url, string &response)
    g_lastHttpCode = 0;
    g_lastHttpError = "";
    ResetLastError();
-   int code = WebRequest("GET", url, headers, 5000, post, result, headers);
+   int code = WebRequest("GET", url, headers, 10000, post, result, headers);
    if(code == -1)
    {
       int err = GetLastError();
@@ -399,7 +410,7 @@ bool HttpPostJsonWithResponse(const string url, const string body, string &respo
    g_lastHttpCode = 0;
    g_lastHttpError = "";
    ResetLastError();
-   int code = WebRequest("POST", url, headers, 5000, data, result, headers);
+   int code = WebRequest("POST", url, headers, 10000, data, result, headers);
    if(code == -1)
    {
       int err = GetLastError();
@@ -1672,6 +1683,21 @@ string IsoTime(datetime t)
    return StringFormat("%04d-%02d-%02dT%02d:%02d:%02dZ", dt.year, dt.mon, dt.day, dt.hour, dt.min, dt.sec);
 }
 
+void RemoteLog(string msg, string level = "INFO")
+{
+   Print(msg); // Always print locally to terminal
+   if(InpDisableRemoteLog)
+      return;
+
+   string body = "{";
+   body += "\"account_id\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + "\",";
+   body += "\"level\":\"" + JsonEscape(level) + "\",";
+   body += "\"message\":\"" + JsonEscape(msg) + "\"";
+   body += "}";
+
+   HttpPostJson(BuildApiUrl("/v2/ea/log"), body);
+}
+
 void Ack(const string signalId, const string status, const string ticket, const string err)
 {
    string openTimeIso = "";
@@ -1811,30 +1837,15 @@ void ProcessAckQueue()
       if(leaseToken != "" && StringFind(body, "\"lease_token\"") < 0) {
          body = StringSubstr(body, 0, StringLen(body)-1) + ",\"lease_token\":\"" + JsonEscape(leaseToken) + "\"}";
       }
-      if(StringFind(body, "\"trade_id\"") < 0 || StringFind(body, "\"lease_token\"") < 0) {
-         Print("Reliable Ack SKIP (missing v2 context): id=", signalId, " trade_id=", tradeId, " lease_token=", leaseToken);
-         g_ackQRetryCount[i]++;
-         if(g_ackQRetryCount[i] >= 100)
-         {
-            Print("Reliable Ack GAVE UP (missing v2 context): id=", signalId);
-            continue;
-         }
-         if(w != i)
-         {
-            g_ackQSignalId[w] = g_ackQSignalId[i];
-            g_ackQStatus[w] = g_ackQStatus[i];
-            g_ackQTicket[w] = g_ackQTicket[i];
-            g_ackQError[w] = g_ackQError[i];
-            g_ackQBody[w] = g_ackQBody[i];
-            g_ackQRetryCount[w] = g_ackQRetryCount[i];
-         }
-         w++;
-         continue;
+
+      // If missing v2 context, fallback to legacy endpoint instead of blocking the queue
+      if(tradeId == "" || leaseToken == "") {
+         url = BuildApiUrl("/mt5/ea/ack");
       }
 
       if(HttpPostJson(url, body))
       {
-         Print("Reliable Ack SENT OK: status=", g_ackQStatus[i], " id=", signalId, " url=", url);
+         RemoteLog("Reliable Ack SENT OK: status=" + g_ackQStatus[i] + " id=" + signalId + " url=" + url);
          continue;
       }
       
@@ -1853,7 +1864,7 @@ void ProcessAckQueue()
          w++;
       }
       else {
-         Print("Reliable Ack GAVE UP: status=", g_ackQStatus[i], " id=", g_ackQSignalId[i]);
+         RemoteLog("Reliable Ack GAVE UP: status=" + g_ackQStatus[i] + " id=" + g_ackQSignalId[i], "ERROR");
       }
    }
    ArrayResize(g_ackQSignalId, w);
@@ -2725,7 +2736,8 @@ void OnTimer()
 
 void SyncClosedHistory()
 {
-   if(!HistorySelect(TimeCurrent() - 86400 * 3, TimeCurrent()))
+   // Increased window to 7 days for more robust auditing
+   if(!HistorySelect(TimeCurrent() - 86400 * 7, TimeCurrent()))
       return;
 
    int total = HistoryDealsTotal();
@@ -2735,17 +2747,22 @@ void SyncClosedHistory()
    for(int i = total - 1; i >= 0; i--)
    {
       ulong ticket = HistoryDealGetTicket(i);
-      if(HistoryDealGetInteger(ticket, DEAL_ENTRY) != DEAL_ENTRY_OUT)
+      long entryType = HistoryDealGetInteger(ticket, DEAL_ENTRY);
+      
+      // Include DEAL_ENTRY_OUT_BY for hedging accounts or close-by operations
+      if(entryType != DEAL_ENTRY_OUT && entryType != DEAL_ENTRY_OUT_BY)
          continue;
 
       long posId = HistoryDealGetInteger(ticket, DEAL_POSITION_ID);
       double pnl = HistoryDealGetDouble(ticket, DEAL_PROFIT) + HistoryDealGetDouble(ticket, DEAL_COMMISSION) + HistoryDealGetDouble(ticket, DEAL_SWAP);
       datetime time = (datetime)HistoryDealGetInteger(ticket, DEAL_TIME);
+      string sym = HistoryDealGetString(ticket, DEAL_SYMBOL);
+      double vol = HistoryDealGetDouble(ticket, DEAL_VOLUME);
 
       if(updates != "") updates += ",";
-      updates += "{\"ticket\":\"" + IntegerToString((int)posId) + "\",\"pnl\":" + DoubleToString(pnl, 2) + ",\"status\":\"CLOSED\",\"close_time\":" + IntegerToString((int)time) + "}";
+      updates += "{\"ticket\":\"" + IntegerToString((int)posId) + "\",\"pnl\":" + DoubleToString(pnl, 2) + ",\"status\":\"CLOSED\",\"close_time\":" + IntegerToString((int)time) + ",\"symbol\":\"" + sym + "\",\"volume\":" + DoubleToString(vol, 2) + "}";
       count++;
-      if(count >= 20) break; 
+      if(count >= 100) break; // Increased batch size to 100
    }
 
    if(count > 0)

@@ -1434,10 +1434,6 @@ get_data_strategy_trade_plan(int stratId, bool isBuy, float rrInput) =>
     float target = isBuy ? (entry + risk * rrv) : (entry - risk * rrv)
     [entry, stop, target, rrv]
 
-get_data_strategy_name_by_id(int stratId) =>
-    string out = "Strategy"
-    if array.size(STRATEGIES) > 0
-        for i = 0 to array.size(STRATEGIES) - 1
             KitCore.Strategy s = array.get(STRATEGIES, i)
             if s.id == stratId
                 out := s.name
@@ -1622,239 +1618,151 @@ process_data_strategies(int tfSec, int biasDir, bool evtVwapBull, bool evtVwapBe
     int bestStratId = 0
     int bestScore = 0
     int bestEffect = 0
-    string dbg = ""
+    
     tech = get_data_local_technical_ctx(timeframe.period)
-    float ema9   = tech.ema9
-    float ema21  = tech.ema21
-    float ema50  = tech.ema50
-    float ema200 = tech.ema200
-    float rsi14  = tech.rsi14
-    float adx14  = tech.adx14
+    
+    // ── Pre-calculate all dynamic triggers to ensure historical consistency ──
+    bool crossVwapUp = ta.crossover(close, tech.vwap)
+    bool crossVwapDn = ta.crossunder(close, tech.vwap)
+    bool crossEma9_21Up = ta.crossover(tech.ema9, tech.ema21)
+    bool crossEma9_21Dn = ta.crossunder(tech.ema9, tech.ema21)
+    bool crossEma20_50Up = ta.crossover(tech.ema20, tech.ema50)
+    bool crossEma20_50Dn = ta.crossunder(tech.ema20, tech.ema50)
+    bool crossEma50_200Up = ta.crossover(tech.ema50, tech.ema200)
+    bool crossEma50_200Dn = ta.crossunder(tech.ema50, tech.ema200)
+    bool crossStochUp = ta.crossover(tech.stochK, tech.stochD)
+    bool crossStochDn = ta.crossunder(tech.stochK, tech.stochD)
+    
+    float sma200w = ta.sma(close, 200)
+    float atrw = ta.atr(14)
+    [tDiv, _] = KitCore.div_check_all(tech.rsi14, searchdiv, prd, maxbars, dontconfirm, ph_positions, pl_positions, ph_vals, pl_vals)
+
+    bool allowBuy = KitCore.bias_allows_direction(biasDir, "Buy")
+    bool allowSell = KitCore.bias_allows_direction(biasDir, "Sell")
 
     for i = 0 to array.size(STRATEGIES) - 1
         s = array.get(STRATEGIES, i)
-        if not get_data_strategy_enabled(s.id)
-            continue
-        if not get_data_is_strategy_applicable(s, tfSec)
+        if not get_data_strategy_enabled(s.id) or not get_data_is_strategy_applicable(s, tfSec)
             continue
 
-        // Candidate outputs (0 means "no signal").
         string candDir = ""
         int candScore = 0
         string candWhy = ""
 
         if s.id == STRAT_ID_VWAP_EMA_CROSS
-            if KitCore.bias_allows_direction(biasDir, "Buy") and close > tech.vwap and ta.crossover(ema9, ema21)
-                candDir := "Buy"
-                candScore := 4
-                candWhy := "VWAP bullish + EMA9 crosses above EMA21."
-            if KitCore.bias_allows_direction(biasDir, "Sell") and close < tech.vwap and ta.crossunder(ema9, ema21)
-                candDir := "Sell"
-                candScore := 4
-                candWhy := "VWAP bearish + EMA9 crosses below EMA21."
+            if allowBuy and close > tech.vwap and crossEma9_21Up
+                candDir := "Buy", candScore := 4, candWhy := "VWAP bullish + EMA9 crosses above EMA21."
+            if allowSell and close < tech.vwap and crossEma9_21Dn
+                candDir := "Sell", candScore := 4, candWhy := "VWAP bearish + EMA9 crosses below EMA21."
 
         else if s.id == STRAT_ID_EMA_STOCH_PULLBACK
-            bool upTrend = tech.ema50Up
-            bool dnTrend = tech.ema50Down
-            float k = tech.stochK
-            float d = tech.stochD
-            bool pullbackBuy = low <= ema21 and close >= ema21
-            bool pullbackSell = high >= ema21 and close <= ema21
-            bool stochBuy = ta.crossover(k, d) and k < 20
-            bool stochSell = ta.crossunder(k, d) and k > 80
-            if KitCore.bias_allows_direction(biasDir, "Buy") and upTrend and pullbackBuy and stochBuy
-                candDir := "Buy"
-                candScore := 4
-                candWhy := "EMA50 rising + pullback to EMA21 + Stoch cross up (<20)."
-            if KitCore.bias_allows_direction(biasDir, "Sell") and dnTrend and pullbackSell and stochSell
-                candDir := "Sell"
-                candScore := 4
-                candWhy := "EMA50 falling + pullback to EMA21 + Stoch cross down (>80)."
+            bool pullbackBuy = low <= tech.ema21 and close >= tech.ema21
+            bool pullbackSell = high >= tech.ema21 and close <= tech.ema21
+            if allowBuy and tech.ema50Up and pullbackBuy and crossStochUp and tech.stochK < 20
+                candDir := "Buy", candScore := 4, candWhy := "EMA50 rising + pullback to EMA21 + Stoch cross up (<20)."
+            if allowSell and tech.ema50Down and pullbackSell and crossStochDn and tech.stochK > 80
+                candDir := "Sell", candScore := 4, candWhy := "EMA50 falling + pullback to EMA21 + Stoch cross down (>80)."
 
         else if s.id == STRAT_ID_EMA200_BB_SQUEEZE
-            float bbU = tech.bbUpper
-            float bbL = tech.bbLower
-            bool squeeze = tech.bbSqueeze
-            bool biasBull = close > ema200 and rsi14 > 50
-            bool biasBear = close < ema200 and rsi14 < 50
-            if KitCore.bias_allows_direction(biasDir, "Buy") and biasBull and squeeze and close > bbU
-                candDir := "Buy"
-                candScore := 4
-                candWhy := "EMA200 bull + RSI>50 + BB squeeze + close above upper band."
-            if KitCore.bias_allows_direction(biasDir, "Sell") and biasBear and squeeze and close < bbL
-                candDir := "Sell"
-                candScore := 4
-                candWhy := "EMA200 bear + RSI<50 + BB squeeze + close below lower band."
+            if allowBuy and close > tech.ema200 and tech.rsi14 > 50 and tech.bbSqueeze and close > tech.bbUpper
+                candDir := "Buy", candScore := 4, candWhy := "EMA200 bull + RSI>50 + BB squeeze + close above upper band."
+            if allowSell and close < tech.ema200 and tech.rsi14 < 50 and tech.bbSqueeze and close < tech.bbLower
+                candDir := "Sell", candScore := 4, candWhy := "EMA200 bear + RSI<50 + BB squeeze + close below lower band."
 
         else if s.id == STRAT_ID_ICHIMOKU_MACD_FLIP
-            if KitCore.bias_allows_direction(biasDir, "Buy") and tech.ichiAboveCloud and tech.macdFlipUp
-                candDir := "Buy"
-                candScore := 4
-                candWhy := "Price above Kumo + MACD histogram flips up."
-            if KitCore.bias_allows_direction(biasDir, "Sell") and tech.ichiBelowCloud and tech.macdFlipDn
-                candDir := "Sell"
-                candScore := 4
-                candWhy := "Price below Kumo + MACD histogram flips down."
+            if allowBuy and tech.ichiAboveCloud and tech.macdFlipUp
+                candDir := "Buy", candScore := 4, candWhy := "Price above Kumo + MACD histogram flips up."
+            if allowSell and tech.ichiBelowCloud and tech.macdFlipDn
+                candDir := "Sell", candScore := 4, candWhy := "Price below Kumo + MACD histogram flips down."
 
         else if s.id == STRAT_ID_FIB_PULLBACK
-            bool bullTrend = tech.ema50 > tech.ema200
-            bool bearTrend = tech.ema50 < tech.ema200
-            bool buyNearFib = tech.fibNearBull
-            bool sellNearFib = tech.fibNearBear
-            if KitCore.bias_allows_direction(biasDir, "Buy") and bullTrend and buyNearFib
-                candDir := "Buy"
-                candScore := 3
-                candWhy := "Bull trend + pullback near ~0.618 with reclaim tolerance."
-            if KitCore.bias_allows_direction(biasDir, "Sell") and bearTrend and sellNearFib
-                candDir := "Sell"
-                candScore := 3
-                candWhy := "Bear trend + pullback near ~0.618 with rejection tolerance."
+            if allowBuy and tech.ema50 > tech.ema200 and tech.fibNearBull
+                candDir := "Buy", candScore := 3, candWhy := "Bull trend + pullback near ~0.618 with reclaim tolerance."
+            if allowSell and tech.ema50 < tech.ema200 and tech.fibNearBear
+                candDir := "Sell", candScore := 3, candWhy := "Bear trend + pullback near ~0.618 with rejection tolerance."
 
         else if s.id == STRAT_ID_SMA200_DIVERGENCE
-            float sma200w = ta.sma(close, 200)
-            float atrw = ta.atr(14)
             bool nearSma = math.abs(close - sma200w) <= atrw * 0.5
             if nearSma
-                float rsiW = ta.rsi(close, 14)
-                [tDiv, _] = KitCore.div_check_all(rsiW, searchdiv, prd, maxbars, dontconfirm, ph_positions, pl_positions, ph_vals, pl_vals)
-                if KitCore.bias_allows_direction(biasDir, "Buy") and tDiv == 1
-                    candDir := "Buy"
-                    candScore := 3
-                    candWhy := "Near SMA200 + regular bullish RSI divergence."
-                if KitCore.bias_allows_direction(biasDir, "Sell") and tDiv == 2
-                    candDir := "Sell"
-                    candScore := 3
-                    candWhy := "Near SMA200 + regular bearish RSI divergence."
+                if allowBuy and tDiv == 1
+                    candDir := "Buy", candScore := 3, candWhy := "Near SMA200 + regular bullish RSI divergence."
+                if allowSell and tDiv == 2
+                    candDir := "Sell", candScore := 3, candWhy := "Near SMA200 + regular bearish RSI divergence."
 
         else if s.id == STRAT_ID_ADX_EMA_CROSS
-            bool adxStrong = adx14 > 25
-            float ema20 = tech.ema20
-            // Reuse ema50 computed above instead of a separate ema50x.
-            if KitCore.bias_allows_direction(biasDir, "Buy") and adxStrong and ta.crossover(ema20, ema50)
-                candDir := "Buy"
-                candScore := 3
-                candWhy := "EMA20 crosses above EMA50 and ADX crosses above 25."
-            if KitCore.bias_allows_direction(biasDir, "Sell") and adxStrong and ta.crossunder(ema20, ema50)
-                candDir := "Sell"
-                candScore := 3
-                candWhy := "EMA20 crosses below EMA50 and ADX crosses above 25."
+            bool adxStrong = tech.adx14 > 25
+            if allowBuy and adxStrong and crossEma20_50Up
+                candDir := "Buy", candScore := 3, candWhy := "EMA20 crosses above EMA50 and ADX crosses above 25."
+            if allowSell and adxStrong and crossEma20_50Dn
+                candDir := "Sell", candScore := 3, candWhy := "EMA20 crosses below EMA50 and ADX crosses above 25."
 
         else if s.id == STRAT_ID_SWEEP
             [htf1Sw, _] = KitCore.get_htf_pair()
             string sweepTf = na(htf1Sw) ? timeframe.period : htf1Sw
             [topRef, btmRef] = KitSMC.get_first_swingrefs_around_price(sweepTf, 120, close)
-            bool sellSweep = false
-            bool buySweep = false
-            if not na(topRef)
-                float lvTop = topRef.price
-                sellSweep := KitSMC.sweep_reclaim_allowed(uiDisplayCombo, -1, lvTop, open, high, low, close, syminfo.mintick)
-            if not na(btmRef)
-                float lvBtm = btmRef.price
-                buySweep := KitSMC.sweep_reclaim_allowed(uiDisplayCombo, 1, lvBtm, open, high, low, close, syminfo.mintick)
-            if KitCore.bias_allows_direction(biasDir, "Buy") and buySweep
-                candDir := "Buy"
-                candScore := 4
-                candWhy := "Sweep low + reclaim (" + sweepTf + ")."
-            if KitCore.bias_allows_direction(biasDir, "Sell") and sellSweep
-                candDir := "Sell"
-                candScore := 4
-                candWhy := "Sweep high + reclaim (" + sweepTf + ")."
+            if allowBuy and not na(btmRef) and KitSMC.sweep_reclaim_allowed(uiDisplayCombo, 1, btmRef.price, open, high, low, close, syminfo.mintick)
+                candDir := "Buy", candScore := 4, candWhy := "Sweep low + reclaim (" + sweepTf + ")."
+            if allowSell and not na(topRef) and KitSMC.sweep_reclaim_allowed(uiDisplayCombo, -1, topRef.price, open, high, low, close, syminfo.mintick)
+                candDir := "Sell", candScore := 4, candWhy := "Sweep high + reclaim (" + sweepTf + ")."
 
         else if s.id == STRAT_ID_CANDLE_PATTERN
-            // Fires on confirmed bars only when a quality pattern (score ≥ 3) aligns with MTF bias.
-            // Strong reversal patterns (Engulfing, Marubozu, Stars, Kickers) score 3-5 natively.
             if cpShowPat and cpPatScore >= 3
-                if KitCore.bias_allows_direction(biasDir, "Buy") and cpIsBull
-                    string volTxt = cpVolBonus >= 2 ? " + extreme vol" : cpVolBonus >= 1 ? " + high vol" : ""
-                    candDir := "Buy"
-                    candScore := cpPatScore + cpVolBonus
-                    candWhy := cpAggName + volTxt + (cpAggStrength > 1 ? " (×" + str.tostring(cpAggStrength) + " confluence)" : "")
-                if KitCore.bias_allows_direction(biasDir, "Sell") and cpIsBear
-                    string volTxt = cpVolBonus >= 2 ? " + extreme vol" : cpVolBonus >= 1 ? " + high vol" : ""
-                    candDir := "Sell"
-                    candScore := cpPatScore + cpVolBonus
-                    candWhy := cpAggName + volTxt + (cpAggStrength > 1 ? " (×" + str.tostring(cpAggStrength) + " confluence)" : "")
+                string volTxt = cpVolBonus >= 2 ? " + extreme vol" : cpVolBonus >= 1 ? " + high vol" : ""
+                string conflTxt = cpAggStrength > 1 ? " (×" + str.tostring(cpAggStrength) + " confluence)" : ""
+                if allowBuy and cpIsBull
+                    candDir := "Buy", candScore := cpPatScore + cpVolBonus, candWhy := cpAggName + volTxt + conflTxt
+                if allowSell and cpIsBear
+                    candDir := "Sell", candScore := cpPatScore + cpVolBonus, candWhy := cpAggName + volTxt + conflTxt
 
         else if s.id == STRAT_ID_GOLDEN_DEATH_CROSS
-            // Reuse ema50 / ema200 computed above — no extra series needed.
-            if KitCore.bias_allows_direction(biasDir, "Buy") and ta.crossover(ema50, ema200)
-                candDir := "Buy"
-                candScore := 2
-                candWhy := "EMA50 crosses above EMA200 (macro bull shift)."
-            if KitCore.bias_allows_direction(biasDir, "Sell") and ta.crossunder(ema50, ema200)
-                candDir := "Sell"
-                candScore := 2
-                candWhy := "EMA50 crosses below EMA200 (macro bear shift)."
+            if allowBuy and crossEma50_200Up
+                candDir := "Buy", candScore := 2, candWhy := "EMA50 crosses above EMA200 (macro bull shift)."
+            if allowSell and crossEma50_200Dn
+                candDir := "Sell", candScore := 2, candWhy := "EMA50 crosses below EMA200 (macro bear shift)."
 
         else if s.id == STRAT_ID_STACK_BIAS
-            bool buyAligned = stackBiasDir == 1 and stackBuyCond
-            bool sellAligned = stackBiasDir == -1 and stackSellCond
-            if KitCore.bias_allows_direction(biasDir, "Buy") and buyAligned
-                candDir := "Buy"
-                candScore := math.max(3, stackBull + 1)
-                candWhy := "MA stack bullish + Kit bias aligned: EMA/SMA/RSI/VWAP confluence."
-            if KitCore.bias_allows_direction(biasDir, "Sell") and sellAligned
-                candDir := "Sell"
-                candScore := math.max(3, stackBear + 1)
-                candWhy := "MA stack bearish + Kit bias aligned: EMA/SMA/RSI/VWAP confluence."
+            if allowBuy and stackBiasDir == 1 and stackBuyCond
+                candDir := "Buy", candScore := math.max(3, stackBull + 1), candWhy := "MA stack bullish + Kit bias aligned: EMA/SMA/RSI/VWAP confluence."
+            if allowSell and stackBiasDir == -1 and stackSellCond
+                candDir := "Sell", candScore := math.max(3, stackBear + 1), candWhy := "MA stack bearish + Kit bias aligned: EMA/SMA/RSI/VWAP confluence."
 
         else if s.id == STRAT_ID_TPG_RSI_SCALP
             float myRsi = ta.rsi(close, tpgRsiLen)
-            bool rsiOB = myRsi >= tpgRsiOb
-            bool rsiOS = myRsi <= tpgRsiOs
-            float bullFib = (low - high) * tpgHammerBody + high
-            float bearFib = (high - low) * tpgHammerBody + low
-            float bearCandle = math.min(close, open)
-            float bullCandle = math.max(close, open)
-            bool hammer = bearCandle >= bullFib and rsiOS
-            bool shooting = bullCandle <= bearFib and rsiOB
+            bool rsiOB = myRsi >= tpgRsiOb, rsiOS = myRsi <= tpgRsiOs
+            float bullFib = (low - high) * tpgHammerBody + high, bearFib = (high - low) * tpgHammerBody + low
+            float bearCandle = math.min(close, open), bullCandle = math.max(close, open)
+            bool hammer = bearCandle >= bullFib and rsiOS, shooting = bullCandle <= bearFib and rsiOB
             bool twoGreenBars = close > open and close[1] > open[1] and rsiOS
             bool twoRedBars = close < open and close[1] < open[1] and rsiOB
-            bool bullE = close > open[1] and close[1] < open[1]
-            bool bearE = close < open[1] and close[1] > open[1]
+            bool bullE = close > open[1] and close[1] < open[1], bearE = close < open[1] and close[1] > open[1]
             bool tradeSignal = ((rsiOS or rsiOS[1]) and bullE) or ((rsiOB or rsiOB[1]) and bearE)
-            int buyScore = 0
-            int sellScore = 0
-            string whyB = ""
-            string whyS = ""
+            int buyScore = 0, sellScore = 0
+            string whyB = "", whyS = ""
             if tpgUseEngulf and tradeSignal and bullE
-                buyScore += 3
-                whyB += "engulfing+RSI OS, "
+                buyScore += 3, whyB += "engulfing+RSI OS, "
             if tpgUseEngulf and tradeSignal and bearE
-                sellScore += 3
-                whyS += "engulfing+RSI OB, "
+                sellScore += 3, whyS += "engulfing+RSI OB, "
             if tpgUseHammerShooting and hammer
-                buyScore += 2
-                whyB += "hammer+RSI OS, "
+                buyScore += 2, whyB += "hammer+RSI OS, "
             if tpgUseHammerShooting and shooting
-                sellScore += 2
-                whyS += "shooting+RSI OB, "
+                sellScore += 2, whyS += "shooting+RSI OB, "
             if tpgUseTwoBars and twoGreenBars
-                buyScore += 2
-                whyB += "two green bars+RSI OS, "
+                buyScore += 2, whyB += "two green bars+RSI OS, "
             if tpgUseTwoBars and twoRedBars
-                sellScore += 2
-                whyS += "two red bars+RSI OB, "
+                sellScore += 2, whyS += "two red bars+RSI OB, "
             if buyScore >= 2 and buyScore > sellScore
-                candDir := "Buy"
-                candScore := buyScore
-                candWhy := "TPG scalp: " + whyB
+                candDir := "Buy", candScore := buyScore, candWhy := "TPG scalp: " + whyB
             if sellScore >= 2 and sellScore > buyScore
-                candDir := "Sell"
-                candScore := sellScore
-                candWhy := "TPG scalp: " + whyS
+                candDir := "Sell", candScore := sellScore, candWhy := "TPG scalp: " + whyS
 
         bool hasCand = candDir != "" and candScore >= 2
         bool tpgWins = hasCand and s.id == STRAT_ID_TPG_RSI_SCALP
         bool better = tpgWins or (hasCand and (candScore > bestScore or (candScore == bestScore and s.effectiveness > bestEffect)))
         if better
-            string shortSetup = str.upper(s.shortName)
-            best := get_data_trade_signal(shortSetup, candDir, s.description + " " + candWhy, candScore, float(s.effectiveness) / 10.0)
-            bestStratId := s.id
-            bestScore := candScore
-            bestEffect := s.effectiveness
+            best := get_data_trade_signal(str.upper(s.shortName), candDir, s.description + " " + candWhy, candScore, float(s.effectiveness) / 10.0)
+            bestStratId := s.id, bestScore := candScore, bestEffect := s.effectiveness
 
-    [best, bestStratId, dbg]
+    [best, bestStratId, ""]
 
 // Aux state + strategy processing.
 int vwapPrev = vwap_bias_state

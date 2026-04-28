@@ -587,7 +587,9 @@ export default function SignalsPage() {
           <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)} disabled={bulkBusy}>
             {BULK_ACTIONS.map(s => <option key={s} value={s}>{s || "BULK ACTION..."}</option>)}
           </select>
-          <button type="button" className="primary-button" onClick={onBulkOk} disabled={bulkBusy || !bulkAction}>APPLY</button>
+          <button type="button" className={`primary-button ${bulkBusy ? "btn-busy" : ""}`} onClick={onBulkOk} disabled={bulkBusy || !bulkAction}>
+            {bulkBusy ? <div className="spinner" style={{ width: 14, height: 14 }} /> : "APPLY"}
+          </button>
           <button 
             type="button" 
             className="primary-button" 
@@ -600,7 +602,13 @@ export default function SignalsPage() {
       </div>
 
       <div className="logs-layout-split">
-        <div className="logs-list-pane">
+        <div className="logs-list-pane component-frozen-wrap">
+          {loading && (
+            <div className="frozen-overlay">
+              <div className="spinner" />
+              <span>REFRESHING...</span>
+            </div>
+          )}
           {error ? <div className="error">{error}</div> : null}
           {createMsg ? <div className="loading" style={{ padding: 10 }}>{createMsg}</div> : null}
           <div className="events-table-wrap">
@@ -695,7 +703,7 @@ export default function SignalsPage() {
                           {shouldShowPnl(t.status, t.pnl_money_realized) && <PnlDisplay value={t.pnl_money_realized} />}
                           <button
                             type="button"
-                            className="secondary-button"
+                            className={`secondary-button ${detailPlanBusy.trade ? "btn-busy" : ""}`}
                             style={{ marginTop: 6, width: "fit-content" }}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -704,7 +712,7 @@ export default function SignalsPage() {
                             disabled={detailPlanBusy.trade || (t.execution_status && t.execution_status !== "")}
                             title={t.execution_status ? `Trade already exists (${t.execution_status})` : ""}
                           >
-                            + Trade
+                            {detailPlanBusy.trade ? <div className="spinner" style={{ width: 12, height: 12 }} /> : "+ Trade"}
                           </button>
                         </div>
                       </td>
@@ -716,7 +724,13 @@ export default function SignalsPage() {
           </div>
         </div>
 
-        <div className="logs-detail-pane">
+        <div className="logs-detail-pane component-frozen-wrap">
+          {(detailPlanBusy.save || detailPlanBusy.trade || detailPlanBusy.signal) && (
+            <div className="frozen-overlay">
+              <div className="spinner" />
+              <span>PROCESSING...</span>
+            </div>
+          )}
           {createMode ? (
             <div className="panel" style={{ margin: 0 }}>
               <div className="panel-label">SIGNAL FORM</div>
@@ -763,7 +777,9 @@ export default function SignalsPage() {
                   <input value={createForm.note} onChange={(e) => setCreateForm((p) => ({ ...p, note: e.target.value }))} placeholder="Optional note" />
                 </label>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" className="primary-button" onClick={onCreateSignal} disabled={bulkBusy || !isSignalFormDirty}>{bulkBusy ? "💾 SAVING..." : "💾 SAVE SIGNAL"}</button>
+                  <button type="button" className={`primary-button ${bulkBusy ? "btn-busy" : ""}`} onClick={onCreateSignal} disabled={bulkBusy || !isSignalFormDirty}>
+                    {bulkBusy ? <div className="spinner" style={{ width: 14, height: 14 }} /> : "💾 SAVE SIGNAL"}
+                  </button>
                   <button type="button" className="secondary-button" onClick={() => setCreateMode(false)} disabled={bulkBusy}>✖ CANCEL</button>
                 </div>
               </div>

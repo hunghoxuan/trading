@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.27-2135"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-0620"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -9731,10 +9731,12 @@ const appHandler = async (req, res) => {
           SET execution_status = $1,
               pnl_realized = $2,
               closed_at = COALESCE(closed_at, $3, NOW()),
+              symbol = COALESCE($5, symbol),
+              execution_volume = COALESCE($6, execution_volume),
               updated_at = NOW()
           WHERE broker_trade_id = $4
           RETURNING trade_id, user_id
-        `, [stRaw, pnl, closeTime, ticket]);
+        `, [stRaw, pnl, closeTime, ticket, u.symbol || null, u.volume || null]);
         
         if (resUpd.rowCount > 0) {
           updatedCount++;
@@ -9750,6 +9752,25 @@ const appHandler = async (req, res) => {
       }
       return json(res, 200, { ok: true, updated: updatedCount });
     } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/ea/log") {
+    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    try {
+      const payload = await readJson(req);
+      if (!(await requireEaKey(req, res, url, payload))) return;
+      const accountId = String(payload.account_id || "unknown");
+      const level = String(payload.level || "INFO").toUpperCase();
+      const message = String(payload.message || "");
+      const b = await mt5Backend();
+      if (b.log) {
+        await b.log(null, 'ea_logs', { level, message, account_id: accountId }, CFG.mt5DefaultUserId);
+      }
+      console.log(`[EA LOG] [${accountId}] [${level}] ${message}`);
+      return json(res, 200, { ok: true });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message });
+    }
   }
 
   if (req.method === "GET" && url.pathname === "/mt5/ea/pull") {

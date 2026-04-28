@@ -14,7 +14,7 @@
               "type": "markdown",
               "state": {
                 "file": "plans/sprint.md",
-                "mode": "source",
+                "mode": "preview",
                 "source": false,
                 "backlinks": false
               },
@@ -135,7 +135,7 @@
       "bases:Create new base": false
     }
   },
-  "active": "4bf2b34a6a4ef4d8",
+  "active": "336f84509bfb892c",
   "lastOpenFiles": [
     "knowledge/popular_entry_models.md",
     "worklog.md",

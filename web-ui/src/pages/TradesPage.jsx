@@ -651,14 +651,22 @@ export default function TradesPage() {
           <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)} disabled={bulkBusy}>
             {BULK_ACTIONS.map((a) => <option key={a.value || "none"} value={a.value}>{a.label}</option>)}
           </select>
-          <button type="button" className="primary-button" disabled={!bulkAction || bulkBusy} onClick={onBulkApply}>APPLY</button>
+          <button type="button" className={`primary-button ${bulkBusy ? "btn-busy" : ""}`} disabled={!bulkAction || bulkBusy} onClick={onBulkApply}>
+            {bulkBusy ? <div className="spinner" style={{ width: 14, height: 14 }} /> : "APPLY"}
+          </button>
           <button type="button" className="primary-button" onClick={() => setCreateMode((v) => !v)}>{createMode ? "CANCEL" : "+ CREATE TRADE"}</button>
         </div>
       </div>
       {createMsg ? <div className="loading" style={{ padding: 10 }}>{createMsg}</div> : null}
 
       <div className="logs-layout-split">
-        <div className="logs-list-pane">
+        <div className="logs-list-pane component-frozen-wrap">
+          {loading && (
+            <div className="frozen-overlay">
+              <div className="spinner" />
+              <span>REFRESHING...</span>
+            </div>
+          )}
           {error ? <div className="error">{error}</div> : null}
           <div className="events-table-wrap">
             <table className="events-table">
@@ -798,7 +806,13 @@ export default function TradesPage() {
           </div>
         </div>
 
-        <div className="logs-detail-pane">
+        <div className="logs-detail-pane component-frozen-wrap">
+          {editBusy && (
+            <div className="frozen-overlay">
+              <div className="spinner" />
+              <span>UPDATING...</span>
+            </div>
+          )}
           {!selectedTrade ? (
             <div className="empty-state">SELECT A TRADE TO INSPECT DETAILS</div>
           ) : (
@@ -924,7 +938,9 @@ export default function TradesPage() {
                     <input style={{ gridColumn: "1/-1" }} value={createForm.note} onChange={(e) => setCreateForm((p) => ({ ...p, note: e.target.value }))} placeholder="Note" />
                   </div>
                   <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-                  <button type="button" className="primary-button" onClick={onCreateTrade} disabled={bulkBusy || !isCreateFormDirty}>{bulkBusy ? "💾 SAVING..." : "💾 SAVE TRADE"}</button>
+                    <button type="button" className={`primary-button ${bulkBusy ? "btn-busy" : ""}`} onClick={onCreateTrade} disabled={bulkBusy || !isCreateFormDirty}>
+                      {bulkBusy ? <div className="spinner" style={{ width: 14, height: 14 }} /> : "💾 SAVE TRADE"}
+                    </button>
                     <button type="button" className="secondary-button" onClick={() => setCreateMode(false)}>CANCEL</button>
                   </div>
                 </div>

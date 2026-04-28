@@ -24,8 +24,8 @@ const STRATEGY_CHECKLIST = {
 
 
 const DEFAULT_TEMPLATE_ID = "__default__";
+const AI_TEMPLATE_SETTING_TYPE = "ai_template";
 const SYMBOLS_SETTING_TYPE = "SYMBOLS";
-const SYMBOLS_SETTING_NAME = "WATCHLIST";
 
 const DEFAULT_WATCHLIST = [
   "ADAUSD", "AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD", "BTCUSD", "CADJPY", "DE40", "ETHUSD", 
@@ -146,14 +146,14 @@ function loadTemplates() {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
     return Array.isArray(parsed)
-      ? parsed.map((x) => ({ ...x, config: normalizeTemplateConfig(x?.config || {}) }))
+      ? parsed.map((x) => ({ ...x, id: x.id || x.name, config: normalizeTemplateConfig(x?.config || {}) }))
       : [];
   } catch {
     return [];
   }
 }
 
-function saveTemplates(next) {
+function saveTemplatesToLocal(next) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next || []));
 }
 
@@ -1581,20 +1581,84 @@ export default function ChartSnapshotsPage() {
     }
   };
 
-  const saveTemplate = () => {
+  const saveTemplate = async () => {
     const name = String(templateName || "").trim() || `${cfg.symbol} ${cfg.strategies.join("+")}`;
     const item = {
-      id: Date.now().toString(),
+      id: templateId && templateId !== DEFAULT_TEMPLATE_ID ? templateId : `t_${Date.now()}`,
       name,
       config: normalizeTemplateConfig(cfg),
       saved: new Date().toISOString(),
     };
-    const next = [item, ...templates.filter((x) => x.id !== item.id)].slice(0, 200);
-    setTemplates(next);
-    saveTemplates(next);
-    setTemplateId(item.id);
-    setTemplateName("");
-    setStatus({ type: "success", text: `Template saved: ${name}` });
+
+    setStatus({ type: "warning", text: "Saving template..." });
+    try {
+      await api.upsertSetting({
+        type: AI_TEMPLATE_SETTING_TYPE,
+        name: item.name,
+        data: item,
+        status: "active",
+      });
+
+      const next = [item, ...templates.filter((x) => x.name !== item.name)].slice(0, 200);
+      setTemplates(next);
+      saveTemplatesToLocal(next);
+      setTemplateId(item.id);
+      setTemplateName("");
+      setStatus({ type: "success", text: `Template saved: ${name}` });
+    } catch (e) {
+      console.error("[templates] Save failed:", e);
+      setStatus({ type: "error", text: `Save failed: ${e.message}` });
+    }
+  };
+
+  const deleteTemplate = async () => {
+    if (!templateId || templateId === DEFAULT_TEMPLATE_ID) return;
+    const found = templates.find((x) => x.id === templateId);
+    if (!found) return;
+
+    if (!window.confirm(`Delete template "${found.name}"?`)) return;
+
+    setStatus({ type: "warning", text: "Deleting template..." });
+    try {
+      await api.deleteSetting(AI_TEMPLATE_SETTING_TYPE, found.name);
+      const next = templates.filter((x) => x.id !== templateId);
+      setTemplates(next);
+      saveTemplatesToLocal(next);
+      setTemplateId("");
+      setTemplateName("");
+      setStatus({ type: "success", text: `Template deleted: ${found.name}` });
+    } catch (e) {
+      console.error("[templates] Delete failed:", e);
+      setStatus({ type: "error", text: `Delete failed: ${e.message}` });
+    }
+  };
+
+  const loadTemplatesFromDb = async () => {
+    try {
+      const out = await api.getSettings();
+      const list = Array.isArray(out?.settings) ? out.settings : [];
+      const rows = list.filter((x) => String(x?.type || "").toLowerCase() === AI_TEMPLATE_SETTING_TYPE);
+      
+      const dbTemplates = rows.map(r => ({
+        id: r.name, // Use name as ID for settings compatibility
+        name: r.name,
+        config: normalizeTemplateConfig(r.data?.config || r.data || {}),
+        saved: r.updated_at || r.created_at || new Date().toISOString()
+      }));
+
+      setTemplates(prev => {
+        // Merge with local storage (legacy), but DB takes priority
+        const next = [...dbTemplates];
+        prev.forEach(p => {
+          if (!next.find(n => n.name === p.name)) {
+            next.push(p);
+          }
+        });
+        return next;
+      });
+    } catch (err) {
+      console.warn("[templates] DB Load failed:", err.message);
+    }
   };
 
   const handleSelectTemplate = (id) => {
@@ -1689,6 +1753,7 @@ export default function ChartSnapshotsPage() {
 
   useEffect(() => {
     loadWatchlist();
+    loadTemplatesFromDb();
   }, []);
 
   useEffect(() => {
@@ -1801,6 +1866,9 @@ export default function ChartSnapshotsPage() {
           <input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name" />
         </div>
         <button className="primary-button snapshot-template-save-btn-v2" type="button" onClick={saveTemplate}>Save</button>
+        {templateId && templateId !== DEFAULT_TEMPLATE_ID && (
+          <button className="secondary-button" type="button" onClick={deleteTemplate} style={{ color: 'var(--bearish)' }}>Delete</button>
+        )}
       </div>
       <div className="snapshot-fields-v2 compact">
         <div className="snapshot-col-span-4">

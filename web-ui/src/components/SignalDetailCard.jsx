@@ -192,7 +192,7 @@ export function SignalDetailCard({
     return tabs;
   }, [chart?.enabled, response?.raw, response?.tradePlans, history?.enabled, metaItems]);
 
-  const [mainTab, setMainTab] = useState("info");
+  const [mainTab, setMainTab] = useState("chart");
   useEffect(() => {
     if (!availableTabs.includes(mainTab)) setMainTab(availableTabs[0] || "info");
   }, [availableTabs, mainTab]);
@@ -478,7 +478,14 @@ export function SignalDetailCard({
                   <div style={{ display: 'grid', gridTemplateColumns: chartModes.length > 1 ? '1fr 1fr' : '1fr', gap: 12 }}>
                     {chartModes.includes('static') && (
                       <div className="chart-wrapper static-wrapper">
-                        {loadingCharts && !snapshot ? <div className="chart-loading" style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>Loading {tf}...</div> : <TradeSignalChart symbol={chart?.symbol} interval={tf} analysisSnapshot={snapshot} entryPrice={chart?.entryPrice} slPrice={chart?.slPrice} tpPrice={chart?.tpPrice} />}
+                        {loadingCharts && !snapshot ? (
+                          <div className="chart-loading" style={{ minHeight: 280, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', gap: 12 }}>
+                            <div className="spinner" style={{ width: 28, height: 28 }} />
+                            <span>LOADING {tf.toUpperCase()}...</span>
+                          </div>
+                        ) : (
+                          <TradeSignalChart symbol={chart?.symbol} interval={tf} analysisSnapshot={snapshot} entryPrice={chart?.entryPrice} slPrice={chart?.slPrice} tpPrice={chart?.tpPrice} />
+                        )}
                       </div>
                     )}
                     {chartModes.includes('live') && (
