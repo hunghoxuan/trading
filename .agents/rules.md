@@ -1,7 +1,9 @@
 # Project Rules (Short)
 
 ## 1) Execution Defaults
-- never change UI, feature WITHOUT asking / confirm first. Always PLAN and CONFIRM the layout, ui, design, solution, db schema.. before implementation.
+- Never change UI, layout, feature behavior, DB schema, tech stack, or architecture without confirmation first.
+- Before implementation, always provide a detailed design/plan and proposed solution covering relevant UI, layout, DB schema, technical approach, and tech stack choices.
+- Always include confirmation questions and wait for approval before implementing, unless the user explicitly asks for immediate execution or the task is a pure inspection/read-only request.
 - Use one-pass execution for clear requests.
 - Auto test + auto deploy when technically possible unless user says otherwise.
 - For code changes, run real checks and report actual results.

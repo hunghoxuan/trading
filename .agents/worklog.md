@@ -2,6 +2,7 @@
 
 # Session Log: 2026-04-28 13:20
 - **Work Accomplished**:
+  - Added mandatory planning/confirmation rule to `AI.md` and `.agents/rules.md`: agents must propose detailed design/plan/solution and ask confirmation questions before implementing UI/layout/feature/DB/schema/tech-stack/architecture changes.
   - Verified EA bulk closed-history sync is actively posting to `/v2/ea/trades/sync-bulk`.
   - Found production bulk sync failure: server route crashed with `pool is not defined`, so EA requests arrived but could not update VPS rows.
   - Fixed route to use initialized MT5 backend query handle, committed `1e43e8e`, pushed, and deployed.

@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-1125"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-1202"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -6496,28 +6496,16 @@ function mt5IsTradeStatus(statusRaw) {
 
 function mt5ComputeRMultiple(row) {
   const pnl = Number(row?.pnl_realized ?? row?.pnl_money_realized);
-  const risk = Number(row?.risk_money_planned);
-  if (Number.isFinite(pnl)) {
-    if (Number.isFinite(risk) && risk > 0) return pnl / risk;
-    const s = mt5CanonicalStoredStatus(row?.execution_status || row?.status || row?.close_reason);
-    const planned = Number(row?.rr_planned || row?.metadata?.rr_planned || row?.metadata?.rrPlanned);
-    
-    if (s === "TP") {
-      return (Number.isFinite(planned) && planned > 0) ? planned : 1; 
-    }
-    if (s === "SL") return -1;
+  if (!Number.isFinite(pnl) || Math.abs(pnl) < 0.001) return 0;
+  
+  // Standard Rule: Any loss is -1R
+  if (pnl < 0) return -1;
 
-    // Fallback: Calculate risk from entry/sl if available
-    const entry = Number(row?.entry_exec || row?.entry);
-    const sl = Number(row?.sl_exec || row?.sl);
-    const vol = Number(row?.volume);
-    if (Number.isFinite(entry) && Number.isFinite(sl) && entry !== sl && vol > 0) {
-      const riskPerUnit = Math.abs(entry - sl);
-      // Rough estimate, doesn't account for contract size/tick value but works for relative RR
-      if (riskPerUnit > 0) return pnl / (riskPerUnit * vol);
-    }
-  }
-  return null;
+  // For wins: Use planned RR if available, otherwise default to 1R
+  const planned = Number(row?.rr_planned || row?.metadata?.rr_planned || row?.metadata?.rrPlanned);
+  if (Number.isFinite(planned) && planned > 0) return planned;
+  
+  return 1;
 }
 
 function mt5ComputeTopWinrateRows(rows, keyPicker, { limit = 10, includeDirection = false } = {}) {
@@ -7547,9 +7535,10 @@ const appHandler = async (req, res) => {
           accounts: mt5ComputeTopWinrateRows(selectedRows, (r) => envStr(r.account_id), { limit: 100, includeDirection: false }),
           sources: mt5ComputeTopWinrateRows(selectedRows, (r) => mt5StrategyFromRow(r), { limit: 100, includeDirection: false }),
           directional: mt5ComputeTopWinrateRows(selectedRows, (r) => {
-            const dir = String(r.action || r.side || "").toUpperCase();
-            const type = String(r.metadata?.type || r.raw_json?.type || "SIGNAL").toUpperCase();
-            return `${dir} ${type}`;
+            const dir = String(r.action || r.side || "BUY").toLowerCase();
+            const typeRaw = String(r.metadata?.type || r.raw_json?.type || r.order_type || "MARKET").toLowerCase();
+            const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+            return `${capitalize(dir)} ${capitalize(typeRaw)}`;
           }, { limit: 100, includeDirection: false }),
         },
         pnl_series: pnlSeries,

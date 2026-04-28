@@ -20,3 +20,9 @@ Use:
 Deploy guard:
 
 - `bash scripts/check_build_versions.sh origin/main`
+
+## Planning & Confirmation Rule (Mandatory)
+
+Before implementation, always provide a detailed design/plan and proposed solution covering relevant UI, layout, DB schema, technical approach, and tech stack choices.
+
+Always ask confirmation questions and wait for approval before changing UI, layout, feature behavior, DB schema, tech stack, or architecture, unless the user explicitly asks for immediate execution or the task is read-only inspection.
