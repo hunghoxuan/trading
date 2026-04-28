@@ -1,5 +1,15 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-28 12:35
+- **Work Accomplished**:
+  - Fixed broker ticket matching bug where unmatched MT5 tickets could bind to oldest unresolved trade without symbol validation.
+  - EA active sync now sends `symbol` for positions/orders.
+  - Server now rejects/quarantines ticket matches when incoming MT5 symbol differs from existing VPS trade symbol.
+  - Deployed server/EA build `2026.04.28-1030` / `2026-04-28.1030`.
+  - Cleared bad CADJPY ticket assignments for `1614606138` and `1614606129`; both rows reverted to `PENDING` with no broker ticket.
+- **Pending Tasks / Backlog**:
+  - [ ] Compile/load EA build `2026-04-28.1030` in MT5 so future active sync includes symbol and can match safely.
+
 # Session Log: 2026-04-28 09:58
 - **Conversation ID**: current Codex session
 - **Work Accomplished**:
