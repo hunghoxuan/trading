@@ -3,6 +3,9 @@
 
 #include <Trade/Trade.mqh>
 
+// Bump this on every code update so running build is obvious on chart/logs.
+string EA_BUILD_VERSION = "2026-04-28.1111";
+
 //--- 1. CONNECTION & IDENTITY
 input string InpServerBaseUrl = "https://trade.mozasolution.com/webhook"; // VPS Webhook URL
 input string InpEaApiKey      = "acc_fab38ed32ecde9b28b3dd33d8be10a77da6a"; // EA API Key
@@ -49,9 +52,6 @@ sinput string InpMappingFile         = "TVBridge_Mappings.csv"; // Internal tick
 input bool    InpBacktestMode        = false; // Replay signals from CSV
 input string  InpBacktestFileCommon  = "tvbridge_signals.csv";
 input bool    InpBacktestHasHeader   = true;
-
-// Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-28.1030";
 
 CTrade trade;
 

@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-1030"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-1111"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -3554,10 +3554,21 @@ async function mt5InitBackend() {
           SET execution_status = $1,
               broker_trade_id = COALESCE(NULLIF($3, ''), broker_trade_id),
               pnl_realized = CASE WHEN $4 = TRUE THEN COALESCE($5, pnl_realized) ELSE pnl_realized END,
+              metadata = COALESCE(metadata, '{}'::jsonb) || $6::jsonb,
               closed_at = CASE WHEN $4 = TRUE THEN NOW() ELSE closed_at END,
               updated_at = NOW()
           WHERE signal_id = $2
-        `, [tradeExec, signalId, ticket || '', isClosed, extra.pnl_money_realized ?? null]);
+        `, [tradeExec, signalId, ticket || '', isClosed, extra.pnl_money_realized ?? null, JSON.stringify({
+          sl_pips: extra.sl_pips ?? null,
+          tp_pips: extra.tp_pips ?? null,
+          pip_value_per_lot: extra.pip_value_per_lot ?? null,
+          risk_money_actual: extra.risk_money_actual ?? null,
+          reward_money_planned: extra.reward_money_planned ?? null,
+          entry_price_exec: extra.entry_price_exec ?? null,
+          sl_exec: extra.sl_exec ?? null,
+          tp_exec: extra.tp_exec ?? null,
+          last_ack_telemetry_at: new Date().toISOString(),
+        })]);
 
         await client.query("COMMIT");
         if (res.rowCount > 0) {
@@ -9873,7 +9884,7 @@ const appHandler = async (req, res) => {
               closed_at = COALESCE(closed_at, $3, NOW()),
               close_reason = COALESCE($8, close_reason),
               symbol = COALESCE($5, symbol),
-              execution_volume = COALESCE($6, execution_volume),
+              volume = COALESCE($6, volume),
               broker_trade_id = COALESCE(NULLIF($10, ''), broker_trade_id),
               metadata = COALESCE(metadata, '{}'::jsonb) || $9::jsonb,
               updated_at = NOW()

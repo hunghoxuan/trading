@@ -131,17 +131,18 @@ function rangeBounds(range) {
 
 function moneyRiskReward(t) {
   const st = String(t?.execution_status || "").toUpperCase();
-  if (!["FILLED", "CLOSED"].includes(st)) return { risk: null, reward: null };
+  if (!["PENDING", "OPEN", "FILLED", "CLOSED"].includes(st)) return { risk: null, reward: null };
   const m = t?.metadata && typeof t.metadata === "object" ? t.metadata : {};
   const risk = asNum(m.risk_money_actual) ?? asNum(m.risk_money) ?? asNum(m.risk_money_planned);
+  const rewardDirect = asNum(m.reward_money_planned);
   const rr = asNum(m.rr) ?? asNum(t?.rr_planned) ?? calcRr(t);
   if (risk == null || rr == null) return { risk: null, reward: null };
-  return { risk, reward: risk * rr };
+  return { risk, reward: rewardDirect ?? (risk * rr) };
 }
 
 function tradeRiskSize(t) {
   const st = String(t?.execution_status || "").toUpperCase();
-  if (!["FILLED", "CLOSED"].includes(st)) return null;
+  if (!["PENDING", "OPEN", "FILLED", "CLOSED"].includes(st)) return null;
   const m = t?.metadata && typeof t.metadata === "object" ? t.metadata : {};
   const direct = asNum(m.risk_money_actual) ?? asNum(m.risk_money) ?? asNum(m.risk_money_planned);
   if (direct != null) return direct;
