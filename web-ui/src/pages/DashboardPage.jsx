@@ -79,6 +79,13 @@ function TableBlock({ title, rows, noun = "ITEMS", nameFormatter = null }) {
     if (sortKey === "Name") { va = String(a.key); vb = String(b.key); }
     else if (sortKey === "WR") { va = a.win_rate; vb = b.win_rate; }
     else if (sortKey === "PnL") { va = a.pnl_total; vb = b.pnl_total; }
+    else return 0;
+
+    if (va === vb) return 0;
+    const res = va > vb ? 1 : -1;
+    return sortDir === "DESC" ? -res : res;
+  });
+
   const sortMarker = (key) => {
     if (sortKey !== key) return null;
     return sortDir === "ASC" ? " ↑" : " ↓";
