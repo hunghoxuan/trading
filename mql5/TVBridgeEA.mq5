@@ -51,7 +51,7 @@ input string  InpBacktestFileCommon  = "tvbridge_signals.csv";
 input bool    InpBacktestHasHeader   = true;
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-28.0620";
+string EA_BUILD_VERSION = "2026-04-28.0642";
 
 CTrade trade;
 
@@ -371,7 +371,8 @@ bool HttpGet(const string url, string &response)
    g_lastHttpCode = 0;
    g_lastHttpError = "";
    ResetLastError();
-   int code = WebRequest("GET", url, headers, 10000, post, result, headers);
+   string resHeaders = "";
+   int code = WebRequest("GET", url, headers, 10000, post, result, resHeaders);
    if(code == -1)
    {
       int err = GetLastError();
@@ -410,7 +411,8 @@ bool HttpPostJsonWithResponse(const string url, const string body, string &respo
    g_lastHttpCode = 0;
    g_lastHttpError = "";
    ResetLastError();
-   int code = WebRequest("POST", url, headers, 10000, data, result, headers);
+   string resHeaders = "";
+   int code = WebRequest("POST", url, headers, 10000, data, result, resHeaders);
    if(code == -1)
    {
       int err = GetLastError();

@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-0620"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-0642"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -2852,6 +2852,16 @@ async function mt5InitBackend() {
     );
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_market_data_symbol_tf_bar ON market_data(symbol, tf, bar_start, bar_end)`).catch(() => {});
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ea_logs (
+      id SERIAL PRIMARY KEY,
+      account_id TEXT,
+      level TEXT,
+      message TEXT,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      user_id TEXT
+    );
+  `);
 
   await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`).catch(() => {});
   await pool.query(`
@@ -6875,6 +6885,7 @@ const appHandler = async (req, res) => {
     incomingUrl.pathname = "/";
   }
   const url = incomingUrl;
+  console.log(`[REQUEST] ${req.method} ${req.url} -> ${url.pathname}`);
 
   if (req.method === "GET" && url.pathname === "/api/proxy/binance") {
     const target = "https://api.binance.com/api/v3/klines?" + incomingUrl.searchParams.toString();
