@@ -51,7 +51,7 @@ input string  InpBacktestFileCommon  = "tvbridge_signals.csv";
 input bool    InpBacktestHasHeader   = true;
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-28.0741";
+string EA_BUILD_VERSION = "2026-04-28.0742";
 
 CTrade trade;
 
