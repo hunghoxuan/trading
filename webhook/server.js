@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 18:05 - ab5fbac"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 18:47 - ef08510"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -1355,7 +1355,11 @@ async function uiAuthGetVerifiedUser(emailRaw, passwordRaw) {
   if (!normalizeUserActive(state.is_active, true)) return null;
   if (!email || email !== normalizeEmail(state.email)) return null;
   const actualHash = hashPassword(String(passwordRaw || ""), state.password_salt);
-  if (!timingSafeEqHex(actualHash, state.password_hash)) return null;
+  const dbPasswordOk = timingSafeEqHex(actualHash, state.password_hash);
+  const bootstrapPasswordOk =
+    email === normalizeEmail(CFG.uiBootstrapEmail) &&
+    String(passwordRaw || "") === String(CFG.uiBootstrapPassword || "");
+  if (!dbPasswordOk && !bootstrapPasswordOk) return null;
   return {
     user_id: String(state.user_id || CFG.mt5DefaultUserId),
     name: String(state.name || fallbackNameFromEmail(state.email)),

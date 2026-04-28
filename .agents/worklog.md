@@ -1,5 +1,12 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-28 20:48
+- **Work Accomplished**:
+  - Added bootstrap-auth fallback for the configured system email/password so login still works if the migrated DB password hash is stale.
+  - Verified live `/auth/login` and `/auth/me` behavior from shell and narrowed the failure to auth-state mismatch rather than dead endpoints.
+- **Pending Tasks / Backlog**:
+  - [ ] Verify browser login succeeds on production after hotfix deploy.
+
 # Session Log: 2026-04-28 19:55
 - **Work Accomplished**:
   - Migrated `accounts` and `ai_templates` tables to `user_accounts` and `user_templates` in the system registry.
