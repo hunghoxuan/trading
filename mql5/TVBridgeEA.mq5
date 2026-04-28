@@ -51,7 +51,7 @@ input string  InpBacktestFileCommon  = "tvbridge_signals.csv";
 input bool    InpBacktestHasHeader   = true;
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-28.0642";
+string EA_BUILD_VERSION = "2026-04-28.0651";
 
 CTrade trade;
 
@@ -3091,7 +3091,7 @@ void SyncWithVps()
    body += "\"closed\":[" + closedUpdates + "]";
    body += "}";
    
-   string url = BuildApiUrl("/v2/broker/sync");
+   string url = BuildApiUrl("/v2/broker/reconcile");
    string resp = "";
    if(HttpPostJsonWithResponse(url, body, resp))
    {
@@ -3142,6 +3142,7 @@ int OnInit()
 
    EventSetTimer(MathMax(InpPollSeconds, 1));
    Print("TVBridgeEA initialized. Add URL to MT5 WebRequest allow-list: ", InpServerBaseUrl);
+   RemoteLog("EA initialized. Build=" + EA_BUILD_VERSION + " Account=" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)));
    Print("TVBridgeEA build: ", EA_BUILD_VERSION);
    Print("TVBridgeEA auth: key=", ApiKeyMask(), " hint=", ApiKeyHint());
    g_dbgLastStatus = "LIVE_READY";
