@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-0753"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-1030"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -3611,6 +3611,8 @@ async function mt5InitBackend() {
           const pnl = Number.isFinite(pnlRaw) ? pnlRaw : null;
           const volumeRaw = Number(raw.volume || raw.lots);
           const volume = Number.isFinite(volumeRaw) ? volumeRaw : null;
+          const symbol = String(raw.symbol || "").trim().toUpperCase();
+          const action = String(raw.action || raw.side || "").trim().toUpperCase();
           const reasonRaw = String(raw.reason || raw.close_reason || "").trim().toUpperCase();
           const closeReason = mt5CloseReasonFromSync(raw);
           const openedAt = raw.opened_at || raw.openedAt || null;
@@ -3635,6 +3637,8 @@ async function mt5InitBackend() {
               ticket_candidates: ticketCandidates,
               pnl,
               volume,
+              symbol,
+              action,
               status_raw: statusRaw || "UNKNOWN",
               execution_status: executionStatus,
               close_reason: closeReason,
@@ -3650,6 +3654,8 @@ async function mt5InitBackend() {
             }
             if (pnl !== null) prev.pnl = pnl;
             if (volume !== null) prev.volume = volume;
+            if (symbol) prev.symbol = symbol;
+            if (action) prev.action = action;
             if (closeReason) prev.close_reason = closeReason;
             if (openedAt) prev.opened_at = openedAt;
             if (closedAt) prev.closed_at = closedAt;
@@ -3677,9 +3683,28 @@ async function mt5InitBackend() {
           close_reason: it.close_reason || null,
           last_sync_source: "broker_sync_v2",
         });
+        const syncSymbol = String(it.symbol || "").trim().toUpperCase();
+        const syncAction = String(it.action || "").trim().toUpperCase();
         if (ticketCandidates.length) {
           const openedAt = it.opened_at || null;
           const closedAt = it.closed_at || null;
+          if (syncSymbol) {
+            await pool.query(`
+              UPDATE trades
+              SET broker_trade_id = NULL,
+                  execution_status = CASE WHEN execution_status = 'OPEN' THEN 'PENDING' ELSE execution_status END,
+                  metadata = COALESCE(metadata, '{}'::jsonb) || $4::jsonb,
+                  updated_at = NOW()
+              WHERE account_id = $1
+                AND broker_trade_id = ANY($2::text[])
+                AND symbol <> $3
+                AND execution_status IN ('PENDING','OPEN')
+            `, [aid, ticketCandidates, syncSymbol, JSON.stringify({
+              broker_ticket_mismatch_cleared: ticketCandidates,
+              broker_ticket_mismatch_symbol: syncSymbol,
+              broker_ticket_mismatch_at: new Date().toISOString(),
+            })]);
+          }
           res = await pool.query(`
             UPDATE trades
             SET dispatch_status = CASE
@@ -3700,6 +3725,7 @@ async function mt5InitBackend() {
                 closed_at = COALESCE($6, CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN NOW() ELSE closed_at END),
                 updated_at = NOW()
             WHERE account_id = $3
+              AND ($11 = '' OR symbol = $11)
               AND (
                 broker_trade_id = ANY($4::text[])
                 OR metadata->>'broker_position_id' = ANY($4::text[])
@@ -3708,7 +3734,7 @@ async function mt5InitBackend() {
                 OR metadata->>'order_ticket' = ANY($4::text[])
               )
             RETURNING trade_id
-          `, [it.execution_status, it.pnl, aid, ticketCandidates, openedAt, closedAt, it.volume, it.close_reason, it.ticket || "", syncMeta]);
+          `, [it.execution_status, it.pnl, aid, ticketCandidates, openedAt, closedAt, it.volume, it.close_reason, it.ticket || "", syncMeta, syncSymbol]);
         }
         if (it.signal_id) {
           if (res.rowCount === 0) {
@@ -3771,11 +3797,14 @@ async function mt5InitBackend() {
               WHERE account_id = $4
                 AND execution_status IN ('PENDING','OPEN')
                 AND (broker_trade_id IS NULL OR broker_trade_id = '')
+                AND $9 <> ''
+                AND symbol = $9
+                AND ($10 = '' OR action = $10)
               ORDER BY created_at ASC
               LIMIT 1
             )
             RETURNING trade_id
-          `, [it.execution_status, it.ticket, it.pnl, aid, it.volume, it.close_reason, syncMeta, it.closed_at || null]);
+          `, [it.execution_status, it.ticket, it.pnl, aid, it.volume, it.close_reason, syncMeta, it.closed_at || null, syncSymbol, syncAction]);
         }
         matched += res.rowCount;
         if (res.rowCount > 0) {
