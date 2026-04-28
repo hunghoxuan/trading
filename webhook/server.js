@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 18:48 - d266618"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 18:58 - 115103a"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -1350,16 +1350,28 @@ function getUiSessionFromReq(req) {
 
 async function uiAuthGetVerifiedUser(emailRaw, passwordRaw) {
   const email = normalizeEmail(emailRaw);
+  const bootstrapPasswordOk =
+    email === normalizeEmail(CFG.uiBootstrapEmail) &&
+    String(passwordRaw || "") === String(CFG.uiBootstrapPassword || "");
   const state = await uiReadAuthStateByEmail(email);
+  if (bootstrapPasswordOk) {
+    const bootstrapState = state || (await uiEnsureAuthBootstrap());
+    if (!bootstrapState) return null;
+    return {
+      user_id: String(bootstrapState.user_id || CFG.mt5DefaultUserId),
+      name: String(bootstrapState.name || fallbackNameFromEmail(bootstrapState.email || email)),
+      email: normalizeEmail(bootstrapState.email || email),
+      role: normalizeUserRole(bootstrapState.role || UI_ROLE_SYSTEM),
+      is_active: true,
+      metadata: bootstrapState.metadata || {},
+    };
+  }
   if (!state) return null;
   if (!normalizeUserActive(state.is_active, true)) return null;
   if (!email || email !== normalizeEmail(state.email)) return null;
   const actualHash = hashPassword(String(passwordRaw || ""), state.password_salt);
   const dbPasswordOk = timingSafeEqHex(actualHash, state.password_hash);
-  const bootstrapPasswordOk =
-    email === normalizeEmail(CFG.uiBootstrapEmail) &&
-    String(passwordRaw || "") === String(CFG.uiBootstrapPassword || "");
-  if (!dbPasswordOk && !bootstrapPasswordOk) return null;
+  if (!dbPasswordOk) return null;
   return {
     user_id: String(state.user_id || CFG.mt5DefaultUserId),
     name: String(state.name || fallbackNameFromEmail(state.email)),
@@ -2980,11 +2992,13 @@ async function mt5InitBackend() {
       bar_start BIGINT NOT NULL,
       bar_end BIGINT NOT NULL,
       data TEXT NOT NULL,
+      metadata JSONB NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT market_data_symbol_tf_range_key UNIQUE (symbol, tf, bar_start, bar_end)
     );
   `);
+  await pool.query(`ALTER TABLE market_data ADD COLUMN IF NOT EXISTS metadata JSONB NULL`).catch(() => {});
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_market_data_symbol_tf_bar ON market_data(symbol, tf, bar_start, bar_end)`).catch(() => {});
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ea_logs (

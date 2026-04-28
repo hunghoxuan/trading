@@ -1,5 +1,12 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-28 20:58
+- **Work Accomplished**:
+  - Fixed bootstrap UI auth recovery so the configured system account can log in even when its auth row is missing, not just when the stored password hash is stale.
+  - Deployed the first auth hotfix, verified production health, then reproduced that bootstrap login still failed and traced it to the missing-row path in `uiAuthGetVerifiedUser`.
+- **Pending Tasks / Backlog**:
+  - [ ] Redeploy the second auth fix and verify `/auth/login` plus `/auth/me` with a real session cookie.
+
 # Session Log: 2026-04-28 20:48
 - **Work Accomplished**:
   - Added bootstrap-auth fallback for the configured system email/password so login still works if the migrated DB password hash is stale.
