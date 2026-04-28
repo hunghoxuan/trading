@@ -69,7 +69,7 @@ async function main() {
 
   try {
     console.log("[Migrate] Fetching accounts for mapping...");
-    const accountRows = await pool.query("SELECT account_id, user_id FROM accounts");
+    const accountRows = await pool.query("SELECT account_id, user_id FROM user_accounts");
     const accountMap = new Map(); // user_id -> account_id
     for (const acc of accountRows.rows) {
       // If multiple accounts per user, we pick the first one seen (backfill logic)

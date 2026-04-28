@@ -81,3 +81,16 @@
 - Server resolves `id/sid` to legacy keys internally where needed (e.g., trade events/log timeline).
 - `users.user_id` remains as a legacy/auth compatibility key for existing foreign keys and session logic.
 - `users.sid` is the public/user-facing identifier and must not be UUID-style.
+
+---
+
+## 5. Metadata Layer & Preferences (V2.4)
+
+### High-Performance Configuration
+- **Philosophy**: Fragmentation of user settings across multiple tables is minimized by using a unified `users.metadata` (JSONB) column for non-sensitive preferences.
+- **Session Caching**: User metadata is loaded during profile retrieval and utilized for UI/system-wide preferences (Language, Timezone).
+- **Core Toggles**: Master cron switches (Market Data, AI Analysis) are stored in metadata for immediate O(1) state checks in the background engines.
+
+### Localization & Logic
+- **ai.language**: Stored in `users.metadata.settings`; injected into AI Prompt templates to ensure analysis results are returned in the user's preferred language.
+- **Symbol Watchlist**: Moved to metadata to support fast, portfolio-wide "ALL" mode rendering in the AI browser.

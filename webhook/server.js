@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 17:47 - dcabf4e"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 17:55 - c30efa8"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -3292,7 +3292,7 @@ async function mt5InitBackend() {
   // Legacy migration paths removed; using Postgres-exclusive storage.
 
   async function allocateUniqueSid(client, table, baseRaw, fallbackPrefix = "ID") {
-    const allowed = new Set(["users", "accounts", "signals", "trades", "sources", "execution_profiles"]);
+    const allowed = new Set(["users", "accounts", "user_accounts", "signals", "trades", "sources", "execution_profiles"]);
     const tableName = String(table || "").trim();
     if (!allowed.has(tableName)) {
       const fallbackRes = await client.query(`SELECT gen_sid($1, 8) AS sid`, [String(fallbackPrefix || "ID").slice(0, 6).toUpperCase()]).catch(() => ({ rows: [] }));
@@ -8203,7 +8203,7 @@ const appHandler = async (req, res) => {
         return json(res, 200, { ok: true, table, created: out.user });
       }
 
-      if (table === "accounts") {
+      if (table === "accounts" || table === "user_accounts") {
         const userId = String(row.user_id || "").trim();
         if (!userId) return json(res, 400, { ok: false, error: "row.user_id is required" });
         const out = await uiUpsertUserAccount(userId, row);
@@ -8282,7 +8282,9 @@ const appHandler = async (req, res) => {
       const limitRaw = Number(url.searchParams.get("limit") || 200);
       const limit = Math.max(10, Math.min(1000, Number.isFinite(limitRaw) ? limitRaw : 200));
       const status = String(url.searchParams.get("status") || "").trim().toUpperCase();
-      const trades = mt5FilterRows(await mt5ListSignals(limit, ""), { statuses: status ? [status] : [] });
+      const symbol = String(url.searchParams.get("symbol") || "").trim();
+      const userId = uiEffectiveUserId(req, url);
+      const trades = mt5FilterRows(await mt5ListSignals(limit, { symbol, status }, userId), { statuses: status ? [status] : [] });
       const b = await mt5Backend();
       return json(res, 200, {
         ok: true,

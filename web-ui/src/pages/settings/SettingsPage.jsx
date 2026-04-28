@@ -76,6 +76,13 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
     order_types: ["market", "limit", "stop"],
     prompt: ""
   });
+  const [metadataForm, setMetadataForm] = useState({
+    language: "English",
+    display_timezone: "UTC",
+    market_data_cron: true,
+    ai_analysis_cron: true
+  });
+  const [metadataLoading, setMetadataLoading] = useState(false);
 
   const canManageExecution = isSystemRole(authUser);
   const [execLoading, setExecLoading] = useState(false);
@@ -113,6 +120,13 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
           email: String(prof.user.email || ""),
           role: String(prof.user.role || "User"),
           is_active: Boolean(prof.user.is_active),
+        });
+        const metaSettings = prof.user.metadata?.settings || {};
+        setMetadataForm({
+          language: metaSettings.language || "English",
+          display_timezone: metaSettings.display_timezone || "UTC",
+          market_data_cron: metaSettings.market_data_cron !== false,
+          ai_analysis_cron: metaSettings.ai_analysis_cron !== false,
         });
       }
 
@@ -198,6 +212,19 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
       setMsg(err?.message || "Failed to update password.");
     } finally {
       setPwdLoading(false);
+      window.setTimeout(() => setMsg(""), 2500);
+    }
+  }
+
+  async function savePreferences() {
+    setMetadataLoading(true);
+    try {
+      await api.updateMetadata({ settings: metadataForm });
+      setMsg("Preferences saved.");
+    } catch (err) {
+      setMsg(err?.message || "Failed to save preferences.");
+    } finally {
+      setMetadataLoading(false);
       window.setTimeout(() => setMsg(""), 2500);
     }
   }
@@ -400,6 +427,9 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
             <button className={`sidebar-item-v2 ${activeTab === "PROFILE" ? "active" : ""}`} onClick={() => setActiveTab("PROFILE")}>
               Profile
             </button>
+            <button className={`sidebar-item-v2 ${activeTab === "PREFERENCES" ? "active" : ""}`} onClick={() => setActiveTab("PREFERENCES")}>
+              Preferences
+            </button>
             <button className={`sidebar-item-v2 ${activeTab === "PASSWORD" ? "active" : ""}`} onClick={() => setActiveTab("PASSWORD")}>
               Password
             </button>
@@ -511,6 +541,65 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
                 primaryDisabled={profileLoading}
                 footer={msg && !pwdLoading ? <span className="minor-text">{msg}</span> : null}
               />
+            </div>
+          )}
+          
+          {activeTab === "PREFERENCES" && (
+            <div className="fadeIn">
+              <div className="panel-label">APP PREFERENCES</div>
+              <div className="stack-layout" style={{ gap: 20, maxWidth: 500 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <label className="stack-layout" style={{ gap: 6 }}>
+                    <span className="minor-text">Language</span>
+                    <select 
+                      value={metadataForm.language} 
+                      onChange={e => setMetadataForm(p => ({ ...p, language: e.target.value }))}
+                    >
+                      <option value="English">English</option>
+                      <option value="Vietnamese">Vietnamese</option>
+                      <option value="Deutsch">Deutsch</option>
+                    </select>
+                  </label>
+                  <label className="stack-layout" style={{ gap: 6 }}>
+                    <span className="minor-text">Display Timezone</span>
+                    <input 
+                      type="text" 
+                      value={metadataForm.display_timezone} 
+                      onChange={e => setMetadataForm(p => ({ ...p, display_timezone: e.target.value }))}
+                      placeholder="e.g. UTC, Asia/Ho_Chi_Minh"
+                    />
+                  </label>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={metadataForm.market_data_cron} 
+                      onChange={e => setMetadataForm(p => ({ ...p, market_data_cron: e.target.checked }))} 
+                    />
+                    <span className="minor-text">Market Data Cron</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={metadataForm.ai_analysis_cron} 
+                      onChange={e => setMetadataForm(p => ({ ...p, ai_analysis_cron: e.target.checked }))} 
+                    />
+                    <span className="minor-text">AI Analysis Cron</span>
+                  </label>
+                </div>
+
+                <button 
+                  className="primary-button" 
+                  onClick={savePreferences} 
+                  disabled={metadataLoading}
+                  style={{ marginTop: 10 }}
+                >
+                  {metadataLoading ? "SAVING..." : "SAVE PREFERENCES"}
+                </button>
+                {msg && !pwdLoading && !profileLoading && <div className="minor-text">{msg}</div>}
+              </div>
             </div>
           )}
 

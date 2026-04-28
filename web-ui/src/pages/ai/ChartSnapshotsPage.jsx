@@ -1799,17 +1799,13 @@ export default function ChartSnapshotsPage() {
 
   useEffect(() => {
     const symbol = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
-    if (!symbol) {
-      setSymbolActivity({ loading: false, items: [] });
-      return;
-    }
     let alive = true;
     (async () => {
       try {
         setSymbolActivity((prev) => ({ ...prev, loading: true }));
         const [tradesOut, signalsOut] = await Promise.all([
-          api.v2Trades({ symbol, page: 1, pageSize: 30 }),
-          api.trades({ symbol, page: 1, pageSize: 30 }),
+          api.v2Trades({ symbol: symbol || undefined, page: 1, pageSize: 30 }),
+          api.trades({ symbol: symbol || undefined, page: 1, pageSize: 30 }),
         ]);
         const tradeItems = Array.isArray(tradesOut?.items) ? tradesOut.items : [];
         const signalItems = Array.isArray(signalsOut?.trades) ? signalsOut.trades : [];
@@ -2163,7 +2159,8 @@ export default function ChartSnapshotsPage() {
       </section>
 
       <section className="panel snapshot-col-v3 snapshot-col-settings-v3">
-        <div className="snapshot-control-card-v3 toolbar-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, padding: '12px 16px', alignItems: 'flex-start' }}>
+        {cfg.symbol && (
+          <div className="snapshot-control-card-v3 toolbar-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, padding: '12px 16px', alignItems: 'flex-start' }}>
           {/* Row 1 */}
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', width: '100%', justifyContent: 'flex-start' }}>
             {hasResponse && (
@@ -2231,8 +2228,9 @@ export default function ChartSnapshotsPage() {
             )}
           </div>
         </div>
+      )}
 
-        {!hasResponse && !cfg.symbol && (
+      {!hasResponse && !cfg.symbol && (
           <div className="fadeIn">
             <div className="toolbar-panel" style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -2292,75 +2290,77 @@ export default function ChartSnapshotsPage() {
         )}
 
 
-        <SignalDetailCard
-          mode="ai"
-          hideTabsBeforeResponse={true}
-          chart={{
-            enabled: true,
-            symbol: cfg.symbol,
-            interval: timeframe,
-            entryPrice: position.entry,
-            slPrice: position.sl,
-            tpPrice: position.tp,
-            detailTfTab: timeframe,
-            profileTfs: [
-              ...(PROFILE_PRESETS[cfg.profile]?.htf_tfs || []),
-              ...(PROFILE_PRESETS[cfg.profile]?.exec_tfs || []),
-              ...(PROFILE_PRESETS[cfg.profile]?.conf_tfs || [])
-            ],
-            onDetailTfTabChange: setSelectedEntryTf,
-            entryNode: (
-              <div className="snapshot-live-card-v3">
-                <div className="minor-text" style={{ marginBottom: 12 }}>Chart ({timeframe}): Twelve + PD Arrays</div>
-                <TradeSignalChart 
-                  symbol={cfg.symbol}
-                  interval={timeframe}
-                  analysisSnapshot={effectiveParsed}
-                  entryPrice={position.entry}
-                  slPrice={position.sl}
-                  tpPrice={position.tp}
-                />
-                <div className="minor-text" style={{ marginTop: 8 }}>{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
-              </div>
-            )
-          }}
-          response={{
-            enabled: true,
-            hasData: hasResponse,
-            label: "Response",
-            tab: responseTab,
-            onTabChange: setResponseTab,
-            text: responseText,
-            raw: effectiveParsed || analysisRaw || analysisJson,
-            bars: JSON.stringify(currentBarsSnapshot || { status: "no_cached_bars" }, null, 2),
-            tradePlans: analysisTradePlans,
-            snapshotFiles: chartFiles,
-          }}
-          tradePlan={{
-            enabled: true,
-            signalId: null,
-            tradeId: null,
-            value: position,
-            onChange: updatePositionField,
-            onAddSignal: (pos) => addBySelection("signal", pos, "main"),
-            onAddTrade: (pos) => addBySelection("trade", pos, "main"),
-            showSaveButton: false,
-            showAddSignalButton: true,
-            showAddTradeButton: true,
-            showResetButton: true,
-            onReset: resetPositionLocal,
-            busy: { 
-              signal: addingSignal && submittingPlanId === "main", 
-              trade: addingSignal && submittingPlanId === "main" 
-            },
-            submittingPlanId: submittingPlanId,
-            disabled: false,
-            error: !canAddSignal ? validatePosition(position) : "",
-            successMessage: actionStatus.action === "add" && actionStatus.text && actionStatus.type !== "error" && actionStatus.type !== "warning"
-              ? actionStatus.text
-              : "",
-          }}
-        />
+        {cfg.symbol && (
+          <SignalDetailCard
+            mode="ai"
+            hideTabsBeforeResponse={true}
+            chart={{
+              enabled: true,
+              symbol: cfg.symbol,
+              interval: timeframe,
+              entryPrice: position.entry,
+              slPrice: position.sl,
+              tpPrice: position.tp,
+              detailTfTab: timeframe,
+              profileTfs: [
+                ...(PROFILE_PRESETS[cfg.profile]?.htf_tfs || []),
+                ...(PROFILE_PRESETS[cfg.profile]?.exec_tfs || []),
+                ...(PROFILE_PRESETS[cfg.profile]?.conf_tfs || [])
+              ],
+              onDetailTfTabChange: setSelectedEntryTf,
+              entryNode: (
+                <div className="snapshot-live-card-v3">
+                  <div className="minor-text" style={{ marginBottom: 12 }}>Chart ({timeframe}): Twelve + PD Arrays</div>
+                  <TradeSignalChart 
+                    symbol={cfg.symbol}
+                    interval={timeframe}
+                    analysisSnapshot={effectiveParsed}
+                    entryPrice={position.entry}
+                    slPrice={position.sl}
+                    tpPrice={position.tp}
+                  />
+                  <div className="minor-text" style={{ marginTop: 8 }}>{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
+                </div>
+              )
+            }}
+            response={{
+              enabled: true,
+              hasData: hasResponse,
+              label: "Response",
+              tab: responseTab,
+              onTabChange: setResponseTab,
+              text: responseText,
+              raw: effectiveParsed || analysisRaw || analysisJson,
+              bars: JSON.stringify(currentBarsSnapshot || { status: "no_cached_bars" }, null, 2),
+              tradePlans: analysisTradePlans,
+              snapshotFiles: chartFiles,
+            }}
+            tradePlan={{
+              enabled: true,
+              signalId: null,
+              tradeId: null,
+              value: position,
+              onChange: updatePositionField,
+              onAddSignal: (pos) => addBySelection("signal", pos, "main"),
+              onAddTrade: (pos) => addBySelection("trade", pos, "main"),
+              showSaveButton: false,
+              showAddSignalButton: true,
+              showAddTradeButton: true,
+              showResetButton: true,
+              onReset: resetPositionLocal,
+              busy: { 
+                signal: addingSignal && submittingPlanId === "main", 
+                trade: addingSignal && submittingPlanId === "main" 
+              },
+              submittingPlanId: submittingPlanId,
+              disabled: false,
+              error: !canAddSignal ? validatePosition(position) : "",
+              successMessage: actionStatus.action === "add" && actionStatus.text && actionStatus.type !== "error" && actionStatus.type !== "warning"
+                ? actionStatus.text
+                : "",
+            }}
+          />
+        )}
         {actionStatus.action === "add" && actionStatus.text && (actionStatus.type === "error" || actionStatus.type === "warning") ? (
           <span className={`minor-text snapshot-footer-msg-v3 ${actionStatus.type === "error" ? "msg-error" : "msg-warning"}`}>{actionStatus.text}</span>
         ) : null}

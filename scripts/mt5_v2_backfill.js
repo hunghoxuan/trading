@@ -101,7 +101,7 @@ async function main() {
 
       const accounts = await pool.query(`
         SELECT account_id
-        FROM accounts
+        FROM user_accounts
         WHERE user_id = $1
         ORDER BY created_at ASC
       `, [userId]);
@@ -116,7 +116,7 @@ async function main() {
       const last4 = keyValue.slice(-4);
 
       const upd = await pool.query(`
-        UPDATE accounts
+        UPDATE user_accounts
         SET api_key_hash = COALESCE(api_key_hash, $1),
             api_key_last4 = COALESCE(api_key_last4, $2),
             api_key_rotated_at = COALESCE(api_key_rotated_at, NOW()),
@@ -129,7 +129,7 @@ async function main() {
     }
 
     const allSources = await pool.query(`SELECT source_id FROM sources WHERE is_active = TRUE`);
-    const allAccounts = await pool.query(`SELECT account_id FROM accounts`);
+    const allAccounts = await pool.query(`SELECT account_id FROM user_accounts`);
 
     for (const acc of allAccounts.rows) {
       const accountId = String(acc.account_id || "").trim();

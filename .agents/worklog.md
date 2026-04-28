@@ -1,5 +1,22 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-28 19:55
+- **Work Accomplished**:
+  - Migrated `accounts` and `ai_templates` tables to `user_accounts` and `user_templates` in the system registry.
+  - Updated `server.js` `listTables` to reflect the new database schema.
+  - Enhanced `/mt5/trades` API with `symbol` and `userId` filtering to support portfolio-wide monitoring.
+  - Implemented "ALL" mode in `ChartSnapshotsPage.jsx`:
+    - Hidden analysis toolbar and detail card when no symbol is selected to provide a clean dashboard view.
+    - Updated activity list to show all pending/filled trades portfolio-wide.
+  - Built new **Preferences** interface in `SettingsPage.jsx`:
+    - Added Language selection (English, Vietnamese, Deutsch).
+    - Added Display Timezone configuration.
+    - Added Master toggles for Market Data and AI Analysis crons.
+    - Persisted all preferences to `users.metadata.settings` for high-performance session caching.
+- **Pending Tasks / Backlog**:
+  - [ ] Verify production cron health indicators after background sync cycles.
+  - [ ] Verify localized AI prompt generation for Vietnamese/Deutsch in live analysis.
+
 # Session Log: 2026-04-28 19:50
 - **Work Accomplished**:
   - Fixed legacy account migration gap that left `user_accounts` empty while production data still lived in `accounts`.
