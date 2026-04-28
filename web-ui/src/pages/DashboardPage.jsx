@@ -41,11 +41,7 @@ function asPct(v) {
   return `${Math.ceil(n)}%`;
 }
 
-function asRR(v) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return "0.00";
-  return n.toFixed(2);
-}
+// RR removed as per request (unreliable data)
 
 function moneyClass(v) {
   const n = Number(v);
@@ -83,15 +79,6 @@ function TableBlock({ title, rows, noun = "ITEMS", nameFormatter = null }) {
     if (sortKey === "Name") { va = String(a.key); vb = String(b.key); }
     else if (sortKey === "WR") { va = a.win_rate; vb = b.win_rate; }
     else if (sortKey === "PnL") { va = a.pnl_total; vb = b.pnl_total; }
-    else if (sortKey === "RR") { va = a.rr_total; vb = b.rr_total; }
-    else if (sortKey === "WL") { va = a.wins; vb = b.wins; }
-    else return 0;
-
-    if (va === vb) return 0;
-    const res = va > vb ? 1 : -1;
-    return sortDir === "DESC" ? -res : res;
-  });
-
   const sortMarker = (key) => {
     if (sortKey !== key) return null;
     return sortDir === "ASC" ? " ↑" : " ↓";
@@ -103,25 +90,24 @@ function TableBlock({ title, rows, noun = "ITEMS", nameFormatter = null }) {
         <div className="panel-label" style={{ margin: 0 }}>{rows.length} {noun.toUpperCase()}</div>
       </div>
       {rows.length === 0 ? (
-        <div className="minor-text">No operational data.</div>
+        <div className="minor-text">No data.</div>
       ) : (
         <div className="mini-table">
           <div className="mini-table-head wide" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '8px', background: 'transparent', display: 'flex', gap: '12px' }}>
             <span onClick={() => toggleSort("Name")} style={{ flex: '3', fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>NAME{sortMarker("Name")}</span>
-            <span onClick={() => toggleSort("WL")} style={{ flex: '1', textAlign: 'right', fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>W/L{sortMarker("WL")}</span>
-            <span onClick={() => toggleSort("WR")} style={{ flex: '1', textAlign: 'right', fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>WR{sortMarker("WR")}</span>
+            <span onClick={() => toggleSort("WR")} style={{ flex: '1.8', textAlign: 'right', fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>WR% (W/L){sortMarker("WR")}</span>
             <span onClick={() => toggleSort("PnL")} style={{ flex: '1.5', textAlign: 'right', fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>PNL{sortMarker("PnL")}</span>
-            <span onClick={() => toggleSort("RR")} style={{ flex: '1', textAlign: 'right', fontSize: '10px', fontWeight: 800, color: 'var(--muted)', cursor: 'pointer' }}>RR{sortMarker("RR")}</span>
           </div>
           {sortedRows.map((r) => (
             <div className="mini-table-row wide" key={r.key} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', display: 'flex', gap: '12px', alignItems: 'center' }}>
               <span className="mini-name" style={{ flex: '3', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.key}>
                 {nameFormatter ? nameFormatter(r.key, r) : r.key}
               </span>
-              <span style={{ flex: '1', textAlign: 'right' }}>{r.wins}/{r.losses}</span>
-              <span style={{ flex: '1', textAlign: 'right' }}>{asPct(r.win_rate)}</span>
+              <span style={{ flex: '1.8', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <span style={{ fontWeight: 700 }}>{asPct(r.win_rate)}</span>
+                <span className="minor-text" style={{ fontSize: '10px', marginLeft: '4px' }}>{r.wins}/{r.losses}</span>
+              </span>
               <span style={{ flex: '1.5', textAlign: 'right' }} className={moneyClass(r.pnl_total)}>{asMoneySigned(r.pnl_total)}</span>
-              <span style={{ flex: '1', textAlign: 'right' }}>{asRR(r.rr_total)}</span>
             </div>
           ))}
         </div>
@@ -277,8 +263,7 @@ export default function DashboardPage() {
                 T: {v.total_trades || 0} | 
                 W: {v.total_wins} <span className="money-pos">{asMoneySigned(v.win_sum_pnl || 0)}</span> | 
                 L: {v.total_losses} <span className="money-neg">{asMoneySigned(v.lose_sum_pnl || 0)}</span> | 
-                WR: {asPct(winrate)} | 
-                RR: {asRR(v.total_rr || 0)}
+                WR: {asPct(winrate)}
               </div>
             </article>
           );
@@ -301,9 +286,9 @@ export default function DashboardPage() {
           const statusCls = isOnline ? 'online' : isIdle ? 'idle' : 'offline';
           return (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span className={`status-dot ${statusCls}`} style={{ width: 8, height: 8 }} />
-                <span>{acc.name || id}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className={`status-dot ${statusCls}`} style={{ width: 8, height: 8, flexShrink: 0 }} />
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{acc.name || id}</span>
               </div>
               <div className="minor-text" style={{ fontSize: '9px', fontWeight: 400, marginTop: 2 }}>
                 {lastSyncDate ? showDateTime(lastSyncDate) : 'Never'}
