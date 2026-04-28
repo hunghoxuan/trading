@@ -677,8 +677,15 @@ export default function SignalsPage() {
                       </td>
                       <td>
                         <div className="cell-wrap">
-                          <div className="cell-major"><span className={sideCls}>{sideValue}</span> {t.symbol}</div>
-                          <div className="cell-minor">{sourceLabel}{sourceLabel !== sourceId ? ` | ${sourceId}` : ""} | {signalShort}</div>
+                          <div className="cell-major" style={{ fontWeight: 800 }}>{t.symbol}</div>
+                          <div className="cell-minor" style={{ display: "flex", alignItems: "center" }}>
+                            <span className={`side-badge ${sideCls}`}>{sideValue[0]}</span>
+                            <span>({sideValue === "BUY" ? "Long" : "Short"})</span>
+                            <span className="order-type-label">{t.order_type || "Market"}</span>
+                          </div>
+                          <div className="cell-minor" style={{ opacity: 0.7 }}>
+                            {sourceLabel}{sourceLabel !== sourceId ? ` | ${sourceId}` : ""} | {signalShort}
+                          </div>
                         </div>
                       </td>
                       <td>

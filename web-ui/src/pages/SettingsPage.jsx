@@ -8,11 +8,6 @@ const ROUTE_OPTIONS = [
   { value: "ctrader", label: "cTrader Bridge" },
 ];
 
-const CTRADER_MODE_OPTIONS = [
-  { value: "demo", label: "demo" },
-  { value: "live", label: "live" },
-];
-
 const API_KEY_NAME_OPTIONS = [
   { value: "GEMINI_API_KEY", label: "Gemini API Key" },
   { value: "OPENAI_API_KEY", label: "OpenAI API Key" },
@@ -40,13 +35,19 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const [settings, setSettings] = useState([]);
-  const [activeSettingKey, setActiveSettingKey] = useState(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState("");
   const [newSettingForm, setNewSettingForm] = useState({ type: "api_key", name: "GEMINI_API_KEY", value: "" });
   const [showAddForm, setShowAddForm] = useState(false);
   const [jsonDetailText, setJsonDetailText] = useState("");
   const [symbolsDetailText, setSymbolsDetailText] = useState("");
+  const [cronForm, setCronForm] = useState({ 
+    symbols: "", 
+    timeframes: [], 
+    cadence_minutes: 60,
+    model: "claude-sonnet-4-0",
+    prompt: ""
+  });
 
   const canManageExecution = isSystemRole(authUser);
   const [execLoading, setExecLoading] = useState(false);
@@ -64,6 +65,9 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
   const [logConfig, setLogConfig] = useState([]);
   const [logBusy, setLogBusy] = useState(false);
   const LOG_GROUPS = ["TRADE_", "SIGNAL_", "ACCOUNT_", "AI_", "SYSTEM_"];
+
+  // Sidebar state
+  const [activeTab, setActiveTab] = useState(mode === "profile" ? "PROFILE" : "PROFILE");
 
   const getSettingKey = (s) => `${String(s?.type || "")}::${String(s?.name || "")}`;
 
@@ -109,15 +113,10 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
       if (sets?.settings) {
         const list = Array.isArray(sets.settings) ? sets.settings : [];
         setSettings(list);
-        setActiveSettingKey((prev) => {
-          if (!list.length) return null;
-          if (prev && list.some((x) => getSettingKey(x) === prev)) return prev;
-          return getSettingKey(list[0]);
-        });
         const logSet = list.find((x) => x?.type === "system_config" && x?.name === "enabled_log_prefixes");
         setLogConfig(Array.isArray(logSet?.value) ? logSet.value : []);
       }
-      setMsg(""); // Clear potential "Not found" or error from previous load
+      setMsg(""); 
     } catch (err) {
       console.error(err);
       if (err.message !== "Not found") setMsg(err.message);
@@ -205,7 +204,7 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
     try {
       await api.deleteSetting(type, name || type);
       setSettingsMsg(`Setting ${type} deleted.`);
-      setActiveSettingKey(null);
+      setActiveTab("PROFILE");
       await loadData();
     } catch (err) {
       setSettingsMsg(err.message);
@@ -238,7 +237,8 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
       setSettingsMsg(`Setting ${type} created.`);
       setShowAddForm(false);
       setNewSettingForm({ type: "api_key", name: "GEMINI_API_KEY", value: "" });
-      setActiveSettingKey(`${type}::${name}`);
+      const newKey = `${type}::${name}`;
+      setActiveTab(newKey);
       await loadData();
     } catch (err) {
       setSettingsMsg(err.message);
@@ -300,10 +300,9 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
   }
 
   const selectedSetting = useMemo(
-    () => settings.find((s) => getSettingKey(s) === activeSettingKey),
-    [settings, activeSettingKey],
+    () => settings.find((s) => getSettingKey(s) === activeTab),
+    [settings, activeTab],
   );
-  const isProfileMode = String(mode || "").toLowerCase() === "profile";
 
   useEffect(() => {
     if (!selectedSetting) {
@@ -323,199 +322,65 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
       setSymbolsDetailText("");
       return;
     }
+    if (type === "market_data_cron" || type === "ai_analysis_cron") {
+      const d = selectedSetting?.data || {};
+      setCronForm({
+        symbols: Array.isArray(d.symbols) ? d.symbols.join(", ") : "",
+        timeframes: Array.isArray(d.timeframes) ? d.timeframes : [],
+        cadence_minutes: Number(d.cadence_minutes || 60),
+        model: String(d.model || "claude-sonnet-4-0"),
+        prompt: String(d.prompt || "")
+      });
+    }
     try {
       setJsonDetailText(JSON.stringify(selectedSetting?.data || {}, null, 2));
     } catch {
       setJsonDetailText("{}");
     }
     setSymbolsDetailText("");
-  }, [activeSettingKey, selectedSetting?.type, selectedSetting?.name]);
+  }, [activeTab, selectedSetting?.type, selectedSetting?.name, selectedSetting?.data]);
 
   return (
     <div className="stack-layout fadeIn" style={{ paddingBottom: 40 }}>
-      <h2 className="page-title">{isProfileMode ? "Profile" : "Settings"}</h2>
+      <h2 className="page-title">{mode === "profile" ? "Profile" : "Settings"}</h2>
 
-      {/* Top Grid: Profile, Password, Execution */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, alignItems: "start" }}>
-        <UserDetailSection
-          title="UPDATE PROFILE"
-          form={profileForm}
-          setForm={setProfileForm}
-          roleOptions={[String(profileForm.role || "User")]}
-          showRole={false}
-          showActive={false}
-          showPassword={false}
-          primaryLabel={profileLoading ? "SAVING..." : "SAVE PROFILE"}
-          onPrimary={saveMyAccount}
-          primaryDisabled={profileLoading}
-          footer={msg && !pwdLoading ? <span className="minor-text">{msg}</span> : null}
-        />
-
-        <section className="panel" style={{ height: "100%" }}>
-          <div className="panel-label">UPDATE PASSWORD</div>
-          <div className="stack-layout" style={{ gap: 12 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span className="minor-text">Current Password</span>
-              <input
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder="Current pwd"
-              />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span className="minor-text">New Password</span>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="New pwd"
-              />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span className="minor-text">Confirm</span>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Repeat"
-              />
-            </label>
-            <div style={{ marginTop: 8 }}>
-              <button className="primary-button" onClick={resetPassword} disabled={pwdLoading}>
-                {pwdLoading ? "UPDATING..." : "UPDATE"}
-              </button>
-            </div>
-            {pwdLoading ? <div className="minor-text" style={{ marginTop: 4 }}>Updating...</div> : null}
-          </div>
-        </section>
-
-        {canManageExecution && (
-          <section className="panel" style={{ height: "100%" }}>
-            <div className="panel-label">EXECUTION PROFILE</div>
-            <div className="stack-layout" style={{ gap: 12 }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span className="minor-text">Account</span>
-                <select value={execForm.account_id} onChange={(e) => setExecForm((p) => ({ ...p, account_id: e.target.value }))}>
-                  <option value="">Select account</option>
-                  {execAccounts.map((a) => (
-                    <option key={a.account_id} value={a.account_id}>
-                      {a.name || a.account_id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                 <span className="minor-text">Route</span>
-                 <select value={execForm.route} onChange={(e) => setExecForm((p) => ({ ...p, route: e.target.value }))}>
-                   {ROUTE_OPTIONS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
-                 </select>
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                 <span className="minor-text">Sources (CSV)</span>
-                 <input value={execForm.source_ids_csv} onChange={(e) => setExecForm((p) => ({ ...p, source_ids_csv: e.target.value }))} />
-              </label>
-              <div style={{ marginTop: 8 }}>
-                <button className="primary-button" onClick={applyExecutionProfile} disabled={execLoading}>
-                  {execLoading ? "APPLYING..." : "APPLY PROFILE"}
-                </button>
-              </div>
-              {execMsg && <div className="minor-text" style={{ marginTop: 4 }}>{execMsg}</div>}
-            </div>
-          </section>
-        )}
-
-        <section className="panel" style={{ height: "100%" }}>
-          <div className="panel-label">UI PREFERENCES</div>
-          <div className="stack-layout" style={{ gap: 12 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span className="minor-text">Auto Refresh Interval</span>
-              <select 
-                value={localStorage.getItem("tvbridge_refresh_ms") || "10000"} 
-                onChange={(e) => {
-                  localStorage.setItem("tvbridge_refresh_ms", e.target.value);
-                  setMsg("Refresh interval updated.");
-                  window.setTimeout(() => setMsg(""), 2000);
-                  // Force a re-render if needed, but localStorage is usually enough for the other pages
-                  setProfileForm(f => ({ ...f })); 
-                }}
-              >
-                <option value="5000">5 seconds</option>
-                <option value="10000">10 seconds</option>
-                <option value="15000">15 seconds</option>
-                <option value="30000">30 seconds</option>
-                <option value="60000">1 minute</option>
-                <option value="120000">2 minutes</option>
-              </select>
-            </label>
-            <div className="minor-text" style={{ marginTop: 4 }}>
-              Controls how often the Dashboard, Trades, and Signals pages update automatically.
-            </div>
-          </div>
-        </section>
-
-        <section className="panel" style={{ height: "100%" }}>
-          <div className="panel-label">LOGGING CONFIGURATION</div>
-          <div className="stack-layout" style={{ gap: 12 }}>
-            <div style={{ display: "flex", gap: 10, marginBottom: 4 }}>
-              <button 
-                className="secondary-button" 
-                style={{ padding: "4px 8px", fontSize: 10 }}
-                onClick={() => saveLoggingConfig(LOG_GROUPS)}
-              >
-                CHECK ALL
-              </button>
-              <button 
-                className="secondary-button" 
-                style={{ padding: "4px 8px", fontSize: 10 }}
-                onClick={() => saveLoggingConfig([])}
-              >
-                UNCHECK ALL
-              </button>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              {LOG_GROUPS.map(prefix => {
-                const checked = logConfig.includes(prefix);
-                return (
-                  <label key={prefix} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                    <input 
-                      type="checkbox" 
-                      checked={checked} 
-                      onChange={(e) => {
-                        const next = e.target.checked 
-                          ? [...logConfig, prefix]
-                          : logConfig.filter(x => x !== prefix);
-                        saveLoggingConfig(next);
-                      }}
-                    />
-                    <span style={{ fontSize: 13, fontWeight: 500 }}>{prefix}*</span>
-                  </label>
-                );
-              })}
-            </div>
-            {logBusy && <div className="minor-text" style={{ marginTop: 4 }}>Saving...</div>}
-            <div className="minor-text" style={{ marginTop: 8, fontSize: 10 }}>
-              Enable/disable database logging for different event groups. Uncheck all for maximum performance.
-            </div>
-          </div>
-        </section>
-      </div>
-
-      {!isProfileMode && (
-      <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 24, marginTop: 24 }}>
+      <div className="settings-layout-v2" style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 24, marginTop: 12 }}>
         {/* Left: Sidebar */}
         <section className="panel" style={{ margin: 0 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div className="panel-label" style={{ margin: 0 }}>SETTINGS LIST</div>
-            <button className="secondary-button" style={{ padding: "4px 8px" }} onClick={() => setShowAddForm(!showAddForm)}>
+          <div className="panel-label">CATEGORIES</div>
+          <div className="stack-layout" style={{ gap: 2 }}>
+            <button className={`sidebar-item-v2 ${activeTab === "PROFILE" ? "active" : ""}`} onClick={() => setActiveTab("PROFILE")}>
+              👤 Profile
+            </button>
+            <button className={`sidebar-item-v2 ${activeTab === "PASSWORD" ? "active" : ""}`} onClick={() => setActiveTab("PASSWORD")}>
+              🔑 Password
+            </button>
+            {canManageExecution && (
+              <button className={`sidebar-item-v2 ${activeTab === "EXECUTION" ? "active" : ""}`} onClick={() => setActiveTab("EXECUTION")}>
+                ⚙️ Execution
+              </button>
+            )}
+            <button className={`sidebar-item-v2 ${activeTab === "UI" ? "active" : ""}`} onClick={() => setActiveTab("UI")}>
+              🎨 UI Preferences
+            </button>
+            <button className={`sidebar-item-v2 ${activeTab === "LOGGING" ? "active" : ""}`} onClick={() => setActiveTab("LOGGING")}>
+              📜 Logging
+            </button>
+          </div>
+
+          <div style={{ height: 1, background: "var(--border)", margin: "16px 0" }} />
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div className="panel-label" style={{ margin: 0 }}>DATABASE</div>
+            <button className="secondary-button" style={{ padding: "2px 8px", fontSize: 10 }} onClick={() => setShowAddForm(!showAddForm)}>
               {showAddForm ? "Cancel" : "+ Add"}
             </button>
           </div>
 
           {showAddForm && (
             <div className="stack-layout fadeIn" style={{ gap: 10, paddingBottom: 16, borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
-               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <span className="minor-text" style={{ fontSize: 10 }}>Category (Type)</span>
+               <label className="stack-layout" style={{ gap: 4 }}>
+                  <span className="minor-text" style={{ fontSize: 10 }}>Type</span>
                   <select 
                     style={{ width: "100%" }}
                     value={newSettingForm.type} 
@@ -531,11 +396,13 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
                     <option value="api_key">api_key</option>
                     <option value="symbols">symbols</option>
                     <option value="ai_template">ai_template</option>
+                    <option value="market_data_cron">market_data_cron</option>
+                    <option value="ai_analysis_cron">ai_analysis_cron</option>
                     <option value="note">note</option>
                   </select>
                </label>
-               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <span className="minor-text" style={{ fontSize: 10 }}>Entry Name (e.g. Gemini)</span>
+               <label className="stack-layout" style={{ gap: 4 }}>
+                  <span className="minor-text" style={{ fontSize: 10 }}>Name</span>
                   {newSettingForm.type === "api_key" ? (
                     <select
                       value={newSettingForm.name}
@@ -545,25 +412,19 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
                     </select>
-                  ) : newSettingForm.type === "symbols" ? (
-                    <input
-                      placeholder="WATCHLIST"
-                      value={newSettingForm.name}
-                      onChange={e => setNewSettingForm(p => ({ ...p, name: e.target.value }))}
-                    />
                   ) : (
                     <input 
-                      placeholder="name (e.g. Gemini API)" 
+                      placeholder="e.g. Watchlist" 
                       value={newSettingForm.name} 
                       onChange={e => setNewSettingForm(p => ({ ...p, name: e.target.value }))} 
                     />
                   )}
                </label>
-               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <span className="minor-text" style={{ fontSize: 10 }}>Value</span>
+               <label className="stack-layout" style={{ gap: 4 }}>
+                  <span className="minor-text" style={{ fontSize: 10 }}>Initial Value</span>
                   <textarea
-                    rows={newSettingForm.type === "api_key" ? 3 : 10}
-                    placeholder={newSettingForm.type === "api_key" ? "Value" : "JSON object"}
+                    rows={3}
+                    placeholder="JSON or text"
                     value={newSettingForm.value}
                     onChange={e => setNewSettingForm(p => ({ ...p, value: e.target.value }))}
                   />
@@ -573,137 +434,358 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
           )}
 
           <div className="stack-layout" style={{ gap: 2 }}>
-            {settings.map(s => (
-              <div 
-                key={getSettingKey(s)}
-                className={`sidebar-item ${activeSettingKey === getSettingKey(s) ? "active" : ""}`}
-                style={{ 
-                  padding: "10px 14px", 
-                  borderRadius: 6, 
-                  cursor: "pointer",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  background: activeSettingKey === getSettingKey(s) ? "var(--selection)" : "transparent",
-                  color: activeSettingKey === getSettingKey(s) ? "var(--primary-bright)" : "inherit"
-                }}
-                onClick={() => setActiveSettingKey(getSettingKey(s))}
-              >
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                   <span style={{ fontWeight: 500, fontSize: 13 }}>{s.name || s.type}</span>
-                   <span className="minor-text" style={{ fontSize: 10 }}>{s.type}</span>
-                </div>
-                <span className={`status-badge ${s.status}`} style={{ fontSize: 9 }}>{s.status}</span>
-              </div>
-            ))}
-            {settings.length === 0 && <div className="minor-text">No settings found.</div>}
+            {settings.map(s => {
+              const key = getSettingKey(s);
+              return (
+                <button 
+                  key={key}
+                  className={`sidebar-item-v2 ${activeTab === key ? "active" : ""}`}
+                  onClick={() => setActiveTab(key)}
+                >
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+                     <span style={{ fontWeight: 500, fontSize: 12 }}>{s.name || s.type}</span>
+                     <span className="minor-text" style={{ fontSize: 9 }}>{s.type}</span>
+                  </div>
+                  <span className={`status-badge ${s.status}`} style={{ fontSize: 8 }}>{s.status}</span>
+                </button>
+              );
+            })}
           </div>
         </section>
 
         {/* Right: Detail */}
-        <section className="panel" style={{ margin: 0 }}>
-           {selectedSetting ? (
-             <div className="fadeIn">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
-                   <div>
-                      <h3 style={{ margin: 0, textTransform: "uppercase" }}>{selectedSetting.name}</h3>
-                      <div className="minor-text" style={{ marginTop: 4 }}>Internal Type: {selectedSetting.type}</div>
-                   </div>
-                   <div style={{ display: "flex", gap: 12 }}>
-                      <button className="primary-button" onClick={() => saveSetting(getSettingKey(selectedSetting))} disabled={settingsLoading}>SAVE CHANGES</button>
-                      <button className="danger-button" onClick={() => deleteSetting(selectedSetting.type, selectedSetting.name)} disabled={settingsLoading}>DELETE</button>
-                   </div>
+        <section className="panel" style={{ margin: 0, minHeight: 600 }}>
+          {activeTab === "PROFILE" && (
+            <div className="fadeIn">
+              <div className="panel-label">PROFILE SETTINGS</div>
+              <UserDetailSection
+                title=""
+                form={profileForm}
+                setForm={setProfileForm}
+                roleOptions={[String(profileForm.role || "User")]}
+                showRole={false}
+                showActive={false}
+                showPassword={false}
+                primaryLabel={profileLoading ? "SAVING..." : "SAVE PROFILE"}
+                onPrimary={saveMyAccount}
+                primaryDisabled={profileLoading}
+                footer={msg && !pwdLoading ? <span className="minor-text">{msg}</span> : null}
+              />
+            </div>
+          )}
+
+          {activeTab === "PASSWORD" && (
+            <div className="fadeIn">
+              <div className="panel-label">SECURITY</div>
+              <div className="stack-layout" style={{ gap: 16, maxWidth: 400 }}>
+                <label className="stack-layout" style={{ gap: 6 }}>
+                  <span className="minor-text">Current Password</span>
+                  <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+                </label>
+                <label className="stack-layout" style={{ gap: 6 }}>
+                  <span className="minor-text">New Password</span>
+                  <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                </label>
+                <label className="stack-layout" style={{ gap: 6 }}>
+                  <span className="minor-text">Confirm New Password</span>
+                  <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                </label>
+                <button className="primary-button" onClick={resetPassword} disabled={pwdLoading}>
+                  {pwdLoading ? "UPDATING..." : "UPDATE PASSWORD"}
+                </button>
+                {msg && <div className="minor-text">{msg}</div>}
+              </div>
+            </div>
+          )}
+
+          {activeTab === "EXECUTION" && canManageExecution && (
+            <div className="fadeIn">
+              <div className="panel-label">EXECUTION ENGINE</div>
+              <div className="stack-layout" style={{ gap: 24 }}>
+                <div className="stack-layout" style={{ gap: 16, maxWidth: 500 }}>
+                  <label className="stack-layout" style={{ gap: 6 }}>
+                    <span className="minor-text">Account</span>
+                    <select value={execForm.account_id} onChange={(e) => setExecForm((p) => ({ ...p, account_id: e.target.value }))}>
+                      <option value="">Select account</option>
+                      {execAccounts.map((a) => <option key={a.account_id} value={a.account_id}>{a.name || a.account_id}</option>)}
+                    </select>
+                  </label>
+                  <label className="stack-layout" style={{ gap: 6 }}>
+                    <span className="minor-text">Route</span>
+                    <select value={execForm.route} onChange={(e) => setExecForm((p) => ({ ...p, route: e.target.value }))}>
+                      {ROUTE_OPTIONS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="stack-layout" style={{ gap: 6 }}>
+                    <span className="minor-text">Sources (CSV)</span>
+                    <input value={execForm.source_ids_csv} onChange={(e) => setExecForm((p) => ({ ...p, source_ids_csv: e.target.value }))} />
+                  </label>
+                  <button className="primary-button" onClick={applyExecutionProfile} disabled={execLoading}>
+                    {execLoading ? "APPLYING..." : "APPLY PROFILE"}
+                  </button>
+                  {execMsg && <div className="minor-text">{execMsg}</div>}
                 </div>
 
-                {selectedSetting.type === 'api_key' ? (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-                    {Object.entries(selectedSetting.data || {}).map(([key, val]) => (
-                      <label key={key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        <span className="minor-text" style={{ fontSize: 11 }}>{key}</span>
-                        <input 
-                          type="password" 
-                          value={val || ""} 
-                          placeholder={`Enter ${key}`}
-                          onChange={(e) => updateSetting(getSettingKey(selectedSetting), key, e.target.value)} 
-                        />
-                      </label>
-                    ))}
-                  </div>
-                ) : String(selectedSetting.type || "").toLowerCase() === "symbols" ? (
-                  <div className="stack-layout" style={{ gap: 10 }}>
-                    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <span className="minor-text" style={{ fontSize: 11 }}>symbols (one per line)</span>
-                      <textarea
-                        rows={12}
-                        value={symbolsDetailText}
+                <div className="table-scroll">
+                  <table className="table">
+                    <thead>
+                      <tr><th>Profile</th><th>Route</th><th>Account</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                      {execProfiles.map((p) => (
+                        <tr key={p.profile_id}>
+                          <td>{p.profile_name || p.profile_id}</td>
+                          <td>{String(p.route || "").toUpperCase()}</td>
+                          <td>{p.account_id}</td>
+                          <td><span className={`status-badge ${p.is_active ? "ACTIVE" : "INACTIVE"}`}>{p.is_active ? "ACTIVE" : "INACTIVE"}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "UI" && (
+            <div className="fadeIn">
+              <div className="panel-label">UI PREFERENCES</div>
+              <div className="stack-layout" style={{ gap: 16, maxWidth: 400 }}>
+                <label className="stack-layout" style={{ gap: 6 }}>
+                  <span className="minor-text">Auto Refresh Interval</span>
+                  <select 
+                    value={localStorage.getItem("tvbridge_refresh_ms") || "10000"} 
+                    onChange={(e) => {
+                      localStorage.setItem("tvbridge_refresh_ms", e.target.value);
+                      setMsg("Refresh interval updated.");
+                      window.setTimeout(() => setMsg(""), 2000);
+                      setProfileForm(f => ({ ...f })); 
+                    }}
+                  >
+                    <option value="5000">5 seconds</option>
+                    <option value="10000">10 seconds</option>
+                    <option value="15000">15 seconds</option>
+                    <option value="30000">30 seconds</option>
+                    <option value="60000">1 minute</option>
+                  </select>
+                </label>
+                <div className="minor-text">Controls how often pages update automatically.</div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "LOGGING" && (
+            <div className="fadeIn">
+              <div className="panel-label">LOGGING CONFIG</div>
+              <div className="stack-layout" style={{ gap: 16 }}>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button className="secondary-button" onClick={() => saveLoggingConfig(LOG_GROUPS)}>CHECK ALL</button>
+                  <button className="secondary-button" onClick={() => saveLoggingConfig([])}>UNCHECK ALL</button>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
+                  {LOG_GROUPS.map(prefix => (
+                    <label key={prefix} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={logConfig.includes(prefix)} 
                         onChange={(e) => {
-                          const text = e.target.value;
-                          setSymbolsDetailText(text);
-                          const arr = text.split(/[\n,]/).map((x) => String(x || "").trim().toUpperCase()).filter(Boolean);
-                          setSettings(prev => prev.map(x => getSettingKey(x) === getSettingKey(selectedSetting) ? { ...x, data: { ...(x.data || {}), symbols: [...new Set(arr)] } } : x));
+                          const next = e.target.checked 
+                            ? [...logConfig, prefix]
+                            : logConfig.filter(x => x !== prefix);
+                          saveLoggingConfig(next);
                         }}
                       />
+                      <span style={{ fontSize: 13 }}>{prefix}*</span>
                     </label>
+                  ))}
+                </div>
+                {logBusy && <div className="minor-text">Saving...</div>}
+              </div>
+            </div>
+          )}
+
+          {selectedSetting && (
+            <div className="fadeIn">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+                 <div>
+                    <h3 style={{ margin: 0, textTransform: "uppercase" }}>{selectedSetting.name}</h3>
+                    <div className="minor-text" style={{ marginTop: 4 }}>Type: {selectedSetting.type}</div>
+                 </div>
+                  <div style={{ display: "flex", gap: 12 }}>
+                    <button className="primary-button" onClick={() => {
+                      if (selectedSetting.type === "market_data_cron" || selectedSetting.type === "ai_analysis_cron") {
+                        const nextData = {
+                          ...selectedSetting.data,
+                          symbols: (cronForm.symbols || "").split(/[\n,]/).map(s => s.trim().toUpperCase()).filter(Boolean),
+                          timeframes: cronForm.timeframes,
+                          cadence_minutes: cronForm.cadence_minutes,
+                          model: cronForm.model,
+                          prompt: cronForm.prompt
+                        };
+                        saveSetting(getSettingKey(selectedSetting), nextData);
+                      } else {
+                        saveSetting(getSettingKey(selectedSetting));
+                      }
+                    }} disabled={settingsLoading}>SAVE</button>
+                    <button className="danger-button" onClick={() => deleteSetting(selectedSetting.type, selectedSetting.name)} disabled={settingsLoading}>DELETE</button>
                   </div>
-                ) : (
-                  <div className="stack-layout" style={{ gap: 20 }}>
-                    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <span className="minor-text" style={{ fontSize: 11 }}>JSON Data</span>
-                      <textarea rows={18} value={jsonDetailText} onChange={(e) => setJsonDetailText(e.target.value)} />
-                    </label>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <button
-                        className="secondary-button"
-                        onClick={() => {
-                          try {
-                            const parsed = JSON.parse(String(jsonDetailText || "{}"));
-                            setSettings(prev => prev.map(x => getSettingKey(x) === getSettingKey(selectedSetting) ? { ...x, data: parsed } : x));
-                            setSettingsMsg("JSON updated. Click SAVE CHANGES to persist.");
-                          } catch (err) {
-                            setSettingsMsg(`Invalid JSON: ${err?.message || "parse error"}`);
-                          }
+              </div>
+
+              {selectedSetting.type === "market_data_cron" || selectedSetting.type === "ai_analysis_cron" ? (
+                <div className="stack-layout fadeIn" style={{ gap: 20, maxWidth: 600 }}>
+                   <div className="stack-layout" style={{ gap: 8 }}>
+                      <span className="panel-label" style={{ fontSize: 10, marginBottom: 0 }}>STATUS</span>
+                      <select 
+                        style={{ width: "100%" }}
+                        value={selectedSetting.status} 
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSettings(prev => prev.map(s => getSettingKey(s) === getSettingKey(selectedSetting) ? { ...s, status: val } : s));
                         }}
                       >
-                        APPLY JSON
-                      </button>
-                      <span className="minor-text">Default JSON editor mode</span>
-                    </div>
-                  </div>
-                )}
-                
-                {settingsMsg && <div className="minor-text" style={{ marginTop: 16, color: "var(--success)" }}>{settingsMsg}</div>}
-             </div>
-           ) : (
-             <div className="empty-state" style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>
-                Select a setting from the list to view and edit details.
-             </div>
-           )}
+                         <option value="ACTIVE">ACTIVE</option>
+                         <option value="INACTIVE">INACTIVE</option>
+                      </select>
+                   </div>
+
+                   <div className="stack-layout" style={{ gap: 8 }}>
+                      <span className="panel-label" style={{ fontSize: 10, marginBottom: 0 }}>SYMBOLS (COMMA OR NEWLINE)</span>
+                      <textarea 
+                        rows={3}
+                        value={cronForm.symbols} 
+                        onChange={e => setCronForm(p => ({ ...p, symbols: e.target.value }))}
+                        placeholder="e.g. XAUUSD, EURUSD, BTCUSD"
+                      />
+                   </div>
+
+                   <div className="stack-layout" style={{ gap: 8 }}>
+                      <span className="panel-label" style={{ fontSize: 10, marginBottom: 0 }}>TIMEFRAMES</span>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                         {["1m", "5m", "15m", "1h", "4h", "D"].map(tf => (
+                           <label key={tf} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                             <input 
+                               type="checkbox" 
+                               checked={cronForm.timeframes.includes(tf)} 
+                               onChange={e => {
+                                 const next = e.target.checked 
+                                   ? [...cronForm.timeframes, tf]
+                                   : cronForm.timeframes.filter(x => x !== tf);
+                                 setCronForm(p => ({ ...p, timeframes: next }));
+                               }}
+                             />
+                             <span style={{ fontSize: 13 }}>{tf}</span>
+                           </label>
+                         ))}
+                      </div>
+                   </div>
+
+                   {selectedSetting.type === "ai_analysis_cron" && (
+                     <>
+                        <div className="stack-layout" style={{ gap: 8 }}>
+                           <span className="panel-label" style={{ fontSize: 10, marginBottom: 0 }}>CADENCE (MINUTES)</span>
+                           <input 
+                             type="number"
+                             value={cronForm.cadence_minutes} 
+                             onChange={e => setCronForm(p => ({ ...p, cadence_minutes: Number(e.target.value) }))}
+                           />
+                        </div>
+                        <div className="stack-layout" style={{ gap: 8 }}>
+                           <span className="panel-label" style={{ fontSize: 10, marginBottom: 0 }}>MODEL</span>
+                           <select 
+                             value={cronForm.model} 
+                             onChange={e => setCronForm(p => ({ ...p, model: e.target.value }))}
+                           >
+                              {API_KEY_NAME_OPTIONS.map(opt => (
+                                <option key={opt.value} value={opt.value.replace("_API_KEY", "").toLowerCase()}>{opt.label.replace(" API Key", "")}</option>
+                              ))}
+                           </select>
+                        </div>
+                        <div className="stack-layout" style={{ gap: 8 }}>
+                           <span className="panel-label" style={{ fontSize: 10, marginBottom: 0 }}>PROMPT</span>
+                           <textarea 
+                             rows={6}
+                             value={cronForm.prompt} 
+                             onChange={e => setCronForm(p => ({ ...p, prompt: e.target.value }))}
+                             placeholder="Instructions for AI setup detection..."
+                           />
+                        </div>
+                     </>
+                   )}
+
+                   <div style={{ marginTop: 12, padding: 12, background: "var(--surface-deep)", borderRadius: 8, border: "1px solid var(--border)" }}>
+                      <div className="panel-label" style={{ fontSize: 9 }}>RAW DATA PREVIEW</div>
+                      <pre style={{ fontSize: 11, margin: 0 }}>{JSON.stringify({
+                        symbols: (cronForm.symbols || "").split(/[\n,]/).map(s => s.trim().toUpperCase()).filter(Boolean),
+                        timeframes: cronForm.timeframes,
+                        cadence_minutes: cronForm.cadence_minutes,
+                        model: cronForm.model,
+                        prompt: cronForm.prompt
+                      }, null, 2)}</pre>
+                   </div>
+                </div>
+              ) : selectedSetting.type === 'api_key' ? (
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+                  {Object.entries(selectedSetting.data || {}).map(([key, val]) => (
+                    <label key={key} className="stack-layout" style={{ gap: 6 }}>
+                      <span className="minor-text" style={{ fontSize: 11 }}>{key}</span>
+                      <input 
+                        type="password" 
+                        value={val || ""} 
+                        onChange={(e) => updateSetting(getSettingKey(selectedSetting), key, e.target.value)} 
+                      />
+                    </label>
+                  ))}
+                </div>
+              ) : String(selectedSetting.type || "").toLowerCase() === "symbols" ? (
+                <div className="stack-layout" style={{ gap: 10 }}>
+                  <label className="stack-layout" style={{ gap: 6 }}>
+                    <span className="minor-text">Symbols (one per line)</span>
+                    <textarea
+                      rows={15}
+                      value={symbolsDetailText}
+                      onChange={(e) => {
+                        const text = e.target.value;
+                        setSymbolsDetailText(text);
+                        const arr = text.split(/[\n,]/).map((x) => String(x || "").trim().toUpperCase()).filter(Boolean);
+                        setSettings(prev => prev.map(x => getSettingKey(x) === getSettingKey(selectedSetting) ? { ...x, data: { ...(x.data || {}), symbols: [...new Set(arr)] } } : x));
+                      }}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div className="stack-layout" style={{ gap: 20 }}>
+                  <label className="stack-layout" style={{ gap: 6 }}>
+                    <span className="minor-text">JSON Configuration</span>
+                    <textarea rows={20} value={jsonDetailText} onChange={(e) => setJsonDetailText(e.target.value)} />
+                  </label>
+                  <button
+                    className="secondary-button"
+                    style={{ alignSelf: "flex-start" }}
+                    onClick={() => {
+                      try {
+                        const parsed = JSON.parse(String(jsonDetailText || "{}"));
+                        setSettings(prev => prev.map(x => getSettingKey(x) === getSettingKey(selectedSetting) ? { ...x, data: parsed } : x));
+                        setSettingsMsg("JSON applied. Click SAVE to persist.");
+                      } catch (err) {
+                        setSettingsMsg(`Invalid JSON: ${err?.message}`);
+                      }
+                    }}
+                  >
+                    APPLY JSON
+                  </button>
+                </div>
+              )}
+              
+              {settingsMsg && <div className="minor-text" style={{ marginTop: 16, color: "var(--success)" }}>{settingsMsg}</div>}
+            </div>
+          )}
+
+          {!activeTab && !selectedSetting && (
+             <div className="empty-state">Select a setting to view details.</div>
+          )}
         </section>
       </div>
-      )}
-
-      {canManageExecution && execProfiles.length > 0 && (
-         <section className="panel" style={{ marginTop: 24 }}>
-            <div className="panel-label">EXECUTION STATUS</div>
-            <div className="table-scroll">
-              <table className="table">
-                <thead>
-                  <tr><th>Profile</th><th>Route</th><th>Account</th><th>Status</th></tr>
-                </thead>
-                <tbody>
-                  {execProfiles.map((p) => (
-                    <tr key={p.profile_id}>
-                      <td>{p.profile_name || p.profile_id}</td>
-                      <td>{String(p.route || "").toUpperCase()}</td>
-                      <td>{p.account_id}</td>
-                      <td><span className={`status-badge ${p.is_active ? "ACTIVE" : "INACTIVE"}`}>{p.is_active ? "ACTIVE" : "INACTIVE"}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-         </section>
-      )}
     </div>
   );
 }

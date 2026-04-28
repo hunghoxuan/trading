@@ -1009,6 +1009,10 @@ export default function ChartSnapshotsPage() {
   const [analysisJson, setAnalysisJson] = useState("");
   const [analysisParsed, setAnalysisParsed] = useState(null);
   const [analysisSource, setAnalysisSource] = useState("ai_claude");
+  const [browserTf, setBrowserTf] = useState("15m");
+  const [browserPage, setBrowserPage] = useState(1);
+  const [browserPageSize] = useState(12);
+
   const [usedFiles, setUsedFiles] = useState([]);
   const [sessionPrefix, setSessionPrefix] = useState("");
 
@@ -2119,16 +2123,27 @@ export default function ChartSnapshotsPage() {
             const query = String(searchTerm || "").trim().toUpperCase();
             const filtered = watchlist.filter(s => s.toUpperCase().includes(query));
             if (filtered.length === 0) return <span className="minor-text">No matching symbols.</span>;
-            return filtered.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
-                onClick={() => setCfgField("symbol", normalizeWatchSymbol(s))}
-              >
-                {s}
-              </button>
-            ));
+            return (
+              <div className="snapshot-tabs-v2">
+                <button 
+                  className={`secondary-button ${!cfg.symbol ? 'active' : ''}`} 
+                  onClick={() => setCfgField('symbol', '')}
+                >
+                  🌐 BROWSE ALL
+                </button>
+                <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 8px' }} />
+                {filtered.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
+                    onClick={() => setCfgField("symbol", s)}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            );
           })()}
         </div>
         <div className="snapshot-live-card-v3">
@@ -2222,7 +2237,51 @@ export default function ChartSnapshotsPage() {
           </div>
         </div>
 
-        {!hasResponse && (
+        {!hasResponse && !cfg.symbol && (
+          <div className="fadeIn">
+            <div className="toolbar-panel" style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div className="panel-label" style={{ margin: 0 }}>Global Browser TF</div>
+                  <div className="tf-pills">
+                    {["1m", "5m", "15m", "1h", "4h", "D"].map(tf => (
+                      <button 
+                        key={tf} 
+                        className={`tf-pill ${browserTf === tf ? 'active' : ''}`}
+                        onClick={() => setBrowserTf(tf)}
+                      >
+                        {tf.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+               </div>
+               <div className="pager-area" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button className="secondary-button icon-button" style={{ width: 28, height: 28 }} onClick={() => setBrowserPage(p => Math.max(1, p - 1))} disabled={browserPage <= 1}>&lt;</button>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>
+                    Page <span style={{ color: 'var(--accent)' }}>{browserPage}</span> of {Math.ceil(watchlist.length / browserPageSize)}
+                  </span>
+                  <button className="secondary-button icon-button" style={{ width: 28, height: 28 }} onClick={() => setBrowserPage(p => p + 1)} disabled={browserPage >= Math.ceil(watchlist.length / browserPageSize)}>&gt;</button>
+               </div>
+            </div>
+            <div className="browser-grid-v1">
+              {watchlist.slice((browserPage - 1) * browserPageSize, browserPage * browserPageSize).map(sym => (
+                <div key={sym} className="browser-card-v1">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontWeight: 800, fontSize: 14 }}>{sym}</div>
+                    <button className="secondary-button" style={{ padding: '2px 8px', fontSize: 10 }} onClick={() => setCfgField('symbol', sym)}>SELECT</button>
+                  </div>
+
+                  <iframe
+                    title={`browser-chart-${sym}`}
+                    className="browser-chart-v1"
+                    src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(liveTfToTradingViewInterval(browserTf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!hasResponse && cfg.symbol && (
           <div className="snapshot-live-grid-v4">
             {widgetTfs.map((tf) => (
               <div key={tf} className="snapshot-live-card-v3">
@@ -2236,6 +2295,7 @@ export default function ChartSnapshotsPage() {
             ))}
           </div>
         )}
+
 
         <SignalDetailCard
           mode="ai"

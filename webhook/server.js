@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-1250"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 15:15 - a12c1d1"); // Order Type Integration & AI Browser
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -2855,6 +2855,7 @@ async function mt5InitBackend() {
       source_id TEXT,
       symbol TEXT NOT NULL,
       side TEXT NOT NULL,
+      order_type TEXT NULL, -- market, limit, stop
       entry DOUBLE PRECISION NULL,
       entry_model TEXT NULL,
       sl DOUBLE PRECISION NULL,
@@ -2882,6 +2883,7 @@ async function mt5InitBackend() {
       chart_tf TEXT NULL,
       symbol TEXT NOT NULL,
       action TEXT NOT NULL,
+      order_type TEXT NULL, -- market, limit, stop
       volume FLOAT8 NULL,
       entry FLOAT8 NULL,
       sl FLOAT8 NULL,
@@ -2941,6 +2943,10 @@ async function mt5InitBackend() {
       user_id TEXT REFERENCES users(user_id) ON DELETE SET NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    -- DDL Migrations
+    ALTER TABLE signals ADD COLUMN IF NOT EXISTS order_type TEXT NULL;
+    ALTER TABLE trades ADD COLUMN IF NOT EXISTS order_type TEXT NULL;
   `);
 
   await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS entry DOUBLE PRECISION NULL`);
@@ -3281,15 +3287,15 @@ async function mt5InitBackend() {
       const signalSid = await allocateUniqueSid(pool, "signals", signal.sid || signal.signal_id, "SIG");
       const r = await pool.query(`
         INSERT INTO signals (
-          signal_id, sid, created_at, user_id, source, source_id, symbol, side, entry, sl, tp,
+          signal_id, sid, created_at, user_id, source, source_id, symbol, side, order_type, entry, sl, tp,
           entry_model, signal_tf, chart_tf, rr_planned, risk_money_planned, risk_pct_planned,
           note, rejection_reason, raw_json, status
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21)
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,$22)
         ON CONFLICT (signal_id) DO NOTHING
         RETURNING signal_id
       `, [
         signal.signal_id, signalSid, signal.created_at, signal.user_id, signal.source, signal.source_id,
-        signal.symbol, signal.side, signal.entry, signal.sl, signal.tp, signal.entry_model || null,
+        signal.symbol, signal.side, signal.order_type || null, signal.entry, signal.sl, signal.tp, signal.entry_model || null,
         signal.signal_tf, signal.chart_tf, signal.rr_planned, signal.risk_money_planned, signal.risk_pct_planned,
         signal.note, signal.rejection_reason, JSON.stringify(signal.raw_json || {}), signal.status || 'NEW'
       ]);
@@ -3513,13 +3519,13 @@ async function mt5InitBackend() {
             INSERT INTO trades (
               trade_id, sid, account_id, user_id, signal_id, source_id,
               entry_model, signal_tf, chart_tf,
-              symbol, action, entry, sl, tp, volume, note,
+              symbol, action, order_type, entry, sl, tp, volume, note,
               dispatch_status, execution_status, metadata, created_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'NEW','PENDING',$17::jsonb,$18,$18)
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'NEW','PENDING',$18::jsonb,$19,$19)
           `, [
             tradeId, tradeSid, aid, userId, signalId, sourceId,
             payload.entry_model || null, payload.signal_tf || null, payload.chart_tf || null,
-            payload.symbol, payload.action, payload.entry, payload.sl,
+            payload.symbol, payload.action, payload.order_type || null, payload.entry, payload.sl,
             payload.tp, payload.volume, payload.note, JSON.stringify(payload.metadata || {}), mt5NowIso()
           ]);
           if ((ins.rowCount || 0) > 0) {
@@ -3601,6 +3607,7 @@ async function mt5InitBackend() {
              entry_exec = $3, 
              pnl_realized = CASE WHEN $10 = TRUE THEN $4 ELSE pnl_realized END,
              volume = COALESCE($11, volume),
+             order_type = COALESCE($13, order_type),
              metadata = CASE
                WHEN $12::jsonb = '{}'::jsonb THEN metadata
                ELSE COALESCE(metadata, '{}'::jsonb) || $12::jsonb
@@ -3621,7 +3628,8 @@ async function mt5InitBackend() {
           accountId,
           isClosed,
           usedVolume,
-          JSON.stringify(telemetryMeta)
+          JSON.stringify(telemetryMeta),
+          payload.order_type || null
        ]);
        if (res.rowCount > 0) {
          await this.log(payload.trade_id, 'trades', {
@@ -3661,6 +3669,7 @@ async function mt5InitBackend() {
           SET execution_status = $1,
               broker_trade_id = COALESCE(NULLIF($3, ''), broker_trade_id),
               pnl_realized = CASE WHEN $4 = TRUE THEN COALESCE($5, pnl_realized) ELSE pnl_realized END,
+              order_type = COALESCE($7, order_type),
               metadata = COALESCE(metadata, '{}'::jsonb) || $6::jsonb,
               closed_at = CASE WHEN $4 = TRUE THEN NOW() ELSE closed_at END,
               updated_at = NOW()
@@ -3675,7 +3684,7 @@ async function mt5InitBackend() {
           sl_exec: extra.sl_exec ?? null,
           tp_exec: extra.tp_exec ?? null,
           last_ack_telemetry_at: new Date().toISOString(),
-        })]);
+        }), extra.order_type || null]);
 
         await client.query("COMMIT");
         if (res.rowCount > 0) {
@@ -3757,6 +3766,7 @@ async function mt5InitBackend() {
               volume,
               symbol,
               action,
+              order_type: raw.order_type || null,
               status_raw: statusRaw || "UNKNOWN",
               execution_status: executionStatus,
               close_reason: closeReason,
@@ -3836,6 +3846,7 @@ async function mt5InitBackend() {
                 END,
                 pnl_realized = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($2, pnl_realized) ELSE pnl_realized END,
                 volume = COALESCE($7, volume),
+                order_type = COALESCE($12, order_type),
                 close_reason = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($8, close_reason) ELSE close_reason END,
                 broker_trade_id = COALESCE(NULLIF($9, ''), broker_trade_id),
                 metadata = COALESCE(metadata, '{}'::jsonb) || $10::jsonb,
@@ -3852,7 +3863,7 @@ async function mt5InitBackend() {
                 OR metadata->>'order_ticket' = ANY($4::text[])
               )
             RETURNING trade_id
-          `, [it.execution_status, it.pnl, aid, ticketCandidates, openedAt, closedAt, it.volume, it.close_reason, it.ticket || "", syncMeta, syncSymbol]);
+          `, [it.execution_status, it.pnl, aid, ticketCandidates, openedAt, closedAt, it.volume, it.close_reason, it.ticket || "", syncMeta, syncSymbol, it.order_type || null]);
         }
         if (it.signal_id) {
           if (res.rowCount === 0) {
@@ -3870,6 +3881,7 @@ async function mt5InitBackend() {
                 broker_trade_id = COALESCE(NULLIF($2, ''), broker_trade_id),
                 pnl_realized = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($3, pnl_realized) ELSE pnl_realized END,
                 volume = COALESCE($6, volume),
+                order_type = COALESCE($11, order_type),
                 close_reason = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($7, close_reason) ELSE close_reason END,
                 metadata = COALESCE(metadata, '{}'::jsonb) || $8::jsonb,
                 opened_at = COALESCE($9, opened_at),
@@ -3886,7 +3898,7 @@ async function mt5InitBackend() {
               LIMIT 1
             )
             RETURNING trade_id
-            `, [it.execution_status, it.ticket, it.pnl, aid, it.signal_id, it.volume, it.close_reason, syncMeta, it.opened_at || null, it.closed_at || null]);
+            `, [it.execution_status, it.ticket, it.pnl, aid, it.signal_id, it.volume, it.close_reason, syncMeta, it.opened_at || null, it.closed_at || null, it.order_type || null]);
           }
         }
         if (res.rowCount === 0 && ticketCandidates.length) {
@@ -3905,6 +3917,7 @@ async function mt5InitBackend() {
                 broker_trade_id = COALESCE(NULLIF($2, ''), broker_trade_id),
                 pnl_realized = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($3, pnl_realized) ELSE pnl_realized END,
                 volume = COALESCE($5, volume),
+                order_type = COALESCE($11, order_type),
                 close_reason = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($6, close_reason) ELSE close_reason END,
                 metadata = COALESCE(metadata, '{}'::jsonb) || $7::jsonb,
                 closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($8, closed_at, NOW()) ELSE closed_at END,
@@ -3922,7 +3935,7 @@ async function mt5InitBackend() {
               LIMIT 1
             )
             RETURNING trade_id
-          `, [it.execution_status, it.ticket, it.pnl, aid, it.volume, it.close_reason, syncMeta, it.closed_at || null, syncSymbol, syncAction]);
+          `, [it.execution_status, it.ticket, it.pnl, aid, it.volume, it.close_reason, syncMeta, it.closed_at || null, syncSymbol, syncAction, it.order_type || null]);
         }
         matched += res.rowCount;
         if (res.rowCount > 0) {
@@ -5680,9 +5693,9 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
     signal_tf: signalTf || null,
     chart_tf: chartTf || null,
     note,
+    order_type: orderType,
     raw_json: rawJsonNormalized,
     status: "NEW",
-
   });
 
   if (upsertResult?.inserted) {
@@ -10008,6 +10021,7 @@ const appHandler = async (req, res) => {
               close_reason = COALESCE($8, close_reason),
               symbol = COALESCE($5, symbol),
               volume = COALESCE($6, volume),
+              order_type = COALESCE($12, order_type),
               broker_trade_id = COALESCE(NULLIF($10, ''), broker_trade_id),
               metadata = COALESCE(metadata, '{}'::jsonb) || $9::jsonb,
               updated_at = NOW()
@@ -10021,7 +10035,7 @@ const appHandler = async (req, res) => {
               OR ($7::text <> '' AND signal_id = $7)
             )
           RETURNING trade_id, user_id
-        `, [execStatus, pnl, closeTime, ticketCandidates, u.symbol || null, u.volume || null, signalId, closeReason, syncMeta, ticket, accountId]);
+        `, [execStatus, pnl, closeTime, ticketCandidates, u.symbol || null, u.volume || null, signalId, closeReason, syncMeta, ticket, accountId, u.order_type || null]);
         
         if (resUpd.rowCount > 0) {
           updatedCount++;

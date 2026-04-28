@@ -741,8 +741,13 @@ export default function TradesPage() {
                       </td>
                       <td>
                         <div className="cell-wrap">
-                          <div className="cell-major"><span className={actionCls}>{action}</span> {t.symbol}</div>
-                          <div className="cell-minor">{accountName} - {brokerTicketOf(t)}</div>
+                          <div className="cell-major" style={{ fontWeight: 800 }}>{t.symbol}</div>
+                          <div className="cell-minor" style={{ display: "flex", alignItems: "center" }}>
+                            <span className={`side-badge ${actionCls}`}>{action[0]}</span>
+                            <span>({action === "BUY" ? "Long" : "Short"})</span>
+                            <span className="order-type-label">{t.order_type || "Market"}</span>
+                          </div>
+                          <div className="cell-minor" style={{ opacity: 0.7 }}>{accountName} | {brokerTicketOf(t)}</div>
                         </div>
                       </td>
                       <td>
