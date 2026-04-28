@@ -2,9 +2,10 @@
 
 # Session Log: 2026-04-28 17:05
 - **Work Accomplished**:
-  - Added mandatory build version rule: VPS/server and EA client must use matching `vY.m.d-git` format, with `git` from latest pushed commit short SHA or agreed push/build number.
+  - Updated build version rule format to `vY.M.d H:m - git`.
+  - Added mandatory build version rule: VPS/server and EA client must use matching `vY.M.d H:m - git` format, with `git` from latest pushed commit short SHA or agreed push/build number.
 - **Pending Tasks / Backlog**:
-  - [ ] Update `scripts/bump_build_versions.sh` later so it generates the new `vY.m.d-git` format automatically.
+  - [ ] Update `scripts/bump_build_versions.sh` later so it generates the new `vY.M.d H:m - git` format automatically.
 
 # Session Log: 2026-04-28 16:20
 - **Work Accomplished**:

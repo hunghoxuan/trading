@@ -13,9 +13,9 @@ When changing code (backend, EA, UI, scripts), bump both versions before reporti
 - `webhook/server.js` -> `SERVER_VERSION`
 - `mql5/TVBridgeEA.mq5` -> `EA_BUILD_VERSION`
 
-Version format must use the latest git commit/push identifier:
+Version format must use date, hour/minute, and latest git commit/push identifier:
 
-- `vY.m.d-git`
+- `vY.M.d H:m - git`
 - Apply the same version to VPS/server and EA client.
 - Prefer deriving `git` from the latest pushed commit short SHA or agreed push/build number.
 
