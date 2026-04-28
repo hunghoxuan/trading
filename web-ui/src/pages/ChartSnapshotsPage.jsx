@@ -1009,7 +1009,7 @@ export default function ChartSnapshotsPage() {
   const [analysisJson, setAnalysisJson] = useState("");
   const [analysisParsed, setAnalysisParsed] = useState(null);
   const [analysisSource, setAnalysisSource] = useState("ai_claude");
-  const [browserTf, setBrowserTf] = useState("15m");
+  const [browserTf, setBrowserTf] = useState("4h");
   const [browserPage, setBrowserPage] = useState(1);
   const [browserPageSize] = useState(12);
 
@@ -2129,7 +2129,7 @@ export default function ChartSnapshotsPage() {
                   className={`secondary-button snapshot-tag-v2 ${!cfg.symbol ? 'active' : ''}`} 
                   onClick={() => setCfgField('symbol', '')}
                 >
-                  🌐 BROWSE ALL
+                  🌐 ALL
                 </button>
                 <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 8px' }} />
                 {filtered.map((s) => (
@@ -2241,7 +2241,7 @@ export default function ChartSnapshotsPage() {
           <div className="fadeIn">
             <div className="toolbar-panel" style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <div className="panel-label" style={{ margin: 0 }}>Global Browser TF</div>
+                  {/* Global Browser TF label removed per user request */}
                   <div className="tf-pills">
                     {["1m", "5m", "15m", "1h", "4h", "D"].map(tf => (
                       <button 

@@ -16,7 +16,7 @@ const API_KEY_NAME_OPTIONS = [
   { value: "TWELVE_DATA_API_KEY", label: "Twelve Data API Key" },
 ];
 
-const FEATURE_SETTING_TYPES = new Set(["market_data_cron", "ai_analysis_cron"]);
+const SYSTEM_SETTING_TYPES = new Set(["market_data_cron", "ai_analysis_cron", "system_config"]);
 const TIMEFRAME_OPTIONS = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
 
 function isSystemRole(user) {
@@ -408,46 +408,12 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
                 Execution
               </button>
             )}
-            <button className={`sidebar-item-v2 ${activeTab === "UI" ? "active" : ""}`} onClick={() => setActiveTab("UI")}>
-              UI Preferences
-            </button>
-            <button className={`sidebar-item-v2 ${activeTab === "LOGGING" ? "active" : ""}`} onClick={() => setActiveTab("LOGGING")}>
-              Logging
-            </button>
-          </div>
-
-          <div style={{ height: 1, background: "var(--border)", margin: "16px 0" }} />
-
-          <div className="panel-label">FEATURE SETTINGS</div>
-          <div className="stack-layout" style={{ gap: 2 }}>
-            <button
-              className={`sidebar-item-v2 ${activeTab === getSettingKey(marketDataCronSetting) ? "active" : ""}`}
-              onClick={() => marketDataCronSetting && setActiveTab(getSettingKey(marketDataCronSetting))}
-              disabled={!marketDataCronSetting}
-            >
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
-                <span style={{ fontWeight: 700, fontSize: 12 }}>Market Data Cron</span>
-                <span className="minor-text" style={{ fontSize: 9 }}>Bars DB + cache sync</span>
-              </div>
-              <span className={`status-badge ${settingStatusClass(marketDataCronSetting?.status)}`}>{marketDataCronSetting?.status || "missing"}</span>
-            </button>
-            <button
-              className={`sidebar-item-v2 ${activeTab === getSettingKey(aiAnalysisCronSetting) ? "active" : ""}`}
-              onClick={() => aiAnalysisCronSetting && setActiveTab(getSettingKey(aiAnalysisCronSetting))}
-              disabled={!aiAnalysisCronSetting}
-            >
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
-                <span style={{ fontWeight: 700, fontSize: 12 }}>AI Analysis Cron</span>
-                <span className="minor-text" style={{ fontSize: 9 }}>Auto analysis pipeline</span>
-              </div>
-              <span className={`status-badge ${settingStatusClass(aiAnalysisCronSetting?.status)}`}>{aiAnalysisCronSetting?.status || "missing"}</span>
-            </button>
           </div>
 
           <div style={{ height: 1, background: "var(--border)", margin: "16px 0" }} />
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div className="panel-label" style={{ margin: 0 }}>DATABASE</div>
+            <div className="panel-label" style={{ margin: 0 }}>USER SETTINGS</div>
             <button className="secondary-button" style={{ padding: "2px 8px", fontSize: 10 }} onClick={() => setShowAddForm(!showAddForm)}>
               {showAddForm ? "Cancel" : "+ Add"}
             </button>
@@ -472,8 +438,6 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
                     <option value="api_key">api_key</option>
                     <option value="symbols">symbols</option>
                     <option value="ai_template">ai_template</option>
-                    <option value="market_data_cron">market_data_cron</option>
-                    <option value="ai_analysis_cron">ai_analysis_cron</option>
                     <option value="note">note</option>
                   </select>
                </label>
@@ -510,7 +474,7 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
           )}
 
           <div className="stack-layout" style={{ gap: 2 }}>
-            {settings.filter((s) => !FEATURE_SETTING_TYPES.has(String(s?.type || ""))).map(s => {
+            {settings.filter((s) => !SYSTEM_SETTING_TYPES.has(String(s?.type || ""))).map(s => {
               const key = getSettingKey(s);
               return (
                 <button 
@@ -711,7 +675,7 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
                         saveSetting(getSettingKey(selectedSetting));
                       }
                     }} disabled={settingsLoading}>SAVE</button>
-                    {!FEATURE_SETTING_TYPES.has(String(selectedSetting.type || "")) && (
+                    {!SYSTEM_SETTING_TYPES.has(String(selectedSetting.type || "")) && (
                       <button className="danger-button" onClick={() => deleteSetting(selectedSetting.type, selectedSetting.name)} disabled={settingsLoading}>DELETE</button>
                     )}
                   </div>
