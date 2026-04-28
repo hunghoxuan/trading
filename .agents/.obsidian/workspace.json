@@ -135,8 +135,9 @@
       "bases:Create new base": false
     }
   },
-  "active": "336f84509bfb892c",
+  "active": "4bf2b34a6a4ef4d8",
   "lastOpenFiles": [
+    "skills/token-optimization.md",
     "knowledge/popular_entry_models.md",
     "worklog.md",
     "skills/session-management.md",
@@ -163,7 +164,6 @@
     "templates/brainstorm-mode-template.md",
     "skills/db-design.md",
     "skills/deploy.md",
-    "skills/reports.md",
-    "templates/bug-report-template.md"
+    "skills/reports.md"
   ]
 }

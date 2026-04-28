@@ -45,3 +45,4 @@
 - **Mandatory Summary**: Before ending a conversation (or when requested), ALWAYS update `.agents/worklog.md` with a summary of work done and pending backlog.
 - **Resuming Context**: At the start of EVERY new conversation, the first step MUST be to read `.agents/worklog.md`.
 - Follow [skills/session-management.md](./skills/session-management.md).
+- **Caveman Mode**: Adopt extremely concise communication style to save tokens. Use [skills/token-optimization.md](./skills/token-optimization.md).

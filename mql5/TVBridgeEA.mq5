@@ -51,7 +51,7 @@ input string  InpBacktestFileCommon  = "tvbridge_signals.csv";
 input bool    InpBacktestHasHeader   = true;
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-28.0749";
+string EA_BUILD_VERSION = "2026-04-28.0753";
 
 CTrade trade;
 
@@ -620,7 +620,7 @@ void ProcessStopRetryQueue()
       }
 
       Print("Stop retry pending id=", g_stopRetrySignalId[i],
-            " ticket=", IntegerToString((int)g_stopRetryTicket[i]),
+            " ticket=", IntegerToString((long)g_stopRetryTicket[i]),
             " symbol=", g_stopRetrySymbol[i],
             " attempt=", g_stopRetryAttempts[i], "/", maxAttempts,
             " info=", info);
@@ -2492,7 +2492,7 @@ bool ExecuteSignal(const string signalId,
          {
             MapOrderSignal(orderTicket, signalId);
             Print("Pending order placed id=", signalId,
-                  " orderTicket=", IntegerToString((int)orderTicket),
+                  " orderTicket=", IntegerToString((long)orderTicket),
                   " symbol=", symbol,
                   " action=", action,
                   " volume=", DoubleToString(volumeUse, 4));
@@ -2836,7 +2836,7 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
                g_ackEquity = AccountInfoDouble(ACCOUNT_EQUITY);
                g_ackHasPnlRealized = false;
                
-               Ack(signalId, "PLACED", IntegerToString((int)orderTicket), "order_placed");
+               Ack(signalId, "PLACED", IntegerToString((long)orderTicket), "order_placed");
             }
          }
       }
@@ -2869,7 +2869,7 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
                ENUM_ORDER_STATE state = (ENUM_ORDER_STATE)HistoryOrderGetInteger(orderTicket, ORDER_STATE);
                if(state == ORDER_STATE_CANCELED || state == ORDER_STATE_EXPIRED || state == ORDER_STATE_REJECTED)
                {
-                  Ack(signalId, state == ORDER_STATE_EXPIRED ? "EXPIRED" : "CANCEL", IntegerToString((int)orderTicket), "order_removed");
+                  Ack(signalId, state == ORDER_STATE_EXPIRED ? "EXPIRED" : "CANCEL", IntegerToString((long)orderTicket), "order_removed");
                   if(ordIdx >= 0) RemoveOrderMapAt(ordIdx);
                }
             }
@@ -2933,7 +2933,7 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
          RemoveOrderMapAt(ordIdx);
       g_ackHasPnlRealized = false;
       g_ackPnlRealized = 0.0;
-      Ack(signalId, "START", IntegerToString((int)positionTicket), "entry_filled");
+      Ack(signalId, "START", IntegerToString((long)positionTicket), "entry_filled");
       return;
    }
 
@@ -2960,8 +2960,8 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
 
    string reasonMsg = "close_reason=" + IntegerToString((int)reason)
                       + " deal=" + IntegerToString((int)trans.deal)
-                      + " order=" + IntegerToString((int)orderTicket);
-   Ack(signalId, status, IntegerToString((int)positionTicket), reasonMsg);
+                      + " order=" + IntegerToString((long)orderTicket);
+   Ack(signalId, status, IntegerToString((long)positionTicket), reasonMsg);
 
    if(posIdx >= 0)
       RemovePositionMapAt(posIdx);
