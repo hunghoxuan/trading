@@ -1,5 +1,14 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-28 12:45
+- **Work Accomplished**:
+  - Applied manual production DB correction from MT5 screenshots for tickets `1614606138`, `1614606129`, `1606871045`, `1613165287`, `1614605900`, `1614606086`, `1614606125`, `1613165038`, `1612211029`, `1611966110`, and `1612094065`.
+  - Corrected symbol/action/entry/SL/TP/volume/status/PnL/current-price metadata.
+  - Created missing current open/pending VPS rows for BTCUSD `1614606129`, XTIUSD `1606871045`, and UK100 `1613165287`.
+  - Verified corrected rows in production Postgres.
+- **Pending Tasks / Backlog**:
+  - [ ] Compile/load EA build `2026-04-28.1030` to prevent future stale EA payloads from fighting manual corrections.
+
 # Session Log: 2026-04-28 12:35
 - **Work Accomplished**:
   - Fixed broker ticket matching bug where unmatched MT5 tickets could bind to oldest unresolved trade without symbol validation.
