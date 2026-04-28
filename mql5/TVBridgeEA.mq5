@@ -51,7 +51,7 @@ input string  InpBacktestFileCommon  = "tvbridge_signals.csv";
 input bool    InpBacktestHasHeader   = true;
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-28.0742";
+string EA_BUILD_VERSION = "2026-04-28.0749";
 
 CTrade trade;
 
@@ -2998,7 +2998,7 @@ void SyncWithVps()
             if(sid != "")
             {
                if(posCount > 0) posUpdates += ",";
-               posUpdates += "{\"signal_id\":\"" + sid + "\",\"status\":\"START\",\"ticket\":\"" + IntegerToString((int)ticket) + "\",\"pnl\":" + DoubleToString(PositionGetDouble(POSITION_PROFIT), 2) + ",\"opened_at\":\"" + IsoTime((datetime)PositionGetInteger(POSITION_TIME)) + "\"}";
+               posUpdates += "{\"signal_id\":\"" + JsonEscape(sid) + "\",\"status\":\"START\",\"ticket\":\"" + IntegerToString((long)ticket) + "\",\"pnl\":" + DoubleToString(PositionGetDouble(POSITION_PROFIT), 2) + ",\"opened_at\":\"" + IsoTime((datetime)PositionGetInteger(POSITION_TIME)) + "\"}";
                posCount++;
             }
          }
@@ -3021,7 +3021,7 @@ void SyncWithVps()
             if(sid != "")
             {
                if(ordCount > 0) ordUpdates += ",";
-               ordUpdates += "{\"signal_id\":\"" + sid + "\",\"status\":\"PLACED\",\"ticket\":\"" + IntegerToString((int)ticket) + "\",\"pnl\":0}";
+               ordUpdates += "{\"signal_id\":\"" + JsonEscape(sid) + "\",\"status\":\"PLACED\",\"ticket\":\"" + IntegerToString((long)ticket) + "\",\"pnl\":0}";
                ordCount++;
             }
          }
