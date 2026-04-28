@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-1111"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-1114"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -9877,7 +9877,7 @@ const appHandler = async (req, res) => {
           last_sync_source: "ea_bulk_history",
         });
         
-        const resUpd = await pool.query(`
+        const resUpd = await b.query(`
           UPDATE trades
           SET execution_status = $1,
               pnl_realized = $2,
