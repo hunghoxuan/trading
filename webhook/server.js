@@ -8,10 +8,18 @@ const path = require("path");
 const { execFileSync, spawnSync } = require("child_process");
 const { URL, URLSearchParams } = require("url");
 let createRedisClient = null;
+let BullQueue = null;
+let BullWorker = null;
 try {
   ({ createClient: createRedisClient } = require("redis"));
 } catch {
   createRedisClient = null;
+}
+try {
+  ({ Queue: BullQueue, Worker: BullWorker } = require("bullmq"));
+} catch {
+  BullQueue = null;
+  BullWorker = null;
 }
 
 function loadEnvFile() {
@@ -87,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-1202"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-1241"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -292,6 +300,12 @@ const CFG = {
   mt5PostgresUrl: envStr(process.env.MT5_POSTGRES_URL) || envStr(process.env.POSTGRES_URL) || envStr(process.env.POSTGRE_URL),
   redisEnabled: asBool(process.env.REDIS_ENABLED, true),
   redisUrl: envStr(process.env.REDIS_URL, "redis://127.0.0.1:6379"),
+  marketDataCronEnabled: asBool(process.env.MARKET_DATA_CRON_ENABLED, true),
+  marketDataCronQueueEnabled: asBool(process.env.MARKET_DATA_CRON_QUEUE_ENABLED, true),
+  marketDataCronConcurrency: Math.max(1, Math.min(16, Math.round(asNum(process.env.MARKET_DATA_CRON_CONCURRENCY, 4)))),
+  marketDataCronBatchSize: Math.max(1, Math.min(50, Math.round(asNum(process.env.MARKET_DATA_CRON_BATCH_SIZE, 8)))),
+  marketDataChunkMaxBars: Math.max(50, Math.min(1000, Math.round(asNum(process.env.MARKET_DATA_CHUNK_MAX_BARS, 500)))),
+  marketDataDefaultTimezone: envStr(process.env.MARKET_DATA_DEFAULT_TIMEZONE, "America/New_York"),
   uiDistPath: path.resolve(__dirname, envStr(process.env.WEB_UI_DIST_PATH || process.env.WEBHOOK_UI_DIST_PATH, "../web-ui/dist")),
   landingDistPath: path.resolve(__dirname, envStr(process.env.WEB_LANDING_DIST_PATH, "../web")),
   uiAuthEnabled: asBool(process.env.UI_AUTH_ENABLED, true),
@@ -405,34 +419,98 @@ function estimateRequestedBarsRange({ tfNorm, bars, nowSec = nowUnixSec() }) {
   return { start, end: alignedEnd, sec };
 }
 
+function normalizeMarketDataTimezone(rawTimezone) {
+  const tz = String(rawTimezone || CFG?.marketDataDefaultTimezone || "America/New_York").trim() || "America/New_York";
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: tz }).format(new Date());
+    return tz;
+  } catch {
+    return "America/New_York";
+  }
+}
+
+function normalizeMarketDataBar(rawBar) {
+  if (!rawBar || typeof rawBar !== "object") return null;
+  const time = Number(rawBar.time ?? rawBar.t ?? rawBar.bar_start ?? rawBar.bar_start_unix);
+  const open = Number(rawBar.open ?? rawBar.o);
+  const high = Number(rawBar.high ?? rawBar.h);
+  const low = Number(rawBar.low ?? rawBar.l);
+  const close = Number(rawBar.close ?? rawBar.c);
+  const volume = Number(rawBar.volume ?? rawBar.v);
+  if (!Number.isFinite(time) || !Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) return null;
+  const out = {
+    time: Math.floor(time),
+    open,
+    high,
+    low,
+    close,
+  };
+  if (Number.isFinite(volume)) out.volume = volume;
+  return out;
+}
+
+function normalizeMarketDataBars(rawBars = []) {
+  const dedup = new Map();
+  for (const raw of Array.isArray(rawBars) ? rawBars : []) {
+    const bar = normalizeMarketDataBar(raw);
+    if (bar) dedup.set(bar.time, bar);
+  }
+  return [...dedup.values()].sort((a, b) => a.time - b.time);
+}
+
+function detectMarketDataGapCandidates(bars = [], tfNorm = "1min") {
+  const sec = Math.max(60, parseTfTokenToSeconds(tfNorm));
+  const out = [];
+  for (let i = 1; i < bars.length; i++) {
+    const prev = Number(bars[i - 1]?.time);
+    const cur = Number(bars[i]?.time);
+    if (!Number.isFinite(prev) || !Number.isFinite(cur)) continue;
+    const missing = Math.round((cur - prev) / sec) - 1;
+    if (missing > 0) out.push({ after: prev, before: cur, missing_bars: missing });
+  }
+  return out;
+}
+
 function serializeSnapshotForDb(snapshot) {
   if (!snapshot || typeof snapshot !== 'object') return "";
-  const bars = Array.isArray(snapshot.bars) ? snapshot.bars : [];
-  // Return just the bars as multiline CSV: l,h,o,t,c
-  return bars.map(b => {
-    if (typeof b === 'string') return b;
-    return `${b.low},${b.high},${b.open},${b.time},${b.close}`;
-  }).join('\n');
+  const bars = normalizeMarketDataBars(snapshot.bars);
+  return JSON.stringify({
+    version: 2,
+    timezone: "UTC",
+    provider: snapshot.provider || "unknown",
+    bars,
+    sl: snapshot.sl ?? null,
+    tp: snapshot.tp ?? null,
+  });
 }
 
 function deserializeSnapshotFromDb(dbData) {
-  if (!dbData || typeof dbData !== 'string') return { bars: [] };
-  const lines = dbData.split('\n').filter(l => l.trim().length > 0);
-  
-  const snapshot = {
+  if (!dbData) return { bars: [] };
+  if (typeof dbData === "object" && Array.isArray(dbData.bars)) {
+    return { ...dbData, bars: normalizeMarketDataBars(dbData.bars) };
+  }
+  const raw = String(dbData || "");
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      return { ...parsed, bars: normalizeMarketDataBars(parsed.bars) };
+    }
+  } catch {}
+  const lines = raw.split('\n').filter(l => l.trim().length > 0);
+  return {
+    timezone: "UTC",
     bars: lines.map(s => {
       const parts = s.split(',');
       if (parts.length < 5) return null;
-      return {
+      return normalizeMarketDataBar({
         low: Number(parts[0]),
         high: Number(parts[1]),
         open: Number(parts[2]),
         time: Number(parts[3]),
         close: Number(parts[4])
-      };
+      });
     }).filter(Boolean)
   };
-  return snapshot;
 }
 
 function marketDataMemoryKey(symbolNorm, tfNorm) {
@@ -558,6 +636,7 @@ async function marketDataRedisWrite(symbolNorm, tfNorm, snapshot) {
 
 async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
   const db = await mt5InitBackend();
+  const tfSec = Math.max(60, parseTfTokenToSeconds(tfNorm));
   // Find ANY overlapping rows
   const res = await db.query(
     `SELECT data
@@ -591,29 +670,34 @@ async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
     symbol_norm: symbolNorm,
     tf_norm: tfNorm,
     bar_start: mergedBars[0].time,
-    bar_end: mergedBars[mergedBars.length - 1].time,
+    bar_end: mergedBars[mergedBars.length - 1].time + tfSec,
     bars: mergedBars,
     sl: firstSl,
-    tp: firstTp
+    tp: firstTp,
+    timezone: "UTC",
+    gap_candidates: detectMarketDataGapCandidates(mergedBars, tfNorm).slice(0, 20),
   };
 }
 
 async function marketDataDbUpsert(symbolNorm, tfNorm, snapshot) {
-  const bars = Array.isArray(snapshot?.bars) ? snapshot.bars : [];
+  const bars = normalizeMarketDataBars(snapshot?.bars);
   if (!bars.length) return;
 
   const db = await mt5InitBackend();
+  const tfSec = Math.max(60, parseTfTokenToSeconds(tfNorm));
+  const maxBars = Math.max(50, Math.min(1000, Number(CFG.marketDataChunkMaxBars) || 500));
   
   // 1. Fetch existing overlapping or adjacent data to merge
   // We expand the range slightly to catch nearby segments
   const s = bars[0].time;
   const e = bars[bars.length - 1].time;
+  const expand = tfSec * maxBars;
   
   const existing = await db.query(
     `SELECT id, data FROM market_data 
       WHERE symbol = $1 AND tf = $2
         AND NOT (bar_end < $3 OR bar_start > $4)`,
-    [symbolNorm, tfNorm, s - 3600, e + 3600]
+    [symbolNorm, tfNorm, s - expand, e + expand]
   );
 
   const dedup = new Map();
@@ -626,18 +710,24 @@ async function marketDataDbUpsert(symbolNorm, tfNorm, snapshot) {
   bars.forEach(b => dedup.set(b.time, b));
 
   const mergedBars = [...dedup.values()].sort((a, b) => a.time - b.time);
-  const newStart = mergedBars[0].time;
-  const newEnd = mergedBars[mergedBars.length - 1].time;
+  const chunks = [];
+  for (let i = 0; i < mergedBars.length; i += maxBars) {
+    const chunkBars = mergedBars.slice(i, i + maxBars);
+    if (!chunkBars.length) continue;
+    const chunkSnapshot = {
+      provider: snapshot.provider || "unknown",
+      sl: snapshot.sl,
+      tp: snapshot.tp,
+      bars: chunkBars,
+    };
+    chunks.push({
+      bar_start: chunkBars[0].time,
+      bar_end: chunkBars[chunkBars.length - 1].time + tfSec,
+      data: serializeSnapshotForDb(chunkSnapshot),
+    });
+  }
 
-  // 2. Prepare minimal DB object
-  const finalSnapshot = {
-    sl: snapshot.sl,
-    tp: snapshot.tp,
-    bars: mergedBars
-  };
-  const dbData = serializeSnapshotForDb(finalSnapshot);
-
-  // 3. Replace all old overlapping rows with one consolidated row
+  // 2. Replace old overlapping chunks with deterministic max-size chunks.
   const client = await db.connect();
   try {
     await client.query('BEGIN');
@@ -645,12 +735,29 @@ async function marketDataDbUpsert(symbolNorm, tfNorm, snapshot) {
       const ids = existing.rows.map(r => r.id);
       await client.query('DELETE FROM market_data WHERE id = ANY($1)', [ids]);
     }
-    await client.query(
-      `INSERT INTO market_data (symbol, tf, bar_start, bar_end, data, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())`,
-      [symbolNorm, tfNorm, newStart, newEnd, dbData]
-    );
+    for (const chunk of chunks) {
+      await client.query(
+        `INSERT INTO market_data (symbol, tf, bar_start, bar_end, data, updated_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         ON CONFLICT (symbol, tf, bar_start, bar_end)
+         DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+        [symbolNorm, tfNorm, chunk.bar_start, chunk.bar_end, chunk.data]
+      );
+    }
     await client.query('COMMIT');
+    await marketDataUpdateCronState({
+      userId: snapshot.user_id || CFG.mt5DefaultUserId,
+      settingName: snapshot.setting_name || "default",
+      symbol: symbolNorm,
+      tf: tfNorm,
+      patch: {
+        last_success_at: new Date().toISOString(),
+        last_bar_start: mergedBars[mergedBars.length - 1]?.time || null,
+        chunk_count: chunks.length,
+        bar_count: mergedBars.length,
+        gap_candidates: detectMarketDataGapCandidates(mergedBars, tfNorm).slice(0, 20),
+      },
+    }).catch(() => {});
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -5438,9 +5545,12 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
         const h = Number(v?.high);
         const l = Number(v?.low);
         const c = Number(v?.close);
+        const volume = Number(v?.volume);
         if (!Number.isFinite(t) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return null;
         if (t > (reqRange.end + (reqRange.sec * 2))) return null;
-        return { time: t, open: o, high: h, low: l, close: c };
+        const bar = { time: t, open: o, high: h, low: l, close: c };
+        if (Number.isFinite(volume)) bar.volume = volume;
+        return bar;
       })
       .filter(Boolean)
       .forEach((bar) => {
@@ -5448,10 +5558,14 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
       });
     const bars = [...dedup.values()].sort((a, b) => a.time - b.time);
     const barStart = bars.length ? bars[0].time : null;
-    const barEnd = bars.length ? bars[bars.length - 1].time : null;
+    const barEnd = bars.length ? bars[bars.length - 1].time + reqRange.sec : null;
     const snapshot = {
       provider: "twelvedata",
       status: "ok",
+      timezone: "UTC",
+      display_timezone: normalizeMarketDataTimezone(payload?.timezone || payload?.display_timezone),
+      user_id: userId,
+      setting_name: String(payload?.setting_name || payload?.settingName || "default"),
       symbol: String(symbol || "").toUpperCase(),
       symbol_norm: symbolNorm,
       normalized_symbol: usedSymbol,
@@ -5462,6 +5576,7 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
       bar_start: barStart,
       bar_end: barEnd,
       bars,
+      gap_candidates: detectMarketDataGapCandidates(bars, tfNorm).slice(0, 20),
       entry: Number.isFinite(Number(payload?.entry ?? payload?.price)) ? Number(payload?.entry ?? payload?.price) : null,
       sl: Number.isFinite(Number(payload?.sl)) ? Number(payload?.sl) : null,
       tp: Number.isFinite(Number(payload?.tp)) ? Number(payload?.tp) : null,
@@ -10260,8 +10375,277 @@ async function start() {
     });
     console.log(`telegram-trading-bot listening on http://0.0.0.0:${CFG.port}`);
   }
+
+  if (CFG.mt5Enabled) {
+    // Start Cron Loop
+    initMarketDataQueue();
+    mt5CronLoop().catch(err => console.error("[Cron] Loop failed to start:", err));
+  }
+
   console.log(`Binance mode=${CFG.binanceMode || "off"}, cTrader mode=${CFG.ctraderMode || "off"}`);
 }
+
+const CRON_STATE = {
+  lastMarketDataRun: {}, // { [userId_name_tf]: timestamp }
+  lastAiAnalysisRun: {}, // { [userId_name_tf]: timestamp }
+  isRunning: false
+};
+let MARKET_DATA_QUEUE = null;
+let MARKET_DATA_WORKER = null;
+
+function bullConnectionFromRedisUrl(redisUrl) {
+  try {
+    const u = new URL(redisUrl);
+    return {
+      host: u.hostname || "127.0.0.1",
+      port: Number(u.port || 6379),
+      username: u.username ? decodeURIComponent(u.username) : undefined,
+      password: u.password ? decodeURIComponent(u.password) : undefined,
+      db: u.pathname && u.pathname !== "/" ? Number(u.pathname.slice(1)) || 0 : 0,
+      maxRetriesPerRequest: null,
+    };
+  } catch {
+    return { host: "127.0.0.1", port: 6379, maxRetriesPerRequest: null };
+  }
+}
+
+function marketDataCronSettingEnabled(data = {}) {
+  return asBool(data.enabled ?? data.market_data_cron_enabled ?? true, true);
+}
+
+function marketDataCronTimezone(data = {}) {
+  return normalizeMarketDataTimezone(data.timezone || data.market_data_timezone || CFG.marketDataDefaultTimezone);
+}
+
+async function marketDataUpdateCronState({ userId, settingName, symbol, tf, patch }) {
+  const b = await mt5Backend();
+  const key = `${normalizeMarketDataSymbol(symbol)}:${normalizeMarketDataTf(tf)}`;
+  const res = await b.query(
+    `SELECT data FROM user_settings WHERE user_id = $1 AND type = 'market_data_cron' AND name = $2 LIMIT 1`,
+    [userId, settingName || "default"]
+  );
+  if (!res.rows.length) return;
+  const data = (res.rows[0].data && typeof res.rows[0].data === "object") ? res.rows[0].data : {};
+  const sync = (data.last_sync && typeof data.last_sync === "object") ? data.last_sync : {};
+  sync[key] = { ...(sync[key] || {}), ...patch };
+  await b.query(
+    `UPDATE user_settings
+        SET data = $1::jsonb, updated_at = NOW()
+      WHERE user_id = $2 AND type = 'market_data_cron' AND name = $3`,
+    [JSON.stringify({ ...data, last_sync: sync }), userId, settingName || "default"]
+  );
+}
+
+async function marketDataFetchJob({ userId, settingName, symbol, tf, timezone }) {
+  const symbolNorm = normalizeMarketDataSymbol(symbol);
+  const tfNorm = normalizeMarketDataTf(tf);
+  if (!symbolNorm || !tfNorm) return { ok: false, reason: "invalid_symbol_or_tf" };
+  try {
+    const snapshot = await buildAnalysisSnapshotFromTwelve({
+      userId,
+      payload: {
+        bars: CFG.marketDataChunkMaxBars,
+        force_refresh: true,
+        timezone: normalizeMarketDataTimezone(timezone),
+        setting_name: settingName || "default",
+      },
+      symbol,
+      timeframe: tf
+    });
+    if (snapshot?.status === "ok") return { ok: true, symbol: symbolNorm, tf: tfNorm, bars: snapshot.bars?.length || 0 };
+    await marketDataUpdateCronState({
+      userId,
+      settingName,
+      symbol,
+      tf,
+      patch: {
+        last_error_at: new Date().toISOString(),
+        last_error: snapshot?.reason || "fetch_failed",
+      },
+    }).catch(() => {});
+    return { ok: false, symbol: symbolNorm, tf: tfNorm, reason: snapshot?.reason || "fetch_failed" };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err || "fetch_failed");
+    await marketDataUpdateCronState({
+      userId,
+      settingName,
+      symbol,
+      tf,
+      patch: {
+        last_error_at: new Date().toISOString(),
+        last_error: reason,
+      },
+    }).catch(() => {});
+    throw err;
+  }
+}
+
+function initMarketDataQueue() {
+  if (!CFG.marketDataCronEnabled || !CFG.marketDataCronQueueEnabled || !CFG.redisEnabled || !BullQueue || !BullWorker) {
+    console.log(`[Cron][MarketData] queue enabled=false`);
+    return false;
+  }
+  if (MARKET_DATA_QUEUE || MARKET_DATA_WORKER) return true;
+  const connection = bullConnectionFromRedisUrl(CFG.redisUrl);
+  MARKET_DATA_QUEUE = new BullQueue("market-data-bars", {
+    connection,
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: { type: "exponential", delay: 5000 },
+      removeOnComplete: 500,
+      removeOnFail: 1000,
+    },
+  });
+  MARKET_DATA_WORKER = new BullWorker("market-data-bars", async (job) => {
+    return marketDataFetchJob(job.data || {});
+  }, { connection, concurrency: CFG.marketDataCronConcurrency });
+  MARKET_DATA_WORKER.on("failed", (job, err) => {
+    console.error(`[Cron][MarketData] job failed id=${job?.id || ""}: ${err?.message || err}`);
+  });
+  console.log(`[Cron][MarketData] BullMQ enabled=true concurrency=${CFG.marketDataCronConcurrency}`);
+  return true;
+}
+
+async function mt5CronLoop() {
+  console.log("[Cron] Initializing master loop (1min cadence)");
+  const intervalMs = 60 * 1000;
+  
+  const run = async () => {
+    if (CRON_STATE.isRunning) return;
+    CRON_STATE.isRunning = true;
+    try {
+      await mt5RunMarketDataCron();
+      await mt5RunAiAnalysisCron();
+    } catch (err) {
+      console.error("[Cron] Run error:", err);
+    } finally {
+      CRON_STATE.isRunning = false;
+    }
+  };
+
+  // Run immediately then on interval
+  run();
+  const handle = setInterval(run, intervalMs);
+  handle.unref();
+}
+
+async function mt5RunMarketDataCron() {
+  if (!CFG.marketDataCronEnabled) return;
+  const b = await mt5Backend();
+  const res = await b.query("SELECT * FROM user_settings WHERE type = 'market_data_cron' AND status = 'ACTIVE'");
+  const configs = res.rows || [];
+  if (!configs.length) return;
+
+  const now = Date.now();
+  
+  for (const conf of configs) {
+    const userId = conf.user_id;
+    const data = conf.data || {};
+    if (!marketDataCronSettingEnabled(data)) continue;
+    const symbols = Array.isArray(data.symbols) ? data.symbols : [];
+    const tfs = Array.isArray(data.timeframes) ? data.timeframes : [];
+    const timezone = marketDataCronTimezone(data);
+    
+    for (const tf of tfs) {
+      const tfSec = parseTfTokenToSeconds(tf);
+      const stateKey = `${userId}_${conf.name}_${tf}`;
+      const lastRun = CRON_STATE.lastMarketDataRun[stateKey] || 0;
+      
+      // Run if never run or if cadence passed
+      if (now - lastRun >= tfSec * 1000 - 5000) { // 5s buffer
+        console.log(`[Cron][MarketData] Running userId=${userId} name=${conf.name} tf=${tf} symbols=${symbols.length}`);
+        CRON_STATE.lastMarketDataRun[stateKey] = now;
+        
+        // Batch symbols to avoid hitting Twelve Data limits
+        const batchSize = Number(data.batch_size || CFG.marketDataCronBatchSize) || 8;
+        for (let i = 0; i < symbols.length; i += batchSize) {
+          const batch = symbols.slice(i, i + batchSize);
+          if (MARKET_DATA_QUEUE) {
+            const bucket = Math.floor(now / (tfSec * 1000));
+            await Promise.all(batch.map((symbol) => {
+              const symbolNorm = normalizeMarketDataSymbol(symbol);
+              const tfNorm = normalizeMarketDataTf(tf);
+              return MARKET_DATA_QUEUE.add("fetch-bars", {
+                userId,
+                settingName: conf.name || "default",
+                symbol,
+                tf,
+                timezone,
+              }, {
+                jobId: `market:${userId}:${conf.name || "default"}:${symbolNorm}:${tfNorm}:${bucket}`,
+              });
+            }));
+          } else {
+            await Promise.all(batch.map(async (symbol) => {
+              try {
+                await marketDataFetchJob({
+                  userId,
+                  settingName: conf.name || "default",
+                  symbol,
+                  tf,
+                  timezone,
+                });
+              } catch (err) {
+                console.error(`[Cron][MarketData] Failed symbol=${symbol} tf=${tf}:`, err.message);
+              }
+            }));
+          }
+        }
+        await marketDataUpdateCronState({
+          userId,
+          settingName: conf.name || "default",
+          symbol: "_cron",
+          tf,
+          patch: {
+            timezone,
+            queued_at: new Date().toISOString(),
+            symbols_count: symbols.length,
+            batch_size: batchSize,
+            queue: MARKET_DATA_QUEUE ? "bullmq" : "inline",
+          },
+        }).catch(() => {});
+      }
+    }
+  }
+}
+
+async function mt5RunAiAnalysisCron() {
+  const b = await mt5Backend();
+  const res = await b.query("SELECT * FROM user_settings WHERE type = 'ai_analysis_cron' AND status = 'ACTIVE'");
+  const configs = res.rows || [];
+  if (!configs.length) return;
+
+  const now = Date.now();
+
+  for (const conf of configs) {
+    const userId = conf.user_id;
+    const data = conf.data || {};
+    const symbols = Array.isArray(data.symbols) ? data.symbols : [];
+    const tfs = Array.isArray(data.timeframes) ? data.timeframes : [];
+    const cadenceMin = Number(data.cadence_minutes || 60);
+
+    const stateKey = `${userId}_${conf.name}`;
+    const lastRun = CRON_STATE.lastAiAnalysisRun[stateKey] || 0;
+
+    if (now - lastRun >= cadenceMin * 60 * 1000 - 5000) {
+      console.log(`[Cron][AiAnalysis] Running userId=${userId} name=${conf.name} symbols=${symbols.length}`);
+      CRON_STATE.lastAiAnalysisRun[stateKey] = now;
+
+      for (const symbol of symbols) {
+        for (const tf of tfs) {
+          try {
+            console.log(`[Cron][AiAnalysis] Triggering analysis for ${symbol} ${tf}`);
+            // Logic for automated analysis would go here.
+            // Requires integration with screenshot capture or bar-only analysis.
+          } catch (err) {
+            console.error(`[Cron][AiAnalysis] Failed symbol=${symbol} tf=${tf}:`, err.message);
+          }
+        }
+      }
+    }
+  }
+}
+
 
 start().catch((err) => {
   const message = err instanceof Error ? err.stack || err.message : String(err);
