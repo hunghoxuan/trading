@@ -1,5 +1,14 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-28 19:32
+- **Work Accomplished**:
+  - Physically moved page components into menu-aligned subfolders under `web-ui/src/pages/{ai,signals,trades,settings,system}`.
+  - Fixed all moved-page relative imports and verified the frontend build succeeds after the move.
+  - Prepared deploy for the current metadata/user-settings refactor set, including `user_templates`, `user_accounts`, auth metadata APIs, and watchlist persistence in user metadata.
+  - Bumped VPS/server and EA build versions to `v2026.04.28 17:31 - 75517db`.
+- **Pending Tasks / Backlog**:
+  - [ ] Verify production health/version and smoke-test Settings/System routes after deploy.
+
 # Session Log: 2026-04-28 15:50
 - **Work Accomplished**:
   - Split user Settings and System Settings responsibilities.

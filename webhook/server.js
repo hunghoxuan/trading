@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 13:49 - 99b9f0f"); // Order Type Integration & AI Browser
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 17:31 - 75517db"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -1005,6 +1005,7 @@ async function uiReadAuthStateByEmail(emailRaw) {
     password_hash: String(row.password_hash || ""),
     updated_at: normalizeIsoTimestamp(row.updated_at, new Date().toISOString()),
     created_at: normalizeIsoTimestamp(row.created_at, mt5NowIso()),
+    metadata: row.metadata || {},
   };
 }
 
@@ -1025,6 +1026,7 @@ async function uiReadAuthStateByName(nameRaw) {
     password_hash: String(row.password_hash || ""),
     updated_at: normalizeIsoTimestamp(row.updated_at, new Date().toISOString()),
     created_at: normalizeIsoTimestamp(row.created_at, mt5NowIso()),
+    metadata: row.metadata || {},
   };
 }
 
@@ -1045,6 +1047,7 @@ async function uiReadAuthStateByUserId(userIdRaw) {
     password_hash: String(row.password_hash || ""),
     updated_at: normalizeIsoTimestamp(row.updated_at, new Date().toISOString()),
     created_at: normalizeIsoTimestamp(row.created_at, mt5NowIso()),
+    metadata: row.metadata || {},
   };
 }
 
@@ -1302,6 +1305,7 @@ function createUiSession(user) {
     is_active: isActive,
     created_at: nowUnixSec(),
     expires_at: nowUnixSec() + ttl,
+    metadata: user?.metadata || {},
   });
   return token;
 }
@@ -1316,6 +1320,7 @@ function getUiSessionFromReq(req) {
       name: fallbackNameFromEmail(CFG.uiBootstrapEmail),
       role: UI_ROLE_SYSTEM,
       is_active: true,
+      metadata: {},
     };
   }
   const cookies = parseCookies(req);
@@ -1339,6 +1344,7 @@ function getUiSessionFromReq(req) {
     name: String(sess.name || fallbackNameFromEmail(sess.email)),
     role: normalizeUserRole(sess.role || UI_ROLE_SYSTEM),
     is_active: true,
+    metadata: sess.metadata || {},
   };
 }
 
@@ -1356,6 +1362,7 @@ async function uiAuthGetVerifiedUser(emailRaw, passwordRaw) {
     email: normalizeEmail(state.email),
     role: normalizeUserRole(state.role || UI_ROLE_SYSTEM),
     is_active: normalizeUserActive(state.is_active, true),
+    metadata: state.metadata || {},
   };
 }
 
@@ -2808,7 +2815,7 @@ async function mt5InitBackend() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
 
-    CREATE TABLE IF NOT EXISTS accounts (
+    CREATE TABLE IF NOT EXISTS user_accounts (
       account_id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
       name TEXT,
@@ -2821,6 +2828,16 @@ async function mt5InitBackend() {
       status TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS user_templates (
+        id SERIAL PRIMARY KEY,
+        user_id TEXT REFERENCES users(user_id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        data JSONB NOT NULL,
+        status TEXT DEFAULT 'ACTIVE',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS user_settings (
@@ -3172,7 +3189,7 @@ async function mt5InitBackend() {
     if (oldUserId === String(CFG.mt5DefaultUserId || "")) continue;
     const refRes = await pool.query(`
       SELECT
-        (SELECT COUNT(*) FROM accounts WHERE user_id = $1) AS accounts_count,
+        (SELECT COUNT(*) FROM user_accounts WHERE user_id = $1) AS accounts_count,
         (SELECT COUNT(*) FROM signals WHERE user_id = $1) AS signals_count,
         (SELECT COUNT(*) FROM trades WHERE user_id = $1) AS trades_count,
         (SELECT COUNT(*) FROM user_settings WHERE user_id = $1) AS settings_count,
@@ -3504,7 +3521,7 @@ async function mt5InitBackend() {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const accounts = await client.query(`SELECT account_id FROM accounts WHERE user_id = $1 AND status != 'ARCHIVED'`, [userId]);
+        const accounts = await client.query(`SELECT account_id FROM user_accounts WHERE user_id = $1 AND status != 'ARCHIVED'`, [userId]);
         let created = 0; const accountIds = [];
         for (const row of accounts.rows || []) {
           const aid = row.account_id;
@@ -3700,7 +3717,7 @@ async function mt5InitBackend() {
     },
     async brokerSyncV2(accountId, payload = {}) {
       const aid = String(accountId || "").trim();
-      const acc = await pool.query(`SELECT user_id, metadata FROM accounts WHERE account_id = $1`, [aid]);
+      const acc = await pool.query(`SELECT user_id, metadata FROM user_accounts WHERE account_id = $1`, [aid]);
       const uid = acc.rows[0]?.user_id || CFG.mt5DefaultUserId;
       const existingMeta = acc.rows[0]?.metadata || {};
       
@@ -3713,7 +3730,7 @@ async function mt5InitBackend() {
         health_updated_at: new Date().toISOString()
       };
 
-      await pool.query(`UPDATE accounts SET metadata = $1, updated_at = NOW() WHERE account_id = $2`, [JSON.stringify(newMeta), aid]);
+      await pool.query(`UPDATE user_accounts SET metadata = $1, updated_at = NOW() WHERE account_id = $2`, [JSON.stringify(newMeta), aid]);
       await this.log(aid, 'accounts', { event: 'ACCOUNT_SYNC', data: payload }, uid);
 
       const merged = new Map();
@@ -4036,12 +4053,12 @@ async function mt5InitBackend() {
       const margin = asNum(payload.margin, null);
       const freeMargin = asNum(payload.free_margin, null);
 
-      const acc = await pool.query(`SELECT user_id, metadata FROM accounts WHERE account_id = $1`, [aid]);
+      const acc = await pool.query(`SELECT user_id, metadata FROM user_accounts WHERE account_id = $1`, [aid]);
       const uid = acc.rows[0]?.user_id || CFG.mt5DefaultUserId;
       const oldMeta = acc.rows[0]?.metadata || {};
 
       await pool.query(`
-        UPDATE accounts 
+        UPDATE user_accounts 
         SET balance = COALESCE($1, balance),
             metadata = $2,
             updated_at = $3 
@@ -4391,7 +4408,7 @@ async function mt5InitBackend() {
       const apiKeyHash = hashApiKey(plainApiKey);
       const apiKeyLast4 = plainApiKey.slice(-4);
       const res = await pool.query(`
-        INSERT INTO accounts (
+        INSERT INTO user_accounts (
           account_id, user_id, name, balance, status, metadata,
           api_key_hash, api_key_last4, api_key_rotated_at, source_ids_cache,
           created_at, updated_at
@@ -4427,7 +4444,7 @@ async function mt5InitBackend() {
         params.push(String(userId || ""));
         where = `WHERE user_id = $1`;
       }
-      const res = await pool.query(`SELECT * FROM accounts ${where} ORDER BY created_at ASC, account_id ASC`, params);
+      const res = await pool.query(`SELECT * FROM user_accounts ${where} ORDER BY created_at ASC, account_id ASC`, params);
       return res.rows || [];
     },
     async listExecutionProfilesV2(userId = null) {
@@ -4528,11 +4545,11 @@ async function mt5InitBackend() {
     async updateAccountV2(accountId, patch = {}) {
       const targetId = String(accountId || "").trim();
       if (!targetId) return { ok: false, error: "account_id is required" };
-      const prevRes = await pool.query(`SELECT * FROM accounts WHERE account_id = $1 LIMIT 1`, [targetId]);
+      const prevRes = await pool.query(`SELECT * FROM user_accounts WHERE account_id = $1 LIMIT 1`, [targetId]);
       const prev = prevRes.rows[0];
       if (!prev) return { ok: false, error: "account not found" };
       const res = await pool.query(`
-        UPDATE accounts
+        UPDATE user_accounts
         SET user_id = $1,
             name = $2,
             balance = $3,
@@ -4559,7 +4576,7 @@ async function mt5InitBackend() {
       const targetId = String(accountId || "").trim();
       if (!targetId) return { ok: false, error: "account_id is required" };
       const res = await pool.query(`
-        UPDATE accounts
+        UPDATE user_accounts
         SET status = 'ARCHIVED', updated_at = NOW()
         WHERE account_id = $1
         RETURNING *
@@ -4571,7 +4588,7 @@ async function mt5InitBackend() {
       const h = String(apiKeyHash || "").trim();
       if (!h) return null;
       const res = await pool.query(`
-        SELECT * FROM accounts
+        SELECT * FROM user_accounts
         WHERE api_key_hash = $1 AND status = 'ACTIVE'
         LIMIT 1
       `, [h]);
@@ -4584,7 +4601,7 @@ async function mt5InitBackend() {
       const apiKeyHash = hashApiKey(plainApiKey);
       const apiKeyLast4 = plainApiKey.slice(-4);
       const res = await pool.query(`
-        UPDATE accounts
+        UPDATE user_accounts
         SET api_key_hash = $1, api_key_last4 = $2, api_key_rotated_at = NOW(), updated_at = NOW()
         WHERE account_id = $3
         RETURNING account_id
@@ -4596,7 +4613,7 @@ async function mt5InitBackend() {
       const targetId = String(accountId || "").trim();
       if (!targetId) return { ok: false, error: "account_id is required" };
       const res = await pool.query(`
-        UPDATE accounts
+        UPDATE user_accounts
         SET api_key_hash = NULL, api_key_last4 = NULL, api_key_rotated_at = NOW(), updated_at = NOW()
         WHERE account_id = $1
       `, [targetId]);
@@ -4610,7 +4627,7 @@ async function mt5InitBackend() {
       const apiKeyHash = hashApiKey(plain);
       const apiKeyLast4 = plain.slice(-4);
       const res = await pool.query(`
-        UPDATE accounts
+        UPDATE user_accounts
         SET api_key_hash = $1, api_key_last4 = $2, api_key_rotated_at = NOW(), updated_at = NOW()
         WHERE account_id = $3
         RETURNING account_id
@@ -4620,7 +4637,7 @@ async function mt5InitBackend() {
     async getAccountSubscriptionsV2(accountId) {
       const targetId = String(accountId || "").trim();
       if (!targetId) return [];
-      const res = await pool.query(`SELECT source_ids_cache FROM accounts WHERE account_id = $1 LIMIT 1`, [targetId]);
+      const res = await pool.query(`SELECT source_ids_cache FROM user_accounts WHERE account_id = $1 LIMIT 1`, [targetId]);
       const cache = res.rows?.[0]?.source_ids_cache;
       const arr = Array.isArray(cache) ? cache : [];
       return arr.map((sourceId) => ({ source_id: String(sourceId || ""), is_active: true })).filter((x) => x.source_id);
@@ -4632,7 +4649,7 @@ async function mt5InitBackend() {
         .filter((x) => x && x.is_active !== false)
         .map((x) => String(x.source_id || "").trim())
         .filter(Boolean);
-      await pool.query(`UPDATE accounts SET source_ids_cache = $1::jsonb, updated_at = NOW() WHERE account_id = $2`, [JSON.stringify(sourceIds), targetId]);
+      await pool.query(`UPDATE user_accounts SET source_ids_cache = $1::jsonb, updated_at = NOW() WHERE account_id = $2`, [JSON.stringify(sourceIds), targetId]);
       return { ok: true };
     },
     async getTableSchema(table) {
@@ -4669,7 +4686,7 @@ async function mt5InitBackend() {
       return { rows: res.rows, total: parseInt(totalRes.rows[0].count) };
     },
     async getAccountByIdV2(accountId) {
-      const res = await pool.query(`SELECT * FROM accounts WHERE account_id = $1 LIMIT 1`, [accountId]);
+      const res = await pool.query(`SELECT * FROM user_accounts WHERE account_id = $1 LIMIT 1`, [accountId]);
       return res.rows[0] || null;
     },
     async getUiAuthUser(email) {
@@ -4677,7 +4694,7 @@ async function mt5InitBackend() {
       const target = normalizeEmail(email);
       if (!target) return null;
       const res = await pool.query(`
-        SELECT user_id, name, email, role, is_active, password_salt, password_hash, updated_at, created_at
+        SELECT user_id, name, email, role, is_active, password_salt, password_hash, metadata, updated_at, created_at
         FROM users
         WHERE lower(email) = $1
         LIMIT 1
@@ -4688,7 +4705,7 @@ async function mt5InitBackend() {
       const target = String(name || "").trim();
       if (!target) return null;
       const res = await pool.query(`
-        SELECT user_id, name, email, role, is_active, password_salt, password_hash, updated_at, created_at
+        SELECT user_id, name, email, role, is_active, password_salt, password_hash, metadata, updated_at, created_at
         FROM users
         WHERE lower(name) = lower($1)
         LIMIT 1
@@ -4699,7 +4716,7 @@ async function mt5InitBackend() {
       const target = String(userId || "").trim();
       if (!target) return null;
       const res = await pool.query(`
-        SELECT user_id, name, email, role, is_active, password_salt, password_hash, updated_at, created_at
+        SELECT user_id, name, email, role, is_active, password_salt, password_hash, metadata, updated_at, created_at
         FROM users
         WHERE user_id = $1
         LIMIT 1
@@ -4766,7 +4783,7 @@ async function mt5InitBackend() {
     async listUserAccounts(userId) {
       const res = await pool.query(`
         SELECT account_id, user_id, name, balance, status, metadata, created_at, updated_at
-        FROM accounts
+        FROM user_accounts
         WHERE user_id = $1
         ORDER BY created_at ASC, account_id ASC
       `, [String(userId || "")]);
@@ -4777,7 +4794,7 @@ async function mt5InitBackend() {
       const accountId = String(account?.account_id || "");
       const now = mt5NowIso();
       const res = await pool.query(`
-        INSERT INTO accounts (account_id, user_id, name, balance, status, metadata, created_at, updated_at)
+        INSERT INTO user_accounts (account_id, user_id, name, balance, status, metadata, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
         ON CONFLICT (account_id) DO UPDATE SET
           user_id = EXCLUDED.user_id,
@@ -4800,7 +4817,7 @@ async function mt5InitBackend() {
       return res.rows[0] || null;
     },
     async deleteUserAccount(userId, accountId) {
-      await pool.query(`DELETE FROM accounts WHERE user_id = $1 AND account_id = $2`, [String(userId || ""), String(accountId || "")]);
+      await pool.query(`DELETE FROM user_accounts WHERE user_id = $1 AND account_id = $2`, [String(userId || ""), String(accountId || "")]);
     },
     async pruneOldSignals(days) {
       const res = await pool.query(`
@@ -7194,6 +7211,7 @@ const appHandler = async (req, res) => {
         email: sess.email,
         role: sess.role,
         is_active: normalizeUserActive(sess.is_active, true),
+        metadata: sess.metadata || {},
       },
     });
   }
@@ -7202,7 +7220,7 @@ const appHandler = async (req, res) => {
     const sess = getUiSessionFromReq(req);
     if (!sess.ok) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     const state = await uiReadAuthStateByUserId(sess.user_id) || await uiReadAuthStateByEmail(sess.email);
-    if (!state) return json(res, 404, { ok: false, error: "User not found" });
+    if (!state) return json(res, 404, { ok: false, error: "Profile not found" });
     return json(res, 200, {
       ok: true,
       user: {
@@ -7211,6 +7229,7 @@ const appHandler = async (req, res) => {
         email: state.email,
         role: state.role,
         is_active: normalizeUserActive(state.is_active, true),
+        metadata: state.metadata || {},
       },
     });
   }
@@ -7238,6 +7257,32 @@ const appHandler = async (req, res) => {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });
     }
+  }
+
+  if (req.method === "PUT" && url.pathname === "/auth/metadata") {
+    const sess = getUiSessionFromReq(req);
+    if (!sess.ok) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      const payload = await readJson(req);
+      const db = await mt5InitBackend();
+      const userId = sess.user_id;
+      
+      const currentRes = await db.query("SELECT metadata FROM users WHERE user_id = $1", [userId]);
+      const current = currentRes.rows[0]?.metadata || {};
+      const next = { ...current, ...payload };
+      
+      await db.query("UPDATE users SET metadata = $1, updated_at = NOW() WHERE user_id = $2", [JSON.stringify(next), userId]);
+      
+      // Update session cache
+      const token = sess.token;
+      if (token && UI_SESSIONS.has(token)) {
+        const s = UI_SESSIONS.get(token);
+        s.metadata = next;
+        UI_SESSIONS.set(token, s);
+      }
+      
+      return json(res, 200, { ok: true, metadata: next });
+    } catch (e) { return json(res, 400, { ok: false, error: e.message }); }
   }
 
   if (req.method === "GET" && url.pathname === "/api/charts/multi") {
@@ -7481,6 +7526,7 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/health") {
+    res.setHeader("Cache-Control", "no-store");
     return json(res, 200, {
       ok: true,
       service: "telegram-trading-bot",
@@ -8555,7 +8601,7 @@ const appHandler = async (req, res) => {
     try {
       const db = await mt5InitBackend();
       const { rows } = await db.query(
-        "SELECT id as template_id, name, data FROM user_settings WHERE type = 'ai_template' AND user_id = $1 ORDER BY created_at DESC",
+        "SELECT id as template_id, name, data FROM user_templates WHERE user_id = $1 ORDER BY created_at DESC",
         [CFG.mt5DefaultUserId]
       );
       // Flatten data for frontend compatibility
@@ -8575,13 +8621,13 @@ const appHandler = async (req, res) => {
       let row;
       if (template_id) {
         const { rows } = await db.query(
-          "UPDATE user_settings SET data = $1, name = $2, updated_at = NOW() WHERE id = $3 AND type = 'ai_template' RETURNING id, name, data",
+          "UPDATE user_templates SET data = $1, name = $2, updated_at = NOW() WHERE id = $3 RETURNING id, name, data",
           [data, name || data.name || "Unnamed Template", template_id]
         );
         row = rows[0];
       } else {
         const { rows } = await db.query(
-          "INSERT INTO user_settings (user_id, type, name, data) VALUES ($1, 'ai_template', $2, $3) RETURNING id, name, data",
+          "INSERT INTO user_templates (user_id, name, data) VALUES ($1, $2, $3) RETURNING id, name, data",
           [CFG.mt5DefaultUserId, name || data.name || "New Template", data]
         );
         row = rows[0];
@@ -8776,7 +8822,7 @@ const appHandler = async (req, res) => {
     try {
       const templateId = url.pathname.split("/").pop();
       const db = await mt5InitBackend();
-      await db.query("DELETE FROM user_settings WHERE id = $1 AND type = 'ai_template'", [templateId]);
+      await db.query("DELETE FROM user_templates WHERE id = $1", [templateId]);
       return json(res, 200, { ok: true });
     } catch (e) {
       return json(res, 500, { ok: false, error: e.message });
@@ -8795,7 +8841,7 @@ const appHandler = async (req, res) => {
       
       let finalPrompt = customPrompt || "";
       if (templateId) {
-        const { rows } = await db.query("SELECT data FROM user_settings WHERE id = $1 AND type = 'ai_template'", [templateId]);
+        const { rows } = await db.query("SELECT data FROM user_templates WHERE id = $1", [templateId]);
         if (rows.length) finalPrompt = rows[0].data.prompt_text || rows[0].data.prompt;
       }
       
@@ -8828,6 +8874,12 @@ const appHandler = async (req, res) => {
         .replace(/{STRATEGY}/g, body.strategy || "Price Action")
         .replace(/{INDICATORS\/STRATEGY}/g, body.indicators || "Technical Analysis")
         .replace(/{RR}/g, body.rr || "1:2");
+
+      const sess = getUiSessionFromReq(req);
+      const userLang = sess?.metadata?.settings?.language || "English";
+      if (userLang && userLang !== "English") {
+        finalPrompt += `\n\nIMPORTANT: Please provide the analysis and notes in ${userLang} language.`;
+      }
 
       const provider = (bodyProvider || service || "gemini").toLowerCase();
       const apiKey = provider === "deepseek"
@@ -10580,7 +10632,14 @@ async function mt5CronLoop() {
 async function mt5RunMarketDataCron() {
   if (!CFG.marketDataCronEnabled) return;
   const b = await mt5Backend();
-  const res = await b.query("SELECT * FROM user_settings WHERE type = 'market_data_cron' AND UPPER(status) = 'ACTIVE'");
+  const res = await b.query(`
+    SELECT s.* 
+    FROM user_settings s
+    JOIN users u ON s.user_id = u.user_id
+    WHERE s.type = 'market_data_cron' 
+      AND UPPER(s.status) = 'ACTIVE'
+      AND (u.metadata->'settings'->>'data_cron')::boolean = true
+  `);
   const configs = res.rows || [];
   if (!configs.length) return;
 
@@ -10659,7 +10718,14 @@ async function mt5RunMarketDataCron() {
 
 async function mt5RunAiAnalysisCron() {
   const b = await mt5Backend();
-  const res = await b.query("SELECT * FROM user_settings WHERE type = 'ai_analysis_cron' AND UPPER(status) = 'ACTIVE'");
+  const res = await b.query(`
+    SELECT s.* 
+    FROM user_settings s
+    JOIN users u ON s.user_id = u.user_id
+    WHERE s.type = 'ai_analysis_cron' 
+      AND UPPER(s.status) = 'ACTIVE'
+      AND (u.metadata->'settings'->>'analysis_cron')::boolean = true
+  `);
   const configs = res.rows || [];
   if (!configs.length) return;
 

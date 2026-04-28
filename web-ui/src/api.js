@@ -482,6 +482,7 @@ export const api = {
   authMe: () => get("/auth/me"),
   authProfile: () => get("/auth/profile"),
   updateAuthProfile: (name, email) => put("/auth/profile", { name, email }),
+  updateMetadata: (payload = {}) => put("/auth/metadata", payload),
   listUsers: () => get("/auth/users"),
   createUser: (payload = {}) => post("/auth/users", payload),
   updateUser: (userId, payload = {}) => put(`/auth/users/${encodeURIComponent(userId)}`, payload),
