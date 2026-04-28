@@ -13,6 +13,8 @@
 - For backend/EA/UI/scripts changes, always bump both build versions:
   - `webhook/server.js` (`SERVER_VERSION`)
   - `mql5/TVBridgeEA.mq5` (`EA_BUILD_VERSION`)
+- Build version format must be `vY.m.d-git`, using the latest pushed commit short SHA or agreed push/build number as `git`.
+- VPS/server and EA client must use the same build version.
 - Use `bash scripts/bump_build_versions.sh`.
 - Deploy guard is `bash scripts/check_build_versions.sh origin/main`.
 - Preferred deploy command: `bash scripts/deploy_webhook.sh`.

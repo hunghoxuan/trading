@@ -1,5 +1,11 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-28 17:05
+- **Work Accomplished**:
+  - Added mandatory build version rule: VPS/server and EA client must use matching `vY.m.d-git` format, with `git` from latest pushed commit short SHA or agreed push/build number.
+- **Pending Tasks / Backlog**:
+  - [ ] Update `scripts/bump_build_versions.sh` later so it generates the new `vY.m.d-git` format automatically.
+
 # Session Log: 2026-04-28 16:20
 - **Work Accomplished**:
   - **Cron Engine Implementation**: Developed a 1-minute heartbeat cron system in `server.js` for background tasks.
