@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 17:32 - 2b8c44d"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 17:47 - a3513e6"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -2890,7 +2890,7 @@ async function mt5InitBackend() {
 
     CREATE TABLE IF NOT EXISTS trades (
       trade_id TEXT PRIMARY KEY,
-      account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+      account_id TEXT NOT NULL REFERENCES user_accounts(account_id) ON DELETE CASCADE,
       user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
       broker_id TEXT NULL,
       signal_id TEXT NULL REFERENCES signals(signal_id) ON DELETE SET NULL,
@@ -2929,7 +2929,7 @@ async function mt5InitBackend() {
       user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
       profile_name TEXT NOT NULL,
       route TEXT NOT NULL,
-      account_id TEXT NULL REFERENCES accounts(account_id) ON DELETE SET NULL,
+      account_id TEXT NULL REFERENCES user_accounts(account_id) ON DELETE SET NULL,
       source_ids JSONB NULL,
       ctrader_mode TEXT NULL,
       ctrader_account_id TEXT NULL,
@@ -3083,6 +3083,49 @@ async function mt5InitBackend() {
   await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS ctrader_account_id TEXT NULL`).catch(() => {});
   await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS metadata JSONB NULL`).catch(() => {});
   await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`).catch(() => {});
+
+  // Compatibility migration: many existing VPS installs still have the real
+  // account rows only in legacy `accounts`. Backfill `user_accounts` so the
+  // Accounts UI and EA API-key auth both see the same data.
+  try {
+    const legacyAccountsTable = await pool.query(`SELECT to_regclass('public.accounts') AS table_name`);
+    if (legacyAccountsTable.rows?.[0]?.table_name) {
+      await pool.query(`
+        INSERT INTO user_accounts (
+          account_id, user_id, name, balance, api_key_hash, api_key_last4,
+          api_key_rotated_at, source_ids_cache, metadata, status, created_at, updated_at
+        )
+        SELECT
+          a.account_id,
+          a.user_id,
+          a.name,
+          a.balance,
+          a.api_key_hash,
+          a.api_key_last4,
+          a.api_key_rotated_at,
+          COALESCE(a.source_ids_cache, '[]'::jsonb),
+          COALESCE(a.metadata, '{}'::jsonb),
+          COALESCE(a.status, 'ACTIVE'),
+          COALESCE(a.created_at, NOW()),
+          COALESCE(a.updated_at, NOW())
+        FROM accounts a
+        WHERE a.account_id IS NOT NULL
+        ON CONFLICT (account_id) DO UPDATE SET
+          user_id = COALESCE(EXCLUDED.user_id, user_accounts.user_id),
+          name = COALESCE(NULLIF(EXCLUDED.name, ''), user_accounts.name),
+          balance = COALESCE(EXCLUDED.balance, user_accounts.balance),
+          api_key_hash = COALESCE(EXCLUDED.api_key_hash, user_accounts.api_key_hash),
+          api_key_last4 = COALESCE(EXCLUDED.api_key_last4, user_accounts.api_key_last4),
+          api_key_rotated_at = COALESCE(EXCLUDED.api_key_rotated_at, user_accounts.api_key_rotated_at),
+          source_ids_cache = COALESCE(EXCLUDED.source_ids_cache, user_accounts.source_ids_cache),
+          metadata = COALESCE(EXCLUDED.metadata, user_accounts.metadata),
+          status = COALESCE(NULLIF(EXCLUDED.status, ''), user_accounts.status),
+          updated_at = GREATEST(COALESCE(EXCLUDED.updated_at, user_accounts.updated_at), user_accounts.updated_at)
+      `);
+    }
+  } catch (e) {
+    console.warn("[mt5-db] legacy accounts backfill skipped:", e?.message || e);
+  }
 
   await pool.query(`ALTER TABLE trades RENAME COLUMN side TO action`).catch(() => {});
   await pool.query(`ALTER TABLE trades RENAME COLUMN intent_entry TO entry`).catch(() => {});
@@ -4664,7 +4707,7 @@ async function mt5InitBackend() {
       return res.rows;
     },
     async listTables() {
-      return ['users', 'accounts', 'signals', 'trades', 'logs', 'sources', 'execution_profiles', 'user_settings', 'market_data'];
+      return ['users', 'user_accounts', 'signals', 'trades', 'logs', 'sources', 'execution_profiles', 'user_settings', 'market_data', 'user_templates'];
     },
     async listTableRows(table, limit = 50, offset = 0, query = "") {
       const allowed = await this.listTables();
@@ -4675,7 +4718,7 @@ async function mt5InitBackend() {
         params.push(`%${query}%`);
         if (table === 'signals' || table === 'trades') {
           where = `WHERE symbol ILIKE $3 OR signal_id ILIKE $3 OR trade_id ILIKE $3`;
-        } else if (table === 'users' || table === 'accounts') {
+        } else if (table === 'users' || table === 'user_accounts') {
           where = `WHERE user_id ILIKE $3 OR account_id ILIKE $3`;
         } else if (table === 'logs') {
           where = `WHERE object_id ILIKE $3 OR metadata::text ILIKE $3`;

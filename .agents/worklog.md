@@ -1,5 +1,13 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-28 19:50
+- **Work Accomplished**:
+  - Fixed legacy account migration gap that left `user_accounts` empty while production data still lived in `accounts`.
+  - Added automatic boot-time backfill from legacy `accounts` into `user_accounts` so the Accounts UI and EA API-key validation read the same dataset.
+  - Corrected new schema references so fresh installs point `trades` and `execution_profiles` at `user_accounts`.
+- **Pending Tasks / Backlog**:
+  - [ ] Verify production Accounts page repopulates and EA pull/sync auth recovers after deploy.
+
 # Session Log: 2026-04-28 19:32
 - **Work Accomplished**:
   - Physically moved page components into menu-aligned subfolders under `web-ui/src/pages/{ai,signals,trades,settings,system}`.
