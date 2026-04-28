@@ -1,5 +1,17 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-28 13:20
+- **Work Accomplished**:
+  - Verified EA bulk closed-history sync is actively posting to `/v2/ea/trades/sync-bulk`.
+  - Found production bulk sync failure: server route crashed with `pool is not defined`, so EA requests arrived but could not update VPS rows.
+  - Fixed route to use initialized MT5 backend query handle, committed `1e43e8e`, pushed, and deployed.
+  - Live-tested bulk endpoint with fake unmatched ticket: HTTP 200, `{ ok: true, updated: 0, unmatched: 1 }`.
+  - Confirmed no fresh `pool is not defined` / sync-bulk errors in VPS error log after deploy.
+  - Reviewed risk/reward flow: EA calculates accurate risk/reward using MT5 `OrderCalcProfit`; VPS stores and UI displays metadata when EA sends it.
+- **Pending Tasks / Backlog**:
+  - [ ] Compile/load latest EA build `2026-04-28.1114` or newer in MT5 so terminal-side sync/risk telemetry matches server behavior.
+  - [ ] If old trades still show `$0.00`, provide EA Experts logs for ack/sync around those tickets, or backfill approximate risk/reward from MT5 symbol specs.
+
 # Session Log: 2026-04-28 12:45
 - **Work Accomplished**:
   - Applied manual production DB correction from MT5 screenshots for tickets `1614606138`, `1614606129`, `1606871045`, `1613165287`, `1614605900`, `1614606086`, `1614606125`, `1613165038`, `1612211029`, `1611966110`, and `1612094065`.
