@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-0703"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-0710"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -9635,7 +9635,7 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "POST" && /^\/(webhook\/)?v2\/broker\/(sync|reconcile)$/.test(url.pathname)) {
+  if (req.method === "POST" && /^\/(webhook\/)?(v2\/broker\/(sync|reconcile)|mt5\/ea\/sync-v2)$/.test(url.pathname)) {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!CFG.mt5V2BrokerApiEnabled) return json(res, 404, { ok: false, error: "v2 broker api disabled" });
     try {
@@ -9766,7 +9766,7 @@ const appHandler = async (req, res) => {
     } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
   }
 
-  if (req.method === "POST" && url.pathname === "/v2/ea/log") {
+  if (req.method === "POST" && (url.pathname === "/v2/ea/log" || url.pathname === "/mt5/ea/log-v2")) {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);

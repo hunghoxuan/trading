@@ -51,7 +51,7 @@ input string  InpBacktestFileCommon  = "tvbridge_signals.csv";
 input bool    InpBacktestHasHeader   = true;
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-28.0703";
+string EA_BUILD_VERSION = "2026-04-28.0710";
 
 CTrade trade;
 
@@ -1697,7 +1697,7 @@ void RemoteLog(string msg, string level = "INFO")
    body += "\"message\":\"" + JsonEscape(msg) + "\"";
    body += "}";
 
-   HttpPostJson(BuildApiUrl("/v2/ea/log"), body);
+   HttpPostJson(BuildApiUrl("/mt5/ea/log-v2"), body);
 }
 
 void Ack(const string signalId, const string status, const string ticket, const string err)
@@ -3091,7 +3091,7 @@ void SyncWithVps()
    body += "\"closed\":[" + closedUpdates + "]";
    body += "}";
    
-   string url = BuildApiUrl("/v2/broker/reconcile");
+   string url = BuildApiUrl("/mt5/ea/sync-v2");
    string resp = "";
    if(HttpPostJsonWithResponse(url, body, resp))
    {
