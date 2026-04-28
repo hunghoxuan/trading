@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-0651"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-0703"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -6885,7 +6885,8 @@ const appHandler = async (req, res) => {
     incomingUrl.pathname = "/";
   }
   const url = incomingUrl;
-  console.log(`[REQUEST] ${req.method} ${req.url} -> ${url.pathname}`);
+  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+  console.log(`[REQUEST] ${req.method} ${req.url} -> ${url.pathname} (IP: ${ip})`);
 
   if (req.method === "GET" && url.pathname === "/api/proxy/binance") {
     const target = "https://api.binance.com/api/v3/klines?" + incomingUrl.searchParams.toString();
