@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 17:55 - c30efa8"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 17:59 - 38e0a54"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -5067,9 +5067,57 @@ async function mt5InitBackend() {
         // Also clear memory cache if applicable
         MARKET_DATA_MEMORY_CACHE.clear();
         return { ok: true, target, ...results };
-      } else {
-        throw new Error("unknown target");
       }
+    },
+    async uiListCache() {
+      const items = [];
+      // 1. Memory Cache
+      for (const [key, val] of MARKET_DATA_MEMORY_CACHE.entries()) {
+        const arr = Array.isArray(val) ? val : [];
+        const latest = arr[arr.length - 1]?.data || null;
+        items.push({
+          key,
+          source: 'memory',
+          count: arr.length,
+          data: latest ? {
+            symbol: latest.symbol,
+            tf: latest.timeframe,
+            bars: latest.bars?.length || 0,
+            range: `${latest.bar_start} to ${latest.bar_end}`
+          } : null,
+          expires_at: arr[0]?.expires_at_ms ? new Date(arr[0].expires_at_ms).toISOString() : null
+        });
+      }
+      // 2. Redis Cache
+      if (CFG.redisEnabled) {
+        const client = await getRedisClient();
+        if (client) {
+          const keys = await client.keys('market_data:*');
+          for (const k of keys) {
+            items.push({
+              key: k,
+              source: 'redis',
+              count: 1,
+              data: "Redis binary data"
+            });
+          }
+        }
+      }
+      return items;
+    },
+    async uiDeleteCacheKey(key, source) {
+      if (source === 'memory') {
+        MARKET_DATA_MEMORY_CACHE.delete(key);
+        return { ok: true };
+      }
+      if (source === 'redis' && CFG.redisEnabled) {
+        const client = await getRedisClient();
+        if (client) {
+          await client.del(key).catch(() => {});
+          return { ok: true };
+        }
+      }
+      return { ok: false, error: "source not found or disabled" };
     },
     async deleteSignalsByIds(ids) {
       const refs = Array.isArray(ids) ? ids.map((v) => String(v || "").trim()).filter(Boolean) : [];
