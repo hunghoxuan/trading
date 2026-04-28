@@ -115,7 +115,9 @@ function TableBlock({ title, rows, noun = "ITEMS", nameFormatter = null }) {
           </div>
           {sortedRows.map((r) => (
             <div className="mini-table-row wide" key={r.key} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', display: 'flex', gap: '12px', alignItems: 'center' }}>
-              <span className="mini-name" style={{ flex: '3', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.key}>{nameFormatter ? nameFormatter(r.key) : r.key}</span>
+              <span className="mini-name" style={{ flex: '3', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.key}>
+                {nameFormatter ? nameFormatter(r.key, r) : r.key}
+              </span>
               <span style={{ flex: '1', textAlign: 'right' }}>{r.wins}/{r.losses}</span>
               <span style={{ flex: '1', textAlign: 'right' }}>{asPct(r.win_rate)}</span>
               <span style={{ flex: '1.5', textAlign: 'right' }} className={moneyClass(r.pnl_total)}>{asMoneySigned(r.pnl_total)}</span>
@@ -194,27 +196,7 @@ export default function DashboardPage() {
           Last refreshed: {lastRefreshAt ? showDateTime(lastRefreshAt) : "-"} (auto {Math.round(AUTO_REFRESH_MS/1000)}s)
         </span>
       </div>
-      <div className="heartbeat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
-        {accounts.filter(a => a.status === 'ACTIVE').map(acc => {
-          const lastSync = acc.updated_at || acc.created_at;
-          const lastSyncDate = lastSync ? new Date(lastSync) : null;
-          const diffMin = lastSyncDate ? (new Date() - lastSyncDate) / 60000 : 999;
-          const isOnline = diffMin < 5;
-          const isIdle = diffMin >= 5 && diffMin < 60;
-          
-          return (
-            <div key={acc.account_id} className="panel heartbeat-card" style={{ padding: '10px 14px', borderLeft: `3px solid ${isOnline ? 'var(--success)' : isIdle ? 'var(--warning)' : 'var(--error)'}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', fontWeight: 700 }}>{acc.name || acc.account_id}</span>
-                <span className={`status-dot ${isOnline ? 'online' : isIdle ? 'idle' : 'offline'}`} />
-              </div>
-              <div className="minor-text" style={{ fontSize: '10px', marginTop: 4 }}>
-                {isOnline ? 'SYNCED' : isIdle ? 'IDLE' : 'OFFLINE'} · {lastSyncDate ? showDateTime(lastSyncDate) : 'Never'}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {/* Heartbeat cards removed per request, info moved to Accounts table */}
 
       <div className="toolbar-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px' }}>
         <div className="toolbar-group dashboard-summary-highlights" style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
@@ -303,10 +285,32 @@ export default function DashboardPage() {
         })}
       </div>
 
-      <div className="dashboard-grid tables">
+      <div className="dashboard-grid tables" style={{ gridTemplateColumns: "repeat(5, 1fr)", gap: '16px' }}>
         <TableBlock title="Symbols" noun="Symbols" rows={Array.isArray(top.symbols) ? top.symbols : []} />
         <TableBlock title="Entry Model" noun="Models" rows={Array.isArray(top.entry_models) ? top.entry_models : []} />
-        <TableBlock title="Accounts" noun="Accounts" rows={Array.isArray(top.accounts) ? top.accounts : []} nameFormatter={(id) => accountNameById.get(String(id)) || id} />
+        <TableBlock title="Sources" noun="Sources" rows={Array.isArray(top.sources) ? top.sources : []} />
+        <TableBlock title="Directional" noun="Directional" rows={Array.isArray(top.directional) ? top.directional : []} />
+        <TableBlock title="Accounts" noun="Accounts" rows={Array.isArray(top.accounts) ? top.accounts : []} nameFormatter={(id) => {
+          const acc = accounts.find(a => a.account_id === id);
+          if (!acc) return id;
+          const lastSync = acc.updated_at || acc.created_at;
+          const lastSyncDate = lastSync ? new Date(lastSync) : null;
+          const diffMin = lastSyncDate ? (new Date() - lastSyncDate) / 60000 : 999;
+          const isOnline = diffMin < 5;
+          const isIdle = diffMin >= 5 && diffMin < 60;
+          const statusCls = isOnline ? 'online' : isIdle ? 'idle' : 'offline';
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className={`status-dot ${statusCls}`} style={{ width: 8, height: 8 }} />
+                <span>{acc.name || id}</span>
+              </div>
+              <div className="minor-text" style={{ fontSize: '9px', fontWeight: 400, marginTop: 2 }}>
+                {lastSyncDate ? showDateTime(lastSyncDate) : 'Never'}
+              </div>
+            </div>
+          );
+        }} />
       </div>
     </section>
   );

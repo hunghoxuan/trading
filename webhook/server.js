@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-1114"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-1116"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -6500,12 +6500,22 @@ function mt5ComputeRMultiple(row) {
   if (Number.isFinite(pnl)) {
     if (Number.isFinite(risk) && risk > 0) return pnl / risk;
     const s = mt5CanonicalStoredStatus(row?.execution_status || row?.status || row?.close_reason);
-    const planned = Number(row?.rr_planned);
+    const planned = Number(row?.rr_planned || row?.metadata?.rr_planned || row?.metadata?.rrPlanned);
     
     if (s === "TP") {
       return (Number.isFinite(planned) && planned > 0) ? planned : 1; 
     }
     if (s === "SL") return -1;
+
+    // Fallback: Calculate risk from entry/sl if available
+    const entry = Number(row?.entry_exec || row?.entry);
+    const sl = Number(row?.sl_exec || row?.sl);
+    const vol = Number(row?.volume);
+    if (Number.isFinite(entry) && Number.isFinite(sl) && entry !== sl && vol > 0) {
+      const riskPerUnit = Math.abs(entry - sl);
+      // Rough estimate, doesn't account for contract size/tick value but works for relative RR
+      if (riskPerUnit > 0) return pnl / (riskPerUnit * vol);
+    }
   }
   return null;
 }
@@ -7535,6 +7545,12 @@ const appHandler = async (req, res) => {
           symbols: mt5ComputeTopWinrateRows(selectedRows, (r) => String(r.symbol || "").toUpperCase(), { limit: 100, includeDirection: false }),
           entry_models: mt5ComputeTopWinrateRows(selectedRows, (r) => mt5EntryModelFromRow(r), { limit: 100, includeDirection: false }),
           accounts: mt5ComputeTopWinrateRows(selectedRows, (r) => envStr(r.account_id), { limit: 100, includeDirection: false }),
+          sources: mt5ComputeTopWinrateRows(selectedRows, (r) => mt5StrategyFromRow(r), { limit: 100, includeDirection: false }),
+          directional: mt5ComputeTopWinrateRows(selectedRows, (r) => {
+            const dir = String(r.action || r.side || "").toUpperCase();
+            const type = String(r.metadata?.type || r.raw_json?.type || "SIGNAL").toUpperCase();
+            return `${dir} ${type}`;
+          }, { limit: 100, includeDirection: false }),
         },
         pnl_series: pnlSeries,
       });
