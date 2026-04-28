@@ -467,7 +467,6 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
                   >
                     <option value="api_key">api_key</option>
                     <option value="symbols">symbols</option>
-                    <option value="ai_template">ai_template</option>
                     <option value="note">note</option>
                   </select>
                </label>

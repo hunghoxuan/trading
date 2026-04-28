@@ -24,7 +24,6 @@ const STRATEGY_CHECKLIST = {
 
 
 const DEFAULT_TEMPLATE_ID = "__default__";
-const AI_TEMPLATE_SETTING_TYPE = "ai_template";
 const SYMBOLS_SETTING_TYPE = "SYMBOLS";
 
 const DEFAULT_WATCHLIST = [
@@ -1587,8 +1586,8 @@ export default function ChartSnapshotsPage() {
 
   const saveTemplate = async () => {
     const name = String(templateName || "").trim() || `${cfg.symbol} ${cfg.strategies.join("+")}`;
-    const item = {
-      id: templateId && templateId !== DEFAULT_TEMPLATE_ID ? templateId : `t_${Date.now()}`,
+    const payload = {
+      ...(templateId && templateId !== DEFAULT_TEMPLATE_ID ? { template_id: templateId } : {}),
       name,
       config: normalizeTemplateConfig(cfg),
       saved: new Date().toISOString(),
@@ -1596,12 +1595,14 @@ export default function ChartSnapshotsPage() {
 
     setStatus({ type: "warning", text: "Saving template..." });
     try {
-      await api.upsertSetting({
-        type: AI_TEMPLATE_SETTING_TYPE,
-        name: item.name,
-        data: item,
-        status: "active",
-      });
+      const out = await api.aiUpsertTemplate(payload);
+      const savedTemplate = out?.template || payload;
+      const item = {
+        id: String(savedTemplate.template_id || templateId || `t_${Date.now()}`),
+        name: String(savedTemplate.name || name),
+        config: normalizeTemplateConfig(savedTemplate.config || {}),
+        saved: savedTemplate.saved || payload.saved,
+      };
 
       const next = [item, ...templates.filter((x) => x.name !== item.name)].slice(0, 200);
       setTemplates(next);
@@ -1624,7 +1625,7 @@ export default function ChartSnapshotsPage() {
 
     setStatus({ type: "warning", text: "Deleting template..." });
     try {
-      await api.deleteSetting(AI_TEMPLATE_SETTING_TYPE, found.name);
+      await api.aiDeleteTemplate(templateId);
       const next = templates.filter((x) => x.id !== templateId);
       setTemplates(next);
       saveTemplatesToLocal(next);
@@ -1639,15 +1640,14 @@ export default function ChartSnapshotsPage() {
 
   const loadTemplatesFromDb = async () => {
     try {
-      const out = await api.getSettings();
-      const list = Array.isArray(out?.settings) ? out.settings : [];
-      const rows = list.filter((x) => String(x?.type || "").toLowerCase() === AI_TEMPLATE_SETTING_TYPE);
-      
-      const dbTemplates = rows.map(r => ({
-        id: r.name, // Use name as ID for settings compatibility
-        name: r.name,
-        config: normalizeTemplateConfig(r.data?.config || r.data || {}),
-        saved: r.updated_at || r.created_at || new Date().toISOString()
+      const out = await api.aiListTemplates();
+      const rows = Array.isArray(out?.templates) ? out.templates : [];
+
+      const dbTemplates = rows.map((r) => ({
+        id: String(r.template_id || r.id || r.name || `t_${Date.now()}`),
+        name: String(r.name || "Unnamed Template"),
+        config: normalizeTemplateConfig(r.config || {}),
+        saved: r.saved || r.updated_at || r.created_at || new Date().toISOString()
       }));
 
       setTemplates(prev => {

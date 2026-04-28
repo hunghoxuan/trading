@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 17:59 - 38e0a54"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 18:05 - ab5fbac"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -2126,6 +2126,7 @@ function isApiPath(pathname) {
     p === "/v2" ||
     p.startsWith("/v2/") ||
     p.startsWith("/mt5/") ||
+    p.startsWith("/system") ||
     p.startsWith("/webhook")
   );
 }
@@ -2844,7 +2845,7 @@ async function mt5InitBackend() {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
       name TEXT, -- New field
-      type TEXT NOT NULL, -- 'ai_template', 'api_key', 'settings'
+      type TEXT NOT NULL, -- 'api_key', 'symbols', 'note', system/runtime settings
       data JSONB NOT NULL,
       status TEXT DEFAULT 'ACTIVE',
       created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -2861,7 +2862,6 @@ async function mt5InitBackend() {
     ALTER TABLE user_settings ADD CONSTRAINT user_settings_user_type_name_key UNIQUE (user_id, type, name);
 
     -- Keep old tables for safe migration then drop
-    DROP TABLE IF EXISTS ai_templates;
     DROP TABLE IF EXISTS ai_configs;
 
     CREATE TABLE IF NOT EXISTS signals (
@@ -3083,6 +3083,52 @@ async function mt5InitBackend() {
   await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS ctrader_account_id TEXT NULL`).catch(() => {});
   await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS metadata JSONB NULL`).catch(() => {});
   await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`).catch(() => {});
+
+  // Compatibility migration: absorb legacy AI templates from both the old
+  // physical table and deprecated user_settings rows into user_templates.
+  try {
+    const legacyAiTemplatesTable = await pool.query(`SELECT to_regclass('public.ai_templates') AS table_name`);
+    if (legacyAiTemplatesTable.rows?.[0]?.table_name) {
+      await pool.query(`
+        INSERT INTO user_templates (user_id, name, data, status, created_at, updated_at)
+        SELECT
+          COALESCE(NULLIF(t.user_id, ''), $1) AS user_id,
+          COALESCE(NULLIF(t.name, ''), 'Legacy Template ' || COALESCE(t.id::text, substr(md5(random()::text), 1, 6))) AS name,
+          (to_jsonb(t) - 'id' - 'user_id' - 'name' - 'status' - 'created_at' - 'updated_at') AS data,
+          COALESCE(NULLIF(t.status, ''), 'ACTIVE') AS status,
+          COALESCE(t.created_at, NOW()) AS created_at,
+          COALESCE(t.updated_at, NOW()) AS updated_at
+        FROM ai_templates t
+      `, [CFG.mt5DefaultUserId]).catch(() => {});
+      await pool.query(`DROP TABLE IF EXISTS ai_templates`).catch(() => {});
+    }
+  } catch (e) {
+    console.warn("[mt5-db] legacy ai_templates migration skipped:", e?.message || e);
+  }
+
+  try {
+    await pool.query(`
+      INSERT INTO user_templates (user_id, name, data, status, created_at, updated_at)
+      SELECT
+        s.user_id,
+        COALESCE(NULLIF(s.name, ''), 'Migrated Template ' || substr(md5(s.id::text), 1, 6)) AS name,
+        COALESCE(s.data, '{}'::jsonb) AS data,
+        COALESCE(NULLIF(s.status, ''), 'ACTIVE') AS status,
+        COALESCE(s.created_at, NOW()) AS created_at,
+        COALESCE(s.updated_at, NOW()) AS updated_at
+      FROM user_settings s
+      WHERE s.type = 'ai_template'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM user_templates ut
+          WHERE ut.user_id = s.user_id
+            AND ut.name = COALESCE(NULLIF(s.name, ''), 'Migrated Template ' || substr(md5(s.id::text), 1, 6))
+        )
+    `);
+    await pool.query(`DELETE FROM user_settings WHERE type = 'ai_template'`).catch(() => {});
+  } catch (e) {
+    console.warn("[mt5-db] user_settings ai_template migration skipped:", e?.message || e);
+  }
 
   // Compatibility migration: many existing VPS installs still have the real
   // account rows only in legacy `accounts`. Backfill `user_accounts` so the
@@ -7291,6 +7337,7 @@ const appHandler = async (req, res) => {
     return;
   }
 
+
   if (req.method === "GET" && url.pathname === "/auth/me") {
     const sess = getUiSessionFromReq(req);
     if (!sess.ok) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
@@ -8114,7 +8161,7 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "GET" && url.pathname === "/mt5/storage/stats") {
+  if (req.method === "GET" && (url.pathname === "/system/storage/stats" || url.pathname === "/mt5/storage/stats")) {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAuthForUi(req, res)) return;
     try {
@@ -8129,7 +8176,38 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "POST" && url.pathname === "/mt5/storage/cleanup") {
+  if (req.method === "GET" && url.pathname === "/system/cache") {
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const b = await mt5Backend();
+      const items = await b.uiListCache();
+      return json(res, 200, { ok: true, items });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "DELETE" && url.pathname === "/system/cache") {
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const b = await mt5Backend();
+      const key = url.searchParams.get("key");
+      const source = url.searchParams.get("source") || "memory";
+      if (key) {
+        const out = await b.uiDeleteCacheKey(key, source);
+        return json(res, 200, out);
+      } else {
+        const out = await b.storageCleanup("cache");
+        return json(res, 200, out);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return json(res, 400, { ok: false, error: message });
+    }
+  }
+
+  if (req.method === "POST" && (url.pathname === "/system/storage/cleanup" || url.pathname === "/mt5/storage/cleanup")) {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAuthForUi(req, res)) return;
     try {
@@ -8687,7 +8765,7 @@ const appHandler = async (req, res) => {
   // AI HUB API
   // =========================
   // =========================
-  // AI HUB API (Unified user_settings)
+  // AI HUB API
   // =========================
   if (req.method === "GET" && url.pathname === "/v2/ai/templates") {
     if (!requireAdminKey(req, res, url)) return;
@@ -8862,6 +8940,10 @@ const appHandler = async (req, res) => {
       let settingName = String(body.name || body.type || "").trim();
       let data = payloadData;
 
+      if (body.type === "ai_template") {
+        return json(res, 400, { ok: false, error: "ai_template moved to user_templates. Use /v2/ai/templates." });
+      }
+
       if (body.type === "api_key") {
         settingName = normalizeAiApiKeyName(settingName);
         if (!ALLOWED_AI_API_KEY_NAMES.has(settingName)) {
@@ -8910,7 +8992,7 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "POST" && url.pathname.startsWith("/v2/ai/templates/")) {
+  if (req.method === "DELETE" && url.pathname.startsWith("/v2/ai/templates/")) {
     if (!requireAdminKey(req, res, url)) return;
     try {
       const templateId = url.pathname.split("/").pop();
@@ -8952,7 +9034,7 @@ const appHandler = async (req, res) => {
         }
       }
 
-      const { rows: tRows } = templateId ? await db.query("SELECT data FROM user_settings WHERE id = $1", [templateId]) : { rows: [] };
+      const { rows: tRows } = templateId ? await db.query("SELECT data FROM user_templates WHERE id = $1", [templateId]) : { rows: [] };
       const tData = tRows[0]?.data || {};
       
       // Data for placeholders
