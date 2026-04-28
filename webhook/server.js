@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 15:15 - a12c1d1"); // Order Type Integration & AI Browser
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 13:21 - d121787"); // Order Type Integration & AI Browser
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -8664,6 +8664,37 @@ const appHandler = async (req, res) => {
     try {
       const db = await mt5InitBackend();
       const userId = sess.user_id || CFG.mt5DefaultUserId;
+      await db.query(`
+        INSERT INTO user_settings (user_id, type, name, data, status)
+        VALUES
+          ($1, 'market_data_cron', 'default', $2::jsonb, 'INACTIVE'),
+          ($1, 'ai_analysis_cron', 'default', $3::jsonb, 'INACTIVE')
+        ON CONFLICT (user_id, type, name) DO NOTHING
+      `, [
+        userId,
+        JSON.stringify({
+          enabled: false,
+          provider: "twelvedata",
+          timezone: CFG.marketDataDefaultTimezone,
+          symbols: [],
+          timeframes: ["1m", "5m", "15m"],
+          batch_size: CFG.marketDataCronBatchSize,
+          last_sync: {},
+        }),
+        JSON.stringify({
+          enabled: false,
+          symbols: [],
+          timeframes: ["15m", "1h"],
+          cadence_minutes: 60,
+          model: "claude-sonnet-4-0",
+          profile: "",
+          entry_models: [],
+          directions: ["BUY", "SELL"],
+          order_types: ["market", "limit", "stop"],
+          prompt: "",
+          last_sync: {},
+        }),
+      ]);
       const { rows } = await db.query(
         "SELECT type, name, data, status, created_at FROM user_settings WHERE user_id = $1 ORDER BY type ASC",
         [userId]
@@ -10549,7 +10580,7 @@ async function mt5CronLoop() {
 async function mt5RunMarketDataCron() {
   if (!CFG.marketDataCronEnabled) return;
   const b = await mt5Backend();
-  const res = await b.query("SELECT * FROM user_settings WHERE type = 'market_data_cron' AND status = 'ACTIVE'");
+  const res = await b.query("SELECT * FROM user_settings WHERE type = 'market_data_cron' AND UPPER(status) = 'ACTIVE'");
   const configs = res.rows || [];
   if (!configs.length) return;
 
@@ -10628,7 +10659,7 @@ async function mt5RunMarketDataCron() {
 
 async function mt5RunAiAnalysisCron() {
   const b = await mt5Backend();
-  const res = await b.query("SELECT * FROM user_settings WHERE type = 'ai_analysis_cron' AND status = 'ACTIVE'");
+  const res = await b.query("SELECT * FROM user_settings WHERE type = 'ai_analysis_cron' AND UPPER(status) = 'ACTIVE'");
   const configs = res.rows || [];
   if (!configs.length) return;
 

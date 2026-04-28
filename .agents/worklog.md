@@ -1,5 +1,15 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-28 15:25
+- **Work Accomplished**:
+  - Converted Settings WIP into independent feature sub-menu pages for Market Data Cron and AI Analysis Cron.
+  - Added automatic disabled default settings rows for `market_data_cron/default` and `ai_analysis_cron/default` from `/v2/settings`.
+  - Fixed cron setting save path so symbols/timeframes/status/provider/timezone/batch/model/profile/direction/order-type settings persist.
+  - Updated build-version scripts to generate and validate `vY.M.d H:m - git` format with matching server/EA versions.
+- **Pending Tasks / Backlog**:
+  - [ ] Wire AI Analysis Cron execution logic beyond persisted settings.
+  - [ ] Add dashboard cron health indicators after settings UI is verified.
+
 # Session Log: 2026-04-28 15:15
 - **Work Accomplished**:
   - **Order Type Integration**: Finalized end-to-end support for `order_type` (market/limit/stop). Updated DB schema, backend ingestion, and EA sync logic.

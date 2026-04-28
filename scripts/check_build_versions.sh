@@ -35,4 +35,20 @@ if [[ -z "$SERVER_BUMP" || -z "$EA_BUMP" ]]; then
   exit 1
 fi
 
+SERVER_VER="$(grep -E 'const SERVER_VERSION = envStr\(process\.env\.WEBHOOK_SERVER_VERSION, "' webhook/server.js | sed -E 's/.*"([^"]+)".*/\1/' | head -1)"
+EA_VER="$(grep -E 'string EA_BUILD_VERSION = "' mql5/TVBridgeEA.mq5 | sed -E 's/.*"([^"]+)".*/\1/' | head -1)"
+if [[ "$SERVER_VER" != "$EA_VER" ]]; then
+  echo "[build-version-check] FAILED"
+  echo "[build-version-check] SERVER_VERSION and EA_BUILD_VERSION must match exactly."
+  echo "  server=$SERVER_VER"
+  echo "  ea=$EA_VER"
+  exit 1
+fi
+if [[ ! "$SERVER_VER" =~ ^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}\ [0-9]{2}:[0-9]{2}\ -\ .+ ]]; then
+  echo "[build-version-check] FAILED"
+  echo "[build-version-check] version must match: vY.M.d H:m - git"
+  echo "  got=$SERVER_VER"
+  exit 1
+fi
+
 echo "[build-version-check] OK (both version bumps detected vs $BASE_REF)"
