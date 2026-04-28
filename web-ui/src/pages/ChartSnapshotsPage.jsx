@@ -2126,7 +2126,7 @@ export default function ChartSnapshotsPage() {
             return (
               <div className="snapshot-tabs-v2">
                 <button 
-                  className={`secondary-button ${!cfg.symbol ? 'active' : ''}`} 
+                  className={`secondary-button snapshot-tag-v2 ${!cfg.symbol ? 'active' : ''}`} 
                   onClick={() => setCfgField('symbol', '')}
                 >
                   🌐 BROWSE ALL

@@ -677,11 +677,10 @@ export default function SignalsPage() {
                       </td>
                       <td>
                         <div className="cell-wrap">
-                          <div className="cell-major" style={{ fontWeight: 800 }}>{t.symbol}</div>
-                          <div className="cell-minor" style={{ display: "flex", alignItems: "center" }}>
+                          <div className="cell-major" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span className={`side-badge ${sideCls}`}>{sideValue[0]}</span>
-                            <span>({sideValue === "BUY" ? "Long" : "Short"})</span>
-                            <span className="order-type-label">{t.order_type || "Market"}</span>
+                            <span style={{ fontWeight: 800 }}>{t.symbol}</span>
+                            <span className="minor-text" style={{ fontSize: '11px', fontWeight: 'normal', textTransform: 'lowercase', opacity: 0.8 }}>{t.order_type || "limit"}</span>
                           </div>
                           <div className="cell-minor" style={{ opacity: 0.7 }}>
                             {sourceLabel}{sourceLabel !== sourceId ? ` | ${sourceId}` : ""} | {signalShort}
@@ -706,7 +705,11 @@ export default function SignalsPage() {
                       </td>
                       <td>
                         <div className="cell-wrap">
-                          <div className="cell-major"><span className={`badge ${status.cls} badge-fixed`}>{status.label}</span></div>
+                          <div className="cell-major">
+                            {(!t.pnl_money_realized || asNum(t.pnl_money_realized) === 0) ? (
+                              <span className={`badge ${status.cls} badge-fixed`}>{status.label}</span>
+                            ) : null}
+                          </div>
                           {shouldShowPnl(t.status, t.pnl_money_realized) && <PnlDisplay value={t.pnl_money_realized} />}
                           <button
                             type="button"

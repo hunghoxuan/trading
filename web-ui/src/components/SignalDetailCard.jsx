@@ -180,6 +180,9 @@ export function SignalDetailCard({
   const tvSymbol = String(chart?.tvSymbol || toTradingViewSymbol(chart?.symbol || "")).trim();
 
   const availableTabs = useMemo(() => {
+    if (hideTabsBeforeResponse && !response?.hasData) return [];
+    if (!chart?.symbol) return [];
+
     const tabs = [];
     const hasRaw = response?.raw && typeof response.raw === "object" && Object.keys(response.raw).length > 0;
     const hasPlans = Array.isArray(response?.tradePlans) && response.tradePlans.length > 0;
@@ -190,7 +193,7 @@ export function SignalDetailCard({
     tabs.push("json");
     if (history?.enabled) tabs.push("history");
     return tabs;
-  }, [chart?.enabled, response?.raw, response?.tradePlans, history?.enabled, metaItems]);
+  }, [chart?.enabled, chart?.symbol, response?.hasData, response?.raw, response?.tradePlans, history?.enabled, metaItems, hideTabsBeforeResponse]);
 
   const [mainTab, setMainTab] = useState("chart");
   useEffect(() => {

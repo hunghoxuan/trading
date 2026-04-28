@@ -741,11 +741,10 @@ export default function TradesPage() {
                       </td>
                       <td>
                         <div className="cell-wrap">
-                          <div className="cell-major" style={{ fontWeight: 800 }}>{t.symbol}</div>
-                          <div className="cell-minor" style={{ display: "flex", alignItems: "center" }}>
+                          <div className="cell-major" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span className={`side-badge ${actionCls}`}>{action[0]}</span>
-                            <span>({action === "BUY" ? "Long" : "Short"})</span>
-                            <span className="order-type-label">{t.order_type || "Market"}</span>
+                            <span style={{ fontWeight: 800 }}>{t.symbol}</span>
+                            <span className="minor-text" style={{ fontSize: '11px', fontWeight: 'normal', textTransform: 'lowercase', opacity: 0.8 }}>{t.order_type || "limit"}</span>
                           </div>
                           <div className="cell-minor" style={{ opacity: 0.7 }}>{accountName} | {brokerTicketOf(t)}</div>
                         </div>
@@ -785,17 +784,19 @@ export default function TradesPage() {
                       <td>
                         <div className="cell-wrap">
                           <div className="cell-major">
-                            <span
-                              className={`badge ${status.cls}`}
-                              style={{ cursor: "pointer" }}
-                              title="Edit trade status / PnL"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openTradeEditModal(t);
-                              }}
-                            >
-                              {status.label}
-                            </span>
+                            {pnl === 0 ? (
+                              <span
+                                className={`badge ${status.cls}`}
+                                style={{ cursor: "pointer" }}
+                                title="Edit trade status / PnL"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openTradeEditModal(t);
+                                }}
+                              >
+                                {status.label}
+                              </span>
+                            ) : null}
                           </div>
                           {showPnl ? (
                             <div className={`cell-minor ${pnl < 0 ? "money-neg" : "money-pos"}`}>
