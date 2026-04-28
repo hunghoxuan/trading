@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-1241"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-1250"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -5325,6 +5325,9 @@ async function resolveTwelveSymbol(rawSymbol, apiKey = "") {
 function timeframeToTwelve(tfRaw) {
   const s = String(tfRaw || "").trim().toLowerCase();
   if (!s || s === "manual") return "15min";
+  if (s === "d") return "1day";
+  if (s === "w") return "1week";
+  if (s === "mn" || s === "mo" || s === "month") return "1month";
   if (/^\d+$/.test(s)) {
     const n = Number(s);
     if (!Number.isFinite(n) || n <= 0) return "15min";
