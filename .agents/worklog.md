@@ -1,5 +1,15 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-28 15:50
+- **Work Accomplished**:
+  - Split user Settings and System Settings responsibilities.
+  - Added `/system/settings` with Market Data Cron and AI Analysis Cron only.
+  - Moved system menu routes under `/system/*` and kept old flat routes as redirects.
+  - Grouped page imports through menu-style folders: `/ai/`, `/signals/`, `/trades/`, `/settings/`, `/system/`.
+  - Bumped VPS/EA build versions using `vY.M.d H:m - git` format.
+- **Pending Tasks / Backlog**:
+  - [ ] Browser-verify System role navigation after deploy.
+
 # Session Log: 2026-04-28 15:25
 - **Work Accomplished**:
   - Converted Settings WIP into independent feature sub-menu pages for Market Data Cron and AI Analysis Cron.

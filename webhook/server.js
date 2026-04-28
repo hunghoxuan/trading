@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 13:21 - d121787"); // Order Type Integration & AI Browser
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 13:49 - 99b9f0f"); // Order Type Integration & AI Browser
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {

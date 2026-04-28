@@ -1,19 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import DashboardPage from "./pages/DashboardPage";
-import TradesPage from "./pages/TradesPage";
-import LogsPage from "./pages/LogsPage";
-import DatabasePage from "./pages/DatabasePage";
-import SettingsPage from "./pages/SettingsPage";
-import UsersPage from "./pages/UsersPage";
-import SourcesPage from "./pages/SourcesPage";
-import AccountsV2Page from "./pages/AccountsV2Page";
-import SignalsPage from "./pages/SignalsPage";
-import SignalDetailPage from "./pages/SignalDetailPage";
-import V2TradeDetailPage from "./pages/V2TradeDetailPage";
-import ChartSnapshotsPage from "./pages/ChartSnapshotsPage";
-import SnapshotsPage from "./pages/SnapshotsPage";
-import StoragePage from "./pages/StoragePage";
+import ChartSnapshotsPage from "./pages/ai/ChartSnapshotsPage";
+import SignalsPage from "./pages/signals/SignalsPage";
+import SignalDetailPage from "./pages/signals/SignalDetailPage";
+import TradesPage from "./pages/trades/TradesPage";
+import V2TradeDetailPage from "./pages/trades/V2TradeDetailPage";
+import SettingsPage from "./pages/settings/SettingsPage";
+import SystemSettingsPage from "./pages/system/SystemSettingsPage";
+import LogsPage from "./pages/system/LogsPage";
+import DatabasePage from "./pages/system/DatabasePage";
+import UsersPage from "./pages/system/UsersPage";
+import SourcesPage from "./pages/system/SourcesPage";
+import AccountsV2Page from "./pages/system/AccountsV2Page";
+import SnapshotsPage from "./pages/system/SnapshotsPage";
+import StoragePage from "./pages/system/StoragePage";
 import { api, getRuntimeActiveUserId, setRuntimeActiveUserId } from "./api";
 import LoginPage from "./pages/LoginPage";
 
@@ -26,15 +27,18 @@ export default function App() {
   const canAccessSystemPages = String(authUser?.role || "").toLowerCase() === "system";
   const settingsMenuActive = useMemo(() => {
     const p = String(location?.pathname || "");
-    return p.startsWith("/profile") || p.startsWith("/settings") || p.startsWith("/accounts-v2") || p.startsWith("/sources");
+    return p.startsWith("/profile") || p.startsWith("/settings");
   }, [location?.pathname]);
   const systemMenuActive = useMemo(() => {
     const p = String(location?.pathname || "");
-    return p.startsWith("/logs")
+    return p.startsWith("/system")
+      || p.startsWith("/logs")
       || p.startsWith("/db")
       || p.startsWith("/users")
       || p.startsWith("/snapshots")
-      || p.startsWith("/storage");
+      || p.startsWith("/storage")
+      || p.startsWith("/accounts-v2")
+      || p.startsWith("/sources");
   }, [location?.pathname]);
 
   useEffect(() => {
@@ -109,7 +113,7 @@ export default function App() {
         </div>
         <nav>
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? "active" : "")}>Dashboard</NavLink>
-          <NavLink to="/ai" className={({ isActive }) => (isActive ? "active" : "")}>AI</NavLink>
+          <NavLink to="/ai/browser" className={({ isActive }) => (isActive ? "active" : "")}>AI</NavLink>
           <NavLink to="/signals" className={({ isActive }) => (isActive ? "active" : "")}>Signals</NavLink>
           <NavLink to="/trades" className={({ isActive }) => (isActive ? "active" : "")}>Trades</NavLink>
 
@@ -124,11 +128,14 @@ export default function App() {
                 System
               </button>
               <div className="nav-dropdown-menu">
-                <NavLink to="/snapshots">Snapshots</NavLink>
-                <NavLink to="/storage">Storage</NavLink>
-                <NavLink to="/logs">Logs</NavLink>
-                <NavLink to="/db">DB</NavLink>
-                <NavLink to="/users">Users</NavLink>
+                <NavLink to="/system/settings">Settings</NavLink>
+                <NavLink to="/system/snapshots">Snapshots</NavLink>
+                <NavLink to="/system/storage">Storage</NavLink>
+                <NavLink to="/system/logs">Logs</NavLink>
+                <NavLink to="/system/db">DB</NavLink>
+                <NavLink to="/system/users">Users</NavLink>
+                <NavLink to="/system/accounts">Accounts</NavLink>
+                <NavLink to="/system/sources">Sources</NavLink>
               </div>
             </div>
           )}
@@ -140,10 +147,8 @@ export default function App() {
               Settings
             </button>
             <div className="nav-dropdown-menu">
-              <NavLink to="/profile">Profile</NavLink>
-              <NavLink to="/settings">Settings</NavLink>
-              {canAccessSystemPages && <NavLink to="/accounts-v2">Accounts</NavLink>}
-              {canAccessSystemPages && <NavLink to="/sources">Sources</NavLink>}
+              <NavLink to="/settings/profile">Profile</NavLink>
+              <NavLink to="/settings/general">Settings</NavLink>
             </div>
           </div>
           <button onClick={handleLogout} className="secondary-button" style={{ marginLeft: 8, padding: '4px 10px', fontSize: '11px' }}>Logout</button>
@@ -169,16 +174,28 @@ export default function App() {
           <Route path="/signals/:signalId" element={<SignalDetailPage />} />
           <Route path="/trades" element={<TradesPage />} />
           <Route path="/trades/:tradeId" element={<V2TradeDetailPage />} />
-          <Route path="/ai" element={<ChartSnapshotsPage />} />
-          <Route path="/snapshots" element={canAccessSystemPages ? <SnapshotsPage /> : <Navigate to="/dashboard" replace />} />
-          <Route path="/storage" element={canAccessSystemPages ? <StoragePage /> : <Navigate to="/dashboard" replace />} />
-          <Route path="/logs" element={canAccessSystemPages ? <LogsPage /> : <Navigate to="/dashboard" replace />} />
-          <Route path="/db" element={canAccessSystemPages ? <DatabasePage /> : <Navigate to="/dashboard" replace />} />
-          <Route path="/users" element={canAccessSystemPages ? <UsersPage authUser={authUser} /> : <Navigate to="/dashboard" replace />} />
-          <Route path="/accounts-v2" element={canAccessSystemPages ? <AccountsV2Page /> : <Navigate to="/dashboard" replace />} />
-          <Route path="/sources" element={canAccessSystemPages ? <SourcesPage /> : <Navigate to="/dashboard" replace />} />
-          <Route path="/profile" element={<SettingsPage authUser={authUser} mode="profile" />} />
-          <Route path="/settings" element={<SettingsPage authUser={authUser} />} />
+          <Route path="/ai" element={<Navigate to="/ai/browser" replace />} />
+          <Route path="/ai/browser" element={<ChartSnapshotsPage />} />
+          <Route path="/system" element={<Navigate to="/system/settings" replace />} />
+          <Route path="/system/settings" element={canAccessSystemPages ? <SystemSettingsPage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/system/snapshots" element={canAccessSystemPages ? <SnapshotsPage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/system/storage" element={canAccessSystemPages ? <StoragePage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/system/logs" element={canAccessSystemPages ? <LogsPage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/system/db" element={canAccessSystemPages ? <DatabasePage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/system/users" element={canAccessSystemPages ? <UsersPage authUser={authUser} /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/system/accounts" element={canAccessSystemPages ? <AccountsV2Page /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/system/sources" element={canAccessSystemPages ? <SourcesPage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/snapshots" element={<Navigate to="/system/snapshots" replace />} />
+          <Route path="/storage" element={<Navigate to="/system/storage" replace />} />
+          <Route path="/logs" element={<Navigate to="/system/logs" replace />} />
+          <Route path="/db" element={<Navigate to="/system/db" replace />} />
+          <Route path="/users" element={<Navigate to="/system/users" replace />} />
+          <Route path="/accounts-v2" element={<Navigate to="/system/accounts" replace />} />
+          <Route path="/sources" element={<Navigate to="/system/sources" replace />} />
+          <Route path="/profile" element={<Navigate to="/settings/profile" replace />} />
+          <Route path="/settings" element={<Navigate to="/settings/profile" replace />} />
+          <Route path="/settings/profile" element={<SettingsPage authUser={authUser} mode="profile" />} />
+          <Route path="/settings/general" element={<SettingsPage authUser={authUser} />} />
           <Route path="/login" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>
