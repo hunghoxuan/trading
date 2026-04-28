@@ -51,7 +51,7 @@ input string  InpBacktestFileCommon  = "tvbridge_signals.csv";
 input bool    InpBacktestHasHeader   = true;
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "2026-04-28.0710";
+string EA_BUILD_VERSION = "2026-04-28.0741";
 
 CTrade trade;
 
@@ -2756,13 +2756,37 @@ void SyncClosedHistory()
          continue;
 
       long posId = HistoryDealGetInteger(ticket, DEAL_POSITION_ID);
+      long orderId = HistoryDealGetInteger(ticket, DEAL_ORDER);
       double pnl = HistoryDealGetDouble(ticket, DEAL_PROFIT) + HistoryDealGetDouble(ticket, DEAL_COMMISSION) + HistoryDealGetDouble(ticket, DEAL_SWAP);
       datetime time = (datetime)HistoryDealGetInteger(ticket, DEAL_TIME);
       string sym = HistoryDealGetString(ticket, DEAL_SYMBOL);
       double vol = HistoryDealGetDouble(ticket, DEAL_VOLUME);
+      string sid = HistoryDealGetString(ticket, DEAL_COMMENT);
+      if(StringLen(sid) == 0 && orderId > 0 && HistoryOrderSelect((ulong)orderId))
+         sid = HistoryOrderGetString((ulong)orderId, ORDER_COMMENT);
+
+      ENUM_DEAL_REASON reason = (ENUM_DEAL_REASON)HistoryDealGetInteger(ticket, DEAL_REASON);
+      string closeStatus = "CLOSED";
+      if(reason == DEAL_REASON_TP)
+         closeStatus = "TP";
+      else if(reason == DEAL_REASON_SL || reason == DEAL_REASON_SO)
+         closeStatus = "SL";
+      else if(reason == DEAL_REASON_CLIENT || reason == DEAL_REASON_EXPERT || reason == DEAL_REASON_MOBILE)
+         closeStatus = "CANCEL";
 
       if(updates != "") updates += ",";
-      updates += "{\"ticket\":\"" + IntegerToString((int)posId) + "\",\"pnl\":" + DoubleToString(pnl, 2) + ",\"status\":\"CLOSED\",\"close_time\":" + IntegerToString((int)time) + ",\"symbol\":\"" + sym + "\",\"volume\":" + DoubleToString(vol, 2) + "}";
+      updates += "{";
+      updates += "\"signal_id\":\"" + JsonEscape(sid) + "\",";
+      updates += "\"ticket\":\"" + IntegerToString(posId) + "\",";
+      updates += "\"position_ticket\":\"" + IntegerToString(posId) + "\",";
+      updates += "\"deal_ticket\":\"" + IntegerToString((long)ticket) + "\",";
+      updates += "\"order_ticket\":\"" + IntegerToString(orderId) + "\",";
+      updates += "\"pnl\":" + DoubleToString(pnl, 2) + ",";
+      updates += "\"status\":\"" + JsonEscape(closeStatus) + "\",";
+      updates += "\"close_time\":" + IntegerToString((long)time) + ",";
+      updates += "\"symbol\":\"" + JsonEscape(sym) + "\",";
+      updates += "\"volume\":" + DoubleToString(vol, 2);
+      updates += "}";
       count++;
       if(count >= 100) break; // Increased batch size to 100
    }
@@ -3030,6 +3054,7 @@ void SyncWithVps()
             continue;
 
          ulong posTicket = (ulong)HistoryDealGetInteger(dealTicket, DEAL_POSITION_ID);
+         ulong orderTicket = (ulong)HistoryDealGetInteger(dealTicket, DEAL_ORDER);
          if(posTicket == 0)
             continue;
 
@@ -3056,7 +3081,10 @@ void SyncWithVps()
          closedUpdates += "{";
          closedUpdates += "\"signal_id\":\"" + JsonEscape(sid) + "\",";
          closedUpdates += "\"status\":\"" + JsonEscape(closeStatus) + "\",";
-         closedUpdates += "\"ticket\":\"" + IntegerToString((int)posTicket) + "\",";
+         closedUpdates += "\"ticket\":\"" + IntegerToString((long)posTicket) + "\",";
+         closedUpdates += "\"position_ticket\":\"" + IntegerToString((long)posTicket) + "\",";
+         closedUpdates += "\"deal_ticket\":\"" + IntegerToString((long)dealTicket) + "\",";
+         closedUpdates += "\"order_ticket\":\"" + IntegerToString((long)orderTicket) + "\",";
          closedUpdates += "\"pnl\":" + DoubleToString(pnl, 2) + ",";
          closedUpdates += "\"closed_at\":\"" + IsoTime(dealTime) + "\"";
          closedUpdates += "}";

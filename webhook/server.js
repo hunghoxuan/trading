@@ -87,7 +87,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-0710"); // UI Regressions & Selection Fix
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "2026.04.28-0741"); // UI Regressions & Selection Fix
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -3603,14 +3603,18 @@ async function mt5InitBackend() {
         for (const raw of Array.isArray(arr) ? arr : []) {
           if (!raw || typeof raw !== 'object') continue;
           const signalId = String(raw.signal_id || "").trim();
-          const ticket = String(raw.ticket || "").trim() || null;
-          if (!signalId && !ticket) continue;
-          if (ticket) seenTickets.add(ticket);
+          const ticketCandidates = mt5TicketCandidates(raw);
+          const ticket = ticketCandidates[0] || null;
+          if (!signalId && !ticketCandidates.length) continue;
+          for (const candidate of ticketCandidates) seenTickets.add(candidate);
           const pnlRaw = Number(raw.pnl);
           const pnl = Number.isFinite(pnlRaw) ? pnlRaw : null;
           const volumeRaw = Number(raw.volume || raw.lots);
           const volume = Number.isFinite(volumeRaw) ? volumeRaw : null;
           const reasonRaw = String(raw.reason || raw.close_reason || "").trim().toUpperCase();
+          const closeReason = mt5CloseReasonFromSync(raw);
+          const openedAt = raw.opened_at || raw.openedAt || null;
+          const closedAt = raw.closed_at || raw.closedAt || null;
           let statusRaw = String(raw.status || "").trim().toUpperCase();
           if (!statusRaw) {
             if (reasonRaw === "TP" || reasonRaw === "DEAL_REASON_TP") statusRaw = "TP";
@@ -3625,15 +3629,30 @@ async function mt5InitBackend() {
           const key = ticket ? `tk:${ticket}` : `sig:${signalId}`;
           const prev = merged.get(key);
           if (!prev) {
-            merged.set(key, { signal_id: signalId || null, ticket, pnl, volume, status_raw: statusRaw || "UNKNOWN", execution_status: executionStatus });
+            merged.set(key, {
+              signal_id: signalId || null,
+              ticket,
+              ticket_candidates: ticketCandidates,
+              pnl,
+              volume,
+              status_raw: statusRaw || "UNKNOWN",
+              execution_status: executionStatus,
+              close_reason: closeReason,
+              opened_at: openedAt,
+              closed_at: closedAt,
+            });
           } else {
             if (!prev.signal_id && signalId) prev.signal_id = signalId;
+            prev.ticket_candidates = Array.from(new Set([...(prev.ticket_candidates || []), ...ticketCandidates]));
             if (statusRank(executionStatus) > statusRank(prev.execution_status)) {
               prev.execution_status = executionStatus;
               prev.status_raw = statusRaw || prev.status_raw;
             }
             if (pnl !== null) prev.pnl = pnl;
             if (volume !== null) prev.volume = volume;
+            if (closeReason) prev.close_reason = closeReason;
+            if (openedAt) prev.opened_at = openedAt;
+            if (closedAt) prev.closed_at = closedAt;
           }
         }
       };
@@ -3649,9 +3668,18 @@ async function mt5InitBackend() {
       let synced = 0;
       for (const it of items) {
         let res = { rowCount: 0 };
-        if (it.ticket) {
-          const openedAt = it.opened_at || it.openedAt || null;
-          const closedAt = it.closed_at || it.closedAt || null;
+        const ticketCandidates = Array.isArray(it.ticket_candidates) && it.ticket_candidates.length
+          ? it.ticket_candidates
+          : (it.ticket ? [it.ticket] : []);
+        const syncMeta = JSON.stringify({
+          broker_ticket_candidates: ticketCandidates,
+          broker_position_id: ticketCandidates[0] || null,
+          close_reason: it.close_reason || null,
+          last_sync_source: "broker_sync_v2",
+        });
+        if (ticketCandidates.length) {
+          const openedAt = it.opened_at || null;
+          const closedAt = it.closed_at || null;
           res = await pool.query(`
             UPDATE trades
             SET dispatch_status = CASE
@@ -3665,12 +3693,22 @@ async function mt5InitBackend() {
                 END,
                 pnl_realized = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($2, pnl_realized) ELSE pnl_realized END,
                 volume = COALESCE($7, volume),
+                close_reason = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($8, close_reason) ELSE close_reason END,
+                broker_trade_id = COALESCE(NULLIF($9, ''), broker_trade_id),
+                metadata = COALESCE(metadata, '{}'::jsonb) || $10::jsonb,
                 opened_at = COALESCE($5, opened_at),
                 closed_at = COALESCE($6, CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN NOW() ELSE closed_at END),
                 updated_at = NOW()
-            WHERE account_id = $3 AND broker_trade_id = $4
+            WHERE account_id = $3
+              AND (
+                broker_trade_id = ANY($4::text[])
+                OR metadata->>'broker_position_id' = ANY($4::text[])
+                OR metadata->>'position_ticket' = ANY($4::text[])
+                OR metadata->>'deal_ticket' = ANY($4::text[])
+                OR metadata->>'order_ticket' = ANY($4::text[])
+              )
             RETURNING trade_id
-          `, [it.execution_status, it.pnl, aid, it.ticket, openedAt, closedAt, it.volume]);
+          `, [it.execution_status, it.pnl, aid, ticketCandidates, openedAt, closedAt, it.volume, it.close_reason, it.ticket || "", syncMeta]);
         }
         if (it.signal_id) {
           if (res.rowCount === 0) {
@@ -3688,7 +3726,10 @@ async function mt5InitBackend() {
                 broker_trade_id = COALESCE(NULLIF($2, ''), broker_trade_id),
                 pnl_realized = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($3, pnl_realized) ELSE pnl_realized END,
                 volume = COALESCE($6, volume),
-                closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN NOW() ELSE closed_at END,
+                close_reason = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($7, close_reason) ELSE close_reason END,
+                metadata = COALESCE(metadata, '{}'::jsonb) || $8::jsonb,
+                opened_at = COALESCE($9, opened_at),
+                closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($10, closed_at, NOW()) ELSE closed_at END,
                 updated_at = NOW()
             WHERE trade_id = (
               SELECT trade_id
@@ -3701,10 +3742,10 @@ async function mt5InitBackend() {
               LIMIT 1
             )
             RETURNING trade_id
-            `, [it.execution_status, it.ticket, it.pnl, aid, it.signal_id, it.volume]);
+            `, [it.execution_status, it.ticket, it.pnl, aid, it.signal_id, it.volume, it.close_reason, syncMeta, it.opened_at || null, it.closed_at || null]);
           }
         }
-        if (res.rowCount === 0 && it.ticket) {
+        if (res.rowCount === 0 && ticketCandidates.length) {
           // Last-resort fallback: bind ticket to oldest unresolved trade for this account.
           res = await pool.query(`
             UPDATE trades
@@ -3720,7 +3761,9 @@ async function mt5InitBackend() {
                 broker_trade_id = COALESCE(NULLIF($2, ''), broker_trade_id),
                 pnl_realized = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($3, pnl_realized) ELSE pnl_realized END,
                 volume = COALESCE($5, volume),
-                closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN NOW() ELSE closed_at END,
+                close_reason = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($6, close_reason) ELSE close_reason END,
+                metadata = COALESCE(metadata, '{}'::jsonb) || $7::jsonb,
+                closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($8, closed_at, NOW()) ELSE closed_at END,
                 updated_at = NOW()
             WHERE trade_id = (
               SELECT trade_id
@@ -3732,7 +3775,7 @@ async function mt5InitBackend() {
               LIMIT 1
             )
             RETURNING trade_id
-          `, [it.execution_status, it.ticket, it.pnl, aid, it.volume]);
+          `, [it.execution_status, it.ticket, it.pnl, aid, it.volume, it.close_reason, syncMeta, it.closed_at || null]);
         }
         matched += res.rowCount;
         if (res.rowCount > 0) {
@@ -5606,6 +5649,46 @@ function mt5CanonicalStoredStatus(value) {
     OK: "PLACED"
   };
   return legacyToCurrent[s] || s;
+}
+
+function mt5TicketCandidates(raw = {}) {
+  const out = [];
+  const push = (value) => {
+    const v = String(value ?? "").trim();
+    if (v && !out.includes(v)) out.push(v);
+  };
+  push(raw.ticket);
+  push(raw.ticket_number);
+  push(raw.broker_trade_id);
+  push(raw.position_ticket);
+  push(raw.position_id);
+  push(raw.broker_position_id);
+  push(raw.deal_ticket);
+  push(raw.deal_id);
+  push(raw.broker_deal_id);
+  push(raw.order_ticket);
+  push(raw.order_id);
+  push(raw.broker_order_id);
+  return out;
+}
+
+function mt5CloseReasonFromSync(raw = {}) {
+  const s = String(raw.status || raw.execution_status || raw.reason || raw.close_reason || "").trim().toUpperCase();
+  if (s === "TP" || s === "DEAL_REASON_TP") return "TP";
+  if (s === "SL" || s === "SO" || s === "DEAL_REASON_SL" || s === "DEAL_REASON_SO") return "SL";
+  if (["CANCEL", "CANCELLED", "CLIENT", "MOBILE", "EXPERT", "MANUAL", "DEAL_REASON_CLIENT", "DEAL_REASON_MOBILE", "DEAL_REASON_EXPERT"].includes(s)) return "MANUAL";
+  if (s === "EXPIRED") return "EXPIRED";
+  if (s === "FAIL" || s === "FAILED") return "FAIL";
+  return null;
+}
+
+function mt5SyncTime(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) return new Date(value * 1000).toISOString();
+  const s = String(value).trim();
+  if (/^\d+$/.test(s)) return new Date(Number(s) * 1000).toISOString();
+  const t = Date.parse(s);
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
 }
 
 function mt5IsRetryableConnectivityFail(status, errorText) {
@@ -9731,24 +9814,51 @@ const appHandler = async (req, res) => {
       if (!Array.isArray(updates)) return json(res, 400, { ok: false, error: "updates array required" });
       const b = await mt5Backend();
       let updatedCount = 0;
+      let unmatchedCount = 0;
       for (const u of updates) {
-        const ticket = String(u.ticket || u.ticket_number || "").trim();
-        if (!ticket) continue;
+        const ticketCandidates = mt5TicketCandidates(u);
+        const ticket = ticketCandidates[0] || "";
+        const signalId = String(u.signal_id || "").trim();
+        if (!ticketCandidates.length && !signalId) continue;
         const stRaw = String(u.status || u.execution_status || "CLOSED").toUpperCase();
+        const execStatus = ["TP", "SL", "CLOSED"].includes(stRaw)
+          ? "CLOSED"
+          : (["CANCEL", "CANCELLED", "EXPIRED"].includes(stRaw) ? "CANCELLED" : (stRaw === "FAIL" ? "REJECTED" : stRaw));
         const pnl = Number(u.pnl ?? u.profit ?? 0);
-        const closeTime = u.close_time || u.time || null;
+        const closeTime = mt5SyncTime(u.closed_at ?? u.close_time ?? u.time);
+        const closeReason = mt5CloseReasonFromSync(u);
+        const accountId = String(payload.account_id || u.account_id || "").trim();
+        const syncMeta = JSON.stringify({
+          broker_ticket_candidates: ticketCandidates,
+          broker_position_id: u.position_ticket || u.position_id || ticket || null,
+          deal_ticket: u.deal_ticket || u.deal_id || null,
+          order_ticket: u.order_ticket || u.order_id || null,
+          close_reason: closeReason,
+          last_sync_source: "ea_bulk_history",
+        });
         
         const resUpd = await pool.query(`
           UPDATE trades
           SET execution_status = $1,
               pnl_realized = $2,
               closed_at = COALESCE(closed_at, $3, NOW()),
+              close_reason = COALESCE($8, close_reason),
               symbol = COALESCE($5, symbol),
               execution_volume = COALESCE($6, execution_volume),
+              broker_trade_id = COALESCE(NULLIF($10, ''), broker_trade_id),
+              metadata = COALESCE(metadata, '{}'::jsonb) || $9::jsonb,
               updated_at = NOW()
-          WHERE broker_trade_id = $4
+          WHERE ($11::text = '' OR account_id = $11)
+            AND (
+              broker_trade_id = ANY($4::text[])
+              OR metadata->>'broker_position_id' = ANY($4::text[])
+              OR metadata->>'position_ticket' = ANY($4::text[])
+              OR metadata->>'deal_ticket' = ANY($4::text[])
+              OR metadata->>'order_ticket' = ANY($4::text[])
+              OR ($7::text <> '' AND signal_id = $7)
+            )
           RETURNING trade_id, user_id
-        `, [stRaw, pnl, closeTime, ticket, u.symbol || null, u.volume || null]);
+        `, [execStatus, pnl, closeTime, ticketCandidates, u.symbol || null, u.volume || null, signalId, closeReason, syncMeta, ticket, accountId]);
         
         if (resUpd.rowCount > 0) {
           updatedCount++;
@@ -9756,13 +9866,28 @@ const appHandler = async (req, res) => {
           await b.log(row.trade_id, 'trades', {
             event: 'TRADE_SYNC_UPDATE',
             ticket,
-            execution_status: stRaw,
+            ticket_candidates: ticketCandidates,
+            status_raw: stRaw,
+            execution_status: execStatus,
+            close_reason: closeReason,
             pnl,
             source: 'ea_bulk_sync'
           }, row.user_id || CFG.mt5DefaultUserId);
+        } else {
+          unmatchedCount++;
+          await b.log(signalId || ticket || "unknown", 'trades', {
+            event: 'TRADE_SYNC_UNMATCHED',
+            ticket,
+            ticket_candidates: ticketCandidates,
+            account_id: accountId || null,
+            symbol: u.symbol || null,
+            volume: u.volume || null,
+            pnl,
+            source: 'ea_bulk_sync'
+          }, CFG.mt5DefaultUserId);
         }
       }
-      return json(res, 200, { ok: true, updated: updatedCount });
+      return json(res, 200, { ok: true, updated: updatedCount, unmatched: unmatchedCount });
     } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
   }
 
