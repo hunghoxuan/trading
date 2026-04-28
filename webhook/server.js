@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 18:58 - 115103a"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 19:08 - 399e615"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -373,6 +373,71 @@ function json(res, statusCode, data) {
 const UI_SESSIONS = new Map();
 const UI_ROLE_SYSTEM = "System";
 const MARKET_DATA_MEMORY_CACHE = new Map();
+
+/**
+ * Multi-Tiered Cache Utility (Memory -> Redis -> Fallback)
+ */
+const UnifiedCache = {
+  async get(key, options = {}) {
+    const { l1Map, l2Prefix, ttlSec, validator, onHitL2, fallback } = options;
+    const now = Date.now();
+
+    // 1. L1 Memory
+    if (l1Map) {
+      const val = l1Map.get(key);
+      if (val && Number(val.expires_at_ms || 0) > now) {
+        if (!validator || validator(val.data)) return val.data;
+      }
+    }
+
+    // 2. L2 Redis
+    if (CFG.redisEnabled && l2Prefix) {
+      const client = await getRedisClient();
+      if (client) {
+        const fullKey = `${l2Prefix}:${key}`;
+        const raw = await client.get(fullKey).catch(() => null);
+        if (raw) {
+          try {
+            const data = JSON.parse(raw);
+            if (!validator || validator(data)) {
+              // Promote to L1
+              if (l1Map) l1Map.set(key, { data, expires_at_ms: now + (ttlSec * 1000) });
+              if (onHitL2) onHitL2(data);
+              return data;
+            }
+          } catch (e) {}
+        }
+      }
+    }
+
+    // 3. Fallback (DB or API)
+    if (fallback) {
+      const data = await fallback();
+      if (data && (!validator || validator(data))) {
+        await this.set(key, data, options);
+        return data;
+      }
+    }
+
+    return null;
+  },
+
+  async set(key, data, options = {}) {
+    const { l1Map, l2Prefix, ttlSec } = options;
+    const now = Date.now();
+    const expires_at_ms = now + (ttlSec * 1000);
+
+    if (l1Map) l1Map.set(key, { data, expires_at_ms });
+
+    if (CFG.redisEnabled && l2Prefix) {
+      const client = await getRedisClient();
+      if (client) {
+        const fullKey = `${l2Prefix}:${key}`;
+        await client.set(fullKey, JSON.stringify(data), { EX: ttlSec }).catch(() => {});
+      }
+    }
+  }
+};
 const MARKET_DATA_MEMORY_MAX_KEYS = 500;
 let REDIS_CLIENT = null;
 let REDIS_CONNECTING = null;
