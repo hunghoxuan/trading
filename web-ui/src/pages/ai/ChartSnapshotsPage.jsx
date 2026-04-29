@@ -1585,7 +1585,7 @@ export default function ChartSnapshotsPage() {
           analysis_snapshot: analysisSnapshotPayload,
         };
         if (mode === "trade") {
-          await api.createTradeDirect(finalPayload);
+          await api.createTrade(finalPayload);
         } else {
           await api.createSignal(finalPayload);
         }
@@ -2362,8 +2362,8 @@ export default function ChartSnapshotsPage() {
               tradeId: null,
               value: position,
               onChange: updatePositionField,
-              onAddSignal: (pos) => addBySelection("signal", pos, "main"),
-              onAddTrade: (pos) => addBySelection("trade", pos, "main"),
+              onAddSignal: (pos, planId = "main") => addBySelection("signal", pos, planId),
+              onAddTrade: (pos, planId = "main") => addBySelection("trade", pos, planId),
               showSaveButton: false,
               showAddSignalButton: true,
               showAddTradeButton: true,

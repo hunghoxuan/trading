@@ -1,5 +1,14 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-29 11:16
+- **Starting Task**:
+  - Fix AI page Plan 2 `+Trade` loading forever after Plan 1 `+Signal`.
+- **Work Accomplished**:
+  - Preserved per-plan ids for extra plan submit buttons instead of forcing all submits to `main`.
+  - Routed AI plan `+Trade` through the existing `/v2/signals/create` pipeline with `only_signal:false`, matching the working `+Signal` path and avoiding the stricter direct-trade route.
+- **Verification**:
+  - `npm run build` in `web-ui`
+
 # Session Log: 2026-04-29 10:22
 - **Starting Task**:
   - Compact ICT AI analysis prompt/schema/token budget to reduce snapshot analyze timeouts.
