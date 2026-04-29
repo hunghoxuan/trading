@@ -5,16 +5,16 @@ import './SessionClockBar.css';
  * Sessions and Kill Zones defined in UTC hours (0-24)
  */
 const SESSIONS = [
-  { id: 'asia', label: 'Asian Session', start: 0, end: 9, color: 'rgba(52, 152, 219, 0.25)', borderColor: '#3498db' },
-  { id: 'london', label: 'London Session', start: 8, end: 17, color: 'rgba(46, 204, 113, 0.25)', borderColor: '#2ecc71' },
-  { id: 'ny', label: 'NY Session', start: 13, end: 22, color: 'rgba(230, 126, 34, 0.25)', borderColor: '#e67e22' },
+  { id: 'asia', label: 'Asian Session', start: 0, end: 9, color: 'rgba(59, 130, 246, 0.15)', borderColor: 'rgba(59, 130, 246, 0.4)' },
+  { id: 'london', label: 'London Session', start: 8, end: 17, color: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.4)' },
+  { id: 'ny', label: 'NY Session', start: 13, end: 22, color: 'rgba(249, 115, 22, 0.15)', borderColor: 'rgba(249, 115, 22, 0.4)' },
 ];
 
 const KILL_ZONES = [
-  { id: 'asia_kz', label: 'Asia Kill Zone', start: 0, end: 4, color: 'rgba(52, 152, 219, 0.4)' },
-  { id: 'london_kz', label: 'London Kill Zone', start: 7, end: 10, color: 'rgba(46, 204, 113, 0.4)' },
-  { id: 'ny_kz', label: 'NY Kill Zone', start: 12, end: 15, color: 'rgba(230, 126, 34, 0.4)' },
-  { id: 'london_close', label: 'London Close', start: 15, end: 17, color: 'rgba(231, 76, 60, 0.4)' },
+  { id: 'asia_kz', label: 'Asia Kill Zone', start: 0, end: 4, color: 'rgba(59, 130, 246, 0.3)' },
+  { id: 'london_kz', label: 'London Kill Zone', start: 7, end: 10, color: 'rgba(16, 185, 129, 0.3)' },
+  { id: 'ny_kz', label: 'NY Kill Zone', start: 12, end: 15, color: 'rgba(249, 115, 22, 0.3)' },
+  { id: 'london_close', label: 'London Close', start: 15, end: 17, color: 'rgba(239, 68, 68, 0.3)' },
 ];
 
 export default function SessionClockBar({ displayTimezone }) {
@@ -149,7 +149,7 @@ export default function SessionClockBar({ displayTimezone }) {
           {renderRegions(KILL_ZONES, true)}
         </div>
 
-        {/* Progress Fill */}
+        {/* Progress Fill (at bottom) */}
         <div className="progress-fill" style={{ width: `${progressPct}%` }} />
 
         {/* Current Time Marker */}
@@ -158,9 +158,9 @@ export default function SessionClockBar({ displayTimezone }) {
           <div className="marker-dot" />
         </div>
 
-        {/* Digital Clock */}
-        <div className="digital-clock">
-          <span className="tz-name">{tz.replace('_', ' ')}</span>
+        {/* Digital Clock Overlaid */}
+        <div className="digital-clock" style={{ left: `calc(${progressPct}% - 10px)` }}>
+          <span className="tz-name">{tz.split('/').pop().replace('_', ' ')}</span>
           <span className="time-value">{timeStr}</span>
         </div>
       </div>
