@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.29 17:49 - 8770d1f"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.29 19:01 - 54fa6ff"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(CHART_SNAPSHOT_DIR, ".claude-files.json");
 const ANTHROPIC_FILES_BETA = "files-api-2025-04-14";
@@ -531,12 +531,13 @@ const StateRepo = {
     USER_TEMPLATES: { prefix: "USR:TPL", ttl: 3600 * 6 },  // 6 hours
     SIGNALS_PENDING: { prefix: "SIG:PEN", ttl: 600 },       // 10 mins (dynamic)
     MARKET_LATEST: { prefix: "MKT:LAT", ttl: 300 },       // 5 mins
+    MARKET_DATA_UNIFIED: { prefix: "MARKET_DATA", ttl: 3600 }, // 1 hour unified symbol cache
     SIGNAL_DETAIL: { prefix: "SIG:DET", ttl: 3600 * 24 }, // 1 day
     TRADE_DETAIL: { prefix: "TRD:DET", ttl: 3600 * 24 }, // 1 day
   },
 
   getL1Map(bucketName) {
-    if (bucketName === "MARKET_LATEST") return MARKET_DATA_MEMORY_CACHE;
+    if (bucketName === "MARKET_LATEST" || bucketName === "MARKET_DATA_UNIFIED") return MARKET_DATA_MEMORY_CACHE;
     return null; // Shared L1 not strictly needed for non-high-frequency keys yet
   },
 
@@ -599,6 +600,69 @@ async function repoGetUserAccounts(userId) {
     const { rows } = await (await mt5InitBackend()).query("SELECT * FROM user_accounts WHERE user_id = $1 AND status != 'ARCHIVED'", [userId]);
     return rows;
   });
+}
+
+/**
+ * Unified Market Data Upsert (Read-Modify-Write)
+ * Consolidates all timeframes and analysis for a symbol into a single cache key.
+ */
+async function repoUpsertUnifiedMarketData(symbol, tf, dataUpdate) {
+  const symbolNorm = normalizeMarketDataSymbol(symbol);
+  if (!symbolNorm) return null;
+
+  // Read-Modify-Write pattern
+  let current = await StateRepo.get("MARKET_DATA_UNIFIED", symbolNorm) || {
+    symbol: symbolNorm,
+    updated_time: 0,
+    utc_time_range: "",
+    bar_start: 0,
+    bar_end: 0,
+    data: []
+  };
+
+  const tfNorm = normalizeMarketDataTf(tf);
+  const timeframeData = {
+    tf: tfNorm,
+    market_analysis: dataUpdate.market_analysis || dataUpdate.metadata || dataUpdate.summary || null,
+    bars: Array.isArray(dataUpdate.bars) ? dataUpdate.bars : []
+  };
+
+  // Update or Add timeframe
+  const dataIdx = current.data.findIndex(d => normalizeMarketDataTf(d.tf) === tfNorm);
+  if (dataIdx >= 0) {
+    current.data[dataIdx] = timeframeData;
+  } else {
+    current.data.push(timeframeData);
+  }
+
+  // Global metadata calculation
+  current.updated_time = Date.now();
+  let minStart = Infinity;
+  let maxEnd = 0;
+  for (const d of current.data) {
+    if (d.bars && d.bars.length) {
+      const s = Number(d.bars[0].time);
+      const e = Number(d.bars[d.bars.length - 1].time);
+      if (s < minStart) minStart = s;
+      if (e > maxEnd) maxEnd = e;
+    }
+  }
+
+  if (minStart !== Infinity) {
+    current.bar_start = minStart;
+    current.bar_end = maxEnd;
+    try {
+      const startStr = new Date(minStart * 1000).toISOString().slice(11, 16);
+      const endStr = new Date(maxEnd * 1000).toISOString().slice(11, 16);
+      current.utc_time_range = `${startStr}-${endStr}`;
+    } catch (e) {
+      current.utc_time_range = "unknown";
+    }
+  }
+
+  // Persist back to L1 and L2
+  await StateRepo.set("MARKET_DATA_UNIFIED", symbolNorm, current);
+  return current;
 }
 
 async function repoGetPendingSignals(userId = "all") {
@@ -6313,6 +6377,32 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
   if (!symbolNorm) return { provider: "twelvedata", status: "skipped", reason: "invalid symbol" };
 
   if (!forceRefresh) {
+    // Attempt Unified Cache First
+    const unified = await StateRepo.get("MARKET_DATA_UNIFIED", symbolNorm);
+    if (unified && Array.isArray(unified.data)) {
+      const entry = unified.data.find(d => normalizeMarketDataTf(d.tf) === tfNorm);
+      if (entry && entry.bars && entry.bars.length) {
+        const s = Number(entry.bars[0].time);
+        const e = Number(entry.bars[entry.bars.length - 1].time);
+        if (s <= reqRange.start && e >= reqRange.end) {
+          return {
+            ...entry,
+            symbol: symbolNorm,
+            symbol_norm: symbolNorm,
+            timeframe: tfNorm,
+            tf_norm: tfNorm,
+            bar_start: s,
+            bar_end: e,
+            status: "ok",
+            cache_source: "unified_cache",
+            updated_time: unified.updated_time,
+            utc_time_range: unified.utc_time_range
+          };
+        }
+      }
+    }
+
+    // Legacy Fallbacks (keeping for safety during transition)
     const memHit = marketDataMemoryRead(symbolNorm, tfNorm, reqRange.start, reqRange.end);
     if (memHit) {
       return { ...memHit, cache_source: "memory", symbol_norm: symbolNorm, tf_norm: tfNorm };
@@ -6441,6 +6531,11 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
       },
       checklist: parseSnapshotChecklist(payload),
     };
+    
+    // Update Unified Cache
+    await repoUpsertUnifiedMarketData(symbolNorm, tfNorm, snapshot);
+    
+    // Legacy support writes
     marketDataMemoryWrite(symbolNorm, tfNorm, snapshot);
     await marketDataRedisWrite(symbolNorm, tfNorm, snapshot).catch(() => { });
     await marketDataDbUpsert(symbolNorm, tfNorm, snapshot).catch(() => { });
@@ -10041,7 +10136,19 @@ const appHandler = async (req, res) => {
       if (String(snapshot?.status || "").toLowerCase() !== "ok") {
         return json(res, 400, { ok: false, error: snapshot?.reason || "twelve_data_failed", snapshot });
       }
-      return json(res, 200, { ok: true, snapshot });
+
+      // Add UI metadata fields
+      const updated_time = snapshot.updated_time || (snapshot.fetched_at ? new Date(snapshot.fetched_at).getTime() : Date.now());
+      const source = snapshot.cache_source || "remote_api";
+      const auto_refresh = parseTfTokenToSeconds(timeframe) || 60; // Refresh based on timeframe
+
+      return json(res, 200, { 
+        ok: true, 
+        snapshot,
+        source,
+        updated_time,
+        auto_refresh
+      });
     } catch (error) {
       return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
@@ -10175,14 +10282,23 @@ const appHandler = async (req, res) => {
       }
 
       // Persistence: If we have analysis and bars context, store in market_data metadata
+      // Persistence: If we have analysis and bars context, store in Unified Cache and DB
       if ((parsedJson.bias || parsedJson.analysis || parsedJson.market_analysis || parsedJson.trade_plan || parsedJson.final_verdict) && body.bars && body.bars.length > 0) {
         try {
           const bars = body.bars;
+          const symbolNorm = normalizeMarketDataSymbol(body.symbol);
+          const tfNorm = normalizeMarketDataTf(body.timeframe);
+          
+          // Update Unified Cache (Read-Modify-Write)
+          await repoUpsertUnifiedMarketData(symbolNorm, tfNorm, {
+            bars: bars,
+            market_analysis: parsedJson
+          }).catch(e => console.error("[snapshot-analyze] Unified Cache Update Failed:", e.message));
+
+          // Legacy DB persistence
           const barStart = Number(bars[0].time || bars[0].bar_start);
           const barEnd = Number(bars[bars.length - 1].time || bars[bars.length - 1].bar_end);
           if (barStart && barEnd) {
-            const symbolNorm = normalizeMarketDataSymbol(body.symbol);
-            const tfNorm = normalizeMarketDataTf(body.timeframe);
             await marketDataDbWrite(symbolNorm, tfNorm, {
               bar_start: barStart,
               bar_end: barEnd,
@@ -10206,6 +10322,9 @@ const appHandler = async (req, res) => {
         claude_files_error: claudeFilesError,
         raw_response: rawResponse,
         parsed_json: parsedJson,
+        source: "remote_api",
+        updated_time: Date.now(),
+        auto_refresh: 0 // Analysis doesn't need auto-refresh by default
       });
     } catch (error) {
       if (error?.name === "AbortError" || String(error?.message || "").toLowerCase().includes("aborted")) {

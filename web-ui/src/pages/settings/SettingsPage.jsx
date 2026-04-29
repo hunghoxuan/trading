@@ -122,9 +122,11 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
           is_active: Boolean(prof.user.is_active),
         });
         const metaSettings = prof.user.metadata?.settings || {};
+        const tz = metaSettings.display_timezone || "UTC";
+        localStorage.setItem("ui_display_timezone", tz);
         setMetadataForm({
           language: metaSettings.language || "English",
-          display_timezone: metaSettings.display_timezone || "UTC",
+          display_timezone: tz,
           market_data_cron: metaSettings.market_data_cron !== false,
           ai_analysis_cron: metaSettings.ai_analysis_cron !== false,
         });
@@ -220,6 +222,7 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
     setMetadataLoading(true);
     try {
       await api.updateMetadata({ settings: metadataForm });
+      localStorage.setItem("ui_display_timezone", metadataForm.display_timezone || "UTC");
       setMsg("Preferences saved.");
     } catch (err) {
       setMsg(err?.message || "Failed to save preferences.");

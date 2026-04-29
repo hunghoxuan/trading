@@ -1,0 +1,188 @@
+.session-clock-bar-container {
+  width: 100%;
+  padding: 10px 20px;
+  background: var(--bg-dark, #0f172a);
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  box-sizing: border-box;
+  z-index: 100;
+}
+
+.session-clock-bar {
+  position: relative;
+  height: 40px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  overflow: hidden; /* Regions are clipped to the bar */
+  display: flex;
+  align-items: center;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);
+}
+
+.ruler-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.ruler-tick {
+  position: absolute;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ruler-tick.major {
+  height: 100%;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.ruler-tick.minor {
+  height: 20%;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tick-label {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.regions-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.session-region {
+  position: absolute;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 4px;
+  box-sizing: border-box;
+  transition: opacity 0.2s;
+  cursor: pointer;
+}
+
+.session-region:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.session-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+  padding: 2px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.session-region.killzone {
+  height: 60%;
+  top: 20%;
+  z-index: 2;
+  border-radius: 4px;
+}
+
+/* Tooltip */
+.tooltip {
+  position: absolute;
+  bottom: 120%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e293b;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  border: 1px solid rgba(255,255,255,0.1);
+  z-index: 10;
+}
+
+.session-region:hover .tooltip {
+  opacity: 1;
+  visibility: visible;
+  bottom: 110%;
+}
+
+.progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(52, 152, 219, 0) 0%, rgba(52, 152, 219, 0.1) 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.current-time-marker {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 2px;
+  z-index: 5;
+  pointer-events: none;
+  transition: left 0.5s linear;
+}
+
+.marker-line {
+  height: 100%;
+  width: 2px;
+  background: var(--accent, #3498db);
+  box-shadow: 0 0 8px var(--accent, #3498db);
+}
+
+.marker-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #fff;
+}
+
+.digital-clock {
+  position: absolute;
+  right: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  pointer-events: none;
+  z-index: 6;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+.tz-name {
+  font-size: 9px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 1px;
+}
+
+.time-value {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+}

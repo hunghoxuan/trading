@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createChart } from "lightweight-charts";
-import { showDateTime } from "../../utils/format";
+import { showDateTime, isSameDay } from "../../utils/format";
 
 import { api } from "../../api";
 import { SignalDetailCard } from "../../components/SignalDetailCard";
@@ -209,11 +209,7 @@ function intervalTokenToLabel(token) {
   return t;
 }
 
-function sameUtcDay(aMs, bMs) {
-  const a = new Date(aMs);
-  const b = new Date(bMs);
-  return a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth() && a.getUTCDate() === b.getUTCDate();
-}
+// isSameDay imported from format.js
 
 function formatCompactDateTime(dateLike) {
   return showDateTime(dateLike);
@@ -1012,6 +1008,7 @@ export default function ChartSnapshotsPage() {
   const [barsCache, setBarsCache] = useState({});
   const [barsLoading, setBarsLoading] = useState(false);
   const [symbolActivity, setSymbolActivity] = useState({ loading: false, items: [] });
+  const [marketMetadata, setMarketMetadata] = useState({ source: "", updated_time: null, auto_refresh: 0 });
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [promptDraft, setPromptDraft] = useState(() => buildPrompt(DEFAULT_CONFIG));
   const [promptEdited, setPromptEdited] = useState(false);
@@ -1183,6 +1180,13 @@ export default function ChartSnapshotsPage() {
     setBarsLoading(true);
     try {
       const out = await api.chartTwelveCandles(sym, tf, bars, forceRefresh);
+      if (out?.source || out?.updated_time) {
+        setMarketMetadata({
+          source: out.source || "",
+          updated_time: out.updated_time || null,
+          auto_refresh: out.auto_refresh || 0,
+        });
+      }
       const rawSnap = out?.snapshot && typeof out.snapshot === "object" ? out.snapshot : null;
       const snap = rawSnap ? normalizeSnapshotBars(rawSnap, tf) : null;
       if (snap) {
@@ -1252,6 +1256,13 @@ export default function ChartSnapshotsPage() {
 
       if (Array.isArray(files) && files.length) payload.files = files;
       const out = await api.chartSnapshotsAnalyze(payload);
+      if (out?.source || out?.updated_time) {
+        setMarketMetadata({
+          source: out.source || "",
+          updated_time: out.updated_time || null,
+          auto_refresh: out.auto_refresh || 0,
+        });
+      }
       const raw = String(out?.raw_response || "");
       setAnalysisRaw(raw);
       setAnalysisSource(aiSourceFromModel(out?.model));
@@ -1366,7 +1377,7 @@ export default function ChartSnapshotsPage() {
       .filter((x) => symbolTokens.has(x.symbolToken))
       .filter((x) => targetTfTokens.includes(x.tfToken))
       .filter((x) => !activeSessionPrefix || !x.sessionPrefix || x.sessionPrefix === activeSessionPrefix)
-      .filter((x) => sameUtcDay(x.createdAtMs, nowMs))
+      .filter((x) => isSameDay(x.createdAtMs, nowMs))
       .filter((x) => Math.abs(nowMs - x.createdAtMs) <= 15 * 60 * 1000)
       .sort((a, b) => b.createdAtMs - a.createdAtMs);
 
@@ -2224,6 +2235,17 @@ export default function ChartSnapshotsPage() {
               <span className="minor-text" style={{ opacity: 0.8 }}>
                 {cfg.strategies.join("+") || "ai"} | {PROFILE_PRESETS[cfg.profile]?.label || cfg.profile}
               </span>
+
+              {marketMetadata.updated_time && (
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.03)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)' }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', boxShadow: '0 0 6px var(--accent)' }} />
+                  <span className="minor-text" style={{ fontSize: 11, fontWeight: 500 }}>
+                    {marketMetadata.source && <span style={{ textTransform: 'uppercase', marginRight: 4, opacity: 0.7 }}>[{marketMetadata.source}]</span>}
+                    Last refreshed: {showDateTime(marketMetadata.updated_time)}
+                    {marketMetadata.auto_refresh > 0 && <span style={{ opacity: 0.6, marginLeft: 4 }}>(auto {marketMetadata.auto_refresh}s)</span>}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Row 2 */}

@@ -18,6 +18,7 @@ import StoragePage from "./pages/system/StoragePage";
 import CachePage from "./pages/system/CachePage";
 import { api, getRuntimeActiveUserId, setRuntimeActiveUserId } from "./api";
 import LoginPage from "./pages/LoginPage";
+import SessionClockBar from "./components/SessionClockBar";
 
 export default function App() {
   const [serverVersion, setServerVersion] = useState("");
@@ -169,6 +170,7 @@ export default function App() {
           </button>
         </nav>
       </header>
+      <SessionClockBar />
       <main className="page-wrap">
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
