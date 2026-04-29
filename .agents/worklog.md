@@ -1,5 +1,23 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-29 08:28
+- **Starting Task**:
+  - Update backend/UI AI Prompt Response Schema and prompt guideline handling to the new ICT schema with per-timeframe price action/prediction, PD array ids, buy/sell confluence checklists, skip reasons, partial TPs, and final verdict risk tier.
+- **Files Expected**:
+  - `webhook/server.js`
+  - `web-ui/src/pages/ai/ChartSnapshotsPage.jsx`
+  - related UI parsing/display helpers if required by compatibility.
+- **Work Accomplished**:
+  - Updated backend canonical `AI_RESPONSE_SCHEMA` to `1.1.0` with the requested ICT contract.
+  - Reworked backend schema prompt guidance and snapshot persistence to handle `market_analysis`, `trade_plan`, and `final_verdict`.
+  - Updated AI page prompt/guide text and increased snapshot-analysis max tokens for larger schema responses.
+  - Added UI compatibility for `partial_tps`, `price_top`/`price_bottom`, buy/sell checklist objects, PD array ids, Fresh/Tested statuses, and final verdict risk tier.
+  - Bumped server/EA versions to `v2026.04.29 06:37 - 923c4d4`.
+- **Verification**:
+  - `node --check webhook/server.js`
+  - `npm run build` in `web-ui`
+  - `git diff --check`
+
 # Session Log: 2026-04-29 07:40
 - **Work Accomplished**:
   - Replaced the temporary simplified backend `AI_RESPONSE_SCHEMA` with the existing production-compatible structure (`symbol`, `market_analysis`, `trade_plan[]`, `final_verdict`).
