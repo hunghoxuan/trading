@@ -261,6 +261,7 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .events-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .events-table tr:hover { background: var(--accent-soft); cursor: pointer; }
 .events-table tr.active { background: var(--accent-soft); }
+.selected-row { background: var(--accent-soft) !important; border-left: 3px solid var(--accent) !important; }
 
 /* Badges (Standardized Layout) */
 .badge { 

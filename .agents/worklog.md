@@ -1,5 +1,22 @@
 # Worklog: Session Continuity
 
+## [2026-04-28 19:30] - Intelligent Market Cache & Tiered Caching
+- **UnifiedCache**: Implemented L1/L2/L3 tiered caching utility for all market data.
+- **Metadata Persistence**: Added JSONB metadata to `market_data` table to store AI intelligence.
+- **Structured Analysis**: Forced AI prompt to return JSON for bias, trend, levels, and PD arrays.
+- **Instant Context**: Frontend now fallbacks to cached metadata for immediate chart visualization on symbol selection.
+- **Cache Management Page**: Migrated cache UI from Storage page to a dedicated `System > Cache` page.
+  - Implemented 2-column layout (Key List / Content Preview).
+  - Added JSON/CSV auto-detection and formatting for cache content inspection.
+  - Updated backend API to support detailed cache key retrieval.
+- **Routing & SPA Fallback**: Hardened the UI serving logic to handle browser refreshes on `/system/` pages.
+  - Implemented specific endpoint matching in `isApiPath` to prevent collision with UI routes.
+  - Ensured `/system/*` browser requests (that aren't APIs) always fallback to the React SPA.
+  - Resolved the "Not Found" JSON error on refresh for `/system/storage` and `/system/cache`.
+- **Multi-Agent Coordination**: Updated `rules.md` to mandate `worklog.md` updates at both the START and FINISH of every session.
+  - Added "Currently Doing" entries in `sprint.md` for better visibility across AI agents.
+- **Stability**: Fixed syntax errors in `server.js` and verified API routing for `/system/` endpoints.
+
 # Session Log: 2026-04-28 20:58
 - **Work Accomplished**:
   - Fixed bootstrap UI auth recovery so the configured system account can log in even when its auth row is missing, not just when the stored password hash is stale.

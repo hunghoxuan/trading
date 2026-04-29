@@ -15,6 +15,7 @@ import SourcesPage from "./pages/system/SourcesPage";
 import AccountsV2Page from "./pages/system/AccountsV2Page";
 import SnapshotsPage from "./pages/system/SnapshotsPage";
 import StoragePage from "./pages/system/StoragePage";
+import CachePage from "./pages/system/CachePage";
 import { api, getRuntimeActiveUserId, setRuntimeActiveUserId } from "./api";
 import LoginPage from "./pages/LoginPage";
 
@@ -37,6 +38,7 @@ export default function App() {
       || p.startsWith("/users")
       || p.startsWith("/snapshots")
       || p.startsWith("/storage")
+      || p.startsWith("/cache")
       || p.startsWith("/accounts-v2")
       || p.startsWith("/sources");
   }, [location?.pathname]);
@@ -131,6 +133,7 @@ export default function App() {
                 <NavLink to="/system/settings">Settings</NavLink>
                 <NavLink to="/system/snapshots">Snapshots</NavLink>
                 <NavLink to="/system/storage">Storage</NavLink>
+                <NavLink to="/system/cache">Cache</NavLink>
                 <NavLink to="/system/logs">Logs</NavLink>
                 <NavLink to="/system/db">DB</NavLink>
                 <NavLink to="/system/users">Users</NavLink>
@@ -180,6 +183,7 @@ export default function App() {
           <Route path="/system/settings" element={canAccessSystemPages ? <SystemSettingsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/snapshots" element={canAccessSystemPages ? <SnapshotsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/storage" element={canAccessSystemPages ? <StoragePage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/system/cache" element={canAccessSystemPages ? <CachePage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/logs" element={canAccessSystemPages ? <LogsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/db" element={canAccessSystemPages ? <DatabasePage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/users" element={canAccessSystemPages ? <UsersPage authUser={authUser} /> : <Navigate to="/dashboard" replace />} />
@@ -187,6 +191,7 @@ export default function App() {
           <Route path="/system/sources" element={canAccessSystemPages ? <SourcesPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/snapshots" element={<Navigate to="/system/snapshots" replace />} />
           <Route path="/storage" element={<Navigate to="/system/storage" replace />} />
+          <Route path="/cache" element={<Navigate to="/system/cache" replace />} />
           <Route path="/logs" element={<Navigate to="/system/logs" replace />} />
           <Route path="/db" element={<Navigate to="/system/db" replace />} />
           <Route path="/users" element={<Navigate to="/system/users" replace />} />

@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.28 19:08 - 399e615"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.29 03:40 - e4d9cd8"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -618,6 +618,46 @@ function marketDataMemoryRead(symbolNorm, tfNorm, reqStart, reqEnd) {
   return null;
 }
 
+async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
+  const db = await mt5InitBackend();
+  const res = await db.query(
+    `SELECT symbol, tf as timeframe, bar_start, bar_end, data, metadata 
+     FROM market_data 
+     WHERE symbol = $1 AND tf = $2 AND bar_start <= $3 AND bar_end >= $4
+     LIMIT 1`,
+    [symbolNorm, tfNorm, reqStart, reqEnd]
+  );
+  if (!res.rows?.length) return null;
+  const row = res.rows[0];
+  let bars = [];
+  try {
+    bars = typeof row.data === "string" ? JSON.parse(row.data) : (row.data || []);
+  } catch(e) {}
+  return { 
+    symbol: row.symbol, 
+    timeframe: row.timeframe, 
+    bar_start: row.bar_start, 
+    bar_end: row.bar_end, 
+    bars,
+    metadata: row.metadata 
+  };
+}
+
+async function marketDataDbWrite(symbolNorm, tfNorm, data) {
+  const db = await mt5InitBackend();
+  const barsStr = JSON.stringify(data.bars || []);
+  const metaStr = data.metadata ? JSON.stringify(data.metadata) : null;
+  await db.query(
+    `INSERT INTO market_data (symbol, tf, bar_start, bar_end, data, metadata, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())
+     ON CONFLICT (symbol, tf, bar_start, bar_end) DO UPDATE SET 
+       data = EXCLUDED.data,
+       metadata = COALESCE(EXCLUDED.metadata, market_data.metadata),
+       updated_at = NOW()`,
+    [symbolNorm, tfNorm, data.bar_start, data.bar_end, barsStr, metaStr]
+  );
+}
+
 async function getRedisClient() {
   if (!CFG.redisEnabled || !createRedisClient || !CFG.redisUrl) return null;
   if (REDIS_CLIENT?.isOpen) return REDIS_CLIENT;
@@ -666,25 +706,10 @@ async function marketDataRedisRead(symbolNorm, tfNorm, reqStart, reqEnd) {
   return null;
 }
 
-function marketDataMemoryWrite(symbolNorm, tfNorm, snapshot) {
-  if (!snapshot || typeof snapshot !== "object") return;
-  const s = Number(snapshot.bar_start);
-  const e = Number(snapshot.bar_end);
-  const bars = Array.isArray(snapshot.bars) ? snapshot.bars : [];
-  if (!Number.isFinite(s) || !Number.isFinite(e) || !bars.length) return;
+function marketDataMemoryWrite(symbolNorm, tfNorm, data) {
   const key = marketDataMemoryKey(symbolNorm, tfNorm);
-  const arr = Array.isArray(MARKET_DATA_MEMORY_CACHE.get(key)) ? MARKET_DATA_MEMORY_CACHE.get(key) : [];
-  const ttlMs = marketDataTtlSecByTf(tfNorm) * 1000;
-  const kept = arr.filter((x) => {
-    const d = x?.data || {};
-    return !(Number(d?.bar_start) === s && Number(d?.bar_end) === e);
-  });
-  kept.unshift({ data: JSON.parse(JSON.stringify(snapshot)), expires_at_ms: Date.now() + ttlMs });
-  MARKET_DATA_MEMORY_CACHE.set(key, kept.slice(0, 8));
-  if (MARKET_DATA_MEMORY_CACHE.size > MARKET_DATA_MEMORY_MAX_KEYS) {
-    const first = MARKET_DATA_MEMORY_CACHE.keys().next();
-    if (!first.done) MARKET_DATA_MEMORY_CACHE.delete(first.value);
-  }
+  const ttl = marketDataTtlSecByTf(tfNorm);
+  UnifiedCache.set(key, data, { l1Map: MARKET_DATA_MEMORY_CACHE, l2Prefix: 'market_data', ttlSec: ttl });
 }
 
 async function marketDataRedisWrite(symbolNorm, tfNorm, snapshot) {
@@ -2187,7 +2212,7 @@ function normalizeHostHeader(hostRaw) {
 }
 
 function isTradeHost(hostname) {
-  return hostname === "trade.mozasolution.com";
+  return hostname === "trade.mozasolution.com" || hostname === "localhost" || hostname === "127.0.0.1";
 }
 
 function isLandingHost(hostname) {
@@ -2207,8 +2232,10 @@ function isApiPath(pathname) {
     p === "/v2" ||
     p.startsWith("/v2/") ||
     p.startsWith("/mt5/") ||
-    p.startsWith("/system") ||
-    p.startsWith("/webhook")
+    p.startsWith("/webhook") ||
+    p === "/system/storage/stats" ||
+    p === "/system/cache" ||
+    p === "/system/storage/cleanup"
   );
 }
 
@@ -2249,7 +2276,7 @@ function tryServeLanding(url, req, res, hostname) {
 function tryServeUi(url, req, res, hostname) {
   if (!["GET", "HEAD"].includes(req.method)) return false;
   const isTradeRootUiPath = isTradeHost(hostname) && !isApiPath(url.pathname);
-  const isUiPath = url.pathname.startsWith("/ui") || isTradeRootUiPath;
+  const isUiPath = url.pathname.startsWith("/ui") || (url.pathname.startsWith("/system") && !isApiPath(url.pathname)) || isTradeRootUiPath;
   const isUiAssetPath = url.pathname.startsWith("/assets/");
   if (!isUiPath && !isUiAssetPath) return false;
   if (!fs.existsSync(CFG.uiDistPath)) {
@@ -5234,6 +5261,24 @@ async function mt5InitBackend() {
       }
       return items;
     },
+    async uiGetCacheDetail(key, source) {
+      if (source === 'memory') {
+        const val = MARKET_DATA_MEMORY_CACHE.get(key);
+        return { ok: true, data: val };
+      }
+      if (source === 'redis' && CFG.redisEnabled) {
+        const client = await getRedisClient();
+        if (client) {
+          const val = await client.get(key).catch(() => null);
+          try {
+            return { ok: true, data: JSON.parse(val) };
+          } catch {
+            return { ok: true, data: val };
+          }
+        }
+      }
+      return { ok: false, error: "source not found or disabled" };
+    },
     async uiDeleteCacheKey(key, source) {
       if (source === 'memory') {
         MARKET_DATA_MEMORY_CACHE.delete(key);
@@ -5717,14 +5762,14 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
   if (!symbolNorm) return { provider: "twelvedata", status: "skipped", reason: "invalid symbol" };
 
   if (!forceRefresh) {
+    const memHit = marketDataMemoryRead(symbolNorm, tfNorm, reqRange.start, reqRange.end);
+    if (memHit) {
+      return { ...memHit, cache_source: "memory", symbol_norm: symbolNorm, tf_norm: tfNorm };
+    }
     const redisHit = await marketDataRedisRead(symbolNorm, tfNorm, reqRange.start, reqRange.end).catch(() => null);
     if (redisHit) {
       marketDataMemoryWrite(symbolNorm, tfNorm, redisHit);
       return { ...redisHit, cache_source: "redis", symbol_norm: symbolNorm, tf_norm: tfNorm };
-    }
-    const memHit = marketDataMemoryRead(symbolNorm, tfNorm, reqRange.start, reqRange.end);
-    if (memHit) {
-      return { ...memHit, cache_source: "memory", symbol_norm: symbolNorm, tf_norm: tfNorm };
     }
     const dbHit = await marketDataDbRead(symbolNorm, tfNorm, reqRange.start, reqRange.end).catch(() => null);
     if (dbHit && typeof dbHit === "object" && Array.isArray(dbHit.bars) && dbHit.bars.length) {
@@ -8244,7 +8289,7 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "GET" && (url.pathname === "/system/storage/stats" || url.pathname === "/mt5/storage/stats")) {
+  if (req.method === "GET" && (url.pathname === "/v2/system/storage/stats" || url.pathname === "/system/storage/stats" || url.pathname === "/mt5/storage/stats")) {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAuthForUi(req, res)) return;
     try {
@@ -8259,10 +8304,18 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "GET" && url.pathname === "/system/cache") {
+  if (req.method === "GET" && (url.pathname === "/v2/system/cache" || url.pathname === "/system/cache")) {
     if (!requireSystemRoleForUi(req, res)) return;
     try {
       const b = await mt5Backend();
+      const key = url.searchParams.get("key");
+      const source = url.searchParams.get("source") || "memory";
+      
+      if (key) {
+        const detail = await b.uiGetCacheDetail(key, source);
+        return json(res, detail.ok ? 200 : 400, detail);
+      }
+      
       const items = await b.uiListCache();
       return json(res, 200, { ok: true, items });
     } catch (error) {
@@ -8271,7 +8324,7 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "DELETE" && url.pathname === "/system/cache") {
+  if (req.method === "DELETE" && (url.pathname === "/v2/system/cache" || url.pathname === "/system/cache")) {
     if (!requireSystemRoleForUi(req, res)) return;
     try {
       const b = await mt5Backend();
@@ -8290,7 +8343,7 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "POST" && (url.pathname === "/system/storage/cleanup" || url.pathname === "/mt5/storage/cleanup")) {
+  if (req.method === "POST" && (url.pathname === "/v2/system/storage/cleanup" || url.pathname === "/system/storage/cleanup" || url.pathname === "/mt5/storage/cleanup")) {
     if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAuthForUi(req, res)) return;
     try {
@@ -9135,8 +9188,22 @@ const appHandler = async (req, res) => {
 
       const sess = getUiSessionFromReq(req);
       const userLang = sess?.metadata?.settings?.language || "English";
+      
+      // Force Structured JSON for Analysis
+      if (finalPrompt.toLowerCase().includes("analysis") || finalPrompt.toLowerCase().includes("context")) {
+        const jsonSchema = {
+          bias: "Bullish | Bearish | Neutral",
+          trend: "Expansion | Retracement | Consolidation | Reversal",
+          key_levels: [{ name: "Level Name", price: 1.2345, kind: "daily_high | weekly_low | s_r" }],
+          pd_arrays: [{ type: "FVG | OB | Breaker", zone: { low: 1.23, high: 1.24 }, status: "Open | Mitigated" }],
+          analysis: "Brief text summary",
+          score: "0-100"
+        };
+        finalPrompt += `\n\nIMPORTANT: You MUST respond in valid JSON format. Use this schema:\n${JSON.stringify(jsonSchema, null, 2)}`;
+      }
+
       if (userLang && userLang !== "English") {
-        finalPrompt += `\n\nIMPORTANT: Please provide the analysis and notes in ${userLang} language.`;
+        finalPrompt += `\n\nIMPORTANT: Please provide the 'analysis' and 'name' fields in ${userLang} language.`;
       }
 
       const provider = (bodyProvider || service || "gemini").toLowerCase();
@@ -9259,21 +9326,42 @@ const appHandler = async (req, res) => {
       await (await mt5Backend()).log(sessionId, 'ai', { event: 'AI_RESPONSE', raw_json: aiJson }, userId);
 
       let signals = [];
+      let analysisResult = null;
       try {
         const parsed = JSON.parse(cleanJson);
-        if (Array.isArray(parsed)) {
+        if (parsed.bias || parsed.analysis || parsed.key_levels) {
+          analysisResult = parsed;
+          signals = parsed.signals || [];
+        } else if (Array.isArray(parsed)) {
           signals = parsed;
         } else if (parsed.signals && Array.isArray(parsed.signals)) {
           signals = parsed.signals;
         } else if (parsed.symbol || parsed.direction || parsed.side) {
           signals = [parsed];
         } else {
-           // Maybe it's a nested object where values are signals?
            const values = Object.values(parsed);
            if (values.length > 0 && (values[0].symbol || values[0].direction)) {
              signals = values;
            }
         }
+
+        // Persistence: If we have analysis and bars context, store in market_data metadata
+        if (analysisResult && body.bars && body.bars.length > 0) {
+          const bars = body.bars;
+          const barStart = Number(bars[0].time || bars[0].bar_start);
+          const barEnd = Number(bars[bars.length - 1].time || bars[bars.length - 1].bar_end);
+          if (barStart && barEnd) {
+             const symbolNorm = normalizeMarketDataSymbol(body.symbol);
+             const tfNorm = normalizeMarketDataTf(body.timeframe);
+             await marketDataDbWrite(symbolNorm, tfNorm, {
+               bar_start: barStart,
+               bar_end: barEnd,
+               bars: bars,
+               metadata: analysisResult
+             }).catch(e => console.error("[ai-gen] DB Write Failed:", e.message));
+          }
+        }
+
       } catch (e) {
         console.error("[ai] failed to parse JSON from AI response:", cleanJson);
         // We still return ok: true but empty signals, showing the raw_response to user
@@ -9462,9 +9550,24 @@ const appHandler = async (req, res) => {
       }
       if (!content.length) return json(res, 400, { ok: false, error: "No valid snapshot images available." });
 
+      let finalPrompt = String(body.prompt || "").trim() || "Analyze these chart snapshots and return only JSON.";
+      
+      // Force Structured JSON for Analysis
+      if (finalPrompt.toLowerCase().includes("analyze") || finalPrompt.toLowerCase().includes("structure")) {
+        const jsonSchema = {
+          bias: "Bullish | Bearish | Neutral",
+          trend: "Expansion | Retracement | Consolidation | Reversal",
+          key_levels: [{ name: "Level Name", price: 1.2345, kind: "daily_high | weekly_low | s_r" }],
+          pd_arrays: [{ type: "FVG | OB | Breaker", zone: { low: 1.23, high: 1.24 }, status: "Open | Mitigated" }],
+          analysis: "Brief text summary",
+          score: "0-100"
+        };
+        finalPrompt += `\n\nIMPORTANT: You MUST respond in valid JSON format. Use this schema:\n${JSON.stringify(jsonSchema, null, 2)}`;
+      }
+
       content.push({
         type: "text",
-        text: String(body.prompt || "").trim() || "Analyze these chart snapshots and return only JSON.",
+        text: finalPrompt,
       });
 
       const requestModel = String(body.model || "claude-sonnet-4-0").trim() || "claude-sonnet-4-0";
@@ -9486,13 +9589,36 @@ const appHandler = async (req, res) => {
         ? aiJson.content.filter((x) => x?.type === "text").map((x) => String(x?.text || "")).join("\n")
         : String(aiJson?.content || "");
       const extracted = extractJsonFromAiText(rawResponse);
+      const parsedJson = extracted.parsed || {};
+      
+      // Persistence: If we have analysis and bars context, store in market_data metadata
+      if ((parsedJson.bias || parsedJson.analysis) && body.bars && body.bars.length > 0) {
+        try {
+          const bars = body.bars;
+          const barStart = Number(bars[0].time || bars[0].bar_start);
+          const barEnd = Number(bars[bars.length - 1].time || bars[bars.length - 1].bar_end);
+          if (barStart && barEnd) {
+             const symbolNorm = normalizeMarketDataSymbol(body.symbol);
+             const tfNorm = normalizeMarketDataTf(body.timeframe);
+             await marketDataDbWrite(symbolNorm, tfNorm, {
+               bar_start: barStart,
+               bar_end: barEnd,
+               bars: bars,
+               metadata: parsedJson
+             }).catch(e => console.error("[snapshot-analyze] DB Write Failed:", e.message));
+          }
+        } catch (e) {
+          console.warn("[snapshot-analyze] Failed to persist metadata:", e.message);
+        }
+      }
+
       await (await mt5Backend()).log(sessionId, 'ai', { event: 'AI_RESPONSE', raw_json: aiJson }, userId);
       return json(res, 200, {
         ok: true,
         model: resolvedModel,
         used_files: usedFiles,
         raw_response: rawResponse,
-        parsed_json: extracted.parsed,
+        parsed_json: parsedJson,
       });
     } catch (error) {
       return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });

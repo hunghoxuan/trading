@@ -8,8 +8,6 @@ export default function StoragePage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
-  const [cacheItems, setCacheItems] = useState([]);
-  const [cacheLoading, setCacheLoading] = useState(false);
 
   async function loadStats() {
     try {
@@ -27,36 +25,9 @@ export default function StoragePage() {
 
   useEffect(() => {
     loadStats();
-    loadCache();
   }, []);
 
-  async function loadCache() {
-    try {
-      setCacheLoading(true);
-      const res = await api.listCache();
-      setCacheItems(res.items || []);
-    } catch (e) {
-      console.error("Cache load error:", e);
-    } finally {
-      setCacheLoading(false);
-    }
-  }
 
-  async function handleDeleteCache(key = "", source = "") {
-    try {
-      setBusy(true);
-      await api.deleteCache(key, source);
-      if (!key) setMsg("Cache cleared.");
-      else setMsg(`Cache key ${key} deleted.`);
-      await loadCache();
-      await loadStats();
-    } catch (e) {
-      setError(e?.message || "Failed to delete cache");
-    } finally {
-      setBusy(false);
-      setTimeout(() => setMsg(""), 3000);
-    }
-  }
 
   async function handleCleanup(target) {
     const confirmMsg = target === "reset_user_data"
@@ -286,67 +257,6 @@ export default function StoragePage() {
         </table>
       </div>
 
-      <div className="panel" style={{ maxWidth: "800px", marginTop: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div className="panel-label" style={{ margin: 0 }}>ACTIVE CACHE MANAGEMENT</div>
-          <div style={{ display: 'flex', gap: 10 }}>
-             <button className="secondary-button" onClick={loadCache} disabled={cacheLoading || busy}>
-               {cacheLoading ? "LOADING..." : "REFRESH"}
-             </button>
-             <button className="danger-button" onClick={() => handleDeleteCache("", "")} disabled={busy}>
-               CLEAR ALL CACHE
-             </button>
-          </div>
-        </div>
-
-        <div className="table-wrap">
-          <table className="events-table">
-            <thead>
-              <tr>
-                <th>CACHE KEY</th>
-                <th>DATA PREVIEW</th>
-                <th style={{ width: 80 }}>SOURCE</th>
-                <th style={{ width: 60, textAlign: "right" }}>ACTION</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cacheLoading && !cacheItems.length ? (
-                <tr><td colSpan="4" style={{ textAlign: "center", padding: 40 }} className="muted">Scanning cache...</td></tr>
-              ) : cacheItems.length === 0 ? (
-                <tr><td colSpan="4" style={{ textAlign: "center", padding: 40 }} className="muted">No active cache keys found</td></tr>
-              ) : (
-                cacheItems.map((item, idx) => (
-                  <tr key={`${item.source}-${item.key}-${idx}`}>
-                    <td style={{ fontSize: 11, fontFamily: "monospace", wordBreak: "break-all" }}>{item.key}</td>
-                    <td style={{ fontSize: 10 }}>
-                      {typeof item.data === 'object' ? (
-                        <div className="stack-layout" style={{ gap: 2 }}>
-                          <div style={{ fontWeight: 'bold', color: 'var(--success)' }}>{item.data.symbol} ({item.data.tf})</div>
-                          <div className="minor-text">{item.data.bars} bars · {item.data.range}</div>
-                        </div>
-                      ) : (
-                        <span className="muted">{String(item.data)}</span>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`badge ${item.source === 'memory' ? 'FILLED' : 'OTHER'}`} style={{ fontSize: 9 }}>{item.source.toUpperCase()}</span>
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <button 
-                        className="secondary-button icon-button" 
-                        onClick={() => handleDeleteCache(item.key, item.source)}
-                        title="Delete key"
-                      >
-                        ✖
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 }

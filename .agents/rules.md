@@ -46,7 +46,9 @@
 - Respect ownership in sprint tasks (`[TODO: ...]`).
 
 ## 7) Session & Context Hygiene
-- **Mandatory Summary**: Before ending a conversation (or when requested), ALWAYS update `.agents/worklog.md` with a summary of work done and pending backlog.
-- **Resuming Context**: At the start of EVERY new conversation, the first step MUST be to read `.agents/worklog.md`.
+- **Mandatory Worklog Updates**: ALWAYS update `.agents/worklog.md` at key session stages:
+  - **STARTING**: Record the specific task/ticket you are beginning to work on to prevent duplicate work by other agents.
+  - **FINISHING**: Summarize all technical changes, architectural decisions, and updated build versions before ending the conversation.
+- **Resuming Context**: At the start of EVERY new conversation, the first step MUST be to read `.agents/worklog.md` and any active `plans/sprint.md` entries.
 - Follow [skills/session-management.md](./skills/session-management.md).
 - **Caveman Mode**: Adopt extremely concise communication style to save tokens. Use [skills/token-optimization.md](./skills/token-optimization.md).

@@ -1107,10 +1107,14 @@ export default function ChartSnapshotsPage() {
     }
     return base.slice(0, 4);
   }, [tfConfig.htf_tfs, tfConfig.exec_tfs, tfConfig.conf_tfs]);
-  const effectiveParsed = useMemo(
-    () => enrichParsedAnalysis(analysisRaw, analysisParsed || tryParseJsonLoose(analysisJson) || tryParseJsonLoose(analysisRaw)),
-    [analysisParsed, analysisJson, analysisRaw],
-  );
+  const effectiveParsed = useMemo(() => {
+    const current = enrichParsedAnalysis(analysisRaw, analysisParsed || tryParseJsonLoose(analysisJson) || tryParseJsonLoose(analysisRaw));
+    if (current && Object.keys(current).length > 0) return current;
+    if (currentBarsSnapshot?.metadata) {
+      return enrichParsedAnalysis("", currentBarsSnapshot.metadata);
+    }
+    return current;
+  }, [analysisParsed, analysisJson, analysisRaw, currentBarsSnapshot]);
   const hasResponse = useMemo(
     () => Boolean((analysisRaw || "").trim() || (analysisJson || "").trim() || (effectiveParsed && typeof effectiveParsed === "object" && Object.keys(effectiveParsed).length > 0)),
     [analysisRaw, analysisJson, effectiveParsed],
@@ -1230,7 +1234,18 @@ export default function ChartSnapshotsPage() {
         prompt: composedPrompt,
         session_prefix: activeSessionPrefix,
         max_tokens: 4096,
+        symbol: tvSymbol || cfg.symbol,
+        timeframe,
       };
+      
+      // Wait for prefetch if needed or get from state
+      try {
+        const prefetched = await prefetchBarsPromise;
+        if (prefetched && prefetched.bars) {
+          payload.bars = prefetched.bars;
+        }
+      } catch (e) {}
+
       if (Array.isArray(files) && files.length) payload.files = files;
       const out = await api.chartSnapshotsAnalyze(payload);
       const raw = String(out?.raw_response || "");
