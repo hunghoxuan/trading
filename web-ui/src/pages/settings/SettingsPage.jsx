@@ -41,7 +41,7 @@ function parseTextList(value, uppercase = false) {
     .filter(Boolean))];
 }
 
-export default function SettingsPage({ authUser, mode = "settings" }) {
+export default function SettingsPage({ authUser, mode = "settings", onUserUpdate }) {
   const [profileLoading, setProfileLoading] = useState(false);
   const [pwdLoading, setPwdLoading] = useState(false);
   const [msg, setMsg] = useState("");
@@ -181,6 +181,9 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
     setProfileLoading(true);
     try {
       await api.updateAuthProfile(name, mail);
+      if (onUserUpdate) {
+        onUserUpdate({ ...authUser, name, email: mail });
+      }
       setMsg("Profile updated.");
     } catch (err) {
       setMsg(err?.message || "Failed to update profile.");
@@ -223,6 +226,10 @@ export default function SettingsPage({ authUser, mode = "settings" }) {
     try {
       await api.updateMetadata({ settings: metadataForm });
       localStorage.setItem("ui_display_timezone", metadataForm.display_timezone || "UTC");
+      if (onUserUpdate) {
+        const nextUser = { ...authUser, metadata: { ...authUser.metadata, settings: metadataForm } };
+        onUserUpdate(nextUser);
+      }
       setMsg("Preferences saved.");
     } catch (err) {
       setMsg(err?.message || "Failed to save preferences.");

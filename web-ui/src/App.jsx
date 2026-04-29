@@ -44,6 +44,10 @@ export default function App() {
       || p.startsWith("/sources");
   }, [location?.pathname]);
 
+  const displayTimezone = useMemo(() => {
+    return authUser?.metadata?.settings?.display_timezone || authUser?.metadata?.display_timezone || localStorage.getItem("ui_display_timezone") || "UTC";
+  }, [authUser]);
+
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("ui_theme", theme);
@@ -58,7 +62,10 @@ export default function App() {
           setServerVersion("");
         }
         if (meRes.status === "fulfilled" && meRes.value?.user) {
-          setAuthUser(meRes.value.user);
+          const user = meRes.value.user;
+          setAuthUser(user);
+          const tz = user.metadata?.settings?.display_timezone || user.metadata?.display_timezone || "UTC";
+          localStorage.setItem("ui_display_timezone", tz);
         } else {
           setAuthUser(null);
         }
@@ -67,7 +74,14 @@ export default function App() {
   }, []);
 
   const toggleTheme = () => setTheme(prev => prev === "dark" ? "light" : "dark");
-  const handleLogin = (user) => setAuthUser(user || null);
+  const handleUserUpdate = (user) => {
+    if (user) {
+      setAuthUser(user);
+      const tz = user.metadata?.settings?.display_timezone || user.metadata?.display_timezone || "UTC";
+      localStorage.setItem("ui_display_timezone", tz);
+    }
+  };
+  const handleLogin = (user) => handleUserUpdate(user);
   const handleLogout = async () => {
     try {
       await api.logout();
@@ -170,7 +184,7 @@ export default function App() {
           </button>
         </nav>
       </header>
-      <SessionClockBar />
+      <SessionClockBar displayTimezone={displayTimezone} />
       <main className="page-wrap">
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -181,7 +195,7 @@ export default function App() {
           <Route path="/trades/:tradeId" element={<V2TradeDetailPage />} />
           <Route path="/ai" element={<Navigate to="/ai/browser" replace />} />
           <Route path="/ai/browser" element={<ChartSnapshotsPage />} />
-          <Route path="/system" element={<Navigate to="/system/settings" replace />} />
+          <Route path="/settings/*" element={<SettingsPage authUser={authUser} onUserUpdate={handleUserUpdate} />} />
           <Route path="/system/settings" element={canAccessSystemPages ? <SystemSettingsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/snapshots" element={canAccessSystemPages ? <SnapshotsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/storage" element={canAccessSystemPages ? <StoragePage /> : <Navigate to="/dashboard" replace />} />

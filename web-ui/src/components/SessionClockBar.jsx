@@ -17,19 +17,22 @@ const KILL_ZONES = [
   { id: 'london_close', label: 'London Close', start: 15, end: 17, color: 'rgba(231, 76, 60, 0.4)' },
 ];
 
-export default function SessionClockBar() {
+export default function SessionClockBar({ displayTimezone }) {
   const [now, setNow] = useState(new Date());
-  const [tz, setTz] = useState(() => localStorage.getItem("ui_display_timezone") || "UTC");
+  const [tz, setTz] = useState(() => displayTimezone || localStorage.getItem("ui_display_timezone") || "UTC");
+
+  useEffect(() => {
+    if (displayTimezone && displayTimezone !== tz) {
+      setTz(displayTimezone);
+    }
+  }, [displayTimezone]);
 
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(new Date());
-      // Sync timezone if it changed in localStorage
-      const currentTz = localStorage.getItem("ui_display_timezone") || "UTC";
-      if (currentTz !== tz) setTz(currentTz);
     }, 1000);
     return () => clearInterval(timer);
-  }, [tz]);
+  }, []);
 
   const { timeStr, progressPct, currentHour } = useMemo(() => {
     try {
