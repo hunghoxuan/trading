@@ -7,7 +7,7 @@ import TradeSignalChart from "../../components/TradeSignalChart";
 const STORAGE_KEY = "chart_prompt_builder_templates_v2";
 
 const STRATEGY_OPTIONS = [
-  "ICT", "SMC", "Price Action", "Market Structure", "Wyckoff", "EMA Trend", "Breakout", "VWAP", 
+  "ICT", "SMC", "Price Action", "Market Structure", "Wyckoff", "EMA Trend", "Breakout", "VWAP",
   "Mean Reversion", "Order Flow", "Volatility", "Trend Following", "Divergence"
 ];
 
@@ -27,9 +27,9 @@ const DEFAULT_TEMPLATE_ID = "__default__";
 const SYMBOLS_SETTING_TYPE = "SYMBOLS";
 
 const DEFAULT_WATCHLIST = [
-  "ADAUSD", "AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD", "BTCUSD", "CADJPY", "DE40", "ETHUSD", 
-  "EURAUD", "EURCAD", "EURGBP", "EURJPY", "EURSGD", "EURUSD", "GBPAUD", "GBPCAD", "GBPJPY", "GBPNZD", 
-  "GBPUSD", "NZDCAD", "NZDUSD", "UK100", "US30", "USDCAD", "USDCHF", "USDJPY", "USDSGD", "XAGUSD", 
+  "ADAUSD", "AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD", "BTCUSD", "CADJPY", "DE40", "ETHUSD",
+  "EURAUD", "EURCAD", "EURGBP", "EURJPY", "EURSGD", "EURUSD", "GBPAUD", "GBPCAD", "GBPJPY", "GBPNZD",
+  "GBPUSD", "NZDCAD", "NZDUSD", "UK100", "US30", "USDCAD", "USDCHF", "USDJPY", "USDSGD", "XAGUSD",
   "XAUEUR", "XAUGBP", "XAUJPY", "XTIUSD"
 ];
 
@@ -56,7 +56,7 @@ const PROFILE_PRESETS = {
     exec_tfs: ["15m"],
     conf_tfs: ["5m"],
     sessions: "Any",
-    rr: "1.5",
+    rr: "1",
   },
   scalper: {
     label: "Scalping (4h+1h / 5m / 1m)",
@@ -74,7 +74,7 @@ const DEFAULT_CONFIG = {
   session: "Any",
   rr: "2",
   risk: "1",
-  lookbackBars: "600",
+  lookbackBars: "300",
   strategies: ["ICT", "Price Action", "Market Structure"],
   profile: "day",
   htf_tfs: [...PROFILE_PRESETS.day.htf_tfs],
@@ -309,7 +309,7 @@ function tfToSeconds(tfRaw) {
 function normalizeSnapshotBars(snapshot, tfRaw = "") {
   const rawBars = Array.isArray(snapshot?.bars) ? snapshot.bars : [];
   if (!rawBars.length) return snapshot;
-  
+
   const tfSec = tfToSeconds(tfRaw || snapshot?.tf_norm || snapshot?.timeframe || snapshot?.interval);
   const nowSec = Math.floor(Date.now() / 1000);
   const dedup = new Map();
@@ -321,10 +321,10 @@ function normalizeSnapshotBars(snapshot, tfRaw = "") {
     const l = Number(x?.low);
     const c = Number(x?.close);
     if (!Number.isFinite(t) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return;
-    
+
     // STRICT FUTURE FILTER: Avoid bars more than 1 period into the future
     if (t > nowSec + tfSec) return;
-    
+
     dedup.set(t, { time: t, open: o, high: h, low: l, close: c });
   });
 
@@ -334,7 +334,7 @@ function normalizeSnapshotBars(snapshot, tfRaw = "") {
   if (bars.length >= 30) {
     const ranges = bars.map((b) => Math.abs(b.high - b.low)).filter((v) => v > 0);
     const medianRange = ranges.length ? ranges.sort((a, b) => a - b)[Math.floor(ranges.length / 2)] : 0;
-    
+
     if (medianRange > 0) {
       const tinyThreshold = medianRange * 0.05;
       let trimCount = 0;
@@ -538,7 +538,7 @@ function extractJsonCandidate(textRaw) {
     if (content.length > longest.length) longest = content;
     searchPos = start + 1;
   }
-  
+
   searchPos = 0;
   while (searchPos < s.length) {
     const { content, start } = findBalanced(s, "[", "]", searchPos);
@@ -644,7 +644,7 @@ function parseTradePlanFromRaw(rawText) {
 
 function enrichParsedAnalysis(rawText, parsed) {
   const fallback = parseTradePlanFromRaw(rawText) || {};
-  
+
   // If parsed is null or not an object/array, use fallback
   if (!parsed || typeof parsed !== 'object') {
     return fallback;
@@ -661,7 +661,7 @@ function enrichParsedAnalysis(rawText, parsed) {
   } else {
     // Case 2: AI returned a full object
     res = { ...parsed };
-    
+
     // Ensure trade_plan is an array if it's a single object
     if (res.trade_plan && !Array.isArray(res.trade_plan)) {
       res.trade_plan = [res.trade_plan];
@@ -776,58 +776,7 @@ OUTPUT RULES:
 2. entry_model: SHORT name only (e.g. "ICT Unicorn", "OTE + SMT"). MAX 60 chars.
 3. note: Detailed explanation of the trade idea, confluence, and narrative.
 4. Return FULL JSON STRUCTURE including "market_analysis", "trade_plan", and "final_verdict".
-
-OUTPUT_FORMAT:
-\`\`\`json
-{
-  "symbol": "",
-  "market_analysis": {
-    "bias": "Long|Short|Neutral",
-    "trend": "Bullish|Bearish|Neutral",
-    "timeframes": [
-      { "tf": "D|4H|1H|15M", "trend": "Bullish|Bearish|Neutral", "bias": "Long|Short|Neutral" }
-    ],
-    "pd_arrays": [
-      { "type": "OB|FVG|Breaker|Mitigation|Void|Liquidity", "bar_start": null, "price_top": null, "price_bottom": null, "status": "active|tested|broken", "timeframe": "" }
-    ],
-    "key_levels": [
-      { "name": "PDH|PDL|WeeklyOpen|MidnightOpen|ADR_High|ADR_Low", "price": null, "type": "S/R|Liquidity", "bar_start": null }
-    ],
-    "institutional_filters": {
-      "killzone": "Active|Inactive",
-      "dol": "",
-      "p_d_status": "Premium|Discount|Equilibrium",
-      "smt": "Confirmed|None"
-    },
-    "confluence_checklist": [
-      { "item": "Killzone alignment", "checked": true, "note": "" },
-      { "item": "HTF Bias alignment", "checked": true, "note": "" }
-    ]
-  },
-  "trade_plan": [
-    {
-      "direction": "BUY|SELL",
-      "profile": "position|swing|daily|scalping",
-      "entry_model": "SHORT model name only (max 60 chars)",
-      "entry": null,
-      "sl": null,
-      "tp1": null,
-      "tp2": null,
-      "tp3": null,
-      "invalidation": "",
-      "rr": null,
-      "type": "limit|stop|market",
-      "confidence_pct": null,
-      "note": "FULL detailed narrative and logic here"
-    }
-  ],
-  "final_verdict": {
-    "action": "BUY|SELL|WAIT",
-    "confidence": 0,
-    "note": ""
-  }
-}
-\`\`\`
+5. Backend enforces the canonical output schema and schema_version. Follow it exactly.
 
 SELECTED_PROFILE: ${profileLabel}`;
 }
@@ -1237,14 +1186,14 @@ export default function ChartSnapshotsPage() {
         symbol: tvSymbol || cfg.symbol,
         timeframe,
       };
-      
+
       // Wait for prefetch if needed or get from state
       try {
         const prefetched = await prefetchBarsPromise;
         if (prefetched && prefetched.bars) {
           payload.bars = prefetched.bars;
         }
-      } catch (e) {}
+      } catch (e) { }
 
       if (Array.isArray(files) && files.length) payload.files = files;
       const out = await api.chartSnapshotsAnalyze(payload);
@@ -1256,7 +1205,7 @@ export default function ChartSnapshotsPage() {
         setAnalysisParsed(parsed);
         setAnalysisJson(JSON.stringify(parsed, null, 2));
         setPosition(extractPositionFromAnalysis(parsed));
-        
+
         // Fetch bars in background - non-blocking
         const symbolForBars = normalizeSignalSymbol(parsed?.symbol || tvSymbol || cfg.symbol || "");
         prefetchBarsPromise.then(prefetched => {
@@ -1488,7 +1437,7 @@ export default function ChartSnapshotsPage() {
       let parsed = effectiveParsed;
       if (!parsed && analysisJson) parsed = JSON.parse(analysisJson);
       if (!parsed && analysisRaw) parsed = enrichParsedAnalysis(analysisRaw, tryParseJsonLoose(analysisRaw));
-      
+
       // If overridePosition is provided (from a specific plan card), we ONLY add that one.
       const signals = overridePosition ? [] : extractSignalsFromAnalysis(parsed, {
         symbol: tvSymbol,
@@ -1700,10 +1649,10 @@ export default function ChartSnapshotsPage() {
     try {
       const out = await api.authMe();
       const arr = Array.isArray(out?.user?.metadata?.watchlist) ? out.user.metadata.watchlist : [];
-      
+
       // Combine with default watchlist and filter duplicates
       const final = [...new Set([...DEFAULT_WATCHLIST, ...arr].map(normalizeWatchSymbol).filter(Boolean))];
-      
+
       console.log("[watchlist] Loaded from DB + Default:", final);
       setWatchlist(final);
     } catch (err) {
@@ -1791,7 +1740,7 @@ export default function ChartSnapshotsPage() {
         const out = await api.chartSymbols(plain, provider || "ICMARKETS", 10);
         const arr = Array.isArray(out?.items) ? out.items : [];
         const remoteMatches = arr.map((x) => x.full_symbol || x.symbol).filter(Boolean);
-        
+
         setSymbolOptions(prev => {
           const combined = [...new Set([...localMatches, ...remoteMatches])];
           return combined.slice(0, 20);
@@ -2106,9 +2055,9 @@ export default function ChartSnapshotsPage() {
             }}
             placeholder="Search..."
           />
-          <button 
-            className="secondary-button snapshot-plus-btn-v2" 
-            type="button" 
+          <button
+            className="secondary-button snapshot-plus-btn-v2"
+            type="button"
             onClick={() => {
               if (searchTerm.trim()) {
                 const s = normalizeWatchSymbol(searchTerm.trim());
@@ -2117,7 +2066,7 @@ export default function ChartSnapshotsPage() {
                 const next = [...new Set([...watchlist, s])];
                 saveWatchlistToDb(next).then(() => setWatchlist(next));
               }
-            }} 
+            }}
             title="Add current symbol"
           >+</button>
         </div>
@@ -2131,8 +2080,8 @@ export default function ChartSnapshotsPage() {
             if (filtered.length === 0) return <span className="minor-text">No matching symbols.</span>;
             return (
               <div className="snapshot-tabs-v2">
-                <button 
-                  className={`secondary-button snapshot-tag-v2 ${!cfg.symbol ? 'active' : ''}`} 
+                <button
+                  className={`secondary-button snapshot-tag-v2 ${!cfg.symbol ? 'active' : ''}`}
                   onClick={() => setCfgField('symbol', '')}
                 >
                   🌐 ALL
@@ -2176,99 +2125,99 @@ export default function ChartSnapshotsPage() {
       <section className="panel snapshot-col-v3 snapshot-col-settings-v3">
         {cfg.symbol && (
           <div className="snapshot-control-card-v3 toolbar-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, padding: '12px 16px', alignItems: 'flex-start' }}>
-          {/* Row 1 */}
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', width: '100%', justifyContent: 'flex-start' }}>
-            {hasResponse && (
-              <button className="secondary-button" type="button" onClick={resetAnalyzeSession}>{"<"} Back</button>
-            )}
-            
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <select 
-                className="secondary-button" 
-                style={{ height: '34px', padding: '0 10px', fontSize: '12px' }}
-                value={templateId} 
-                onChange={(e) => handleSelectTemplate(e.target.value)}
-              >
-                <option value="">New Template</option>
-                <option value={DEFAULT_TEMPLATE_ID}>Default Template</option>
-                {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+            {/* Row 1 */}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', width: '100%', justifyContent: 'flex-start' }}>
+              {hasResponse && (
+                <button className="secondary-button" type="button" onClick={resetAnalyzeSession}>{"<"} Back</button>
+              )}
 
-              <select 
-                className="secondary-button" 
-                style={{ height: '34px', padding: '0 10px', fontSize: '12px' }}
-                value={cfg.profile || "day"} 
-                onChange={(e) => setProfilePreset(e.target.value)}
-              >
-                {Object.entries(PROFILE_PRESETS).map(([k, v]) => (
-                  <option key={k} value={k}>{v.label}</option>
-                ))}
-              </select>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <select
+                  className="secondary-button"
+                  style={{ height: '34px', padding: '0 10px', fontSize: '12px' }}
+                  value={templateId}
+                  onChange={(e) => handleSelectTemplate(e.target.value)}
+                >
+                  <option value="">New Template</option>
+                  <option value={DEFAULT_TEMPLATE_ID}>Default Template</option>
+                  {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+
+                <select
+                  className="secondary-button"
+                  style={{ height: '34px', padding: '0 10px', fontSize: '12px' }}
+                  value={cfg.profile || "day"}
+                  onChange={(e) => setProfilePreset(e.target.value)}
+                >
+                  {Object.entries(PROFILE_PRESETS).map(([k, v]) => (
+                    <option key={k} value={k}>{v.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="v-sep-v3" style={{ height: 20, width: 1, background: 'var(--border)', margin: '0 4px' }} />
+
+              <button type="button" className="secondary-button" onClick={() => setSettingsModalOpen(true)}>Settings</button>
+
+              <span className="minor-text" style={{ opacity: 0.8 }}>
+                {cfg.strategies.join("+") || "ai"} | {PROFILE_PRESETS[cfg.profile]?.label || cfg.profile}
+              </span>
             </div>
 
-            <div className="v-sep-v3" style={{ height: 20, width: 1, background: 'var(--border)', margin: '0 4px' }} />
+            {/* Row 2 */}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', width: '100%', justifyContent: 'flex-start', flexWrap: 'wrap' }}>
+              <select
+                value={analysisSource}
+                onChange={(e) => setAnalysisSource(e.target.value)}
+                className="secondary-button"
+                style={{ padding: '0 10px', height: 34, fontSize: '12px' }}
+              >
+                <option value="ai_claude">Claude 3.5 Sonnet</option>
+                <option value="ai_gpt4o">GPT-4o</option>
+                <option value="ai_deepseek">DeepSeek V3</option>
+                <option value="ai_gemini">Gemini 1.5 Pro</option>
+              </select>
 
-            <button type="button" className="secondary-button" onClick={() => setSettingsModalOpen(true)}>Settings</button>
-            
-            <span className="minor-text" style={{ opacity: 0.8 }}>
-               {cfg.strategies.join("+") || "ai"} | {PROFILE_PRESETS[cfg.profile]?.label || cfg.profile}
-            </span>
+              <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>
+                {capturing ? "Snapshots..." : "Snapshots"}
+              </button>
+              <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>
+                {analyzing ? "Analyzing..." : "Analyze"}
+              </button>
+
+              {status.text && (
+                <span className={`minor-text ${status.type === 'error' ? 'msg-error' : (status.type === 'warning' ? 'msg-warning' : 'msg-success')}`} style={{ marginLeft: 8, fontSize: '13px' }}>
+                  {status.text}
+                </span>
+              )}
+            </div>
           </div>
+        )}
 
-          {/* Row 2 */}
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', width: '100%', justifyContent: 'flex-start', flexWrap: 'wrap' }}>
-            <select
-              value={analysisSource}
-              onChange={(e) => setAnalysisSource(e.target.value)}
-              className="secondary-button"
-              style={{ padding: '0 10px', height: 34, fontSize: '12px' }}
-            >
-              <option value="ai_claude">Claude 3.5 Sonnet</option>
-              <option value="ai_gpt4o">GPT-4o</option>
-              <option value="ai_deepseek">DeepSeek V3</option>
-              <option value="ai_gemini">Gemini 1.5 Pro</option>
-            </select>
-
-            <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>
-              {capturing ? "Snapshots..." : "Snapshots"}
-            </button>
-            <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>
-              {analyzing ? "Analyzing..." : "Analyze"}
-            </button>
-
-            {status.text && (
-              <span className={`minor-text ${status.type === 'error' ? 'msg-error' : (status.type === 'warning' ? 'msg-warning' : 'msg-success')}`} style={{ marginLeft: 8, fontSize: '13px' }}>
-                {status.text}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {!hasResponse && !cfg.symbol && (
+        {!hasResponse && !cfg.symbol && (
           <div className="fadeIn">
             <div className="toolbar-panel" style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                  {/* Global Browser TF label removed per user request */}
-                  <div className="tf-pills">
-                    {["1m", "5m", "15m", "1h", "4h", "D"].map(tf => (
-                      <button 
-                        key={tf} 
-                        className={`tf-pill ${browserTf === tf ? 'active' : ''}`}
-                        onClick={() => setBrowserTf(tf)}
-                      >
-                        {tf.toUpperCase()}
-                      </button>
-                    ))}
-                  </div>
-               </div>
-               <div className="pager-area" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <button className="secondary-button icon-button" style={{ width: 28, height: 28 }} onClick={() => setBrowserPage(p => Math.max(1, p - 1))} disabled={browserPage <= 1}>&lt;</button>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>
-                    Page <span style={{ color: 'var(--accent)' }}>{browserPage}</span> of {Math.ceil(watchlist.length / browserPageSize)}
-                  </span>
-                  <button className="secondary-button icon-button" style={{ width: 28, height: 28 }} onClick={() => setBrowserPage(p => p + 1)} disabled={browserPage >= Math.ceil(watchlist.length / browserPageSize)}>&gt;</button>
-               </div>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                {/* Global Browser TF label removed per user request */}
+                <div className="tf-pills">
+                  {["1m", "5m", "15m", "1h", "4h", "D"].map(tf => (
+                    <button
+                      key={tf}
+                      className={`tf-pill ${browserTf === tf ? 'active' : ''}`}
+                      onClick={() => setBrowserTf(tf)}
+                    >
+                      {tf.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="pager-area" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button className="secondary-button icon-button" style={{ width: 28, height: 28 }} onClick={() => setBrowserPage(p => Math.max(1, p - 1))} disabled={browserPage <= 1}>&lt;</button>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>
+                  Page <span style={{ color: 'var(--accent)' }}>{browserPage}</span> of {Math.ceil(watchlist.length / browserPageSize)}
+                </span>
+                <button className="secondary-button icon-button" style={{ width: 28, height: 28 }} onClick={() => setBrowserPage(p => p + 1)} disabled={browserPage >= Math.ceil(watchlist.length / browserPageSize)}>&gt;</button>
+              </div>
             </div>
             <div className="browser-grid-v1">
               {watchlist.slice((browserPage - 1) * browserPageSize, browserPage * browserPageSize).map(sym => (
@@ -2326,7 +2275,7 @@ export default function ChartSnapshotsPage() {
               entryNode: (
                 <div className="snapshot-live-card-v3">
                   <div className="minor-text" style={{ marginBottom: 12 }}>Chart ({timeframe}): Twelve + PD Arrays</div>
-                  <TradeSignalChart 
+                  <TradeSignalChart
                     symbol={cfg.symbol}
                     interval={timeframe}
                     analysisSnapshot={effectiveParsed}
@@ -2363,9 +2312,9 @@ export default function ChartSnapshotsPage() {
               showAddTradeButton: true,
               showResetButton: true,
               onReset: resetPositionLocal,
-              busy: { 
-                signal: addingSignal && submittingPlanId === "main", 
-                trade: addingSignal && submittingPlanId === "main" 
+              busy: {
+                signal: addingSignal && submittingPlanId === "main",
+                trade: addingSignal && submittingPlanId === "main"
               },
               submittingPlanId: submittingPlanId,
               disabled: false,

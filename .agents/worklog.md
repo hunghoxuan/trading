@@ -1,5 +1,16 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-29 07:40
+- **Work Accomplished**:
+  - Replaced the temporary simplified backend `AI_RESPONSE_SCHEMA` with the existing production-compatible structure (`symbol`, `market_analysis`, `trade_plan[]`, `final_verdict`).
+  - Kept backend (`webhook`) as the canonical schema source and continued tagging AI results with `schema_version`.
+  - Removed duplicated `OUTPUT_FORMAT` JSON block from `web-ui/src/pages/ai/ChartSnapshotsPage.jsx` prompt text to reduce FE/BE schema drift risk.
+  - Updated `.agents/plans/backlog.md` with schema solution items: modularization, compatibility normalizer, and formal schema contract docs.
+- **Pending Tasks / Backlog**:
+  - [ ] Extract AI schema/enums/prompt builder into dedicated modules (`webhook/constants`, `webhook/prompts`).
+  - [ ] Add lightweight compatibility normalizer for legacy AI payload fields before persistence.
+  - [ ] Publish `AI Schema Contract v1.0.0` documentation in `.agents/architecture/`.
+
 ## [2026-04-28 19:30] - Intelligent Market Cache & Tiered Caching
 - **UnifiedCache**: Implemented L1/L2/L3 tiered caching utility for all market data.
 - **Metadata Persistence**: Added JSONB metadata to `market_data` table to store AI intelligence.
@@ -15,14 +26,25 @@
   - Resolved the "Not Found" JSON error on refresh for `/system/storage` and `/system/cache`.
 - **Multi-Agent Coordination**: Updated `rules.md` to mandate `worklog.md` updates at both the START and FINISH of every session.
   - Added "Currently Doing" entries in `sprint.md` for better visibility across AI agents.
+- **Production Deployment**: Pushed all changes to VPS and verified build version bump.
+  - Resolved persistent "Not Found" JSON error on `/system/storage` refresh by ensuring the routing fix is live.
 - **Stability**: Fixed syntax errors in `server.js` and verified API routing for `/system/` endpoints.
 
-# Session Log: 2026-04-28 20:58
+# Session Log: 2026-04-29 07:55
 - **Work Accomplished**:
-  - Fixed bootstrap UI auth recovery so the configured system account can log in even when its auth row is missing, not just when the stored password hash is stale.
-  - Deployed the first auth hotfix, verified production health, then reproduced that bootstrap login still failed and traced it to the missing-row path in `uiAuthGetVerifiedUser`.
+  - **Cache Infrastructure Stabilization**:
+    - Implemented **Request Collapsing** in `UnifiedCache` to prevent "thundering herd" (concurrent fetches for the same key).
+    - Implemented **Singleton Promise** for `mt5InitBackend` to ensure database migrations run exactly once.
+    - Added resilience to `/auth/me` with individual `try/catch` blocks for eager-loaded data (Settings, Accounts, Watchlist, Signals).
+  - **Performance Optimization**:
+    - Confirmed Eager-loading strategy for core session metadata (Accounts, Settings, Watchlist) to improve SPA responsiveness.
+    - Confirmed Lazy-loading strategy for heavy market data and historical trade details.
+  - **System Health**:
+    - Fixed syntax error in `server.js` initialization logic.
+    - Audited `SignalDetailCard` and `ChartSnapshotsPage` for circular dependencies (none found).
 - **Pending Tasks / Backlog**:
-  - [ ] Redeploy the second auth fix and verify `/auth/login` plus `/auth/me` with a real session cookie.
+  - [ ] User must restart the server to apply the `mt5InitBackend` and `UnifiedCache` fixes.
+  - [ ] Monitor browser console for "Cannot access 'vt' before initialization" – likely a stale build or timeout issue.
 
 # Session Log: 2026-04-28 20:48
 - **Work Accomplished**:
