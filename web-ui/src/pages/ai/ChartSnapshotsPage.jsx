@@ -88,53 +88,12 @@ const DEFAULT_CONFIG = {
   notes: "",
 };
 
-const GUIDE_TEXT = `FIELD GUIDE (ICT + PRICE ACTION + MARKET STRUCTURE)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SYMBOL: Detect from chart.
-MIN_RR: 2.0 minimum.
-MAX_RISK_PCT: 1.0 max per trade.
-DAILY_ADR_FILTER: enabled. TP must remain realistic vs current daily ADR boundaries.
-
-STEP 1 - MARKET STRUCTURE
-- Identify trend, structure event, and market phase per timeframe, HTF first.
-- Summarize what price already did in price_action_summary.recent_move.
-- Predict the likely next path in price_prediction.expected_path with target prices and conditions.
-
-STEP 2 - PD ARRAYS
-- Include relevant OB, FVG, Breaker, Mitigation Block, Void, Rejection Block, and Propulsion Block only within current price context.
-- Assign a unique numeric id for cross-reference in confluence_checklist.*.pd_array_ref.
-- Use status exactly: Fresh, Tested, Mitigated, Broken.
-
-STEP 3 - KEY LEVELS
-- Mark PDH, PDL, PWH, PWL, PMH, PML, opens, ADR, EQH/EQL, BSL/SSL.
-- Set swept=true immediately when liquidity has already been taken.
-
-STEP 4 - INSTITUTIONAL FILTERS
-- Evaluate session, killzone, Power of 3, ICT day type, draw on liquidity, premium/discount, SMT, and news impact.
-- News impact should be High if a major release is within 2 hours.
-
-STEP 5 - CONFLUENCE CHECKLIST
-- Evaluate BOTH buy and sell checklists independently.
-- Every checklist item needs weight, checked, pd_array_ref, and note.
-- Compute buy_score and sell_score after evaluating checklist evidence.
-
-STEP 6 - TRADE PLAN
-- Generate plans only for directions where high-weight checklist score is at least 60%.
-- Include entry, SL, BE trigger, TP, partial_tps, RR, entry_conditions, reasons_to_skip, skip_recommendation, and confidence_pct.
-- Any High severity skip reason should lead to Skip or Wait for Confirmation.
-
-STEP 7 - FINAL VERDICT
-- action must match the higher checklist score and a valid trade plan.
-- If no trade plan qualifies, action must be WAIT.
-- risk_tier: A, B, C, or No Trade.
-
-OUTPUT RULE
-- STRICT JSON ONLY (no markdown, no prose).
-- Use the backend schema exactly.
-- Every field must be filled; use null only where price data is genuinely unavailable.
-- Enums must match exactly. Do not invent enum values.
-- trade_plan must be an array; multiple plans allowed and ranked by confidence_pct.
-- Multi-timeframe trend/bias MUST be provided for ALL requested timeframes.`;
+const GUIDE_TEXT = `Compact ICT guide:
+- Analyze HTF to LTF. did=factual past move, next=likely path.
+- Keep only relevant PD arrays near current price and swept/key liquidity.
+- Evaluate buy and sell independently using High/Medium evidence only.
+- Generate max 2 plans only when highPassed/highTotal >= 0.6.
+- Use empty strings for weak narrative; avoid filler.`;
 
 function normalizeTemplateConfig(raw) {
   const strategyValue = raw?.strategies || raw?.strategy || ["ICT"];
@@ -296,11 +255,13 @@ function parsePdZoneBounds(zoneRaw) {
 function getPlanTpCandidates(plan = {}) {
   const partials = Array.isArray(plan?.partial_tps) ? plan.partial_tps : [];
   const partialPrices = partials.map((x) => (x && typeof x === "object" ? x.price : x));
+  const compactTps = Array.isArray(plan?.tps) ? plan.tps.map((x) => (x && typeof x === "object" ? x.price : x)) : [];
   const legacyLevels = Array.isArray(plan?.tp_levels) ? plan.tp_levels : [];
   const targets = Array.isArray(plan?.targets) ? plan.targets : [];
   return [
     plan?.tp,
     ...partialPrices,
+    ...compactTps,
     ...legacyLevels,
     ...targets,
     plan?.take_profit,
@@ -318,6 +279,91 @@ function getPlanPrimaryTp(plan = {}) {
     if (Number.isFinite(n)) return n;
   }
   return NaN;
+}
+
+function normalizeAnalysisContract(parsed) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return parsed;
+  const out = { ...parsed };
+  if (!out.market_analysis && (Array.isArray(out.timeframes) || Array.isArray(out.pdArrays) || Array.isArray(out.keyLevels) || out.checklist || out.dol)) {
+    out.market_analysis = {
+      timeframes: (Array.isArray(out.timeframes) ? out.timeframes : []).map((x) => ({
+        tf: x?.tf || "",
+        trend: x?.trend || "",
+        structure: x?.structure || "",
+        market_phase: x?.phase || "",
+        bias: x?.bias || "",
+        poi_alignment: Boolean(x?.poiAlign),
+        price_action_summary: {
+          recent_move: String(x?.did || ""),
+          key_breaks: (Array.isArray(x?.keyBreaks) ? x.keyBreaks : []).map((b) => ({
+            event: b?.event || "",
+            price_level: b?.price ?? null,
+            direction: b?.direction === "Bull" ? "Bullish" : (b?.direction === "Bear" ? "Bearish" : b?.direction || ""),
+            bar_ref: b?.bar_ref ?? null,
+          })),
+        },
+        price_prediction: {
+          narrative: String(x?.next || ""),
+          expected_path: (Array.isArray(x?.path) ? x.path : []).map((p) => ({
+            step: p?.step ?? null,
+            action: p?.action || "",
+            target_price: p?.target ?? null,
+            condition: p?.condition || "",
+          })),
+        },
+        note: x?.note || "",
+      })),
+      pd_arrays: (Array.isArray(out.pdArrays) ? out.pdArrays : []).map((x) => ({
+        id: x?.id ?? null,
+        type: x?.type || "",
+        direction: x?.dir === "Bull" ? "Bullish" : (x?.dir === "Bear" ? "Bearish" : x?.direction || ""),
+        strength: x?.strength || "",
+        price_top: x?.top ?? null,
+        price_bottom: x?.bot ?? null,
+        status: x?.status || "",
+        touched: x?.touched ?? 0,
+        timeframe: x?.tf || "",
+        note: x?.note || "",
+      })),
+      key_levels: (Array.isArray(out.keyLevels) ? out.keyLevels : []).map((x) => ({ name: x?.name || "", price: x?.price ?? null, swept: Boolean(x?.swept) })),
+      confluence_checklist: {
+        buy: (Array.isArray(out.checklist?.buy?.items) ? out.checklist.buy.items : []).map((x) => ({ ...x, checked: Boolean(x?.passed), pd_array_ref: x?.pdRef ?? null })),
+        sell: (Array.isArray(out.checklist?.sell?.items) ? out.checklist.sell.items : []).map((x) => ({ ...x, checked: Boolean(x?.passed), pd_array_ref: x?.pdRef ?? null })),
+      },
+    };
+  }
+  if (!out.trade_plan && Array.isArray(out.tradePlan)) {
+    out.trade_plan = out.tradePlan.map((x) => ({
+      direction: x?.dir || "",
+      profile: x?.profile || "",
+      type: x?.type || "",
+      session_entry: x?.session || "",
+      entry_model: x?.model || "",
+      entry: x?.entry ?? null,
+      sl: x?.sl ?? null,
+      be_trigger: x?.be ?? null,
+      tp: Array.isArray(x?.tps) && x.tps[0] ? x.tps[0].price ?? null : null,
+      risk_pct: x?.riskPct ?? null,
+      rr: x?.rr ?? null,
+      partial_tps: (Array.isArray(x?.tps) ? x.tps : []).map((t) => ({ price: t?.price ?? null, size_pct: t?.pct ?? null, rr: t?.rr ?? null })),
+      reasons_to_skip: x?.skipReasons || [],
+      skip_recommendation: x?.skip || "",
+      invalidation: x?.invalidation || out.verdict?.invalidation || "",
+      confidence_pct: x?.confidence ?? null,
+      note: x?.note || "",
+    }));
+  }
+  if (!out.final_verdict && out.verdict) {
+    out.final_verdict = {
+      action: out.verdict.action || "",
+      risk_tier: out.verdict.tier || "",
+      confidence: out.verdict.confidence || 0,
+      bias_shift_invalidation: out.verdict.invalidation || "",
+      next_poi: { price: out.verdict.nextPoi?.price ?? null, timeframe: out.verdict.nextPoi?.tf || "", type: out.verdict.nextPoi?.type || "" },
+      note: out.verdict.note || "",
+    };
+  }
+  return out;
 }
 
 function normalizeTfLabelToLower(tfRaw) {
@@ -680,6 +726,7 @@ function parseTradePlanFromRaw(rawText) {
 }
 
 function enrichParsedAnalysis(rawText, parsed) {
+  parsed = normalizeAnalysisContract(parsed);
   const fallback = parseTradePlanFromRaw(rawText) || {};
 
   // If parsed is null or not an object/array, use fallback
@@ -761,95 +808,17 @@ function buildPrompt(cfg) {
     2,
   );
 
-  const checklistRules = (cfg.strategies.length ? cfg.strategies : ["ICT"])
-    .map((s) => {
-      const rules = STRATEGY_CHECKLIST[s] || [];
-      return `- ${s}: ${rules.join("; ")}`;
-    })
-    .join("\n");
+  return `## CONTEXT
+Symbol:${symbol}|Class:${cfg.asset}|Session:${cfg.session || "Any"}|Profile:${profileLabel}|MinRR:${cfg.rr}|MaxRisk:${cfg.risk}%
+TFs:${[...tfConfig.htf_tfs, ...tfConfig.exec_tfs, ...tfConfig.conf_tfs].map((x) => String(x).toUpperCase()).join(",")}
+Strategies:${strategy}
+${context.length ? `Notes:${context.join("; ")}` : ""}
 
-  return `## TASK
-Perform a full multi-timeframe ICT analysis for ${symbol}.
-If prior cached analysis is included in the request/context, update and reconcile with it. Otherwise start from scratch.
-
-## SYMBOL & CONTEXT
-- Symbol        : ${symbol}
-- Asset class   : ${cfg.asset}
-- Current price : Use latest visible chart price or attached bar data.
-- Analysis time : Use current UTC analysis time from request/runtime context.
-- Session now   : ${cfg.session || "Any"}
-- Strategy      : ${strategy}
-- Minimum RR    : ${cfg.rr}
-- Max risk pct  : ${cfg.risk}%
-${context.length ? `
-## EXTRA CONTEXT
-${context.map((x) => `  ${x}`).join("\n")}
-` : ""}
-
-## CHART SNAPSHOTS
-Analyze each attached chart image. Each image filename/timeframe label should be treated as chart evidence.
-Minimum preferred chart set: D + 4H + 1H. More TFs improve confluence detection.
-
-## TIMEFRAMES TO ANALYZE
-Analyze only these timeframes in HTF to LTF order:
-${tfJson}
-
-## PRIOR ANALYSIS
-If prior_analysis JSON is provided by cache/metadata, treat it as reference only, not ground truth.
-- Explicitly note in each timeframe note field if bias, structure, or key POIs changed.
-- If a previously Fresh OB/FVG is now Mitigated or Broken, update status and note it.
-- If prior trade_plan is invalidated, set confidence_pct to 0 and explain in note.
-- Do not recycle prior confidence scores; re-derive from current chart evidence.
-
-## ANALYSIS INSTRUCTIONS
-Step 1 - Market Structure:
-- Identify trend, structure event (BOS/CHoCH/MSB), and market phase per timeframe.
-- Summarize recent price action factually in past tense.
-- Predict the next likely move with target prices and conditions.
-
-Step 2 - PD Arrays:
-- Mark relevant OBs, FVGs, Breakers, Mitigation Blocks, Voids, Rejection Blocks, and Propulsion Blocks.
-- Assign unique integer ids across all timeframes.
-- Only include arrays relevant to current price location.
-- Discard broken or fully mitigated arrays unless acting as Breakers.
-
-Step 3 - Key Levels:
-- Mark PDH, PDL, PWH, PWL, PMH, PML, WeeklyOpen, DailyOpen, MidnightOpen, NYOpen, ADR_High, ADR_Low, EQH, EQL, BSL, SSL.
-- Flag swept levels immediately.
-
-Step 4 - Institutional Filters:
-- Determine session, killzone, Power of 3 phase, ICT day type, draw on liquidity, P/D status, SMT, and news impact.
-- News impact is High when a major release is within 2 hours.
-
-Step 5 - Confluence Checklist:
-- Evaluate BOTH buy and sell checklists independently.
-- For each item: check true/false from chart evidence and explain in note.
-- Fill pd_array_ref when tied to a PD array id.
-- Compute buy_score and sell_score.
-
-Step 6 - Trade Plan:
-- Generate plans only for directions where high-weight checklist score is at least 60%.
-- Provide entry, SL, BE trigger, TP, partial_tps, RR, entry_conditions, reasons_to_skip, skip_recommendation, invalidation, confidence_pct, and note.
-- Be brutally honest in reasons_to_skip.
-- Any High reason should produce Skip or Wait for Confirmation.
-
-Step 7 - Final Verdict:
-- action must agree with the direction that has higher checklist score and valid trade plan.
-- If no trade plan passes threshold, action = WAIT.
-- risk_tier: A = strong alignment/RR >= 3, B = partial alignment/RR >= 2, C = weak confluence, No Trade = skip or high-weight score < 60%.
-
-CHECKLIST CONDITIONS BY STRATEGY:
-${checklistRules}
-
-OUTPUT RULES:
-1. Return STRICT JSON only.
-2. Every field from the canonical backend schema must be filled.
-3. Use null only when price data is genuinely unavailable.
-4. Enums must match exactly.
-5. trade_plan must be an array.
-6. Backend appends the canonical schema and enforces schema_version. Follow it exactly.
-
-SELECTED_PROFILE: ${profileLabel}`;
+## INSTRUCTIONS
+Analyze attached charts HTF->LTF. Per TF identify trend, structure, phase, bias, what price did, and likely next path.
+Include only relevant PD arrays near current price, key liquidity/open levels, one DOL, concise buy/sell checklist, and max 2 trade plans.
+Prior cached analysis, if present in context, is reference only: re-derive scores and flag changed bias/broken POIs/invalidated plans.
+Return compact JSON only; backend appends schema/enums/array limits.`;
 }
 
 function buildJsonConfig(cfg) {
@@ -1246,18 +1215,29 @@ export default function ChartSnapshotsPage() {
         : Promise.resolve(null);
 
       const basePrompt = String(promptDraft || promptText || "").trim();
+      const runtimeConfig = JSON.stringify({
+        symbol: tvSymbol || cfg.symbol,
+        assetClass: cfg.asset,
+        timeframes: [...tfConfig.htf_tfs, ...tfConfig.exec_tfs, ...tfConfig.conf_tfs].map((x) => String(x).toUpperCase()),
+        minRR: Number(cfg.rr),
+        maxRiskPct: Number(cfg.risk),
+        session: cfg.session,
+        biasOverride: cfg.htfbias || null,
+        direction: cfg.dir || null,
+        news: cfg.news || null,
+        notes: cfg.notes || null,
+      });
+      const guideOverride = String(guideDraft || "").trim();
       const composedPrompt = [
         basePrompt,
-        "JSON_CONFIG:",
-        jsonConfigText,
-        "GUIDE:",
-        String(guideDraft || "").trim(),
+        `CONFIG:${runtimeConfig}`,
+        guideOverride && guideOverride !== GUIDE_TEXT ? `USER_GUIDE:${guideOverride}` : "",
       ].filter(Boolean).join("\n\n");
       const payload = {
         model: "claude-sonnet-4-0",
         prompt: composedPrompt,
         session_prefix: activeSessionPrefix,
-        max_tokens: 7000,
+        max_tokens: 4500,
         symbol: tvSymbol || cfg.symbol,
         timeframe,
       };
@@ -1978,7 +1958,7 @@ export default function ChartSnapshotsPage() {
 
     const arr = Array.isArray(effectiveParsed?.market_analysis?.pd_arrays) ? effectiveParsed.market_analysis.pd_arrays : [];
     return arr.map((x, idx) => {
-      const lowRaw = parseNum(x?.low ?? x?.price_bottom ?? x?.bottom);
+      const lowRaw = parseNum(x?.low ?? x?.price_bottom ?? x?.bottom ?? x?.bot);
       const highRaw = parseNum(x?.high ?? x?.price_top ?? x?.top);
       const zoneParsed = parsePdZoneBounds(x?.zone);
       const low = Number.isFinite(lowRaw) ? lowRaw : zoneParsed.low;

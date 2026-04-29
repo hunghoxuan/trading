@@ -124,6 +124,7 @@ function formatNum3(v) {
 
 function firstTradePlan(raw = {}) {
   if (Array.isArray(raw?.trade_plan)) return raw.trade_plan[0] || {};
+  if (Array.isArray(raw?.tradePlan)) return raw.tradePlan[0] || {};
   return raw?.trade_plan && typeof raw.trade_plan === "object" ? raw.trade_plan : {};
 }
 
@@ -131,7 +132,8 @@ function planPrimaryTp(plan = {}) {
   const partials = Array.isArray(plan?.partial_tps) ? plan.partial_tps : [];
   const partialPrices = partials.map((x) => (x && typeof x === "object" ? x.price : x));
   const legacyLevels = Array.isArray(plan?.tp_levels) ? plan.tp_levels : [];
-  const candidates = [plan?.tp, ...partialPrices, ...legacyLevels, plan?.tp1, plan?.target, plan?.take_profit];
+  const compactTps = Array.isArray(plan?.tps) ? plan.tps.map((x) => (x && typeof x === "object" ? x.price : x)) : [];
+  const candidates = [plan?.tp, ...partialPrices, ...compactTps, ...legacyLevels, plan?.tp1, plan?.target, plan?.take_profit];
   for (const value of candidates) {
     const n = asNum(value);
     if (n != null) return n;

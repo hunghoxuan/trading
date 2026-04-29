@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.29 06:37 - 923c4d4"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.29 08:28 - 5fcd486"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -314,180 +314,64 @@ const CFG = {
   uiSessionTtlSeconds: asNum(process.env.UI_SESSION_TTL_SECONDS, 60 * 60 * 24 * 7),
 };
 
-const AI_RESPONSE_SCHEMA_VERSION = "1.1.0";
+const AI_RESPONSE_SCHEMA_VERSION = "1.2.0";
 const AI_RESPONSE_SCHEMA = {
   symbol: "",
-  market_analysis: {
-    timeframes: [
-      {
-        tf: "MN|W|D|4H|1H|15M|5M|1M",
-        trend: "Bullish|Bearish|Ranging",
-        structure: "MSB|CHoCH|BOS|Continuation|Ranging",
-        market_phase: "Trending|Retracement|Reversal|Consolidation|Breakout|Breakdown|Distribution|Accumulation",
-        bias: "Long|Short|Neutral",
-        poi_alignment: true,
-        price_action_summary: {
-          recent_move: "",
-          key_breaks: [
-            {
-              event: "BOS|CHoCH|MSB|Retest|Sweep|Rejection",
-              price_level: null,
-              direction: "Bullish|Bearish",
-              bar_ref: null
-            }
-          ]
-        },
-        price_prediction: {
-          narrative: "",
-          expected_path: [
-            {
-              step: 1,
-              action: "Retrace|Continue|Sweep|Reverse|Consolidate|Break",
-              target_price: null,
-              condition: ""
-            }
-          ]
-        },
-        note: ""
-      },
-    ],
-    pd_arrays: [
-      {
-        id: 1,
-        type: "OB|FVG|Breaker|Mitigation Block|Void|Rejection Block|Propulsion Block",
-        direction: "Bullish|Bearish",
-        strength: "Strong|Weak",
-        bar_start: null,
-        price_top: null,
-        price_bottom: null,
-        status: "Fresh|Tested|Mitigated|Broken",
-        touched: 0,
-        mitigation_type: "Full|Partial|None",
-        timeframe: "",
-        note: ""
-      }
-    ],
-    key_levels: [
-      {
-        name: "PDH|PDL|PWH|PWL|PMH|PML|WeeklyOpen|DailyOpen|MidnightOpen|NYOpen|ADR_High|ADR_Low|EQH|EQL|BSL|SSL",
-        price: null,
-        type: "Resistance|Support|BSL|SSL|EQ",
-        zone_type: "Internal|External",
-        swept: false,
-        bar_start: null
-      }
-    ],
-    institutional_filters: {
-      session: "Asian|London|New York|London Close|Overlap",
-      killzone: "Active|Inactive",
-      power_of_3: "Accumulation|Manipulation|Distribution|Unknown",
-      ict_day_type: "Trending|Reversal|Consolidation|Unknown",
-      draw_on_liquidity: {
-        target: "",
-        price: null,
-        type: "BSL|SSL|FVG|OB|Void",
-        timeframe: ""
-      },
-      p_d_status: "Premium|Discount|Equilibrium",
-      smt: "Confirmed|None",
-      news_impact: "High|Medium|Low|None"
-    },
-    confluence_checklist: {
-      buy: [
-        { item: "Killzone alignment", weight: "High|Medium|Low", checked: false, pd_array_ref: null, note: "" },
-        { item: "HTF Bullish bias alignment", weight: "High", checked: false, pd_array_ref: null, note: "" },
-        { item: "Price at Discount (below EQ)", weight: "High", checked: false, pd_array_ref: null, note: "" },
-        { item: "Bullish OB/FVG Fresh (untouched)", weight: "High", checked: false, pd_array_ref: null, note: "" },
-        { item: "Bullish BOS or CHoCH confirmed", weight: "High", checked: false, pd_array_ref: null, note: "" },
-        { item: "BSL above as draw on liquidity", weight: "High", checked: false, pd_array_ref: null, note: "" },
-        { item: "Power of 3 - Accumulation phase", weight: "Medium", checked: false, pd_array_ref: null, note: "" },
-        { item: "Bullish SMT divergence confirmed", weight: "Medium", checked: false, pd_array_ref: null, note: "" },
-        { item: "Session timing valid (NY/London)", weight: "Medium", checked: false, pd_array_ref: null, note: "" },
-        { item: "No high-impact news within 30min", weight: "High", checked: false, pd_array_ref: null, note: "" }
-      ],
-      sell: [
-        { item: "Killzone alignment", weight: "High|Medium|Low", checked: false, pd_array_ref: null, note: "" },
-        { item: "HTF Bearish bias alignment", weight: "High", checked: false, pd_array_ref: null, note: "" },
-        { item: "Price at Premium (above EQ)", weight: "High", checked: false, pd_array_ref: null, note: "" },
-        { item: "Bearish OB/FVG Fresh (untouched)", weight: "High", checked: false, pd_array_ref: null, note: "" },
-        { item: "Bearish BOS or CHoCH confirmed", weight: "High", checked: false, pd_array_ref: null, note: "" },
-        { item: "SSL below as draw on liquidity", weight: "High", checked: false, pd_array_ref: null, note: "" },
-        { item: "Power of 3 - Distribution phase", weight: "Medium", checked: false, pd_array_ref: null, note: "" },
-        { item: "Bearish SMT divergence confirmed", weight: "Medium", checked: false, pd_array_ref: null, note: "" },
-        { item: "Session timing valid (NY/London)", weight: "Medium", checked: false, pd_array_ref: null, note: "" },
-        { item: "No high-impact news within 30min", weight: "High", checked: false, pd_array_ref: null, note: "" }
-      ],
-      buy_score: { checked: 0, total: 0, high_weight_passed: 0, high_weight_total: 0 },
-      sell_score: { checked: 0, total: 0, high_weight_passed: 0, high_weight_total: 0 }
-    },
+  timeframes: [{
+    tf: "MN|W|D|4H|1H|15M|5M|1M", trend: "Bullish|Bearish|Ranging",
+    structure: "BOS|CHoCH|MSB|Continuation|Ranging",
+    phase: "Trending|Retracement|Reversal|Consolidation|Breakout|Breakdown|Distribution|Accumulation",
+    bias: "Long|Short|Neutral", poiAlign: true, did: "", next: "",
+    keyBreaks: [{ event: "BOS|CHoCH|MSB|Retest|Sweep|Rejection", price: null, direction: "Bull|Bear" }],
+    path: [{ step: 1, action: "Retrace|Continue|Sweep|Reverse|Consolidate|Break", target: null, condition: "" }]
+  }],
+  pdArrays: [{
+    id: 1, tf: "", type: "OB|FVG|Breaker|Mitigation Block|Void|Rejection Block|Propulsion Block",
+    dir: "Bull|Bear", strength: "Strong|Weak", top: null, bot: null,
+    status: "Fresh|Tested|Mitigated|Broken", touched: 0, note: ""
+  }],
+  keyLevels: [{
+    name: "PDH|PDL|PWH|PWL|PMH|PML|WeeklyOpen|DailyOpen|MidnightOpen|NYOpen|EQH|EQL|BSL|SSL",
+    price: null, swept: false
+  }],
+  dol: { target: "", price: null, type: "BSL|SSL|FVG|OB|Void", tf: "" },
+  checklist: {
+    buy: { score: 0, highPassed: 0, highTotal: 0, items: [{ category: "Structure|PD_Arrays|Liquidity|Session|Correlation|VWAP|Fibonacci|Candle_Patterns|Indicators|Risk", item: "", weight: "High|Medium|Low", passed: false, pdRef: null, note: "" }] },
+    sell: { score: 0, highPassed: 0, highTotal: 0, items: [{ category: "", item: "", weight: "High|Medium|Low", passed: false, pdRef: null, note: "" }] }
   },
-  trade_plan: [
-    {
-      direction: "BUY|SELL",
-      profile: "Position|Swing|Intraday|Scalp",
-      type: "Limit|Stop|Market",
-      session_entry: "Asian|London|New York|London Close",
-      entry_model: "",
-      entry: null,
-      sl: null,
-      be_trigger: null,
-      tp: null,
-      risk_pct: null,
-      rr: null,
-      partial_tps: [
-        { price: null, size_pct: null, rr: null }
-      ],
-      entry_conditions: [
-        { condition: "", met: false }
-      ],
-      reasons_to_skip: [
-        { reason: "", severity: "High|Medium|Low" }
-      ],
-      skip_recommendation: "Skip|Reduce Size|Proceed|Wait for Confirmation",
-      invalidation: "",
-      confidence_pct: null,
-      note: ""
-    },
-  ],
-  final_verdict: {
-    action: "BUY|SELL|WAIT",
-    risk_tier: "A|B|C|No Trade",
-    confidence: 0,
-    bias_shift_invalidation: "",
-    next_poi: { price: null, timeframe: "", type: "" },
-    note: ""
-  },
+  tradePlan: [{
+    dir: "BUY|SELL", profile: "Position|Swing|Intraday|Scalp",
+    type: "Limit|Stop Limit|Market", session: "Asian|London|NewYork|LondonClose|Overlap",
+    model: "", entry: null, sl: null, be: null, tps: [{ price: null, pct: null, rr: null }],
+    riskPct: null, rr: null, skipReasons: [{ reason: "", severity: "High|Medium|Low" }],
+    skip: "Skip|Reduce|Proceed|Wait", confidence: 0, note: ""
+  }],
+  verdict: {
+    action: "BUY|SELL|WAIT", tier: "A|B|C|NoTrade",
+    confidence: 0, invalidation: "", nextPoi: { price: null, tf: "", type: "" }, note: ""
+  }
 };
 
+const AI_CHECKLIST_BANK = [
+  ["Structure", "HTF bias aligned (D/W)", "High"], ["Structure", "ITF bias aligned (4H)", "High"], ["Structure", "LTF CHoCH/BOS confirmed", "High"],
+  ["PD_Arrays", "Entry at fresh OB/FVG", "High"], ["PD_Arrays", "OB+FVG overlap", "High"], ["PD_Arrays", "POI within premium/discount", "High"],
+  ["Liquidity", "Clear draw on liquidity identified", "High"], ["Liquidity", "BSL/SSL swept before entry", "High"], ["Liquidity", "PDH/PDL or PWH/PWL as DOL", "Medium"],
+  ["Session", "Killzone active (London/NY)", "High"], ["Session", "Power of 3 phase aligned", "High"], ["Session", "No high-impact news within 30min", "High"],
+  ["Correlation", "SMT divergence confirmed", "High"], ["VWAP", "VWAP aligns with OB/FVG", "High"], ["Fibonacci", "Entry at 0.618-0.786 retracement", "High"],
+  ["Candle_Patterns", "Displacement or rejection candle at POI", "High"], ["Indicators", "RSI/volume/ATR confirms setup", "Medium"], ["Risk", "RR >= 2.5 and SL behind structure", "High"],
+  ["Risk", "Entry not late (POI <50% consumed)", "High"], ["Risk", "Partial profit plan defined", "Medium"]
+];
+
 function buildAiSchemaPromptText() {
-  return [
-    "SYSTEM:",
-    "You are an expert ICT (Inner Circle Trader) technical analyst.",
-    "You think in terms of market structure, PD arrays, liquidity, and institutional order flow.",
-    "You respond ONLY in valid JSON using the exact schema provided. No prose outside the JSON.",
-    "Every field must be filled. Use null only where price data is genuinely unavailable.",
-    "Enums must match exactly as specified. Do not invent new enum values.",
-    "",
-    "ANALYSIS INSTRUCTIONS:",
-    "1. Market Structure: identify trend, structure event, market phase, factual recent price action, and next likely move per timeframe.",
-    "2. PD Arrays: include relevant OB/FVG/Breaker/Mitigation/Void/Rejection/Propulsion arrays within current price context, each with unique numeric id.",
-    "3. Key Levels: include PDH/PDL/PWH/PWL/opens/EQH/EQL/BSL/SSL/ADR levels and mark swept levels.",
-    "4. Institutional Filters: evaluate session, killzone, Power of 3, ICT day type, DOL, P/D status, SMT, and news impact.",
-    "5. Confluence Checklist: evaluate BOTH buy and sell checklists independently, set pd_array_ref when tied to a PD array id, and compute score objects.",
-    "6. Trade Plan: generate plans only when high-weight checklist score is at least 60%; include partial_tps, entry_conditions, reasons_to_skip, and skip_recommendation.",
-    "7. Final Verdict: action must match the higher checklist score with a valid plan; use WAIT when no plan qualifies.",
-    "",
-    "RISK TIER RULES:",
-    "A = HTF + LTF aligned, fresh POI, killzone active, no news risk, RR >= 3.",
-    "B = Partial alignment, tested POI, RR >= 2.",
-    "C = Weak confluence, marginal setup.",
-    "No Trade = skip_recommendation is Skip or checklist high-weight score < 60%.",
-    "",
-    "OUTPUT FORMAT:",
-    "Return a single valid JSON object. No markdown. No explanation outside JSON. No trailing commas.",
-    `Use this exact output schema (schema_version=${AI_RESPONSE_SCHEMA_VERSION}):`,
-    JSON.stringify(AI_RESPONSE_SCHEMA, null, 2),
-  ].join("\n");
+  return `You are an expert ICT technical analyst.
+Respond ONLY in valid minified JSON matching schema exactly. No prose, markdown, or trailing commas.
+All fields required. Enums must match. Use null only where price data is unavailable.
+Array limits: timeframes<=4, pdArrays<=6, keyLevels<=8, checklist.items<=12/side, tradePlan<=2, tps<=3, skipReasons<=3, keyBreaks<=3/tf, path<=3/tf.
+Checklist: output failed-High + passed-High + notable-Medium only. Omit passed-Low. score=(weighted earned/weighted total)*100.
+Trade plans only when highPassed/highTotal>=0.6. WAIT if no plan qualifies. did/next/note="" when not meaningful.
+schema_version=${AI_RESPONSE_SCHEMA_VERSION}
+CHECKLIST_BANK=${JSON.stringify(AI_CHECKLIST_BANK)}
+SCHEMA=${JSON.stringify(AI_RESPONSE_SCHEMA)}`;
 }
 
 CFG.binanceEnabled = ["paper", "live"].includes(CFG.binanceMode);
@@ -5968,7 +5852,7 @@ function timeframeToTwelve(tfRaw) {
 
 function parseSnapshotPdArrays(payload = {}) {
   const fromTradePlan = payload?.market_analysis?.pd_arrays;
-  const direct = payload?.pd_arrays;
+  const direct = payload?.pd_arrays || payload?.pdArrays;
   const arr = Array.isArray(fromTradePlan) ? fromTradePlan : (Array.isArray(direct) ? direct : []);
   return arr
     .map((x) => (x && typeof x === "object" ? x : null))
@@ -6020,7 +5904,7 @@ function parseSnapshotKeyLevels(payload = {}) {
       });
     }
   };
-  const keyLevels = Array.isArray(payload?.market_analysis?.key_levels) ? payload.market_analysis.key_levels : payload?.key_levels;
+  const keyLevels = Array.isArray(payload?.market_analysis?.key_levels) ? payload.market_analysis.key_levels : (payload?.key_levels || payload?.keyLevels);
   if (Array.isArray(keyLevels)) keyLevels.forEach(pushLevel);
   if (payload?.key_level) pushLevel(payload.key_level);
   if (Array.isArray(payload?.risk_management?.key_levels)) payload.risk_management.key_levels.forEach(pushLevel);
@@ -6041,12 +5925,14 @@ function parseSnapshotKeyLevels(payload = {}) {
 }
 
 function parseSnapshotChecklist(payload = {}) {
-  const raw = payload?.market_analysis?.confluence_checklist ?? payload?.confluence_checklist ?? payload?.market_analysis?.checklist;
+  const raw = payload?.market_analysis?.confluence_checklist ?? payload?.confluence_checklist ?? payload?.market_analysis?.checklist ?? payload?.checklist;
   const arr = Array.isArray(raw)
     ? raw
     : [
       ...(Array.isArray(raw?.buy) ? raw.buy.map((x) => ({ side: "buy", ...x })) : []),
+      ...(Array.isArray(raw?.buy?.items) ? raw.buy.items.map((x) => ({ side: "buy", ...x })) : []),
       ...(Array.isArray(raw?.sell) ? raw.sell.map((x) => ({ side: "sell", ...x })) : []),
+      ...(Array.isArray(raw?.sell?.items) ? raw.sell.items.map((x) => ({ side: "sell", ...x })) : []),
     ];
   return arr
     .map((x) => ({
@@ -6054,11 +5940,146 @@ function parseSnapshotChecklist(payload = {}) {
       strategy: String(x?.strategy || "").trim(),
       condition: String(x?.condition || x?.item || "").trim(),
       weight: String(x?.weight || "").trim(),
-      checked: Boolean(x?.checked),
-      pd_array_ref: Number.isFinite(Number(x?.pd_array_ref)) ? Number(x.pd_array_ref) : null,
+      checked: Boolean(x?.checked ?? x?.passed),
+      pd_array_ref: Number.isFinite(Number(x?.pd_array_ref ?? x?.pdRef)) ? Number(x.pd_array_ref ?? x.pdRef) : null,
       note: String(x?.note || "").trim(),
     }))
     .filter((x) => x.strategy || x.condition || x.note);
+}
+
+function normalizeAiAnalysisContract(input = {}) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const out = { ...input };
+
+  if (!out.market_analysis && (Array.isArray(out.timeframes) || Array.isArray(out.pdArrays) || Array.isArray(out.keyLevels) || out.checklist || out.dol)) {
+    out.market_analysis = {
+      timeframes: (Array.isArray(out.timeframes) ? out.timeframes : []).map((x) => ({
+        tf: x?.tf ?? "",
+        trend: x?.trend ?? "",
+        structure: x?.structure ?? "",
+        market_phase: x?.phase ?? x?.market_phase ?? "",
+        bias: x?.bias ?? "",
+        poi_alignment: Boolean(x?.poiAlign ?? x?.poi_alignment),
+        price_action_summary: {
+          recent_move: String(x?.did ?? x?.price_action_summary?.recent_move ?? ""),
+          key_breaks: (Array.isArray(x?.keyBreaks) ? x.keyBreaks : x?.price_action_summary?.key_breaks || []).map((b) => ({
+            event: b?.event ?? "",
+            price_level: b?.price ?? b?.price_level ?? null,
+            direction: b?.direction === "Bull" ? "Bullish" : (b?.direction === "Bear" ? "Bearish" : b?.direction ?? ""),
+            bar_ref: b?.bar_ref ?? null
+          }))
+        },
+        price_prediction: {
+          narrative: String(x?.next ?? x?.price_prediction?.narrative ?? ""),
+          expected_path: (Array.isArray(x?.path) ? x.path : x?.price_prediction?.expected_path || []).map((p) => ({
+            step: p?.step ?? null,
+            action: p?.action ?? "",
+            target_price: p?.target ?? p?.target_price ?? null,
+            condition: p?.condition ?? ""
+          }))
+        },
+        note: x?.note ?? ""
+      })),
+      pd_arrays: (Array.isArray(out.pdArrays) ? out.pdArrays : []).map((x) => ({
+        id: x?.id ?? null,
+        type: x?.type ?? "",
+        direction: x?.dir === "Bull" ? "Bullish" : (x?.dir === "Bear" ? "Bearish" : x?.direction ?? ""),
+        strength: x?.strength ?? "",
+        bar_start: x?.bar_start ?? null,
+        price_top: x?.top ?? x?.price_top ?? null,
+        price_bottom: x?.bot ?? x?.price_bottom ?? null,
+        status: x?.status ?? "",
+        touched: x?.touched ?? 0,
+        mitigation_type: x?.mitigation_type ?? "",
+        timeframe: x?.tf ?? x?.timeframe ?? "",
+        note: x?.note ?? ""
+      })),
+      key_levels: (Array.isArray(out.keyLevels) ? out.keyLevels : []).map((x) => ({
+        name: x?.name ?? "",
+        price: x?.price ?? null,
+        type: x?.type ?? "",
+        zone_type: x?.zone_type ?? "",
+        swept: Boolean(x?.swept),
+        bar_start: x?.bar_start ?? null
+      })),
+      institutional_filters: {
+        draw_on_liquidity: {
+          target: out.dol?.target ?? "",
+          price: out.dol?.price ?? null,
+          type: out.dol?.type ?? "",
+          timeframe: out.dol?.tf ?? ""
+        }
+      },
+      confluence_checklist: {
+        buy: (Array.isArray(out.checklist?.buy?.items) ? out.checklist.buy.items : []).map((x) => ({
+          category: x?.category ?? "",
+          item: x?.item ?? "",
+          weight: x?.weight ?? "",
+          checked: Boolean(x?.passed ?? x?.checked),
+          pd_array_ref: x?.pdRef ?? x?.pd_array_ref ?? null,
+          note: x?.note ?? ""
+        })),
+        sell: (Array.isArray(out.checklist?.sell?.items) ? out.checklist.sell.items : []).map((x) => ({
+          category: x?.category ?? "",
+          item: x?.item ?? "",
+          weight: x?.weight ?? "",
+          checked: Boolean(x?.passed ?? x?.checked),
+          pd_array_ref: x?.pdRef ?? x?.pd_array_ref ?? null,
+          note: x?.note ?? ""
+        })),
+        buy_score: {
+          checked: out.checklist?.buy?.score ?? 0,
+          total: 100,
+          high_weight_passed: out.checklist?.buy?.highPassed ?? 0,
+          high_weight_total: out.checklist?.buy?.highTotal ?? 0
+        },
+        sell_score: {
+          checked: out.checklist?.sell?.score ?? 0,
+          total: 100,
+          high_weight_passed: out.checklist?.sell?.highPassed ?? 0,
+          high_weight_total: out.checklist?.sell?.highTotal ?? 0
+        }
+      }
+    };
+  }
+
+  if (!out.trade_plan && Array.isArray(out.tradePlan)) {
+    out.trade_plan = out.tradePlan.map((x) => ({
+      direction: x?.dir ?? "",
+      profile: x?.profile ?? "",
+      type: x?.type ?? "",
+      session_entry: x?.session ?? "",
+      entry_model: x?.model ?? "",
+      entry: x?.entry ?? null,
+      sl: x?.sl ?? null,
+      be_trigger: x?.be ?? null,
+      tp: Array.isArray(x?.tps) && x.tps[0] ? x.tps[0].price ?? null : null,
+      risk_pct: x?.riskPct ?? null,
+      rr: x?.rr ?? null,
+      partial_tps: (Array.isArray(x?.tps) ? x.tps : []).map((t) => ({ price: t?.price ?? null, size_pct: t?.pct ?? null, rr: t?.rr ?? null })),
+      reasons_to_skip: (Array.isArray(x?.skipReasons) ? x.skipReasons : []).map((r) => ({ reason: r?.reason ?? "", severity: r?.severity ?? "" })),
+      skip_recommendation: x?.skip ?? "",
+      invalidation: x?.invalidation ?? out.verdict?.invalidation ?? "",
+      confidence_pct: x?.confidence ?? null,
+      note: x?.note ?? ""
+    }));
+  }
+
+  if (!out.final_verdict && out.verdict && typeof out.verdict === "object") {
+    out.final_verdict = {
+      action: out.verdict.action ?? "",
+      risk_tier: out.verdict.tier ?? "",
+      confidence: out.verdict.confidence ?? 0,
+      bias_shift_invalidation: out.verdict.invalidation ?? "",
+      next_poi: {
+        price: out.verdict.nextPoi?.price ?? null,
+        timeframe: out.verdict.nextPoi?.tf ?? "",
+        type: out.verdict.nextPoi?.type ?? ""
+      },
+      note: out.verdict.note ?? ""
+    };
+  }
+  return out;
 }
 
 function parseSnapshotBarsLimit(payload = {}) {
@@ -9617,7 +9638,7 @@ const appHandler = async (req, res) => {
         if (!requestModel) requestModel = "claude-sonnet-4-0";
         bodyData = {
           model: requestModel,
-          max_tokens: 5000,
+          max_tokens: 4500,
           messages: [{ role: "user", content: finalPrompt }]
         };
       } else {
@@ -9693,7 +9714,7 @@ const appHandler = async (req, res) => {
       let signals = [];
       let analysisResult = null;
       try {
-        const parsed = JSON.parse(cleanJson);
+        const parsed = normalizeAiAnalysisContract(JSON.parse(cleanJson));
         if (parsed.bias || parsed.analysis || parsed.key_levels || parsed.market_analysis || parsed.trade_plan || parsed.final_verdict) {
           if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) parsed.schema_version = AI_RESPONSE_SCHEMA_VERSION;
           analysisResult = parsed;
@@ -9931,8 +9952,8 @@ const appHandler = async (req, res) => {
         apiKey: claudeKey,
         model: requestModel,
         messages: [{ role: "user", content }],
-        maxTokens: Number(body.max_tokens || 7000),
-        timeoutMs: 90000,
+        maxTokens: Number(body.max_tokens || 4500),
+        timeoutMs: 180000,
       });
       const aiRes = out.response;
       const resolvedModel = out.modelUsed || requestModel;
@@ -9945,7 +9966,7 @@ const appHandler = async (req, res) => {
         ? aiJson.content.filter((x) => x?.type === "text").map((x) => String(x?.text || "")).join("\n")
         : String(aiJson?.content || "");
       const extracted = extractJsonFromAiText(rawResponse);
-      const parsedJson = extracted.parsed || {};
+      const parsedJson = normalizeAiAnalysisContract(extracted.parsed || {});
       if (parsedJson && typeof parsedJson === "object" && !Array.isArray(parsedJson)) {
         parsedJson.schema_version = AI_RESPONSE_SCHEMA_VERSION;
       }
@@ -9981,6 +10002,9 @@ const appHandler = async (req, res) => {
         parsed_json: parsedJson,
       });
     } catch (error) {
+      if (error?.name === "AbortError" || String(error?.message || "").toLowerCase().includes("aborted")) {
+        return json(res, 504, { ok: false, error: "AI provider timeout while analyzing snapshots. Try fewer charts or a shorter prompt." });
+      }
       return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
   }

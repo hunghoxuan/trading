@@ -19,7 +19,7 @@ function parseSnapshotBars(snapshot) {
 
 function parsePdZoneBounds(item) {
   const asNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
-  const lowRaw = asNum(item?.low ?? item?.bottom ?? item?.price_bottom);
+  const lowRaw = asNum(item?.low ?? item?.bottom ?? item?.price_bottom ?? item?.bot);
   const highRaw = asNum(item?.high ?? item?.top ?? item?.price_top);
   if (lowRaw != null && highRaw != null) {
     return { low: Math.min(lowRaw, highRaw), high: Math.max(lowRaw, highRaw) };
@@ -434,6 +434,7 @@ export default function TradeSignalChart({
           // Support both old signal format (nested under market_analysis) and new (top-level)
           const rawPdArrays =
             Array.isArray(snapshot?.pd_arrays) ? snapshot.pd_arrays :
+            Array.isArray(snapshot?.pdArrays) ? snapshot.pdArrays :
             Array.isArray(snapshot?.market_analysis?.pd_arrays) ? snapshot.market_analysis.pd_arrays :
             [];
 

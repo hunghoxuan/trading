@@ -1,5 +1,21 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-29 10:22
+- **Starting Task**:
+  - Compact ICT AI analysis prompt/schema/token budget to reduce snapshot analyze timeouts.
+  - Add compatibility for the compact schema shape proposed by the user (`timeframes`, `pdArrays`, `tradePlan`, `verdict`) while preserving old saved analysis support.
+- **Work Accomplished**:
+  - Changed backend schema to compact `AI_RESPONSE_SCHEMA_VERSION = "1.2.0"` with minified schema injection and strict array limits.
+  - Added compact checklist bank and shorter backend prompt instructions to reduce input tokens.
+  - Added backend/frontend compatibility normalization between compact fields (`pdArrays`, `tradePlan`, `verdict`) and legacy UI fields (`market_analysis`, `trade_plan`, `final_verdict`).
+  - Reduced default snapshot max output from 7000 to 4500 tokens, extended snapshot AI timeout to 180s, and return a clear 504 timeout message.
+  - Reduced frontend analyze prompt payload by replacing full JSON config + guide with compact runtime config and only sending guide overrides when edited.
+  - Bumped server/EA versions to `v2026.04.29 08:28 - 5fcd486`.
+- **Verification**:
+  - `node --check webhook/server.js`
+  - `npm run build` in `web-ui`
+  - `git diff --check`
+
 # Session Log: 2026-04-29 08:28
 - **Starting Task**:
   - Update backend/UI AI Prompt Response Schema and prompt guideline handling to the new ICT schema with per-timeframe price action/prediction, PD array ids, buy/sell confluence checklists, skip reasons, partial TPs, and final verdict risk tier.

@@ -381,11 +381,20 @@ export function SignalDetailCard({
           {(() => {
              const raw = rawData;
              const m = raw.market_analysis || {};
-             const primaryTf = Array.isArray(m.timeframes) ? (m.timeframes.find((x) => x?.bias || x?.trend) || {}) : {};
+             const compactTfs = Array.isArray(raw.timeframes) ? raw.timeframes : [];
+             const primaryTf = Array.isArray(m.timeframes) && m.timeframes.length
+               ? (m.timeframes.find((x) => x?.bias || x?.trend) || {})
+               : (compactTfs.find((x) => x?.bias || x?.trend) || {});
              const bias = m.bias || raw.bias || primaryTf.bias || "N/A";
              const trend = m.trend || raw.trend || primaryTf.trend || "N/A";
              const confluence = m.confluence || raw.confluence || "";
-             const rawChecklist = m.confluence_checklist || raw.confluence_checklist || m.checklist || raw.checklist || [];
+             const compactChecklist = raw.checklist && typeof raw.checklist === "object"
+               ? {
+                 buy: Array.isArray(raw.checklist?.buy?.items) ? raw.checklist.buy.items.map((x) => ({ ...x, checked: Boolean(x?.passed), pd_array_ref: x?.pdRef ?? null })) : [],
+                 sell: Array.isArray(raw.checklist?.sell?.items) ? raw.checklist.sell.items.map((x) => ({ ...x, checked: Boolean(x?.passed), pd_array_ref: x?.pdRef ?? null })) : [],
+               }
+               : null;
+             const rawChecklist = m.confluence_checklist || raw.confluence_checklist || compactChecklist || m.checklist || raw.checklist || [];
              let checklist = Array.isArray(rawChecklist)
                ? rawChecklist
                : [
@@ -393,11 +402,11 @@ export function SignalDetailCard({
                  ...(Array.isArray(rawChecklist?.sell) ? rawChecklist.sell.map((x) => ({ side: "Sell", ...x })) : []),
                ];
              if (typeof checklist === 'string') checklist = [checklist];
-             const verdictObj = raw.final_verdict || m.final_verdict || {};
-             const verdictText = typeof verdictObj === 'string' ? verdictObj : (verdictObj.action ? `${verdictObj.action}${verdictObj.risk_tier ? ` / ${verdictObj.risk_tier}` : ''}${verdictObj.confidence ? ` (${verdictObj.confidence}%)` : ''}` : "");
-             const firstPlan = Array.isArray(raw.trade_plan) ? raw.trade_plan[0] : raw.trade_plan;
+             const verdictObj = raw.final_verdict || m.final_verdict || raw.verdict || {};
+             const verdictText = typeof verdictObj === 'string' ? verdictObj : (verdictObj.action ? `${verdictObj.action}${(verdictObj.risk_tier || verdictObj.tier) ? ` / ${verdictObj.risk_tier || verdictObj.tier}` : ''}${verdictObj.confidence ? ` (${verdictObj.confidence}%)` : ''}` : "");
+             const firstPlan = Array.isArray(raw.trade_plan) ? raw.trade_plan[0] : (Array.isArray(raw.tradePlan) ? raw.tradePlan[0] : raw.trade_plan);
              const note = raw.note || m.note || (verdictObj && verdictObj.note) || (firstPlan && firstPlan.note) || "";
-             const analysis = raw.analysis || m.analysis || primaryTf?.price_action_summary?.recent_move || primaryTf?.price_prediction?.narrative || "";
+             const analysis = raw.analysis || m.analysis || primaryTf?.price_action_summary?.recent_move || primaryTf?.did || primaryTf?.price_prediction?.narrative || primaryTf?.next || "";
              return (
                <div className="analysis-summary-md">
                  <div style={{ marginBottom: 20 }}>
