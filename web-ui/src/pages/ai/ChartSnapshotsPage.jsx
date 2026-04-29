@@ -1272,7 +1272,12 @@ export default function ChartSnapshotsPage() {
       setUsedFiles(Array.isArray(out?.used_files) ? out.used_files : []);
       if (!files.length) setAnalysisFilesDisplay(Array.isArray(out?.used_files) ? out.used_files : []);
       setResponseTab("chart");
-      const msg = `Analyzed ${Array.isArray(out?.used_files) ? out.used_files.length : 0} screenshot(s).`;
+      const fileMode = out?.claude_files_mode === "files_api"
+        ? ` Claude Files: ${Array.isArray(out?.claude_files) ? out.claude_files.length : 0}.`
+        : out?.claude_files_mode === "fallback_base64"
+          ? " Claude Files failed; used base64 fallback."
+          : "";
+      const msg = `Analyzed ${Array.isArray(out?.used_files) ? out.used_files.length : 0} screenshot(s).${fileMode}`;
       setStatus({ type: "success", text: msg });
       setActionMessage("analyze", "success", msg);
     } catch (e) {

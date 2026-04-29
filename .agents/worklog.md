@@ -288,3 +288,18 @@
 - **Key Decisions/Changes**:
   - Hiding the generic top-level header when a trade plan is active to reduce visual clutter.
   - Using a unique `key` on `SignalDetailCard` to prevent stale data in the sidebar detail view.
+
+# Session Log: 2026-04-29 11:35
+- **Starting Task**:
+  - Add Claude Files API fast path for chart snapshot analysis while preserving VPS snapshot storage and base64 fallback.
+  - Add authenticated Claude file list/delete/upload management helpers/endpoints where practical.
+- **Work Accomplished**:
+  - Added Claude Files API upload/cache path for snapshot analysis with file_id image blocks.
+  - Preserved VPS snapshot storage and added automatic base64 fallback when Files API upload or message file references fail.
+  - Added authenticated Claude file management endpoints for list, snapshot upload, and delete.
+  - Added UI status text to show Files API vs fallback mode.
+- **Verification**:
+  - node --check webhook/server.js
+  - npm run build in web-ui
+  - git diff --check
+

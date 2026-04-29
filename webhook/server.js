@@ -95,8 +95,10 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.29 09:15 - 8cd2125"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.29 17:08 - 4bbcef1"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
+const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(CHART_SNAPSHOT_DIR, ".claude-files.json");
+const ANTHROPIC_FILES_BETA = "files-api-2025-04-14";
 
 function readDiskStats(mountPath = "/") {
   try {
@@ -2232,6 +2234,189 @@ function snapshotMimeByFileName(fileName) {
   return "";
 }
 
+function readClaudeSnapshotFileMap() {
+  ensureChartSnapshotDir();
+  try {
+    if (!fs.existsSync(CHART_SNAPSHOT_CLAUDE_MAP_FILE)) return {};
+    const parsed = JSON.parse(fs.readFileSync(CHART_SNAPSHOT_CLAUDE_MAP_FILE, "utf8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeClaudeSnapshotFileMap(map = {}) {
+  ensureChartSnapshotDir();
+  const tmp = `${CHART_SNAPSHOT_CLAUDE_MAP_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(map && typeof map === "object" ? map : {}, null, 2));
+  fs.renameSync(tmp, CHART_SNAPSHOT_CLAUDE_MAP_FILE);
+}
+
+function getMappedClaudeSnapshotFile(fileName, absPath) {
+  const safeName = normalizeSnapshotFileName(fileName);
+  if (!safeName || !absPath || !fs.existsSync(absPath)) return null;
+  const map = readClaudeSnapshotFileMap();
+  const item = map[safeName];
+  if (!item || typeof item !== "object" || !item.file_id) return null;
+  try {
+    const st = fs.statSync(absPath);
+    if (Number(item.size_bytes || 0) !== Number(st.size || 0)) return null;
+    if (Number(item.mtime_ms || 0) !== Number(st.mtimeMs || 0)) return null;
+    return item;
+  } catch {
+    return null;
+  }
+}
+
+function setMappedClaudeSnapshotFile(fileName, absPath, uploaded = {}) {
+  const safeName = normalizeSnapshotFileName(fileName);
+  if (!safeName || !uploaded?.id || !absPath || !fs.existsSync(absPath)) return null;
+  const st = fs.statSync(absPath);
+  const map = readClaudeSnapshotFileMap();
+  const item = {
+    local_file: safeName,
+    file_id: String(uploaded.id || ""),
+    filename: String(uploaded.filename || safeName),
+    mime_type: String(uploaded.mime_type || snapshotMimeByFileName(safeName) || ""),
+    size_bytes: Number(uploaded.size_bytes || st.size || 0),
+    mtime_ms: Number(st.mtimeMs || 0),
+    created_at: String(uploaded.created_at || new Date().toISOString()),
+    uploaded_at: new Date().toISOString(),
+    source: "chart_snapshot",
+  };
+  map[safeName] = item;
+  writeClaudeSnapshotFileMap(map);
+  return item;
+}
+
+function removeMappedClaudeSnapshotFiles(fileNames = []) {
+  const map = readClaudeSnapshotFileMap();
+  let changed = false;
+  for (const fileNameRaw of fileNames || []) {
+    const safe = normalizeSnapshotFileName(fileNameRaw);
+    if (safe && map[safe]) {
+      delete map[safe];
+      changed = true;
+    }
+  }
+  if (changed) writeClaudeSnapshotFileMap(map);
+}
+
+async function loadClaudeApiKeyForUser(userId) {
+  const cfgRows = await (await mt5InitBackend()).query(
+    "SELECT name, data FROM user_settings WHERE user_id = $1 AND type = 'api_key'",
+    [userId],
+  );
+  for (const row of cfgRows.rows || []) {
+    const name = normalizeAiApiKeyName(row?.name);
+    if (name !== "CLAUDE_API_KEY") continue;
+    const dec = decryptObject(row?.data && typeof row.data === "object" ? row.data : {});
+    const value = String(dec?.value || "").trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+async function anthropicFilesRequest({ apiKey, method = "GET", pathName = "/v1/files", body = undefined, timeoutMs = 30000 }) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const headers = {
+    "x-api-key": String(apiKey || ""),
+    "anthropic-version": "2023-06-01",
+    "anthropic-beta": ANTHROPIC_FILES_BETA,
+  };
+  try {
+    const res = await fetch(`https://api.anthropic.com${pathName}`, {
+      method,
+      signal: ctrl.signal,
+      headers,
+      body,
+    });
+    const text = await res.text().catch(() => "");
+    let parsed = {};
+    try {
+      parsed = text ? JSON.parse(text) : {};
+    } catch {
+      parsed = { raw: text };
+    }
+    if (!res.ok) {
+      const msg = parsed?.error?.message || parsed?.message || text || `${res.status} ${res.statusText}`;
+      throw new Error(`Claude Files API Error (${res.status}): ${msg}`);
+    }
+    return parsed;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function uploadSnapshotToClaudeFile({ apiKey, fileName, absPath, mediaType }) {
+  const cached = getMappedClaudeSnapshotFile(fileName, absPath);
+  if (cached?.file_id) return { ...cached, reused: true };
+  const safeName = normalizeSnapshotFileName(fileName);
+  if (!safeName || !absPath || !fs.existsSync(absPath)) throw new Error("Invalid snapshot file for Claude upload.");
+  const bytes = fs.readFileSync(absPath);
+  const form = new FormData();
+  form.append("file", new Blob([bytes], { type: mediaType }), safeName);
+  const uploaded = await anthropicFilesRequest({
+    apiKey,
+    method: "POST",
+    pathName: "/v1/files",
+    body: form,
+    timeoutMs: 45000,
+  });
+  const mapped = setMappedClaudeSnapshotFile(safeName, absPath, uploaded);
+  return { ...(mapped || uploaded), reused: false };
+}
+
+function buildBase64SnapshotContent(snapshotFiles = []) {
+  const content = [];
+  const usedFiles = [];
+  for (const item of snapshotFiles || []) {
+    const b64 = fs.readFileSync(item.abs).toString("base64");
+    content.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: item.mediaType,
+        data: b64,
+      },
+    });
+    usedFiles.push(item.fileName);
+  }
+  return { content, usedFiles };
+}
+
+async function buildClaudeFileSnapshotContent({ apiKey, snapshotFiles = [] }) {
+  const content = [];
+  const usedFiles = [];
+  const claudeFiles = [];
+  for (const item of snapshotFiles || []) {
+    const uploaded = await uploadSnapshotToClaudeFile({
+      apiKey,
+      fileName: item.fileName,
+      absPath: item.abs,
+      mediaType: item.mediaType,
+    });
+    content.push({
+      type: "image",
+      source: {
+        type: "file",
+        file_id: uploaded.file_id || uploaded.id,
+      },
+    });
+    usedFiles.push(item.fileName);
+    claudeFiles.push({
+      local_file: item.fileName,
+      file_id: uploaded.file_id || uploaded.id,
+      filename: uploaded.filename || item.fileName,
+      mime_type: uploaded.mime_type || item.mediaType,
+      size_bytes: Number(uploaded.size_bytes || 0),
+      reused: uploaded.reused === true,
+    });
+  }
+  return { content, usedFiles, claudeFiles };
+}
+
 function normalizeSnapshotFileName(fileNameRaw) {
   const raw = String(fileNameRaw || "").trim();
   if (!raw) return "";
@@ -2344,19 +2529,21 @@ function pickPreferredAnthropicModel(ids = [], preferred = "") {
   return list[0] || want;
 }
 
-async function anthropicMessagesWithFallback({ apiKey, model, messages, maxTokens = 1600, timeoutMs = 90000 }) {
+async function anthropicMessagesWithFallback({ apiKey, model, messages, maxTokens = 1600, timeoutMs = 90000, beta = "" }) {
   const requestOnce = async (useModel) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    const headers = {
+      "Content-Type": "application/json",
+      "x-api-key": String(apiKey || ""),
+      "anthropic-version": "2023-06-01",
+    };
+    if (beta) headers["anthropic-beta"] = String(beta);
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         signal: ctrl.signal,
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": String(apiKey || ""),
-          "anthropic-version": "2023-06-01",
-        },
+        headers,
         body: JSON.stringify({
           model: useModel,
           max_tokens: Number(maxTokens || 1600),
@@ -9887,17 +10074,7 @@ const appHandler = async (req, res) => {
       const userId = sess.user_id || CFG.mt5DefaultUserId;
       const sessionId = `ai_analyze_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       await (await mt5Backend()).log(sessionId, 'ai', { event: 'AI_ANALYSIS', payload: body }, userId);
-      const cfgRows = await (await mt5InitBackend()).query(
-        "SELECT name, data FROM user_settings WHERE user_id = $1 AND type = 'api_key'",
-        [userId],
-      );
-      const config = {};
-      for (const row of cfgRows.rows || []) {
-        const name = normalizeAiApiKeyName(row?.name);
-        const dec = decryptObject(row?.data && typeof row.data === "object" ? row.data : {});
-        if (ALLOWED_AI_API_KEY_NAMES.has(name) && dec?.value) config[name] = String(dec.value || "");
-      }
-      const claudeKey = String(config.CLAUDE_API_KEY || "").trim();
+      const claudeKey = await loadClaudeApiKeyForUser(userId);
       if (!claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
 
       let files = Array.isArray(body.files) ? body.files.map((x) => String(x || "").trim()).filter(Boolean) : [];
@@ -9916,8 +10093,7 @@ const appHandler = async (req, res) => {
       files = files.slice(0, 3);
       if (!files.length) return json(res, 400, { ok: false, error: "No snapshots found for analysis." });
 
-      const content = [];
-      const usedFiles = [];
+      const snapshotFiles = [];
       for (const fileNameRaw of files) {
         const safeName = path.basename(String(fileNameRaw || ""));
         if (!safeName || safeName !== fileNameRaw || !/\.(png|jpg|jpeg)$/i.test(safeName)) continue;
@@ -9925,43 +10101,70 @@ const appHandler = async (req, res) => {
         if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue;
         const mediaType = snapshotMimeByFileName(safeName);
         if (!mediaType) continue;
-        const b64 = fs.readFileSync(abs).toString("base64");
-        content.push({
-          type: "image",
-          source: {
-            type: "base64",
-            media_type: mediaType,
-            data: b64,
-          },
-        });
-        usedFiles.push(safeName);
+        snapshotFiles.push({ fileName: safeName, abs, mediaType });
       }
-      if (!content.length) return json(res, 400, { ok: false, error: "No valid snapshot images available." });
+      if (!snapshotFiles.length) return json(res, 400, { ok: false, error: "No valid snapshot images available." });
 
       let finalPrompt = String(body.prompt || "").trim() || "Analyze these chart snapshots and return only JSON.";
 
       finalPrompt += `\n\n${buildAiSchemaPromptText()}`;
 
+      let imagePayload = null;
+      let claudeFilesMode = "base64";
+      let claudeFilesError = "";
+      try {
+        imagePayload = await buildClaudeFileSnapshotContent({ apiKey: claudeKey, snapshotFiles });
+        claudeFilesMode = "files_api";
+      } catch (error) {
+        claudeFilesError = error instanceof Error ? error.message : String(error);
+        imagePayload = buildBase64SnapshotContent(snapshotFiles);
+        claudeFilesMode = "fallback_base64";
+      }
+
+      const content = [...imagePayload.content];
       content.push({
         type: "text",
         text: finalPrompt,
       });
 
       const requestModel = String(body.model || "claude-sonnet-4-0").trim() || "claude-sonnet-4-0";
-      const out = await anthropicMessagesWithFallback({
+      let out = await anthropicMessagesWithFallback({
         apiKey: claudeKey,
         model: requestModel,
         messages: [{ role: "user", content }],
         maxTokens: Number(body.max_tokens || 4500),
         timeoutMs: 180000,
+        beta: claudeFilesMode === "files_api" ? ANTHROPIC_FILES_BETA : "",
       });
       const aiRes = out.response;
-      const resolvedModel = out.modelUsed || requestModel;
-      if (!aiRes.ok) {
-        const errText = await aiRes.text();
-        throw new Error(`Claude API Error (${aiRes.status}): ${errText}`);
+      let resolvedModel = out.modelUsed || requestModel;
+      let finalAiRes = aiRes;
+      if (!finalAiRes.ok && claudeFilesMode === "files_api") {
+        const errText = await finalAiRes.text().catch(() => "");
+        claudeFilesError = errText || `Claude Messages rejected file references (${finalAiRes.status}).`;
+        removeMappedClaudeSnapshotFiles(snapshotFiles.map((x) => x.fileName));
+        const fallbackPayload = buildBase64SnapshotContent(snapshotFiles);
+        const fallbackContent = [...fallbackPayload.content, { type: "text", text: finalPrompt }];
+        imagePayload = {
+          ...fallbackPayload,
+          claudeFiles: imagePayload.claudeFiles || [],
+        };
+        claudeFilesMode = "fallback_base64";
+        out = await anthropicMessagesWithFallback({
+          apiKey: claudeKey,
+          model: resolvedModel,
+          messages: [{ role: "user", content: fallbackContent }],
+          maxTokens: Number(body.max_tokens || 4500),
+          timeoutMs: 180000,
+        });
+        finalAiRes = out.response;
+        resolvedModel = out.modelUsed || resolvedModel;
       }
-      const aiJson = await aiRes.json();
+      if (!finalAiRes.ok) {
+        const errText = await finalAiRes.text();
+        throw new Error(`Claude API Error (${finalAiRes.status}): ${errText}`);
+      }
+      const aiJson = await finalAiRes.json();
       const rawResponse = Array.isArray(aiJson?.content)
         ? aiJson.content.filter((x) => x?.type === "text").map((x) => String(x?.text || "")).join("\n")
         : String(aiJson?.content || "");
@@ -9997,7 +10200,10 @@ const appHandler = async (req, res) => {
         ok: true,
         model: resolvedModel,
         schema_version: AI_RESPONSE_SCHEMA_VERSION,
-        used_files: usedFiles,
+        used_files: imagePayload.usedFiles || snapshotFiles.map((x) => x.fileName),
+        claude_files_mode: claudeFilesMode,
+        claude_files: imagePayload.claudeFiles || [],
+        claude_files_error: claudeFilesError,
         raw_response: rawResponse,
         parsed_json: parsedJson,
       });
@@ -10005,6 +10211,122 @@ const appHandler = async (req, res) => {
       if (error?.name === "AbortError" || String(error?.message || "").toLowerCase().includes("aborted")) {
         return json(res, 504, { ok: false, error: "AI provider timeout while analyzing snapshots. Try fewer charts or a shorter prompt." });
       }
+      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/v2/ai/claude/files") {
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      const userId = sess.user_id || CFG.mt5DefaultUserId;
+      const claudeKey = await loadClaudeApiKeyForUser(userId);
+      if (!claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
+      const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit") || 100) || 100, 200));
+      const afterId = String(url.searchParams.get("after_id") || "").trim();
+      const qs = new URLSearchParams({ limit: String(limit) });
+      if (afterId) qs.set("after_id", afterId);
+      const out = await anthropicFilesRequest({ apiKey: claudeKey, pathName: `/v1/files?${qs.toString()}` });
+      return json(res, 200, { ok: true, ...out, local_map: readClaudeSnapshotFileMap() });
+    } catch (error) {
+      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/ai/claude/files/upload-snapshots") {
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      ensureChartSnapshotDir();
+      const body = await readJson(req);
+      const userId = sess.user_id || CFG.mt5DefaultUserId;
+      const claudeKey = await loadClaudeApiKeyForUser(userId);
+      if (!claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
+      const reqSessionPrefix = sanitizeSessionPrefix(body?.session_prefix || body?.sessionPrefix || "");
+      let files = Array.isArray(body?.files) ? body.files.map((x) => String(x || "").trim()).filter(Boolean) : [];
+      if (!files.length) {
+        files = fs.readdirSync(CHART_SNAPSHOT_DIR)
+          .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
+          .filter((f) => !reqSessionPrefix || f.includes(`_${reqSessionPrefix}_`))
+          .slice(0, 20);
+      }
+      const uploaded = [];
+      const failed = [];
+      for (const fileNameRaw of files) {
+        const safeName = normalizeSnapshotFileName(fileNameRaw);
+        if (!safeName) {
+          failed.push({ file: fileNameRaw, error: "Invalid snapshot file name." });
+          continue;
+        }
+        const abs = path.join(CHART_SNAPSHOT_DIR, safeName);
+        const mediaType = snapshotMimeByFileName(safeName);
+        if (!mediaType || !fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+          failed.push({ file: safeName, error: "Snapshot file not found." });
+          continue;
+        }
+        try {
+          uploaded.push(await uploadSnapshotToClaudeFile({ apiKey: claudeKey, fileName: safeName, absPath: abs, mediaType }));
+        } catch (error) {
+          failed.push({ file: safeName, error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+      return json(res, 200, { ok: true, uploaded_count: uploaded.length, failed_count: failed.length, uploaded, failed });
+    } catch (error) {
+      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if ((req.method === "DELETE" && url.pathname.startsWith("/v2/ai/claude/files/")) || (req.method === "POST" && url.pathname === "/v2/ai/claude/files/delete")) {
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      const userId = sess.user_id || CFG.mt5DefaultUserId;
+      const claudeKey = await loadClaudeApiKeyForUser(userId);
+      if (!claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
+      let fileIds = [];
+      if (req.method === "DELETE") {
+        const fileId = decodeURIComponent(url.pathname.replace("/v2/ai/claude/files/", "") || "").trim();
+        if (fileId) fileIds.push(fileId);
+      } else {
+        const body = await readJson(req);
+        fileIds = Array.isArray(body?.file_ids) ? body.file_ids.map((x) => String(x || "").trim()).filter(Boolean) : [];
+        const localFiles = Array.isArray(body?.files) ? body.files.map((x) => String(x || "").trim()).filter(Boolean) : [];
+        if (localFiles.length) {
+          const map = readClaudeSnapshotFileMap();
+          for (const localFile of localFiles) {
+            const safe = normalizeSnapshotFileName(localFile);
+            const fileId = safe ? String(map[safe]?.file_id || "") : "";
+            if (fileId) fileIds.push(fileId);
+          }
+        }
+      }
+      fileIds = [...new Set(fileIds)];
+      if (!fileIds.length) return json(res, 400, { ok: false, error: "No Claude file ids provided." });
+      const deleted = [];
+      const failed = [];
+      for (const fileId of fileIds) {
+        try {
+          const out = await anthropicFilesRequest({
+            apiKey: claudeKey,
+            method: "DELETE",
+            pathName: `/v1/files/${encodeURIComponent(fileId)}`,
+            timeoutMs: 30000,
+          });
+          deleted.push({ file_id: fileId, result: out });
+        } catch (error) {
+          failed.push({ file_id: fileId, error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+      const map = readClaudeSnapshotFileMap();
+      for (const [localFile, item] of Object.entries(map)) {
+        if (fileIds.includes(String(item?.file_id || ""))) delete map[localFile];
+      }
+      writeClaudeSnapshotFileMap(map);
+      return json(res, 200, { ok: true, deleted_count: deleted.length, failed_count: failed.length, deleted, failed });
+    } catch (error) {
       return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
   }
@@ -10062,6 +10384,8 @@ const appHandler = async (req, res) => {
           : requestedFiles);
       const deleted = [];
       const skipped = [];
+      const claudeMap = readClaudeSnapshotFileMap();
+      const claudeFileIdsToDelete = [];
       for (const fileNameRaw of candidates) {
         const safeName = path.basename(String(fileNameRaw || ""));
         if (!safeName || safeName !== fileNameRaw || !/\.(png|jpg|jpeg)$/i.test(safeName)) {
@@ -10075,8 +10399,32 @@ const appHandler = async (req, res) => {
         }
         fs.unlinkSync(abs);
         deleted.push(safeName);
+        const mappedClaudeFileId = String(claudeMap[safeName]?.file_id || "");
+        if (mappedClaudeFileId) claudeFileIdsToDelete.push(mappedClaudeFileId);
       }
-      return json(res, 200, { ok: true, deleted_count: deleted.length, deleted, skipped });
+      removeMappedClaudeSnapshotFiles(deleted);
+      const claudeDeleted = [];
+      const claudeDeleteFailed = [];
+      if (claudeFileIdsToDelete.length && body?.delete_claude !== false) {
+        const userId = sess.user_id || CFG.mt5DefaultUserId;
+        const claudeKey = await loadClaudeApiKeyForUser(userId).catch(() => "");
+        if (claudeKey) {
+          for (const fileId of [...new Set(claudeFileIdsToDelete)]) {
+            try {
+              await anthropicFilesRequest({
+                apiKey: claudeKey,
+                method: "DELETE",
+                pathName: `/v1/files/${encodeURIComponent(fileId)}`,
+                timeoutMs: 15000,
+              });
+              claudeDeleted.push(fileId);
+            } catch (error) {
+              claudeDeleteFailed.push({ file_id: fileId, error: error instanceof Error ? error.message : String(error) });
+            }
+          }
+        }
+      }
+      return json(res, 200, { ok: true, deleted_count: deleted.length, deleted, skipped, claude_deleted: claudeDeleted, claude_delete_failed: claudeDeleteFailed });
     } catch (error) {
       return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }

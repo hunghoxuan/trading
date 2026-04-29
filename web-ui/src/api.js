@@ -589,6 +589,15 @@ export const api = {
   chartSnapshotCreate: (payload = {}) => postWithTimeout("/v2/chart/snapshot", payload, 90000),
   chartSnapshotCreateBatch: (payload = {}) => postWithTimeout("/v2/chart/snapshot/batch", payload, 180000),
   chartSnapshotsAnalyze: (payload = {}) => postWithTimeout("/v2/chart/snapshots/analyze", payload, 180000),
+  claudeFiles: (params = {}) => {
+    const q = new URLSearchParams();
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && String(v) !== "") q.set(k, String(v));
+    });
+    return get(`/v2/ai/claude/files${q.toString() ? `?${q.toString()}` : ""}`);
+  },
+  claudeUploadSnapshots: (payload = {}) => postWithTimeout("/v2/ai/claude/files/upload-snapshots", payload, 90000),
+  claudeDeleteFiles: (payload = {}) => post("/v2/ai/claude/files/delete", payload),
   chartTwelveCandles: (symbol = "", timeframe = "15m", bars = 300, refresh = false) =>
     get(`/v2/chart/twelve/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&bars=${encodeURIComponent(bars)}${refresh ? "&refresh=1" : ""}`),
   chartSymbols: (q = "", provider = "ICMARKETS", limit = 20) =>
