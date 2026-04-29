@@ -20,6 +20,7 @@ const KILL_ZONES = [
 export default function SessionClockBar({ displayTimezone }) {
   const [now, setNow] = useState(new Date());
   const [tz, setTz] = useState(() => displayTimezone || localStorage.getItem("ui_display_timezone") || "UTC");
+  const [news, setNews] = useState([]);
 
   useEffect(() => {
     if (displayTimezone && displayTimezone !== tz) {
@@ -31,7 +32,21 @@ export default function SessionClockBar({ displayTimezone }) {
     const timer = setInterval(() => {
       setNow(new Date());
     }, 1000);
-    return () => clearInterval(timer);
+    
+    // Fetch News Today
+    const fetchNews = async () => {
+      try {
+        const res = await fetch("/v2/calendar/today").then(r => r.json());
+        if (res.ok) setNews(res.events || []);
+      } catch (e) {}
+    };
+    fetchNews();
+    const newsTimer = setInterval(fetchNews, 300000); // Every 5m
+
+    return () => {
+      clearInterval(timer);
+      clearInterval(newsTimer);
+    };
   }, []);
 
   const { timeStr, progressPct, currentHour } = useMemo(() => {
@@ -64,9 +79,9 @@ export default function SessionClockBar({ displayTimezone }) {
   /**
    * Helper to convert a UTC hour to the target timezone's hour-of-day (0-24)
    */
-  const getTzHour = (utcHour) => {
+  const getTzHour = (utcHour, utcMin = 0) => {
     const date = new Date();
-    date.setUTCHours(utcHour, 0, 0, 0);
+    date.setUTCHours(utcHour, utcMin, 0, 0);
     const fmt = new Intl.DateTimeFormat('en-GB', {
       timeZone: tz,
       hour: 'numeric',
@@ -79,9 +94,36 @@ export default function SessionClockBar({ displayTimezone }) {
     return h + m / 60;
   };
 
+  /**
+   * Helper to convert EST time to TZ hour
+   */
+  const getEstToTzHour = (estH, estM = 0) => {
+    const date = new Date();
+    // Offset for EST (UTC-5) or EDT (UTC-4)
+    // For simplicity, we use UTC-5
+    const utcHour = (estH + 5) % 24;
+    return getTzHour(utcHour, estM);
+  };
+
+  const countdown = useMemo(() => {
+    const allEvents = [];
+    KILL_ZONES.forEach(kz => {
+      allEvents.push({ h: getTzHour(kz.start), label: kz.label + ' Starts' });
+      allEvents.push({ h: getTzHour(kz.end), label: kz.label + ' Ends' });
+    });
+    
+    const future = allEvents
+      .map(ev => ({ ...ev, diff: ev.h - currentHour }))
+      .filter(ev => ev.diff > 0)
+      .sort((a, b) => a.diff - b.diff)[0];
+
+    if (!future) return null;
+    const mins = Math.floor(future.diff * 60);
+    return { text: `${future.label} in ${mins}m`, mins };
+  }, [currentHour, tz]);
+
   const renderRuler = () => {
     const ticks = [];
-    // Top: 4 hour split
     for (let i = 0; i <= 24; i += 4) {
       ticks.push(
         <div key={`top-${i}`} className="ruler-tick major" style={{ left: `${(i / 24) * 100}%` }}>
@@ -89,10 +131,9 @@ export default function SessionClockBar({ displayTimezone }) {
         </div>
       );
     }
-    // Bottom: 15 minute split
     for (let i = 0; i <= 24 * 4; i++) {
       const hours = i / 4;
-      if (hours % 4 === 0) continue; // Skip if already a major tick
+      if (hours % 4 === 0) continue;
       ticks.push(
         <div key={`bot-${i}`} className="ruler-tick minor" style={{ left: `${(hours / 24) * 100}%` }} />
       );
@@ -104,11 +145,8 @@ export default function SessionClockBar({ displayTimezone }) {
     return data.map((item) => {
       let startTz = getTzHour(item.start);
       let endTz = getTzHour(item.end);
-      
-      // Handle wrap around
       const regions = [];
       if (endTz < startTz) {
-        // Wraps around midnight
         regions.push({ s: startTz, e: 24 });
         regions.push({ s: 0, e: endTz });
       } else {
@@ -149,6 +187,37 @@ export default function SessionClockBar({ displayTimezone }) {
           {renderRegions(KILL_ZONES, true)}
         </div>
 
+        {/* Midnight & NY Open Markers */}
+        <div className="opening-marker midnight" style={{ left: `${(getEstToTzHour(0) / 24) * 100}%` }}>
+          <div className="marker-tag">MIDNIGHT</div>
+        </div>
+        <div className="opening-marker nyopen" style={{ left: `${(getEstToTzHour(8, 30) / 24) * 100}%` }}>
+          <div className="marker-tag">NY OPEN</div>
+        </div>
+
+        {/* News Markers */}
+        {news.map((ev, idx) => {
+          // Parse time like "10:00am"
+          const timeMatch = ev.time.match(/(\d+):(\d+)(am|pm)/i);
+          if (!timeMatch) return null;
+          let h = parseInt(timeMatch[1]);
+          const m = parseInt(timeMatch[2]);
+          const isPm = timeMatch[3].toLowerCase() === 'pm';
+          if (isPm && h < 12) h += 12;
+          if (!isPm && h === 12) h = 0;
+          // FF feed is in EST
+          const posPct = (getEstToTzHour(h, m) / 24) * 100;
+          return (
+            <div key={`news-${idx}`} className="news-marker" style={{ left: `${posPct}%` }}>
+              <div className="news-icon">!</div>
+              <div className="news-tooltip">
+                <strong>{ev.title}</strong><br/>
+                Impact: {ev.impact} · {ev.time} EST
+              </div>
+            </div>
+          );
+        })}
+
         {/* Progress Fill (at bottom) */}
         <div className="progress-fill" style={{ width: `${progressPct}%` }} />
 
@@ -160,6 +229,7 @@ export default function SessionClockBar({ displayTimezone }) {
 
         {/* Digital Clock & Timezone (Inside Bar, Right Aligned) */}
         <div className="digital-clock-embedded">
+          {countdown && <div className="countdown-text">{countdown.text}</div>}
           <div className="time-value-small">{timeStr}</div>
           <div className="tz-label-small">{tz.split('/').pop().replace('_', ' ')}</div>
         </div>

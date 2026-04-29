@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.29 20:50 - ce2cd82"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.29 21:20 - 88e78ac"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(CHART_SNAPSHOT_DIR, ".claude-files.json");
 const AI_CONTEXT_FILE_DIR = path.resolve(__dirname, "ai_context_files");
@@ -593,6 +593,45 @@ async function repoGetSystemSettings() {
     try { return decryptObject(raw); } catch { return raw; }
   });
 }
+
+async function refreshEconomicCalendar() {
+  try {
+    // ForexFactory JSON feed ( industry standard )
+    const url = "https://nfs.forexfactory.com/ff_calendar_thisweek.json";
+    const resp = await fetch(url, { timeout: 10000 }).catch(() => null);
+    if (!resp || !resp.ok) return;
+    
+    const data = await resp.json();
+    if (!Array.isArray(data)) return;
+
+    // Filter for today's high impact events
+    const today = new Date().toISOString().split('T')[0];
+    const filtered = data.filter(item => {
+      // item.date format is usually "MM-DD-YYYY"
+      const dateParts = item.date.split('-');
+      if (dateParts.length !== 3) return false;
+      const itemDate = `${dateParts[2]}-${dateParts[0]}-${dateParts[1]}`;
+      
+      return itemDate === today && item.impact === "High";
+    });
+
+    if (CFG.redisEnabled) {
+      const client = await getRedisClient();
+      if (client) {
+        await client.setEx("economic_calendar:today", 86400, JSON.stringify(filtered)).catch(() => {});
+      }
+    }
+    MARKET_DATA_MEMORY_CACHE.set("economic_calendar:today", { data: filtered, expires_at_ms: Date.now() + 3600000 });
+    
+    console.log(`[news] Refreshed economic calendar: ${filtered.length} high-impact events today.`);
+  } catch (e) {
+    console.error("[news] Failed to refresh economic calendar:", e.message);
+  }
+}
+
+// Start news worker
+setInterval(refreshEconomicCalendar, 3600000); // Hourly
+setTimeout(refreshEconomicCalendar, 5000); // Initial boot
 
 async function repoGetUserAccounts(userId) {
   return await StateRepo.get("USER_ACCOUNTS", userId, async () => {
@@ -11072,6 +11111,26 @@ const appHandler = async (req, res) => {
       return json(res, 200, { ok: true, items: files });
     } catch (error) {
       return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/v2/calendar/today") {
+    try {
+      let data = null;
+      if (CFG.redisEnabled) {
+        const client = await getRedisClient();
+        if (client) {
+          const cached = await client.get("economic_calendar:today").catch(() => null);
+          if (cached) data = JSON.parse(cached);
+        }
+      }
+      if (!data) {
+        const mem = MARKET_DATA_MEMORY_CACHE.get("economic_calendar:today");
+        if (mem) data = mem.data;
+      }
+      return json(res, 200, { ok: true, events: data || [] });
+    } catch (error) {
+      return json(res, 500, { ok: false, error: error.message });
     }
   }
 

@@ -198,3 +198,85 @@
   letter-spacing: 0.5px;
   margin-top: -2px;
 }
+
+/* New Enhancements */
+.opening-marker {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 1px;
+  border-left: 1px dashed rgba(255, 255, 255, 0.4);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.opening-marker.midnight { border-color: rgba(255, 255, 255, 0.3); }
+.opening-marker.nyopen { border-color: rgba(59, 130, 246, 0.4); }
+
+.marker-tag {
+  position: absolute;
+  top: -12px;
+  left: 0;
+  font-size: 6px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+  letter-spacing: 1px;
+}
+
+.news-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 25;
+  cursor: pointer;
+}
+
+.news-icon {
+  width: 14px;
+  height: 14px;
+  background: #ef4444;
+  border: 1px solid #fff;
+  border-radius: 3px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+}
+
+.news-tooltip {
+  position: absolute;
+  bottom: 150%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid #ef4444;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: #fff;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s;
+  z-index: 30;
+}
+
+.news-marker:hover .news-tooltip {
+  opacity: 1;
+  visibility: visible;
+  bottom: 120%;
+}
+
+.countdown-text {
+  font-size: 8px;
+  font-weight: 700;
+  color: #fbbf24;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+  opacity: 0.9;
+}
