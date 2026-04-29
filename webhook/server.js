@@ -95,9 +95,11 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.29 19:32 - 5241f18"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.29 20:20 - 93c1ff7"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(CHART_SNAPSHOT_DIR, ".claude-files.json");
+const AI_CONTEXT_FILE_DIR = path.resolve(__dirname, "ai_context_files");
+const AI_CONTEXT_CLAUDE_MAP_FILE = path.join(AI_CONTEXT_FILE_DIR, ".claude-context-files.json");
 const ANTHROPIC_FILES_BETA = "files-api-2025-04-14";
 
 function readDiskStats(mountPath = "/") {

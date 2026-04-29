@@ -308,3 +308,10 @@
 - **Starting Task**:
   - Add VPS/Claude source menu to System > Snapshots.
   - Make Claude source list/delete Claude Files API items while preserving VPS snapshot behavior.
+
+# Session Log: 2026-04-29 20:05
+- **Starting Task**:
+  - Add cache-first multi-timeframe AI context flow.
+  - Persist last_price for market_data.
+  - Treat Claude Files as AI context cache for bars, snapshots, analysis, and trade plans.
+  - Stop AI page from sending raw bars in analyze payload.

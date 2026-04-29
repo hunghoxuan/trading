@@ -11,10 +11,10 @@ const SESSIONS = [
 ];
 
 const KILL_ZONES = [
-  { id: 'asia_kz', label: 'Asia Kill Zone', start: 0, end: 4, color: 'rgba(59, 130, 246, 0.3)' },
+  { id: 'asia_kz', label: 'Asian Kill Zone', start: 1, end: 5, color: 'rgba(59, 130, 246, 0.3)' },
   { id: 'london_kz', label: 'London Kill Zone', start: 7, end: 10, color: 'rgba(16, 185, 129, 0.3)' },
-  { id: 'ny_kz', label: 'NY Kill Zone', start: 12, end: 15, color: 'rgba(249, 115, 22, 0.3)' },
-  { id: 'london_close', label: 'London Close', start: 15, end: 17, color: 'rgba(239, 68, 68, 0.3)' },
+  { id: 'ny_kz', label: 'New York Kill Zone', start: 12, end: 15, color: 'rgba(249, 115, 22, 0.3)' },
+  { id: 'london_close_kz', label: 'London Close KZ', start: 15, end: 17, color: 'rgba(239, 68, 68, 0.3)' },
 ];
 
 export default function SessionClockBar({ displayTimezone }) {
@@ -158,10 +158,10 @@ export default function SessionClockBar({ displayTimezone }) {
           <div className="marker-dot" />
         </div>
 
-        {/* Digital Clock Overlaid */}
-        <div className="digital-clock" style={{ left: `calc(${progressPct}% - 10px)` }}>
-          <span className="tz-name">{tz.split('/').pop().replace('_', ' ')}</span>
-          <span className="time-value">{timeStr}</span>
+        {/* Digital Clock & Timezone (Inside Bar, Right Aligned) */}
+        <div className="digital-clock-embedded">
+          <div className="time-value-small">{timeStr}</div>
+          <div className="tz-label-small">{tz.split('/').pop().replace('_', ' ')}</div>
         </div>
       </div>
     </div>
