@@ -1007,6 +1007,8 @@ export default function ChartSnapshotsPage() {
   const [position, setPosition] = useState({ direction: "BUY", entry: "", tp: "", sl: "", rr: "", trade_type: "limit", note: "" });
   const [barsCache, setBarsCache] = useState({});
   const [barsLoading, setBarsLoading] = useState(false);
+  const [aiContext, setAiContext] = useState(null);
+  const [contextLoading, setContextLoading] = useState(false);
   const [symbolActivity, setSymbolActivity] = useState({ loading: false, items: [] });
   const [marketMetadata, setMarketMetadata] = useState({ source: "", updated_time: null, auto_refresh: 0 });
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
@@ -1057,8 +1059,8 @@ export default function ChartSnapshotsPage() {
 
   const promptText = useMemo(() => buildPrompt(cfg), [cfg]);
 
-  useEffect(() => {
-    // Reset analysis data when symbol changes
+	  useEffect(() => {
+	    // Reset analysis data when symbol changes
     setAnalysisRaw("");
     setAnalysisJson("");
     setAnalysisParsed(null);
@@ -1066,9 +1068,10 @@ export default function ChartSnapshotsPage() {
     setResponseTab("chart");
     setUsedFiles([]);
     setAnalysisFilesDisplay([]);
-    setActionStatus({ action: "", type: "", text: "" });
-    setSessionPrefix("");
-  }, [cfg.symbol]);
+	    setActionStatus({ action: "", type: "", text: "" });
+	    setSessionPrefix("");
+	    setAiContext(null);
+	  }, [cfg.symbol]);
   const [selectedEntryTf, setSelectedEntryTf] = useState("");
   const timeframe = useMemo(() => {
     const raw = selectedEntryTf || "";
@@ -1099,6 +1102,15 @@ export default function ChartSnapshotsPage() {
     [normalizedSymbolForBars, timeframe, cfg.lookbackBars],
   );
   const currentBarsSnapshot = barsCache[currentBarsKey] || null;
+  const contextByTf = useMemo(() => {
+    const map = new Map();
+    const rows = Array.isArray(aiContext?.timeframes) ? aiContext.timeframes : [];
+    rows.forEach((row) => {
+      const key = String(row?.tf || row?.tf_norm || "").toUpperCase();
+      if (key) map.set(key, row);
+    });
+    return map;
+  }, [aiContext]);
 
   const effectiveParsed = useMemo(() => {
     const current = enrichParsedAnalysis(analysisRaw, analysisParsed || tryParseJsonLoose(analysisJson) || tryParseJsonLoose(analysisRaw));
@@ -1200,6 +1212,39 @@ export default function ChartSnapshotsPage() {
     }
   };
 
+  const loadAiContext = async (opts = {}) => {
+    const symbol = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
+    if (!symbol) return null;
+    setContextLoading(true);
+    try {
+      const out = await api.chartContext({
+        symbol,
+        provider,
+        tfs: snapshotTfs,
+        bars: Number(cfg.lookbackBars || 300) || 300,
+        refresh: opts.refresh ? 1 : 0,
+        include_snapshots: opts.includeSnapshots ? 1 : 0,
+      });
+      setAiContext(out && typeof out === "object" ? out : null);
+      setMarketMetadata({
+        source: "chart_context",
+        updated_time: Date.now(),
+        auto_refresh: 0,
+      });
+      return out;
+    } catch (e) {
+      setStatus({ type: "warning", text: String(e?.message || e || "Failed to load AI context.") });
+      return null;
+    } finally {
+      setContextLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!normalizeSignalSymbol(tvSymbol || cfg.symbol || "")) return;
+    loadAiContext({ includeSnapshots: false }).catch(() => null);
+  }, [tvSymbol, provider, snapshotTfs.join(","), cfg.lookbackBars]);
+
   const analyzeFiles = async (files = []) => {
     setAnalyzing(true);
     setStatus({ type: "", text: "" });
@@ -1211,12 +1256,7 @@ export default function ChartSnapshotsPage() {
     const activeSessionPrefix = sessionPrefix || makeSessionPrefix();
     if (!sessionPrefix) setSessionPrefix(activeSessionPrefix);
     try {
-      const prefetchSymbol = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
-      const prefetchTf = timeframe;
-      const prefetchBars = Number(cfg.lookbackBars || 300) || 300;
-      const prefetchBarsPromise = prefetchSymbol
-        ? fetchBarsSnapshot(prefetchSymbol, prefetchTf, prefetchBars, true)
-        : Promise.resolve(null);
+      const context = await loadAiContext({ includeSnapshots: true });
 
       const basePrompt = String(promptDraft || promptText || "").trim();
       const runtimeConfig = JSON.stringify({
@@ -1244,15 +1284,13 @@ export default function ChartSnapshotsPage() {
         max_tokens: 4500,
         symbol: tvSymbol || cfg.symbol,
         timeframe,
+        provider,
+        timeframes: snapshotTfs,
+        bars_count: Number(cfg.lookbackBars || 300) || 300,
+        use_context_files: true,
+        context_mode: "claude",
+        context_files: Array.isArray(context?.context_files) ? context.context_files : [],
       };
-
-      // Wait for prefetch if needed or get from state
-      try {
-        const prefetched = await prefetchBarsPromise;
-        if (prefetched && prefetched.bars) {
-          payload.bars = prefetched.bars;
-        }
-      } catch (e) { }
 
       if (Array.isArray(files) && files.length) payload.files = files;
       const out = await api.chartSnapshotsAnalyze(payload);
@@ -1271,20 +1309,14 @@ export default function ChartSnapshotsPage() {
         setAnalysisParsed(parsed);
         setAnalysisJson(JSON.stringify(parsed, null, 2));
         setPosition(extractPositionFromAnalysis(parsed));
-
-        // Fetch bars in background - non-blocking
-        const symbolForBars = normalizeSignalSymbol(parsed?.symbol || tvSymbol || cfg.symbol || "");
-        prefetchBarsPromise.then(prefetched => {
-          if (!prefetched || normalizeSignalSymbol(symbolForBars) !== normalizeSignalSymbol(prefetchSymbol)) {
-            fetchBarsSnapshot(symbolForBars, timeframe, Number(cfg.lookbackBars || 300) || 300, true).catch(() => null);
-          }
-        }).catch(() => null);
       }
       setUsedFiles(Array.isArray(out?.used_files) ? out.used_files : []);
       if (!files.length) setAnalysisFilesDisplay(Array.isArray(out?.used_files) ? out.used_files : []);
       setResponseTab("chart");
       const fileMode = out?.claude_files_mode === "files_api"
         ? ` Claude Files: ${Array.isArray(out?.claude_files) ? out.claude_files.length : 0}.`
+        : out?.claude_files_mode === "context_files"
+          ? ` Claude context files: ${Array.isArray(out?.claude_files) ? out.claude_files.length : 0}.`
         : out?.claude_files_mode === "fallback_base64"
           ? " Claude Files failed; used base64 fallback."
           : "";
@@ -2326,7 +2358,16 @@ export default function ChartSnapshotsPage() {
           <div className="snapshot-live-grid-v4">
             {widgetTfs.map((tf) => (
               <div key={tf} className="snapshot-live-card-v3">
-                <div className="minor-text" style={{ marginBottom: 6 }}>{tf}</div>
+                <div className="minor-text" style={{ marginBottom: 6 }}>
+                  {tf}
+                  {(() => {
+                    const ctx = contextByTf.get(String(tf).toUpperCase());
+                    if (!ctx) return contextLoading ? " | loading context..." : "";
+                    const trend = ctx?.analysis?.trend || ctx?.analysis?.bias || ctx?.summary?.close_change_20;
+                    const price = Number(ctx?.last_price);
+                    return ` | ${ctx?.freshness?.status || ctx?.cache_source || "cache"}${Number.isFinite(price) ? ` | ${price}` : ""}${trend ? ` | ${String(trend).slice(0, 24)}` : ""}`;
+                  })()}
+                </div>
                 <iframe
                   title={`live-chart-${tf}`}
                   className="snapshot-live-iframe-v3"

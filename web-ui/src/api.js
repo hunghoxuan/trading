@@ -589,6 +589,14 @@ export const api = {
   chartSnapshotCreate: (payload = {}) => postWithTimeout("/v2/chart/snapshot", payload, 90000),
   chartSnapshotCreateBatch: (payload = {}) => postWithTimeout("/v2/chart/snapshot/batch", payload, 180000),
   chartSnapshotsAnalyze: (payload = {}) => postWithTimeout("/v2/chart/snapshots/analyze", payload, 180000),
+  chartContext: (params = {}) => {
+    const q = new URLSearchParams();
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (Array.isArray(v)) q.set(k, v.join(","));
+      else if (v !== undefined && v !== null && String(v) !== "") q.set(k, String(v));
+    });
+    return get(`/v2/chart/context?${q.toString()}`);
+  },
   claudeFiles: (params = {}) => {
     const q = new URLSearchParams();
     Object.entries(params || {}).forEach(([k, v]) => {

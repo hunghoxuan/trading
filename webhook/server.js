@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.29 20:20 - 93c1ff7"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.29 20:50 - ce2cd82"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(CHART_SNAPSHOT_DIR, ".claude-files.json");
 const AI_CONTEXT_FILE_DIR = path.resolve(__dirname, "ai_context_files");
@@ -626,7 +626,9 @@ async function repoUpsertUnifiedMarketData(symbol, tf, dataUpdate) {
   const timeframeData = {
     tf: tfNorm,
     market_analysis: dataUpdate.market_analysis || dataUpdate.metadata || dataUpdate.summary || null,
-    bars: Array.isArray(dataUpdate.bars) ? dataUpdate.bars : []
+    bars: Array.isArray(dataUpdate.bars) ? dataUpdate.bars : [],
+    last_price: dataUpdate.last_price ?? (Array.isArray(dataUpdate.bars) && dataUpdate.bars.length ? dataUpdate.bars[dataUpdate.bars.length - 1]?.close : null),
+    last_price_at: dataUpdate.last_price_at ?? (Array.isArray(dataUpdate.bars) && dataUpdate.bars.length ? dataUpdate.bars[dataUpdate.bars.length - 1]?.time : null),
   };
 
   // Update or Add timeframe
@@ -835,12 +837,18 @@ function deserializeSnapshotFromDb(dbData) {
   };
 }
 
-function marketDataMemoryKey(symbolNorm, tfNorm) {
-  return `${symbolNorm}|${tfNorm}`;
+function chunkBarsForLastPrice(dbData) {
+  try {
+    const snap = deserializeSnapshotFromDb(dbData);
+    const bars = Array.isArray(snap?.bars) ? snap.bars : [];
+    return bars.length ? bars[bars.length - 1] : null;
+  } catch {
+    return null;
+  }
 }
 
-function marketDataRedisKey(symbolNorm, tfNorm) {
-  return `market_data:${symbolNorm}:${tfNorm}:latest`;
+function marketDataCacheKey(symbolNorm) {
+  return `market_data:${symbolNorm}`;
 }
 
 function marketDataTtlSecByTf(tfNorm) {
@@ -878,9 +886,10 @@ function marketDataMemoryRead(symbolNorm, tfNorm, reqStart, reqEnd) {
 async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
   const db = await mt5InitBackend();
   const res = await db.query(
-    `SELECT symbol, tf as timeframe, bar_start, bar_end, data, metadata 
+    `SELECT symbol, tf as timeframe, bar_start, bar_end, data, metadata, last_price, last_price_at
      FROM market_data 
      WHERE symbol = $1 AND tf = $2 AND bar_start <= $3 AND bar_end >= $4
+     ORDER BY bar_end DESC
      LIMIT 1`,
     [symbolNorm, tfNorm, reqStart, reqEnd]
   );
@@ -896,22 +905,33 @@ async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
     bar_start: row.bar_start,
     bar_end: row.bar_end,
     bars,
-    metadata: row.metadata
+    metadata: row.metadata,
+    last_price: row.last_price === null || row.last_price === undefined ? null : Number(row.last_price),
+    last_price_at: row.last_price_at || null
   };
 }
 
 async function marketDataDbWrite(symbolNorm, tfNorm, data) {
   const db = await mt5InitBackend();
   const barsStr = JSON.stringify(data.bars || []);
-  const metaStr = data.metadata ? JSON.stringify(data.metadata) : null;
+  const lastBar = Array.isArray(data.bars) && data.bars.length ? data.bars[data.bars.length - 1] : null;
+  const lastPrice = Number(data.last_price ?? lastBar?.close);
+  const lastPriceAtSec = Number(data.last_price_at_sec ?? lastBar?.time);
+  const lastPriceAtIso = Number.isFinite(lastPriceAtSec) ? new Date(lastPriceAtSec * 1000).toISOString() : null;
+  const metadata = data.metadata && typeof data.metadata === "object" ? { ...data.metadata } : {};
+  if (Number.isFinite(lastPrice)) metadata.last_price = lastPrice;
+  if (lastPriceAtIso) metadata.last_price_at = lastPriceAtIso;
+  const metaStr = Object.keys(metadata).length ? JSON.stringify(metadata) : null;
   await db.query(
-    `INSERT INTO market_data (symbol, tf, bar_start, bar_end, data, metadata, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW())
+    `INSERT INTO market_data (symbol, tf, bar_start, bar_end, data, metadata, last_price, last_price_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
      ON CONFLICT (symbol, tf, bar_start, bar_end) DO UPDATE SET 
        data = EXCLUDED.data,
        metadata = COALESCE(EXCLUDED.metadata, market_data.metadata),
+       last_price = COALESCE(EXCLUDED.last_price, market_data.last_price),
+       last_price_at = COALESCE(EXCLUDED.last_price_at, market_data.last_price_at),
        updated_at = NOW()`,
-    [symbolNorm, tfNorm, data.bar_start, data.bar_end, barsStr, metaStr]
+    [symbolNorm, tfNorm, data.bar_start, data.bar_end, barsStr, metaStr, Number.isFinite(lastPrice) ? lastPrice : null, lastPriceAtIso]
   );
 }
 
@@ -944,41 +964,88 @@ async function getRedisClient() {
 async function marketDataRedisRead(symbolNorm, tfNorm, reqStart, reqEnd) {
   const client = await getRedisClient();
   if (!client) return null;
-  const key = marketDataRedisKey(symbolNorm, tfNorm);
+  const key = marketDataCacheKey(symbolNorm);
   const raw = await client.get(key).catch(() => "");
   if (!raw) return null;
-  let data = null;
+  
+  let root = null;
   try {
-    data = JSON.parse(raw);
+    root = JSON.parse(raw);
   } catch {
     return null;
   }
-  if (!data || typeof data !== "object" || !Array.isArray(data.bars) || !data.bars.length) return null;
-  const s = Number(data.bar_start);
-  const e = Number(data.bar_end);
+  
+  if (!root || !Array.isArray(root.data)) return null;
+  
+  // Find the specific timeframe in the data array
+  const tfData = root.data.find(d => d.tf === tfNorm);
+  if (!tfData || !Array.isArray(tfData.bars) || !tfData.bars.length) return null;
+  
+  const s = Number(tfData.bar_start);
+  const e = Number(tfData.bar_end);
   if (!Number.isFinite(s) || !Number.isFinite(e)) return null;
+  
   if (s <= reqStart && e >= reqEnd) {
-    return data;
+    return tfData;
   }
   return null;
 }
 
 function marketDataMemoryWrite(symbolNorm, tfNorm, data) {
-  const key = marketDataMemoryKey(symbolNorm, tfNorm);
-  const ttl = marketDataTtlSecByTf(tfNorm);
-  UnifiedCache.set(key, data, { l1Map: MARKET_DATA_MEMORY_CACHE, l2Prefix: 'market_data', ttlSec: ttl });
+  const key = marketDataCacheKey(symbolNorm);
+  const ttl = 1800; // Unified TTL for symbol (30m)
+  
+  let root = UnifiedCache.get(key, { l1Map: MARKET_DATA_MEMORY_CACHE });
+  if (!root || typeof root !== 'object') {
+    root = { symbol: symbolNorm, updated_time: Math.floor(Date.now() / 1000), data: [] };
+  }
+  
+  // Update or Add TF
+  const existingIdx = root.data.findIndex(d => d.tf === tfNorm);
+  const tfEntry = { ...data, tf: tfNorm, updated_time: Math.floor(Date.now() / 1000) };
+  if (existingIdx >= 0) {
+    root.data[existingIdx] = tfEntry;
+  } else {
+    root.data.push(tfEntry);
+  }
+  root.updated_time = tfEntry.updated_time;
+
+  UnifiedCache.set(key, root, { l1Map: MARKET_DATA_MEMORY_CACHE, l2Prefix: 'market_data', ttlSec: ttl });
 }
 
 async function marketDataRedisWrite(symbolNorm, tfNorm, snapshot) {
-  const s = Number(snapshot?.bar_start);
-  const e = Number(snapshot?.bar_end);
-  const bars = Array.isArray(snapshot?.bars) ? snapshot.bars : [];
-  if (!Number.isFinite(s) || !Number.isFinite(e) || !bars.length) return;
   const client = await getRedisClient();
   if (!client) return;
-  const ttl = marketDataTtlSecByTf(tfNorm);
-  const key = marketDataRedisKey(symbolNorm, tfNorm);
-  await client.setEx(key, ttl, JSON.stringify(snapshot)).catch(() => { });
+  const key = marketDataCacheKey(symbolNorm);
+  const ttl = 3600; // Unified TTL for symbol (1h)
+
+  // Atomic-ish update: Get, Merge, Set
+  const raw = await client.get(key).catch(() => "");
+  let root = null;
+  try {
+    if (raw) root = JSON.parse(raw);
+  } catch {}
+
+  if (!root || typeof root !== 'object') {
+    root = { symbol: symbolNorm, updated_time: Math.floor(Date.now() / 1000), data: [] };
+  }
+
+  const tfEntry = { 
+    ...snapshot, 
+    tf: tfNorm, 
+    updated_time: Math.floor(Date.now() / 1000),
+    source: snapshot.source || 'remote_api'
+  };
+
+  const existingIdx = root.data.findIndex(d => d.tf === tfNorm);
+  if (existingIdx >= 0) {
+    root.data[existingIdx] = tfEntry;
+  } else {
+    root.data.push(tfEntry);
+  }
+  root.updated_time = tfEntry.updated_time;
+
+  await client.setEx(key, ttl, JSON.stringify(root)).catch(() => { });
 }
 
 async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
@@ -1083,12 +1150,21 @@ async function marketDataDbUpsert(symbolNorm, tfNorm, snapshot) {
       await client.query('DELETE FROM market_data WHERE id = ANY($1)', [ids]);
     }
     for (const chunk of chunks) {
+      const chunkLastBar = chunkBarsForLastPrice(chunk.data);
       await client.query(
-        `INSERT INTO market_data (symbol, tf, bar_start, bar_end, data, updated_at)
-         VALUES ($1, $2, $3, $4, $5, NOW())
+        `INSERT INTO market_data (symbol, tf, bar_start, bar_end, data, last_price, last_price_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
          ON CONFLICT (symbol, tf, bar_start, bar_end)
-         DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
-        [symbolNorm, tfNorm, chunk.bar_start, chunk.bar_end, chunk.data]
+         DO UPDATE SET data = EXCLUDED.data, last_price = EXCLUDED.last_price, last_price_at = EXCLUDED.last_price_at, updated_at = NOW()`,
+        [
+          symbolNorm,
+          tfNorm,
+          chunk.bar_start,
+          chunk.bar_end,
+          chunk.data,
+          chunkLastBar?.close ?? null,
+          chunkLastBar?.time ? new Date(Number(chunkLastBar.time) * 1000).toISOString() : null,
+        ]
       );
     }
     await client.query('COMMIT');
@@ -1799,6 +1875,12 @@ function ensureChartSnapshotDir() {
   }
 }
 
+function ensureAiContextFileDir() {
+  if (!fs.existsSync(AI_CONTEXT_FILE_DIR)) {
+    fs.mkdirSync(AI_CONTEXT_FILE_DIR, { recursive: true });
+  }
+}
+
 function sanitizeSnapshotToken(value, fallback = "chart") {
   const raw = String(value || fallback).trim().toUpperCase();
   const token = raw.replace(/[^A-Z0-9:_-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
@@ -2481,6 +2563,354 @@ async function buildClaudeFileSnapshotContent({ apiKey, snapshotFiles = [] }) {
     });
   }
   return { content, usedFiles, claudeFiles };
+}
+
+function readClaudeContextFileMap() {
+  ensureAiContextFileDir();
+  try {
+    if (!fs.existsSync(AI_CONTEXT_CLAUDE_MAP_FILE)) return {};
+    const parsed = JSON.parse(fs.readFileSync(AI_CONTEXT_CLAUDE_MAP_FILE, "utf8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeClaudeContextFileMap(map = {}) {
+  ensureAiContextFileDir();
+  const tmp = `${AI_CONTEXT_CLAUDE_MAP_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(map && typeof map === "object" ? map : {}, null, 2));
+  fs.renameSync(tmp, AI_CONTEXT_CLAUDE_MAP_FILE);
+}
+
+function aiContextToken(value, fallback = "CTX") {
+  return sanitizeSnapshotFileToken(value, fallback).replace(/_+/g, "_").slice(0, 96) || fallback;
+}
+
+function aiContextFileName({ symbol, tf, barEnd, type, ext = "json" }) {
+  const sym = aiContextToken(normalizeMarketDataSymbol(symbol), "SYMBOL");
+  const tfToken = aiContextToken(displayTfFromNorm(tf), "TF");
+  const end = Number(barEnd || 0);
+  const stamp = Number.isFinite(end) && end > 0
+    ? new Date(end * 1000).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")
+    : new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  return `${sym}_${tfToken}_${stamp}_${aiContextToken(type, "context").toLowerCase()}.${ext}`;
+}
+
+function displayTfFromNorm(tfNorm) {
+  const s = String(tfNorm || "").trim().toLowerCase();
+  if (s === "1day" || s === "day" || s === "1d") return "D";
+  if (s === "1week" || s === "week" || s === "1w") return "W";
+  if (s === "1month" || s === "month" || s === "1mo") return "MN";
+  const m = s.match(/^(\d+)\s*(min|m|hour|h)$/i);
+  if (!m) return String(tfNorm || "").toUpperCase();
+  const n = Number(m[1]);
+  const unit = m[2].toLowerCase();
+  if (unit.startsWith("hour") || unit === "h") return `${n}H`;
+  return `${n}M`;
+}
+
+function sha256File(filePath) {
+  return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function mimeByFileName(fileName) {
+  const n = String(fileName || "").toLowerCase();
+  if (n.endsWith(".json")) return "application/json";
+  if (n.endsWith(".csv")) return "text/csv";
+  if (n.endsWith(".txt") || n.endsWith(".md")) return "text/plain";
+  return snapshotMimeByFileName(n) || "application/octet-stream";
+}
+
+async function uploadFileToClaude({ apiKey, absPath, fileName, mediaType }) {
+  if (!absPath || !fs.existsSync(absPath) || !fs.statSync(absPath).isFile()) throw new Error("Claude upload file does not exist.");
+  const bytes = fs.readFileSync(absPath);
+  const form = new FormData();
+  form.append("file", new Blob([bytes], { type: mediaType || mimeByFileName(fileName) }), fileName);
+  return anthropicFilesRequest({
+    apiKey,
+    method: "POST",
+    pathName: "/v1/files",
+    body: form,
+    timeoutMs: 45000,
+  });
+}
+
+async function upsertClaudeContextFile({ apiKey, contextKey, type, absPath, fileName, symbol, tf, barEnd }) {
+  const map = readClaudeContextFileMap();
+  const key = `${contextKey}:${type}`;
+  const hash = sha256File(absPath);
+  const prev = map[key];
+  if (prev?.file_id && prev?.sha256 === hash) {
+    return { ...prev, reused: true };
+  }
+  const uploaded = await uploadFileToClaude({
+    apiKey,
+    absPath,
+    fileName,
+    mediaType: mimeByFileName(fileName),
+  });
+  const item = {
+    context_key: contextKey,
+    symbol: normalizeMarketDataSymbol(symbol),
+    tf: displayTfFromNorm(tf),
+    type,
+    bar_end: Number(barEnd || 0) || null,
+    vps_file: fileName,
+    vps_path: absPath,
+    file_id: String(uploaded?.id || ""),
+    filename: String(uploaded?.filename || fileName),
+    mime_type: String(uploaded?.mime_type || mimeByFileName(fileName)),
+    size_bytes: Number(uploaded?.size_bytes || fs.statSync(absPath).size || 0),
+    sha256: hash,
+    uploaded_at: new Date().toISOString(),
+  };
+  map[key] = item;
+  writeClaudeContextFileMap(map);
+  const oldFileId = String(prev?.file_id || "");
+  if (oldFileId && oldFileId !== item.file_id) {
+    anthropicFilesRequest({ apiKey, method: "DELETE", pathName: `/v1/files/${encodeURIComponent(oldFileId)}`, timeoutMs: 15000 }).catch(() => { });
+  }
+  return { ...item, reused: false };
+}
+
+function writeAiContextJsonFile(fileName, data) {
+  ensureAiContextFileDir();
+  const safe = path.basename(String(fileName || ""));
+  if (!safe || safe !== fileName || !/\.json$/i.test(safe)) throw new Error("Invalid AI context file name.");
+  const abs = path.join(AI_CONTEXT_FILE_DIR, safe);
+  fs.writeFileSync(abs, JSON.stringify(data, null, 2));
+  return abs;
+}
+
+function summarizeBarsForAi(bars = [], tfNorm = "") {
+  const arr = normalizeMarketDataBars(bars);
+  if (!arr.length) return { bars_count: 0 };
+  const highs = arr.map((b) => Number(b.high)).filter(Number.isFinite);
+  const lows = arr.map((b) => Number(b.low)).filter(Number.isFinite);
+  const closes = arr.map((b) => Number(b.close)).filter(Number.isFinite);
+  const last = arr[arr.length - 1];
+  const recent = arr.slice(-30);
+  const recentHigh = Math.max(...recent.map((b) => Number(b.high)).filter(Number.isFinite));
+  const recentLow = Math.min(...recent.map((b) => Number(b.low)).filter(Number.isFinite));
+  let trSum = 0;
+  let trCount = 0;
+  for (let i = Math.max(1, arr.length - 14); i < arr.length; i += 1) {
+    const cur = arr[i];
+    const prev = arr[i - 1];
+    const tr = Math.max(
+      Number(cur.high) - Number(cur.low),
+      Math.abs(Number(cur.high) - Number(prev.close)),
+      Math.abs(Number(cur.low) - Number(prev.close)),
+    );
+    if (Number.isFinite(tr)) {
+      trSum += tr;
+      trCount += 1;
+    }
+  }
+  return {
+    tf: displayTfFromNorm(tfNorm),
+    bars_count: arr.length,
+    bar_start: arr[0].time,
+    bar_end: Number(last.time) + Math.max(60, parseTfTokenToSeconds(tfNorm)),
+    last_price: Number(last.close),
+    last_close: Number(last.close),
+    range_high: highs.length ? Math.max(...highs) : null,
+    range_low: lows.length ? Math.min(...lows) : null,
+    recent_high: Number.isFinite(recentHigh) ? recentHigh : null,
+    recent_low: Number.isFinite(recentLow) ? recentLow : null,
+    atr_14: trCount ? trSum / trCount : null,
+    close_change_20: closes.length >= 21 ? closes[closes.length - 1] - closes[closes.length - 21] : null,
+  };
+}
+
+function makeAiContextDocumentBlock(fileId, title) {
+  void title;
+  return {
+    type: "document",
+    source: { type: "file", file_id: fileId },
+  };
+}
+
+function marketDataFreshness(snapshot = {}, tfNorm = "") {
+  const tfSec = Math.max(60, parseTfTokenToSeconds(tfNorm || snapshot.tf_norm || snapshot.timeframe));
+  const barEnd = Number(snapshot.bar_end || 0);
+  const now = nowUnixSec();
+  const tolerance = Math.min(Math.max(90, Math.floor(tfSec * 0.25)), 900);
+  const nextBarDue = barEnd + tfSec;
+  const fresh = Boolean(barEnd && now < nextBarDue + tolerance);
+  return {
+    fresh,
+    status: fresh ? "fresh" : "stale",
+    bar_end: barEnd || null,
+    next_bar_due: barEnd ? nextBarDue : null,
+    age_sec: barEnd ? Math.max(0, now - barEnd) : null,
+  };
+}
+
+async function loadTradePlansForAiContext(userId, symbolNorm) {
+  try {
+    const db = await mt5InitBackend();
+    const rows = await db.query(
+      `SELECT signal_id, created_at, symbol, side, order_type, entry, sl, tp, signal_tf, chart_tf, rr_planned, risk_pct_planned, note, status, metadata
+       FROM signals
+       WHERE user_id = $1 AND regexp_replace(upper(symbol), '[^A-Z0-9]', '', 'g') = $2
+         AND status IN ('NEW','PENDING','ACTIVE')
+       ORDER BY created_at DESC
+       LIMIT 20`,
+      [userId, symbolNorm],
+    );
+    return (rows.rows || []).map((r) => ({
+      signal_id: r.signal_id,
+      created_at: r.created_at,
+      symbol: r.symbol,
+      side: r.side,
+      order_type: r.order_type,
+      entry: r.entry,
+      sl: r.sl,
+      tp: r.tp,
+      signal_tf: r.signal_tf,
+      chart_tf: r.chart_tf,
+      rr_planned: r.rr_planned,
+      risk_pct_planned: r.risk_pct_planned,
+      status: r.status,
+      note: r.note,
+      metadata: r.metadata && typeof r.metadata === "object" ? r.metadata : {},
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function ensureAiTfContext({ userId, apiKey, symbol, tf, bars = 300, provider = "ICMARKETS", forceRefresh = false, forceSnapshot = false, includeSnapshots = true }) {
+  const symbolNorm = normalizeMarketDataSymbol(symbol);
+  const tfNorm = normalizeMarketDataTf(tf);
+  const snapshot = await buildAnalysisSnapshotFromTwelve({
+    userId,
+    payload: { bars, force_refresh: forceRefresh },
+    symbol,
+    timeframe: tf,
+  });
+  if (String(snapshot?.status || "").toLowerCase() !== "ok") {
+    return { tf: displayTfFromNorm(tfNorm), status: "error", error: snapshot?.reason || "market_data_failed", snapshot };
+  }
+  const freshness = marketDataFreshness(snapshot, tfNorm);
+  const barsArr = normalizeMarketDataBars(snapshot.bars);
+  const summary = summarizeBarsForAi(barsArr, tfNorm);
+  const barEnd = Number(snapshot.bar_end || summary.bar_end || 0);
+  const contextKey = `${symbolNorm}:${displayTfFromNorm(tfNorm)}:${barEnd || "latest"}`;
+  const lastPrice = Number(snapshot.last_price ?? summary.last_price);
+  const barsFileName = aiContextFileName({ symbol: symbolNorm, tf: tfNorm, barEnd, type: "bars" });
+  const analysisFileName = aiContextFileName({ symbol: symbolNorm, tf: tfNorm, barEnd, type: "analysis" });
+  const tradePlansFileName = aiContextFileName({ symbol: symbolNorm, tf: tfNorm, barEnd, type: "tradeplans" });
+
+  const barsAbs = writeAiContextJsonFile(barsFileName, {
+    kind: "bars",
+    symbol: symbolNorm,
+    tf: displayTfFromNorm(tfNorm),
+    bar_start: snapshot.bar_start,
+    bar_end: barEnd,
+    last_price: Number.isFinite(lastPrice) ? lastPrice : null,
+    cache_source: snapshot.cache_source || "provider",
+    freshness,
+    summary,
+    bars: barsArr,
+  });
+  const analysisAbs = writeAiContextJsonFile(analysisFileName, {
+    kind: "prior_analysis",
+    symbol: symbolNorm,
+    tf: displayTfFromNorm(tfNorm),
+    bar_end: barEnd,
+    analysis: snapshot.metadata || snapshot.market_analysis || snapshot.summary || {},
+  });
+  const tradePlans = await loadTradePlansForAiContext(userId, symbolNorm);
+  const tradePlansAbs = writeAiContextJsonFile(tradePlansFileName, {
+    kind: "tradeplans",
+    symbol: symbolNorm,
+    tf: displayTfFromNorm(tfNorm),
+    bar_end: barEnd,
+    plans: tradePlans,
+  });
+
+  const barsFile = await upsertClaudeContextFile({ apiKey, contextKey, type: "bars", absPath: barsAbs, fileName: barsFileName, symbol: symbolNorm, tf: tfNorm, barEnd });
+  const analysisFile = await upsertClaudeContextFile({ apiKey, contextKey, type: "analysis", absPath: analysisAbs, fileName: analysisFileName, symbol: symbolNorm, tf: tfNorm, barEnd });
+  const tradePlansFile = await upsertClaudeContextFile({ apiKey, contextKey, type: "tradeplans", absPath: tradePlansAbs, fileName: tradePlansFileName, symbol: symbolNorm, tf: tfNorm, barEnd });
+
+  const contextMap = readClaudeContextFileMap();
+  const snapshotKey = `${contextKey}:snapshot`;
+  let snapshotFile = contextMap[snapshotKey] || null;
+  const snapshotFresh = snapshotFile?.file_id && Number(snapshotFile.bar_end || 0) >= barEnd;
+  if (includeSnapshots && (forceSnapshot || !snapshotFresh)) {
+    const shot = await captureTradingViewSnapshot({
+      userId,
+      symbol,
+      provider,
+      timeframe: displayTfFromNorm(tfNorm),
+      session_prefix: `${symbolNorm}_${displayTfFromNorm(tfNorm)}_${barEnd || "latest"}`,
+      lookbackBars: bars,
+      format: "jpg",
+      quality: 55,
+    });
+    const shotAbs = path.join(CHART_SNAPSHOT_DIR, shot.file_name);
+    snapshotFile = await upsertClaudeContextFile({
+      apiKey,
+      contextKey,
+      type: "snapshot",
+      absPath: shotAbs,
+      fileName: aiContextFileName({ symbol: symbolNorm, tf: tfNorm, barEnd, type: "snapshot", ext: "jpg" }),
+      symbol: symbolNorm,
+      tf: tfNorm,
+      barEnd,
+    });
+    snapshotFile.local_snapshot_file = shot.file_name;
+  }
+
+  return {
+    context_key: contextKey,
+    symbol: symbolNorm,
+    tf: displayTfFromNorm(tfNorm),
+    tf_norm: tfNorm,
+    status: "ok",
+    freshness,
+    cache_source: snapshot.cache_source || "provider",
+    bar_start: snapshot.bar_start,
+    bar_end: barEnd,
+    last_price: Number.isFinite(lastPrice) ? lastPrice : null,
+    summary,
+    analysis: snapshot.metadata || snapshot.market_analysis || snapshot.summary || {},
+    files: {
+      snapshot: snapshotFile,
+      bars: barsFile,
+      analysis: analysisFile,
+      tradeplans: tradePlansFile,
+    },
+  };
+}
+
+async function buildAiContextBundle({ userId, apiKey, symbol, timeframes = [], bars = 300, provider = "ICMARKETS", forceRefresh = false, forceSnapshot = false, includeSnapshots = true }) {
+  const tfs = (Array.isArray(timeframes) ? timeframes : String(timeframes || "").split(","))
+    .map((x) => String(x || "").trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  const wanted = tfs.length ? tfs : ["D", "4H", "1H", "15M"];
+  const items = [];
+  for (const tf of wanted) {
+    items.push(await ensureAiTfContext({ userId, apiKey, symbol, tf, bars, provider, forceRefresh, forceSnapshot, includeSnapshots }));
+  }
+  const okItems = items.filter((x) => x?.status === "ok");
+  return {
+    symbol: normalizeMarketDataSymbol(symbol),
+    generated_at: new Date().toISOString(),
+    timeframes: items,
+    current_price: okItems.find((x) => Number.isFinite(Number(x.last_price)))?.last_price ?? null,
+    context_files: okItems.flatMap((item) => Object.entries(item.files || {}).map(([type, file]) => ({
+      tf: item.tf,
+      type,
+      file_id: file?.file_id || "",
+      filename: file?.filename || file?.vps_file || "",
+      reused: file?.reused === true,
+    })).filter((x) => x.file_id)),
+  };
 }
 
 function normalizeSnapshotFileName(fileNameRaw) {
@@ -3484,8 +3914,10 @@ async function _mt5InitBackendInternal() {
       opened_at TIMESTAMPTZ NULL,
       closed_at TIMESTAMPTZ NULL,
       pnl_realized FLOAT8 NULL,
-      metadata JSONB NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	      metadata JSONB NULL,
+	      last_price DOUBLE PRECISION NULL,
+	      last_price_at TIMESTAMPTZ NULL,
+	      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
@@ -3548,6 +3980,8 @@ async function _mt5InitBackendInternal() {
     );
   `);
   await pool.query(`ALTER TABLE market_data ADD COLUMN IF NOT EXISTS metadata JSONB NULL`).catch(() => { });
+  await pool.query(`ALTER TABLE market_data ADD COLUMN IF NOT EXISTS last_price DOUBLE PRECISION NULL`).catch(() => { });
+  await pool.query(`ALTER TABLE market_data ADD COLUMN IF NOT EXISTS last_price_at TIMESTAMPTZ NULL`).catch(() => { });
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_market_data_symbol_tf_bar ON market_data(symbol, tf, bar_start, bar_end)`).catch(() => { });
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ea_logs (
@@ -5687,19 +6121,22 @@ async function _mt5InitBackendInternal() {
       const items = [];
       // 1. Memory Cache
       for (const [key, val] of MARKET_DATA_MEMORY_CACHE.entries()) {
-        const arr = Array.isArray(val) ? val : [];
-        const latest = arr[arr.length - 1]?.data || null;
+        const root = val?.data;
+        if (!root) continue;
+        
+        const tfSummary = Array.isArray(root.data) ? root.data.map(d => d.tf).join(', ') : (root.tf || 'n/a');
+        const barTotal = Array.isArray(root.data) ? root.data.reduce((sum, d) => sum + (d.bars?.length || 0), 0) : (root.bars?.length || 0);
+
         items.push({
           key,
           source: 'memory',
-          count: arr.length,
-          data: latest ? {
-            symbol: latest.symbol,
-            tf: latest.timeframe,
-            bars: latest.bars?.length || 0,
-            range: `${latest.bar_start} to ${latest.bar_end}`
-          } : null,
-          expires_at: arr[0]?.expires_at_ms ? new Date(arr[0].expires_at_ms).toISOString() : null
+          data: {
+            symbol: root.symbol || key,
+            tf: tfSummary,
+            bars: barTotal,
+            updated_at: root.updated_time ? new Date(root.updated_time * 1000).toISOString() : null
+          },
+          expires_at: val.expires_at_ms ? new Date(val.expires_at_ms).toISOString() : null
         });
       }
       // 2. Redis Cache
@@ -5708,17 +6145,19 @@ async function _mt5InitBackendInternal() {
         if (client) {
           const keys = await client.keys('market_data:*');
           for (const k of keys) {
+            // Check if already in memory (don't duplicate if we want unique keys)
+            // But usually we show both to show source.
             items.push({
               key: k,
               source: 'redis',
-              count: 1,
-              data: "Redis binary data"
+              count: 1
             });
           }
         }
       }
       return items;
-    },
+    }
+,
     async uiGetCacheDetail(key, source) {
       if (source === 'memory') {
         const val = MARKET_DATA_MEMORY_CACHE.get(key);
@@ -6514,9 +6953,11 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
       tf_norm: tfNorm,
       interval,
       fetched_at: new Date().toISOString(),
-      bar_start: barStart,
-      bar_end: barEnd,
-      bars,
+	      bar_start: barStart,
+	      bar_end: barEnd,
+	      last_price: bars.length ? bars[bars.length - 1].close : null,
+	      last_price_at: bars.length ? new Date(Number(bars[bars.length - 1].time) * 1000).toISOString() : null,
+	      bars,
       gap_candidates: detectMarketDataGapCandidates(bars, tfNorm).slice(0, 20),
       entry: Number.isFinite(Number(payload?.entry ?? payload?.price)) ? Number(payload?.entry ?? payload?.price) : null,
       sl: Number.isFinite(Number(payload?.sl)) ? Number(payload?.sl) : null,
@@ -10156,6 +10597,42 @@ const appHandler = async (req, res) => {
     }
   }
 
+  if (req.method === "GET" && url.pathname === "/v2/chart/context") {
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      const userId = sess.user_id || CFG.mt5DefaultUserId;
+      const claudeKey = await loadClaudeApiKeyForUser(userId);
+      if (!claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
+      const symbol = String(url.searchParams.get("symbol") || "").trim();
+      if (!symbol) return json(res, 400, { ok: false, error: "symbol is required" });
+      const timeframes = String(url.searchParams.get("tfs") || url.searchParams.get("timeframes") || "D,4H,1H,15M")
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+      const bars = Math.max(50, Math.min(Number(url.searchParams.get("bars") || 300) || 300, 1000));
+      const provider = String(url.searchParams.get("provider") || "ICMARKETS").trim();
+      const forceRefresh = asBool(url.searchParams.get("refresh"), false);
+      const forceSnapshot = asBool(url.searchParams.get("snapshot_refresh"), false);
+      const includeSnapshots = asBool(url.searchParams.get("include_snapshots"), false);
+      const bundle = await buildAiContextBundle({
+        userId,
+        apiKey: claudeKey,
+        symbol,
+        timeframes,
+        bars,
+        provider,
+        forceRefresh,
+        forceSnapshot,
+        includeSnapshots,
+      });
+      return json(res, 200, { ok: true, ...bundle });
+    } catch (error) {
+      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   if (req.method === "GET" && url.pathname === "/v2/chart/symbols") {
     const sess = getUiSessionFromReq(req);
     const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
@@ -10185,6 +10662,122 @@ const appHandler = async (req, res) => {
       await (await mt5Backend()).log(sessionId, 'ai', { event: 'AI_ANALYSIS', payload: body }, userId);
       const claudeKey = await loadClaudeApiKeyForUser(userId);
       if (!claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
+
+      const useContextFiles = body.use_context_files === true || String(body.context_mode || "").toLowerCase() === "claude";
+      if (useContextFiles) {
+        const symbol = String(body.symbol || "").trim();
+        if (!symbol) return json(res, 400, { ok: false, error: "symbol is required for context analysis." });
+        const timeframes = Array.isArray(body.timeframes)
+          ? body.timeframes
+          : String(body.tfs || body.timeframes || "D,4H,1H,15M").split(",");
+        const contextBundle = await buildAiContextBundle({
+          userId,
+          apiKey: claudeKey,
+          symbol,
+          timeframes,
+          bars: Number(body.bars_count || body.lookbackBars || body.lookback_bars || 300) || 300,
+          provider: String(body.provider || "ICMARKETS"),
+          forceRefresh: body.force_refresh === true,
+          forceSnapshot: body.snapshot_refresh === true,
+        });
+        let finalPrompt = String(body.prompt || "").trim() || "Analyze this chart context and return only JSON.";
+        const manifest = {
+          symbol: contextBundle.symbol,
+          current_price: contextBundle.current_price,
+          generated_at: contextBundle.generated_at,
+          instruction: "Use the attached snapshot, bars, prior analysis, and tradeplans files. Reconcile prior analysis and explicitly flag invalid trade plans.",
+          context_files: contextBundle.context_files,
+          timeframe_summaries: (contextBundle.timeframes || []).map((x) => ({
+            tf: x.tf,
+            bar_end: x.bar_end,
+            last_price: x.last_price,
+            freshness: x.freshness,
+            summary: x.summary,
+          })),
+        };
+        finalPrompt += `\n\nCONTEXT_MANIFEST=${JSON.stringify(manifest)}\n\n${buildAiSchemaPromptText()}`;
+        const content = [];
+        for (const item of contextBundle.timeframes || []) {
+          const filesForTf = item.files || {};
+          if (filesForTf.snapshot?.file_id) {
+            content.push({ type: "image", source: { type: "file", file_id: filesForTf.snapshot.file_id } });
+          }
+          for (const type of ["bars", "analysis", "tradeplans"]) {
+            const fileId = filesForTf[type]?.file_id;
+            if (fileId) content.push(makeAiContextDocumentBlock(fileId, `${item.tf} ${type}`));
+          }
+        }
+        content.push({ type: "text", text: finalPrompt });
+        const requestModel = String(body.model || "claude-sonnet-4-0").trim() || "claude-sonnet-4-0";
+        const out = await anthropicMessagesWithFallback({
+          apiKey: claudeKey,
+          model: requestModel,
+          messages: [{ role: "user", content }],
+          maxTokens: Number(body.max_tokens || 4500),
+          timeoutMs: 180000,
+          beta: ANTHROPIC_FILES_BETA,
+        });
+        const aiRes = out.response;
+        const resolvedModel = out.modelUsed || requestModel;
+        if (!aiRes.ok) {
+          const errText = await aiRes.text();
+          throw new Error(`Claude API Error (${aiRes.status}): ${errText}`);
+        }
+        const aiJson = await aiRes.json();
+        const rawResponse = Array.isArray(aiJson?.content)
+          ? aiJson.content.filter((x) => x?.type === "text").map((x) => String(x?.text || "")).join("\n")
+          : String(aiJson?.content || "");
+        const extracted = extractJsonFromAiText(rawResponse);
+        const parsedJson = normalizeAiAnalysisContract(extracted.parsed || {});
+        if (parsedJson && typeof parsedJson === "object" && !Array.isArray(parsedJson)) {
+          parsedJson.schema_version = AI_RESPONSE_SCHEMA_VERSION;
+        }
+        const analysisFileUploads = [];
+        try {
+          const firstOk = (contextBundle.timeframes || []).find((x) => x.status === "ok");
+          const analysisFileName = aiContextFileName({
+            symbol: contextBundle.symbol,
+            tf: "ALL",
+            barEnd: firstOk?.bar_end || nowUnixSec(),
+            type: "analysis_result",
+          });
+          const analysisAbs = writeAiContextJsonFile(analysisFileName, {
+            kind: "analysis_result",
+            symbol: contextBundle.symbol,
+            generated_at: new Date().toISOString(),
+            timeframes: (contextBundle.timeframes || []).map((x) => ({ tf: x.tf, bar_end: x.bar_end })),
+            analysis: parsedJson,
+          });
+          analysisFileUploads.push(await upsertClaudeContextFile({
+            apiKey: claudeKey,
+            contextKey: `${contextBundle.symbol}:ALL:${firstOk?.bar_end || "latest"}`,
+            type: "analysis_result",
+            absPath: analysisAbs,
+            fileName: analysisFileName,
+            symbol: contextBundle.symbol,
+            tf: "ALL",
+            barEnd: firstOk?.bar_end || nowUnixSec(),
+          }));
+        } catch (e) {
+          console.warn("[snapshot-analyze] Failed to upload analysis result context file:", e?.message || e);
+        }
+        await (await mt5Backend()).log(sessionId, 'ai', { event: 'AI_RESPONSE', schema_version: AI_RESPONSE_SCHEMA_VERSION, raw_json: aiJson, context_files: contextBundle.context_files }, userId);
+        return json(res, 200, {
+          ok: true,
+          model: resolvedModel,
+          schema_version: AI_RESPONSE_SCHEMA_VERSION,
+          used_files: [],
+          claude_files_mode: "context_files",
+          claude_files: contextBundle.context_files,
+          analysis_files: analysisFileUploads,
+          context_bundle: contextBundle,
+          raw_response: rawResponse,
+          parsed_json: parsedJson,
+          source: "claude_context_cache",
+          updated_time: Date.now(),
+          auto_refresh: 0,
+        });
+      }
 
       let files = Array.isArray(body.files) ? body.files.map((x) => String(x || "").trim()).filter(Boolean) : [];
       if (!files.length) {
