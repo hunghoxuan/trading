@@ -381,15 +381,23 @@ export function SignalDetailCard({
           {(() => {
              const raw = rawData;
              const m = raw.market_analysis || {};
-             const bias = m.bias || raw.bias || "N/A";
-             const trend = m.trend || raw.trend || "N/A";
+             const primaryTf = Array.isArray(m.timeframes) ? (m.timeframes.find((x) => x?.bias || x?.trend) || {}) : {};
+             const bias = m.bias || raw.bias || primaryTf.bias || "N/A";
+             const trend = m.trend || raw.trend || primaryTf.trend || "N/A";
              const confluence = m.confluence || raw.confluence || "";
-             let checklist = m.confluence_checklist || raw.confluence_checklist || m.checklist || raw.checklist || [];
+             const rawChecklist = m.confluence_checklist || raw.confluence_checklist || m.checklist || raw.checklist || [];
+             let checklist = Array.isArray(rawChecklist)
+               ? rawChecklist
+               : [
+                 ...(Array.isArray(rawChecklist?.buy) ? rawChecklist.buy.map((x) => ({ side: "Buy", ...x })) : []),
+                 ...(Array.isArray(rawChecklist?.sell) ? rawChecklist.sell.map((x) => ({ side: "Sell", ...x })) : []),
+               ];
              if (typeof checklist === 'string') checklist = [checklist];
              const verdictObj = raw.final_verdict || m.final_verdict || {};
-             const verdictText = typeof verdictObj === 'string' ? verdictObj : (verdictObj.action ? `${verdictObj.action}${verdictObj.confidence ? ` (${verdictObj.confidence}%)` : ''}` : "");
-             const note = raw.note || m.note || (verdictObj && verdictObj.note) || (raw.trade_plan && raw.trade_plan.note) || "";
-             const analysis = raw.analysis || m.analysis || "";
+             const verdictText = typeof verdictObj === 'string' ? verdictObj : (verdictObj.action ? `${verdictObj.action}${verdictObj.risk_tier ? ` / ${verdictObj.risk_tier}` : ''}${verdictObj.confidence ? ` (${verdictObj.confidence}%)` : ''}` : "");
+             const firstPlan = Array.isArray(raw.trade_plan) ? raw.trade_plan[0] : raw.trade_plan;
+             const note = raw.note || m.note || (verdictObj && verdictObj.note) || (firstPlan && firstPlan.note) || "";
+             const analysis = raw.analysis || m.analysis || primaryTf?.price_action_summary?.recent_move || primaryTf?.price_prediction?.narrative || "";
              return (
                <div className="analysis-summary-md">
                  <div style={{ marginBottom: 20 }}>
@@ -402,7 +410,7 @@ export function SignalDetailCard({
                  </div>
                  {analysis && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Analysis</div><div style={{ whiteSpace: 'pre-wrap', marginBottom: 12, color: 'var(--foreground)', fontSize: '14px', lineHeight: 1.6 }}>{analysis}</div></div>}
                  {confluence && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Confluence</div><div style={{ whiteSpace: 'pre-wrap', marginBottom: 12 }}>{confluence}</div></div>}
-                 {Array.isArray(checklist) && checklist.length > 0 && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Checklist</div><ul style={{ margin: 0, paddingLeft: 18, listStyleType: 'disc', color: 'var(--muted)', fontSize: '13px' }}>{checklist.map((item, idx) => <li key={idx} style={{ marginBottom: 6 }}>{typeof item === 'object' ? `${item.item || item.condition || ''}${item.note ? `: ${item.note}` : ''}` : String(item)}</li>)}</ul></div>}
+                 {Array.isArray(checklist) && checklist.length > 0 && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Checklist</div><ul style={{ margin: 0, paddingLeft: 18, listStyleType: 'disc', color: 'var(--muted)', fontSize: '13px' }}>{checklist.map((item, idx) => <li key={idx} style={{ marginBottom: 6 }}>{typeof item === 'object' ? `${item.side ? `${item.side}: ` : ''}${item.item || item.condition || ''}${item.weight ? ` [${item.weight}]` : ''}${item.checked ? ' yes' : ''}${item.pd_array_ref ? ` #${item.pd_array_ref}` : ''}${item.note ? `: ${item.note}` : ''}` : String(item)}</li>)}</ul></div>}
                  {verdictText && <div style={{ marginBottom: 20, padding: 12, background: 'rgba(38, 166, 154, 0.05)', borderRadius: 8, border: '1px solid rgba(38, 166, 154, 0.2)' }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Final Verdict</div><div style={{ fontWeight: 600, color: '#26a69a', fontSize: '15px' }}>{verdictText}</div></div>}
                  {note && <div style={{ marginTop: 24, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8, borderLeft: '3px solid var(--accent)' }}><div className="minor-text" style={{ fontSize: '10px', marginBottom: 4 }}>NOTE</div><div style={{ fontStyle: 'italic', color: 'var(--muted)' }} dangerouslySetInnerHTML={{ __html: formatNote(note) }} /></div>}
                </div>

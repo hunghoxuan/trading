@@ -115,6 +115,23 @@ export function formatNum3(v) {
   return String(Number(n.toFixed(3)));
 }
 
+function firstTradePlan(raw = {}) {
+  if (Array.isArray(raw?.trade_plan)) return raw.trade_plan[0] || {};
+  return raw?.trade_plan && typeof raw.trade_plan === "object" ? raw.trade_plan : {};
+}
+
+function planPrimaryTp(plan = {}) {
+  const partials = Array.isArray(plan?.partial_tps) ? plan.partial_tps : [];
+  const partialPrices = partials.map((x) => (x && typeof x === "object" ? x.price : x));
+  const legacyLevels = Array.isArray(plan?.tp_levels) ? plan.tp_levels : [];
+  const candidates = [plan?.tp, ...partialPrices, ...legacyLevels, plan?.tp1, plan?.target, plan?.take_profit];
+  for (const value of candidates) {
+    const n = asNum(value);
+    if (n != null) return n;
+  }
+  return null;
+}
+
 export function calcRrFromSignal(s) {
   const entry = asNum(s?.entry || s?.target_price || s?.entry_price || s?.entry_price_raw);
   const sl = asNum(s?.sl || s?.sl_price || s?.sl_price_raw);
@@ -128,10 +145,10 @@ export function calcRrFromSignal(s) {
 
 export function extractTradePlanFromSignal(signal = {}) {
   const raw = signal?.raw_json && typeof signal.raw_json === "object" ? signal.raw_json : {};
-  const tradePlan = raw?.trade_plan && typeof raw.trade_plan === "object" && !Array.isArray(raw.trade_plan) ? raw.trade_plan : {};
+  const tradePlan = firstTradePlan(raw);
   const sideRaw = String(signal?.action || signal?.side || tradePlan?.direction || "").toUpperCase();
   const entry = asNum(signal?.entry || signal?.target_price || signal?.entry_price) ?? asNum(raw?.entry ?? raw?.price);
-  const tp = asNum(signal?.tp || signal?.tp_price) ?? asNum(tradePlan?.tp1 ?? tradePlan?.tp);
+  const tp = asNum(signal?.tp || signal?.tp_price) ?? planPrimaryTp(tradePlan);
   const sl = asNum(signal?.sl || signal?.sl_price) ?? asNum(tradePlan?.sl);
   const rr = asNum(signal?.rr_planned) ?? asNum(tradePlan?.rr) ?? calcRrFromSignal(signal);
   return {

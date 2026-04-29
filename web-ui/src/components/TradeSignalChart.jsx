@@ -19,8 +19,8 @@ function parseSnapshotBars(snapshot) {
 
 function parsePdZoneBounds(item) {
   const asNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
-  const lowRaw = asNum(item?.low ?? item?.bottom);
-  const highRaw = asNum(item?.high ?? item?.top);
+  const lowRaw = asNum(item?.low ?? item?.bottom ?? item?.price_bottom);
+  const highRaw = asNum(item?.high ?? item?.top ?? item?.price_top);
   if (lowRaw != null && highRaw != null) {
     return { low: Math.min(lowRaw, highRaw), high: Math.max(lowRaw, highRaw) };
   }
@@ -482,7 +482,7 @@ export default function TradeSignalChart({
 
           const activePdArrays = rawPdArrays.filter((pd) => {
             const status = String(pd?.status || '').toLowerCase().trim();
-            return status === 'active' || status === '';
+            return status === 'active' || status === 'fresh' || status === 'tested' || status === '';
           });
 
           activePdArrays.slice(0, 50).forEach((pd) => {

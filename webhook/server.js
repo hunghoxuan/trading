@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.29 06:14 - b5858ee"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.29 06:34 - 6266a4c"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 
 function readDiskStats(mountPath = "/") {
@@ -314,75 +314,177 @@ const CFG = {
   uiSessionTtlSeconds: asNum(process.env.UI_SESSION_TTL_SECONDS, 60 * 60 * 24 * 7),
 };
 
-const AI_RESPONSE_SCHEMA_VERSION = "1.0.0";
+const AI_RESPONSE_SCHEMA_VERSION = "1.1.0";
 const AI_RESPONSE_SCHEMA = {
   symbol: "",
   market_analysis: {
     timeframes: [
       {
-        tf: "W|D|4H|1H|15M|5M|1M",
-        trend: "Bullish|Bearish|Sideway",
-        bias: "Long|Short",
-        bias_analysis: "Trend Continuation|Retracement|Reversal|Range Bound|Volatile|Sideway|Consolidating|Breakout|Breakdown"
+        tf: "MN|W|D|4H|1H|15M|5M|1M",
+        trend: "Bullish|Bearish|Ranging",
+        structure: "MSB|CHoCH|BOS|Continuation|Ranging",
+        market_phase: "Trending|Retracement|Reversal|Consolidation|Breakout|Breakdown|Distribution|Accumulation",
+        bias: "Long|Short|Neutral",
+        poi_alignment: true,
+        price_action_summary: {
+          recent_move: "",
+          key_breaks: [
+            {
+              event: "BOS|CHoCH|MSB|Retest|Sweep|Rejection",
+              price_level: null,
+              direction: "Bullish|Bearish",
+              bar_ref: null
+            }
+          ]
+        },
+        price_prediction: {
+          narrative: "",
+          expected_path: [
+            {
+              step: 1,
+              action: "Retrace|Continue|Sweep|Reverse|Consolidate|Break",
+              target_price: null,
+              condition: ""
+            }
+          ]
+        },
+        note: ""
       },
     ],
     pd_arrays: [
       {
-        type: "OB|FVG|Breaker|Mitigation|Void|Liquidity",
+        id: 1,
+        type: "OB|FVG|Breaker|Mitigation Block|Void|Rejection Block|Propulsion Block",
+        direction: "Bullish|Bearish",
+        strength: "Strong|Weak",
         bar_start: null,
         price_top: null,
         price_bottom: null,
-        status: "active|tested|broken",
+        status: "Fresh|Tested|Mitigated|Broken",
+        touched: 0,
+        mitigation_type: "Full|Partial|None",
         timeframe: "",
-      },
+        note: ""
+      }
     ],
     key_levels: [
       {
-        name: "PDH|PDL|WeeklyOpen|MidnightOpen|ADR_High|ADR_Low",
+        name: "PDH|PDL|PWH|PWL|PMH|PML|WeeklyOpen|DailyOpen|MidnightOpen|NYOpen|ADR_High|ADR_Low|EQH|EQL|BSL|SSL",
         price: null,
-        type: "S/R|Liquidity",
+        type: "Resistance|Support|BSL|SSL|EQ",
+        zone_type: "Internal|External",
+        swept: false,
         bar_start: null
-      },
+      }
     ],
     institutional_filters: {
+      session: "Asian|London|New York|London Close|Overlap",
       killzone: "Active|Inactive",
-      dol: "",
+      power_of_3: "Accumulation|Manipulation|Distribution|Unknown",
+      ict_day_type: "Trending|Reversal|Consolidation|Unknown",
+      draw_on_liquidity: {
+        target: "",
+        price: null,
+        type: "BSL|SSL|FVG|OB|Void",
+        timeframe: ""
+      },
       p_d_status: "Premium|Discount|Equilibrium",
       smt: "Confirmed|None",
+      news_impact: "High|Medium|Low|None"
     },
-    confluence_checklist: [
-      { item: "Killzone alignment", checked: true, note: "" },
-      { item: "HTF Bias alignment", checked: true, note: "" },
-    ],
+    confluence_checklist: {
+      buy: [
+        { item: "Killzone alignment", weight: "High|Medium|Low", checked: false, pd_array_ref: null, note: "" },
+        { item: "HTF Bullish bias alignment", weight: "High", checked: false, pd_array_ref: null, note: "" },
+        { item: "Price at Discount (below EQ)", weight: "High", checked: false, pd_array_ref: null, note: "" },
+        { item: "Bullish OB/FVG Fresh (untouched)", weight: "High", checked: false, pd_array_ref: null, note: "" },
+        { item: "Bullish BOS or CHoCH confirmed", weight: "High", checked: false, pd_array_ref: null, note: "" },
+        { item: "BSL above as draw on liquidity", weight: "High", checked: false, pd_array_ref: null, note: "" },
+        { item: "Power of 3 - Accumulation phase", weight: "Medium", checked: false, pd_array_ref: null, note: "" },
+        { item: "Bullish SMT divergence confirmed", weight: "Medium", checked: false, pd_array_ref: null, note: "" },
+        { item: "Session timing valid (NY/London)", weight: "Medium", checked: false, pd_array_ref: null, note: "" },
+        { item: "No high-impact news within 30min", weight: "High", checked: false, pd_array_ref: null, note: "" }
+      ],
+      sell: [
+        { item: "Killzone alignment", weight: "High|Medium|Low", checked: false, pd_array_ref: null, note: "" },
+        { item: "HTF Bearish bias alignment", weight: "High", checked: false, pd_array_ref: null, note: "" },
+        { item: "Price at Premium (above EQ)", weight: "High", checked: false, pd_array_ref: null, note: "" },
+        { item: "Bearish OB/FVG Fresh (untouched)", weight: "High", checked: false, pd_array_ref: null, note: "" },
+        { item: "Bearish BOS or CHoCH confirmed", weight: "High", checked: false, pd_array_ref: null, note: "" },
+        { item: "SSL below as draw on liquidity", weight: "High", checked: false, pd_array_ref: null, note: "" },
+        { item: "Power of 3 - Distribution phase", weight: "Medium", checked: false, pd_array_ref: null, note: "" },
+        { item: "Bearish SMT divergence confirmed", weight: "Medium", checked: false, pd_array_ref: null, note: "" },
+        { item: "Session timing valid (NY/London)", weight: "Medium", checked: false, pd_array_ref: null, note: "" },
+        { item: "No high-impact news within 30min", weight: "High", checked: false, pd_array_ref: null, note: "" }
+      ],
+      buy_score: { checked: 0, total: 0, high_weight_passed: 0, high_weight_total: 0 },
+      sell_score: { checked: 0, total: 0, high_weight_passed: 0, high_weight_total: 0 }
+    },
   },
   trade_plan: [
     {
       direction: "BUY|SELL",
-      profile: "position|swing|daily|scalping",
-      type: "limit|stop|market",
-      entry_model: "SHORT model name only (max 60 chars)",
+      profile: "Position|Swing|Intraday|Scalp",
+      type: "Limit|Stop|Market",
+      session_entry: "Asian|London|New York|London Close",
+      entry_model: "",
       entry: null,
       sl: null,
-      tp1: null,
-      tp2: null,
-      tp3: null,
-      invalidation: "",
+      be_trigger: null,
+      tp: null,
+      risk_pct: null,
       rr: null,
+      partial_tps: [
+        { price: null, size_pct: null, rr: null }
+      ],
+      entry_conditions: [
+        { condition: "", met: false }
+      ],
+      reasons_to_skip: [
+        { reason: "", severity: "High|Medium|Low" }
+      ],
+      skip_recommendation: "Skip|Reduce Size|Proceed|Wait for Confirmation",
+      invalidation: "",
       confidence_pct: null,
-      note: "FULL detailed narrative and logic here",
+      note: ""
     },
   ],
   final_verdict: {
     action: "BUY|SELL|WAIT",
+    risk_tier: "A|B|C|No Trade",
     confidence: 0,
-    note: "",
+    bias_shift_invalidation: "",
+    next_poi: { price: null, timeframe: "", type: "" },
+    note: ""
   },
 };
 
 function buildAiSchemaPromptText() {
   return [
-    "IMPORTANT:",
-    "Return valid JSON only. Do not include markdown code fences.",
+    "SYSTEM:",
+    "You are an expert ICT (Inner Circle Trader) technical analyst.",
+    "You think in terms of market structure, PD arrays, liquidity, and institutional order flow.",
+    "You respond ONLY in valid JSON using the exact schema provided. No prose outside the JSON.",
+    "Every field must be filled. Use null only where price data is genuinely unavailable.",
+    "Enums must match exactly as specified. Do not invent new enum values.",
+    "",
+    "ANALYSIS INSTRUCTIONS:",
+    "1. Market Structure: identify trend, structure event, market phase, factual recent price action, and next likely move per timeframe.",
+    "2. PD Arrays: include relevant OB/FVG/Breaker/Mitigation/Void/Rejection/Propulsion arrays within current price context, each with unique numeric id.",
+    "3. Key Levels: include PDH/PDL/PWH/PWL/opens/EQH/EQL/BSL/SSL/ADR levels and mark swept levels.",
+    "4. Institutional Filters: evaluate session, killzone, Power of 3, ICT day type, DOL, P/D status, SMT, and news impact.",
+    "5. Confluence Checklist: evaluate BOTH buy and sell checklists independently, set pd_array_ref when tied to a PD array id, and compute score objects.",
+    "6. Trade Plan: generate plans only when high-weight checklist score is at least 60%; include partial_tps, entry_conditions, reasons_to_skip, and skip_recommendation.",
+    "7. Final Verdict: action must match the higher checklist score with a valid plan; use WAIT when no plan qualifies.",
+    "",
+    "RISK TIER RULES:",
+    "A = HTF + LTF aligned, fresh POI, killzone active, no news risk, RR >= 3.",
+    "B = Partial alignment, tested POI, RR >= 2.",
+    "C = Weak confluence, marginal setup.",
+    "No Trade = skip_recommendation is Skip or checklist high-weight score < 60%.",
+    "",
+    "OUTPUT FORMAT:",
+    "Return a single valid JSON object. No markdown. No explanation outside JSON. No trailing commas.",
     `Use this exact output schema (schema_version=${AI_RESPONSE_SCHEMA_VERSION}):`,
     JSON.stringify(AI_RESPONSE_SCHEMA, null, 2),
   ].join("\n");
@@ -5872,13 +5974,18 @@ function parseSnapshotPdArrays(payload = {}) {
     .map((x) => (x && typeof x === "object" ? x : null))
     .filter(Boolean)
     .map((x) => ({
+      id: Number.isFinite(Number(x.id)) ? Number(x.id) : null,
       type: String(x.type || "").trim(),
+      direction: String(x.direction || "").trim(),
+      strength: String(x.strength || "").trim(),
       timeframe: String(x.timeframe || x.tf || "").trim(),
       zone: x.zone,
-      low: x.low ?? x.bottom ?? null,
-      high: x.high ?? x.top ?? null,
+      low: x.low ?? x.bottom ?? x.price_bottom ?? null,
+      high: x.high ?? x.top ?? x.price_top ?? null,
       bar_start: Number.isFinite(Number(x.bar_start_unix ?? x.bar_start)) ? Number(x.bar_start_unix ?? x.bar_start) : null,
       status: String(x.status || "").trim(),
+      touched: Number.isFinite(Number(x.touched)) ? Number(x.touched) : null,
+      mitigation_type: String(x.mitigation_type || "").trim(),
       note: String(x.note || "").trim(),
     }));
 }
@@ -5902,7 +6009,15 @@ function parseSnapshotKeyLevels(payload = {}) {
       const name = String(item.name || item.label || item.type || "Key Level").slice(0, 40);
       const p = Number(item.price ?? item.level ?? item.value);
       const barStart = Number(item.bar_start_unix ?? item.bar_start);
-      if (Number.isFinite(p)) out.push({ name, price: p, kind: String(item.kind || "generic"), bar_start: Number.isFinite(barStart) ? barStart : null });
+      if (Number.isFinite(p)) out.push({
+        name,
+        price: p,
+        kind: String(item.kind || item.type || "generic"),
+        type: String(item.type || "").trim(),
+        zone_type: String(item.zone_type || "").trim(),
+        swept: Boolean(item.swept),
+        bar_start: Number.isFinite(barStart) ? barStart : null
+      });
     }
   };
   const keyLevels = Array.isArray(payload?.market_analysis?.key_levels) ? payload.market_analysis.key_levels : payload?.key_levels;
@@ -5926,12 +6041,21 @@ function parseSnapshotKeyLevels(payload = {}) {
 }
 
 function parseSnapshotChecklist(payload = {}) {
-  const arr = Array.isArray(payload?.market_analysis?.checklist) ? payload.market_analysis.checklist : [];
+  const raw = payload?.market_analysis?.confluence_checklist ?? payload?.confluence_checklist ?? payload?.market_analysis?.checklist;
+  const arr = Array.isArray(raw)
+    ? raw
+    : [
+      ...(Array.isArray(raw?.buy) ? raw.buy.map((x) => ({ side: "buy", ...x })) : []),
+      ...(Array.isArray(raw?.sell) ? raw.sell.map((x) => ({ side: "sell", ...x })) : []),
+    ];
   return arr
     .map((x) => ({
+      side: String(x?.side || "").trim(),
       strategy: String(x?.strategy || "").trim(),
-      condition: String(x?.condition || "").trim(),
+      condition: String(x?.condition || x?.item || "").trim(),
+      weight: String(x?.weight || "").trim(),
       checked: Boolean(x?.checked),
+      pd_array_ref: Number.isFinite(Number(x?.pd_array_ref)) ? Number(x.pd_array_ref) : null,
       note: String(x?.note || "").trim(),
     }))
     .filter((x) => x.strategy || x.condition || x.note);
@@ -9444,7 +9568,7 @@ const appHandler = async (req, res) => {
       finalPrompt += `\n\n${buildAiSchemaPromptText()}`;
 
       if (userLang && userLang !== "English") {
-        finalPrompt += `\n\nIMPORTANT: Please provide the 'analysis' and 'name' fields in ${userLang} language.`;
+        finalPrompt += `\n\nIMPORTANT: Keep enum values exactly as specified, but write narrative fields such as note, recent_move, narrative, condition, and reasons_to_skip.reason in ${userLang}.`;
       }
 
       const provider = (bodyProvider || service || "gemini").toLowerCase();
@@ -9493,7 +9617,7 @@ const appHandler = async (req, res) => {
         if (!requestModel) requestModel = "claude-sonnet-4-0";
         bodyData = {
           model: requestModel,
-          max_tokens: 1200,
+          max_tokens: 5000,
           messages: [{ role: "user", content: finalPrompt }]
         };
       } else {
@@ -9807,7 +9931,7 @@ const appHandler = async (req, res) => {
         apiKey: claudeKey,
         model: requestModel,
         messages: [{ role: "user", content }],
-        maxTokens: Number(body.max_tokens || 4096),
+        maxTokens: Number(body.max_tokens || 7000),
         timeoutMs: 90000,
       });
       const aiRes = out.response;
@@ -9827,7 +9951,7 @@ const appHandler = async (req, res) => {
       }
 
       // Persistence: If we have analysis and bars context, store in market_data metadata
-      if ((parsedJson.bias || parsedJson.analysis) && body.bars && body.bars.length > 0) {
+      if ((parsedJson.bias || parsedJson.analysis || parsedJson.market_analysis || parsedJson.trade_plan || parsedJson.final_verdict) && body.bars && body.bars.length > 0) {
         try {
           const bars = body.bars;
           const barStart = Number(bars[0].time || bars[0].bar_start);

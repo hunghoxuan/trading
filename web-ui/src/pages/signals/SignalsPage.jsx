@@ -122,15 +122,32 @@ function formatNum3(v) {
   return String(Number(n.toFixed(3)));
 }
 
+function firstTradePlan(raw = {}) {
+  if (Array.isArray(raw?.trade_plan)) return raw.trade_plan[0] || {};
+  return raw?.trade_plan && typeof raw.trade_plan === "object" ? raw.trade_plan : {};
+}
+
+function planPrimaryTp(plan = {}) {
+  const partials = Array.isArray(plan?.partial_tps) ? plan.partial_tps : [];
+  const partialPrices = partials.map((x) => (x && typeof x === "object" ? x.price : x));
+  const legacyLevels = Array.isArray(plan?.tp_levels) ? plan.tp_levels : [];
+  const candidates = [plan?.tp, ...partialPrices, ...legacyLevels, plan?.tp1, plan?.target, plan?.take_profit];
+  for (const value of candidates) {
+    const n = asNum(value);
+    if (n != null) return n;
+  }
+  return null;
+}
+
 function extractTradePlanFromSignal(signal = {}) {
   const raw = signal?.raw_json && typeof signal.raw_json === "object" ? signal.raw_json : {};
-  const tradePlan = raw?.trade_plan && typeof raw.trade_plan === "object" && !Array.isArray(raw.trade_plan) ? raw.trade_plan : {};
+  const tradePlan = firstTradePlan(raw);
   const sideRaw = String(signal?.action || signal?.side || tradePlan?.direction || "").toUpperCase();
   return {
     direction: sideRaw.includes("SELL") ? "SELL" : "BUY",
     trade_type: String(tradePlan?.type || raw?.order_type || "limit").toLowerCase(),
     entry: formatNum3(asNum(signal?.entry || signal?.target_price || signal?.entry_price) ?? asNum(raw?.entry ?? raw?.price) ?? NaN),
-    tp: formatNum3(asNum(signal?.tp || signal?.tp_price) ?? asNum(tradePlan?.tp1 ?? tradePlan?.tp) ?? NaN),
+    tp: formatNum3(asNum(signal?.tp || signal?.tp_price) ?? planPrimaryTp(tradePlan) ?? NaN),
     sl: formatNum3(asNum(signal?.sl || signal?.sl_price) ?? asNum(tradePlan?.sl) ?? NaN),
     rr: formatNum3(asNum(signal?.rr_planned) ?? asNum(tradePlan?.rr) ?? calcRrFromSignal(signal) ?? NaN),
     note: String(tradePlan?.note || signal?.note || "").trim(),
