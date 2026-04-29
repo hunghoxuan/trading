@@ -3089,10 +3089,10 @@ function mt5MapDbRow(row) {
 }
 
 
-let MT5_BACKEND = null;
 let MT5_INIT_PROMISE = null;
 
 async function mt5InitBackend() {
+
   if (MT5_BACKEND) return MT5_BACKEND;
   if (MT5_INIT_PROMISE) return MT5_INIT_PROMISE;
   MT5_INIT_PROMISE = _mt5InitBackendInternal().catch(e => {
