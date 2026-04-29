@@ -303,3 +303,8 @@
   - npm run build in web-ui
   - git diff --check
 
+
+# Session Log: 2026-04-29 19:35
+- **Starting Task**:
+  - Add VPS/Claude source menu to System > Snapshots.
+  - Make Claude source list/delete Claude Files API items while preserving VPS snapshot behavior.

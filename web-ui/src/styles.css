@@ -96,7 +96,8 @@ body {
   transform: translateY(0);
   pointer-events: auto;
 }
-.nav-dropdown-menu a {
+.nav-dropdown-menu a,
+.nav-dropdown-menu button {
   text-decoration: none;
   color: var(--muted);
   font-size: 12px;
@@ -104,12 +105,17 @@ body {
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid transparent;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
 }
-.nav-dropdown-menu a:hover {
+.nav-dropdown-menu a:hover,
+.nav-dropdown-menu button:hover {
   color: var(--text);
   background: var(--accent-soft);
 }
-.nav-dropdown-menu a.active {
+.nav-dropdown-menu a.active,
+.nav-dropdown-menu button.active {
   color: var(--text);
   border-color: var(--accent);
   border-bottom: 1px solid var(--accent);
@@ -1079,8 +1085,30 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 }
 .snapshot-card-v2 img {
   width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
   border-radius: 8px;
   border: 1px solid var(--border);
+}
+.snapshot-card-file-v2 {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--muted);
+}
+.snapshot-card-file-v2 strong {
+  color: var(--text);
+  font-size: 13px;
+}
+.snapshot-card-file-v2 span {
+  font-size: 11px;
 }
 .snapshot-select-v2 {
   position: absolute;
@@ -1287,4 +1315,3 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   border-radius: 8px;
   background: #0b1220;
 }
-
