@@ -62,9 +62,9 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
   const [showAddForm, setShowAddForm] = useState(false);
   const [jsonDetailText, setJsonDetailText] = useState("");
   const [symbolsDetailText, setSymbolsDetailText] = useState("");
-  const [cronForm, setCronForm] = useState({ 
-    symbols: "", 
-    timeframes: [], 
+  const [cronForm, setCronForm] = useState({
+    symbols: "",
+    timeframes: [],
     cadence_minutes: 60,
     provider: "twelvedata",
     timezone: "America/New_York",
@@ -160,7 +160,7 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
         const logSet = list.find((x) => x?.type === "system_config" && x?.name === "enabled_log_prefixes");
         setLogConfig(Array.isArray(logSet?.value) ? logSet.value : []);
       }
-      setMsg(""); 
+      setMsg("");
     } catch (err) {
       console.error(err);
       if (err.message !== "Not found") setMsg(err.message);
@@ -168,8 +168,20 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
   }
 
   useEffect(() => {
-    loadData();
-  }, [authUser?.user_id]);
+    loadData().then(() => {
+      if (mode === "settings") {
+        // If we have settings, pick the first one as default active tab
+        api.getSettings().then(res => {
+          const list = Array.isArray(res?.settings) ? res.settings : [];
+          if (list.length > 0) {
+            setActiveTab(getSettingKey(list[0]));
+          }
+        });
+      } else {
+        setActiveTab("PROFILE");
+      }
+    });
+  }, [authUser?.user_id, mode]);
 
   async function saveMyAccount() {
     const name = String(profileForm.name || "").trim();
@@ -437,23 +449,12 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
             <button className={`sidebar-item-v2 ${activeTab === "PROFILE" ? "active" : ""}`} onClick={() => setActiveTab("PROFILE")}>
               Profile
             </button>
-            <button className={`sidebar-item-v2 ${activeTab === "PREFERENCES" ? "active" : ""}`} onClick={() => setActiveTab("PREFERENCES")}>
-              Preferences
-            </button>
-            <button className={`sidebar-item-v2 ${activeTab === "PASSWORD" ? "active" : ""}`} onClick={() => setActiveTab("PASSWORD")}>
-              Password
-            </button>
-            {canManageExecution && (
-              <button className={`sidebar-item-v2 ${activeTab === "EXECUTION" ? "active" : ""}`} onClick={() => setActiveTab("EXECUTION")}>
-                Execution
-              </button>
-            )}
           </div>
 
           <div style={{ height: 1, background: "var(--border)", margin: "16px 0" }} />
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div className="panel-label" style={{ margin: 0 }}>USER SETTINGS</div>
+            <div className="panel-label" style={{ margin: 0 }}>CONFIGURATIONS</div>
             <button className="secondary-button" style={{ padding: "2px 8px", fontSize: 10 }} onClick={() => setShowAddForm(!showAddForm)}>
               {showAddForm ? "Cancel" : "+ Add"}
             </button>
@@ -463,9 +464,9 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
             <div className="stack-layout fadeIn" style={{ gap: 10, paddingBottom: 16, borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
                <label className="stack-layout" style={{ gap: 4 }}>
                   <span className="minor-text" style={{ fontSize: 10 }}>Type</span>
-                  <select 
+                  <select
                     style={{ width: "100%" }}
-                    value={newSettingForm.type} 
+                    value={newSettingForm.type}
                     onChange={(e) => {
                       const nextType = e.target.value;
                       setNewSettingForm((p) => ({
@@ -492,10 +493,10 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                       ))}
                     </select>
                   ) : (
-                    <input 
-                      placeholder="e.g. Watchlist" 
-                      value={newSettingForm.name} 
-                      onChange={e => setNewSettingForm(p => ({ ...p, name: e.target.value }))} 
+                    <input
+                      placeholder="e.g. Watchlist"
+                      value={newSettingForm.name}
+                      onChange={e => setNewSettingForm(p => ({ ...p, name: e.target.value }))}
                     />
                   )}
                </label>
@@ -513,16 +514,17 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
           )}
 
           <div className="stack-layout" style={{ gap: 2 }}>
-            {settings.filter((s) => !SYSTEM_SETTING_TYPES.has(String(s?.type || ""))).map(s => {
+            {settings.map(s => {
               const key = getSettingKey(s);
+              const isCron = ["market_data_cron", "ai_analysis_cron"].includes(s.type);
               return (
-                <button 
+                <button
                   key={key}
                   className={`sidebar-item-v2 ${activeTab === key ? "active" : ""}`}
                   onClick={() => setActiveTab(key)}
                 >
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
-                     <span style={{ fontWeight: 500, fontSize: 12 }}>{s.name || s.type}</span>
+                     <span style={{ fontWeight: isCron ? 700 : 500, fontSize: 12 }}>{s.name || s.type}</span>
                      <span className="minor-text" style={{ fontSize: 9 }}>{s.type}</span>
                   </div>
                   <span className={`status-badge ${settingStatusClass(s.status)}`} style={{ fontSize: 8 }}>{s.status}</span>
@@ -533,212 +535,129 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
         </section>
 
         {/* Right: Detail */}
-        <section className="panel" style={{ margin: 0, minHeight: 600 }}>
+        <section className="panel" style={{ margin: 0, minHeight: 600, overflowY: "auto" }}>
           {activeTab === "PROFILE" && (
-            <div className="fadeIn">
-              <div className="panel-label">PROFILE SETTINGS</div>
-              <UserDetailSection
-                title=""
-                form={profileForm}
-                setForm={setProfileForm}
-                roleOptions={[String(profileForm.role || "User")]}
-                showRole={false}
-                showActive={false}
-                showPassword={false}
-                primaryLabel={profileLoading ? "SAVING..." : "SAVE PROFILE"}
-                onPrimary={saveMyAccount}
-                primaryDisabled={profileLoading}
-                footer={msg && !pwdLoading ? <span className="minor-text">{msg}</span> : null}
-              />
-            </div>
-          )}
-          
-          {activeTab === "PREFERENCES" && (
-            <div className="fadeIn">
-              <div className="panel-label">APP PREFERENCES</div>
-              <div className="stack-layout" style={{ gap: 20, maxWidth: 500 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                  <label className="stack-layout" style={{ gap: 6 }}>
-                    <span className="minor-text">Language</span>
-                    <select 
-                      value={metadataForm.language} 
-                      onChange={e => setMetadataForm(p => ({ ...p, language: e.target.value }))}
-                    >
-                      <option value="English">English</option>
-                      <option value="Vietnamese">Vietnamese</option>
-                      <option value="Deutsch">Deutsch</option>
-                    </select>
-                  </label>
-                  <label className="stack-layout" style={{ gap: 6 }}>
-                    <span className="minor-text">Display Timezone</span>
-                    <input 
-                      type="text" 
-                      value={metadataForm.display_timezone} 
-                      onChange={e => setMetadataForm(p => ({ ...p, display_timezone: e.target.value }))}
-                      placeholder="e.g. UTC, Asia/Ho_Chi_Minh"
-                    />
-                  </label>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={metadataForm.market_data_cron} 
-                      onChange={e => setMetadataForm(p => ({ ...p, market_data_cron: e.target.checked }))} 
-                    />
-                    <span className="minor-text">Market Data Cron</span>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={metadataForm.ai_analysis_cron} 
-                      onChange={e => setMetadataForm(p => ({ ...p, ai_analysis_cron: e.target.checked }))} 
-                    />
-                    <span className="minor-text">AI Analysis Cron</span>
-                  </label>
-                </div>
-
-                <button 
-                  className="primary-button" 
-                  onClick={savePreferences} 
-                  disabled={metadataLoading}
-                  style={{ marginTop: 10 }}
-                >
-                  {metadataLoading ? "SAVING..." : "SAVE PREFERENCES"}
-                </button>
-                {msg && !pwdLoading && !profileLoading && <div className="minor-text">{msg}</div>}
-              </div>
-            </div>
-          )}
-
-          {activeTab === "PASSWORD" && (
-            <div className="fadeIn">
-              <div className="panel-label">SECURITY</div>
-              <div className="stack-layout" style={{ gap: 16, maxWidth: 400 }}>
-                <label className="stack-layout" style={{ gap: 6 }}>
-                  <span className="minor-text">Current Password</span>
-                  <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
-                </label>
-                <label className="stack-layout" style={{ gap: 6 }}>
-                  <span className="minor-text">New Password</span>
-                  <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-                </label>
-                <label className="stack-layout" style={{ gap: 6 }}>
-                  <span className="minor-text">Confirm New Password</span>
-                  <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
-                </label>
-                <button className="primary-button" onClick={resetPassword} disabled={pwdLoading}>
-                  {pwdLoading ? "UPDATING..." : "UPDATE PASSWORD"}
-                </button>
-                {msg && <div className="minor-text">{msg}</div>}
-              </div>
-            </div>
-          )}
-
-          {activeTab === "EXECUTION" && canManageExecution && (
-            <div className="fadeIn">
-              <div className="panel-label">EXECUTION ENGINE</div>
-              <div className="stack-layout" style={{ gap: 24 }}>
-                <div className="stack-layout" style={{ gap: 16, maxWidth: 500 }}>
-                  <label className="stack-layout" style={{ gap: 6 }}>
-                    <span className="minor-text">Account</span>
-                    <select value={execForm.account_id} onChange={(e) => setExecForm((p) => ({ ...p, account_id: e.target.value }))}>
-                      <option value="">Select account</option>
-                      {execAccounts.map((a) => <option key={a.account_id} value={a.account_id}>{a.name || a.account_id}</option>)}
-                    </select>
-                  </label>
-                  <label className="stack-layout" style={{ gap: 6 }}>
-                    <span className="minor-text">Route</span>
-                    <select value={execForm.route} onChange={(e) => setExecForm((p) => ({ ...p, route: e.target.value }))}>
-                      {ROUTE_OPTIONS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
-                    </select>
-                  </label>
-                  <label className="stack-layout" style={{ gap: 6 }}>
-                    <span className="minor-text">Sources (CSV)</span>
-                    <input value={execForm.source_ids_csv} onChange={(e) => setExecForm((p) => ({ ...p, source_ids_csv: e.target.value }))} />
-                  </label>
-                  <button className="primary-button" onClick={applyExecutionProfile} disabled={execLoading}>
-                    {execLoading ? "APPLYING..." : "APPLY PROFILE"}
-                  </button>
-                  {execMsg && <div className="minor-text">{execMsg}</div>}
-                </div>
-
-                <div className="table-scroll">
-                  <table className="table">
-                    <thead>
-                      <tr><th>Profile</th><th>Route</th><th>Account</th><th>Status</th></tr>
-                    </thead>
-                    <tbody>
-                      {execProfiles.map((p) => (
-                        <tr key={p.profile_id}>
-                          <td>{p.profile_name || p.profile_id}</td>
-                          <td>{String(p.route || "").toUpperCase()}</td>
-                          <td>{p.account_id}</td>
-                          <td><span className={`status-badge ${p.is_active ? "active" : "inactive"}`}>{p.is_active ? "ACTIVE" : "INACTIVE"}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "UI" && (
-            <div className="fadeIn">
-              <div className="panel-label">UI PREFERENCES</div>
-              <div className="stack-layout" style={{ gap: 16, maxWidth: 400 }}>
-                <label className="stack-layout" style={{ gap: 6 }}>
-                  <span className="minor-text">Auto Refresh Interval</span>
-                  <select 
-                    value={localStorage.getItem("tvbridge_refresh_ms") || "10000"} 
-                    onChange={(e) => {
-                      localStorage.setItem("tvbridge_refresh_ms", e.target.value);
-                      setMsg("Refresh interval updated.");
-                      window.setTimeout(() => setMsg(""), 2000);
-                      setProfileForm(f => ({ ...f })); 
-                    }}
-                  >
-                    <option value="5000">5 seconds</option>
-                    <option value="10000">10 seconds</option>
-                    <option value="15000">15 seconds</option>
-                    <option value="30000">30 seconds</option>
-                    <option value="60000">1 minute</option>
-                  </select>
-                </label>
-                <div className="minor-text">Controls how often pages update automatically.</div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "LOGGING" && (
-            <div className="fadeIn">
-              <div className="panel-label">LOGGING CONFIG</div>
+            <div className="fadeIn stack-layout" style={{ gap: 40 }}>
+              {/* SECTION 1: IDENTITY */}
               <div className="stack-layout" style={{ gap: 16 }}>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <button className="secondary-button" onClick={() => saveLoggingConfig(LOG_GROUPS)}>CHECK ALL</button>
-                  <button className="secondary-button" onClick={() => saveLoggingConfig([])}>UNCHECK ALL</button>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
-                  {LOG_GROUPS.map(prefix => (
-                    <label key={prefix} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                      <input 
-                        type="checkbox" 
-                        checked={logConfig.includes(prefix)} 
-                        onChange={(e) => {
-                          const next = e.target.checked 
-                            ? [...logConfig, prefix]
-                            : logConfig.filter(x => x !== prefix);
-                          saveLoggingConfig(next);
-                        }}
-                      />
-                      <span style={{ fontSize: 13 }}>{prefix}*</span>
-                    </label>
-                  ))}
-                </div>
-                {logBusy && <div className="minor-text">Saving...</div>}
+                <div className="panel-label">IDENTITY</div>
+                <UserDetailSection
+                  title=""
+                  form={profileForm}
+                  setForm={setProfileForm}
+                  roleOptions={[String(profileForm.role || "User")]}
+                  showRole={false}
+                  showActive={false}
+                  showPassword={false}
+                  primaryLabel={profileLoading ? "SAVING..." : "SAVE CHANGES"}
+                  onPrimary={saveMyAccount}
+                  primaryDisabled={profileLoading}
+                  footer={msg && !pwdLoading && activeTab === "PROFILE" ? <span className="minor-text">{msg}</span> : null}
+                />
               </div>
+
+              {/* SECTION 2: APP PREFERENCES */}
+              <div className="stack-layout" style={{ gap: 16 }}>
+                <div className="panel-label">APP PREFERENCES</div>
+                <div className="stack-layout" style={{ gap: 20, maxWidth: 500 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    <label className="stack-layout" style={{ gap: 6 }}>
+                      <span className="minor-text">Language</span>
+                      <select
+                        value={metadataForm.language}
+                        onChange={e => setMetadataForm(p => ({ ...p, language: e.target.value }))}
+                      >
+                        <option value="English">English</option>
+                        <option value="Vietnamese">Vietnamese</option>
+                        <option value="Deutsch">Deutsch</option>
+                      </select>
+                    </label>
+                    <label className="stack-layout" style={{ gap: 6 }}>
+                      <span className="minor-text">Display Timezone</span>
+                      <input
+                        type="text"
+                        value={metadataForm.display_timezone}
+                        onChange={e => setMetadataForm(p => ({ ...p, display_timezone: e.target.value }))}
+                        placeholder="e.g. UTC, Asia/Ho_Chi_Minh"
+                      />
+                    </label>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={metadataForm.market_data_cron}
+                        onChange={e => setMetadataForm(p => ({ ...p, market_data_cron: e.target.checked }))}
+                      />
+                      <span className="minor-text">Market Data Cron</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={metadataForm.ai_analysis_cron}
+                        onChange={e => setMetadataForm(p => ({ ...p, ai_analysis_cron: e.target.checked }))}
+                      />
+                      <span className="minor-text">AI Analysis Cron</span>
+                    </label>
+                  </div>
+                  <button className="primary-button" onClick={savePreferences} disabled={metadataLoading}>
+                    {metadataLoading ? "SAVING..." : "SAVE PREFERENCES"}
+                  </button>
+                </div>
+              </div>
+
+              {/* SECTION 3: SECURITY */}
+              <div className="stack-layout" style={{ gap: 16 }}>
+                <div className="panel-label">SECURITY</div>
+                <div className="stack-layout" style={{ gap: 16, maxWidth: 400 }}>
+                  <label className="stack-layout" style={{ gap: 6 }}>
+                    <span className="minor-text">Current Password</span>
+                    <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+                  </label>
+                  <label className="stack-layout" style={{ gap: 6 }}>
+                    <span className="minor-text">New Password</span>
+                    <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                  </label>
+                  <label className="stack-layout" style={{ gap: 6 }}>
+                    <span className="minor-text">Confirm New Password</span>
+                    <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                  </label>
+                  <button className="primary-button" onClick={resetPassword} disabled={pwdLoading}>
+                    {pwdLoading ? "UPDATE PASSWORD" : "UPDATE PASSWORD"}
+                  </button>
+                </div>
+              </div>
+
+              {/* SECTION 4: EXECUTION ENGINE */}
+              {canManageExecution && (
+                <div className="stack-layout" style={{ gap: 16 }}>
+                  <div className="panel-label">EXECUTION ENGINE</div>
+                  <div className="stack-layout" style={{ gap: 24 }}>
+                    <div className="stack-layout" style={{ gap: 16, maxWidth: 500 }}>
+                      <label className="stack-layout" style={{ gap: 6 }}>
+                        <span className="minor-text">Account</span>
+                        <select value={execForm.account_id} onChange={(e) => setExecForm((p) => ({ ...p, account_id: e.target.value }))}>
+                          <option value="">Select account</option>
+                          {execAccounts.map((a) => <option key={a.account_id} value={a.account_id}>{a.name || a.account_id}</option>)}
+                        </select>
+                      </label>
+                      <label className="stack-layout" style={{ gap: 6 }}>
+                        <span className="minor-text">Route</span>
+                        <select value={execForm.route} onChange={(e) => setExecForm((p) => ({ ...p, route: e.target.value }))}>
+                          {ROUTE_OPTIONS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+                        </select>
+                      </label>
+                      <label className="stack-layout" style={{ gap: 6 }}>
+                        <span className="minor-text">Sources (CSV)</span>
+                        <input value={execForm.source_ids_csv} onChange={(e) => setExecForm((p) => ({ ...p, source_ids_csv: e.target.value }))} />
+                      </label>
+                      <button className="primary-button" onClick={applyExecutionProfile} disabled={execLoading}>
+                        {execLoading ? "APPLYING..." : "APPLY EXECUTION"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -783,9 +702,9 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                 <div className="stack-layout fadeIn" style={{ gap: 20, maxWidth: 600 }}>
                    <div className="stack-layout" style={{ gap: 8 }}>
                       <span className="panel-label" style={{ fontSize: 10, marginBottom: 0 }}>STATUS</span>
-                      <select 
+                      <select
                         style={{ width: "100%" }}
-                        value={String(selectedSetting.status || "INACTIVE").toUpperCase()} 
+                        value={String(selectedSetting.status || "INACTIVE").toUpperCase()}
                         onChange={(e) => {
                           const val = e.target.value;
                           setSettings(prev => prev.map(s => getSettingKey(s) === getSettingKey(selectedSetting) ? { ...s, status: val } : s));
@@ -817,9 +736,9 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
 
                    <div className="stack-layout" style={{ gap: 8 }}>
                       <span className="panel-label" style={{ fontSize: 10, marginBottom: 0 }}>SYMBOLS (COMMA OR NEWLINE)</span>
-                      <textarea 
+                      <textarea
                         rows={3}
-                        value={cronForm.symbols} 
+                        value={cronForm.symbols}
                         onChange={e => setCronForm(p => ({ ...p, symbols: e.target.value }))}
                         placeholder="e.g. XAUUSD, EURUSD, BTCUSD"
                       />
@@ -830,11 +749,11 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
                          {TIMEFRAME_OPTIONS.map(tf => (
                            <label key={tf} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                             <input 
-                               type="checkbox" 
-                               checked={cronForm.timeframes.includes(tf)} 
+                             <input
+                               type="checkbox"
+                               checked={cronForm.timeframes.includes(tf)}
                                onChange={e => {
-                                 const next = e.target.checked 
+                                 const next = e.target.checked
                                    ? [...cronForm.timeframes, tf]
                                    : cronForm.timeframes.filter(x => x !== tf);
                                  setCronForm(p => ({ ...p, timeframes: next }));
@@ -892,16 +811,16 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                         </div>
                         <div className="stack-layout" style={{ gap: 8 }}>
                            <span className="panel-label" style={{ fontSize: 10, marginBottom: 0 }}>CADENCE (MINUTES)</span>
-                           <input 
+                           <input
                              type="number"
-                             value={cronForm.cadence_minutes} 
+                             value={cronForm.cadence_minutes}
                              onChange={e => setCronForm(p => ({ ...p, cadence_minutes: Number(e.target.value) }))}
                            />
                         </div>
                         <div className="stack-layout" style={{ gap: 8 }}>
                            <span className="panel-label" style={{ fontSize: 10, marginBottom: 0 }}>MODEL</span>
-                           <select 
-                             value={cronForm.model} 
+                           <select
+                             value={cronForm.model}
                              onChange={e => setCronForm(p => ({ ...p, model: e.target.value }))}
                            >
                               {API_KEY_NAME_OPTIONS.map(opt => (
@@ -928,9 +847,9 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                         </div>
                         <div className="stack-layout" style={{ gap: 8 }}>
                            <span className="panel-label" style={{ fontSize: 10, marginBottom: 0 }}>PROMPT</span>
-                           <textarea 
+                           <textarea
                              rows={6}
-                             value={cronForm.prompt} 
+                             value={cronForm.prompt}
                              onChange={e => setCronForm(p => ({ ...p, prompt: e.target.value }))}
                              placeholder="Instructions for AI setup detection..."
                            />
@@ -969,10 +888,10 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                   {Object.entries(selectedSetting.data || {}).map(([key, val]) => (
                     <label key={key} className="stack-layout" style={{ gap: 6 }}>
                       <span className="minor-text" style={{ fontSize: 11 }}>{key}</span>
-                      <input 
-                        type="password" 
-                        value={val || ""} 
-                        onChange={(e) => updateSetting(getSettingKey(selectedSetting), key, e.target.value)} 
+                      <input
+                        type="password"
+                        value={val || ""}
+                        onChange={(e) => updateSetting(getSettingKey(selectedSetting), key, e.target.value)}
                       />
                     </label>
                   ))}
@@ -1016,7 +935,7 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                   </button>
                 </div>
               )}
-              
+
               {settingsMsg && <div className="minor-text" style={{ marginTop: 16, color: "var(--success)" }}>{settingsMsg}</div>}
             </div>
           )}

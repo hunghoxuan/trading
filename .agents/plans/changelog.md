@@ -1,5 +1,13 @@
 # Changelog (Latest first)
 
+## 2026.04.30
+- [x] [11:20] [Web-UI/UX] [Author: Antigravity] Task: **Navigation & Settings Consolidation**.
+  - **Unified Profile**: Merged Preferences (Language/Timezone), Security (Password), and Execution (Routing/Accounts) into a single, sectioned Profile page.
+  - **Unified Settings**: Integrated technical "System Settings" (Market Data Cron, AI Analysis Cron) and "User Settings" (API Keys, Watchlists) into a single, sidebar-driven Settings hub.
+  - **Menu Reorganization**: Renamed "Settings" to "User", moved "Logout" and "Accounts" under the "User" dropdown, and simplified the "System" menu to infrastructure-only tools.
+  - **Routing Stability**: Updated SPA fallback in `server.js` to handle dynamic system paths correctly on page refresh.
+- Version: 2026.04.30-1120
+
 ## 2026.04.27
 - [x] [13:36] [Web-UI/AI] [Author: Gemini] Task: **Signal & Trade Detail Data Restoration**.
   - **Data Integrity**: Restored missing detail fields (Entry Model, Strategy, Signal SID, Note, Account, Ticket) to `metaItems` in Signal and Trade detail views.

@@ -172,6 +172,71 @@ async function get(path) {
   return data;
 }
 
+async function getBlob(path) {
+  const API_KEY = runtimeApiKey();
+  const base = runtimeApiBase();
+  const primaryUrl = buildUrl(base, path);
+  const fallbackUrl = buildUrl(window.location.origin, path);
+
+  async function doFetch(url) {
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(() => ctrl.abort(), DEFAULT_API_TIMEOUT_MS);
+    const activeUserId = getRuntimeActiveUserId();
+    const headers = { "Cache-Control": "no-cache", Pragma: "no-cache" };
+    if (API_KEY) headers["x-api-key"] = API_KEY;
+    if (activeUserId) headers["x-active-user-id"] = activeUserId;
+    try {
+      return await fetch(url, {
+        signal: ctrl.signal,
+        cache: "no-store",
+        credentials: "include",
+        headers,
+      });
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        throw new Error(`Request timeout (${Math.round(DEFAULT_API_TIMEOUT_MS / 1000)}s). Check API URL and server status.`);
+      }
+      throw err;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  let res;
+  try {
+    res = await doFetch(primaryUrl);
+  } catch (primaryError) {
+    if (primaryUrl !== fallbackUrl) {
+      try {
+        res = await doFetch(fallbackUrl);
+      } catch {
+        throw primaryError;
+      }
+    } else {
+      throw primaryError;
+    }
+  }
+
+  if (!res.ok) {
+    let data = {};
+    try {
+      data = await res.json();
+    } catch {
+      data = {};
+    }
+    if (isAuthFailure(res.status, data)) {
+      redirectToLogin();
+      throw new Error("Session expired. Redirecting to login.");
+    }
+    throw new Error(data.error || `Request failed: ${res.status}`);
+  }
+  const blob = await res.blob();
+  const contentType = res.headers.get("content-type") || blob.type || "application/octet-stream";
+  const disposition = res.headers.get("content-disposition") || "";
+  const fileName = (/filename="([^"]+)"/i.exec(disposition)?.[1] || "").trim();
+  return { blob, contentType, disposition, fileName };
+}
+
 async function post(path, body = {}) {
   const API_KEY = runtimeApiKey();
   const base = runtimeApiBase();
@@ -604,6 +669,8 @@ export const api = {
     });
     return get(`/v2/ai/claude/files${q.toString() ? `?${q.toString()}` : ""}`);
   },
+  claudeFile: (fileId) => get(`/v2/ai/claude/files/${encodeURIComponent(fileId)}`),
+  claudeFileContent: (fileId, download = false) => getBlob(`/v2/ai/claude/files/${encodeURIComponent(fileId)}/content${download ? "?download=1" : ""}`),
   claudeUploadSnapshots: (payload = {}) => postWithTimeout("/v2/ai/claude/files/upload-snapshots", payload, 90000),
   claudeDeleteFiles: (payload = {}) => post("/v2/ai/claude/files/delete", payload),
   chartTwelveCandles: (symbol = "", timeframe = "15m", bars = 300, refresh = false) =>

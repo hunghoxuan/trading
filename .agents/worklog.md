@@ -1,10 +1,39 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-30 11:16
+- **Starting Task**:
+  - Update System Files page to match standard page layout: title, pagination, search/filter, action buttons.
+- **Work Accomplished**:
+  - Reworked Files page top area to standard `page-title` + `toolbar-panel`.
+  - Added client-side pagination, page size selector, search input, source filter, and file type filter.
+  - Kept existing file card grid and View/Download/Delete actions below the toolbar.
+  - Bumped server/EA versions to `v2026.04.30 11:20 - 0e523ae`.
+- **Verification**:
+  - `node --check webhook/server.js`
+  - `npm --prefix web-ui run build`
+  - `bash scripts/check_build_versions.sh origin/main`
+  - scoped `git diff --check` on touched files passed
+  - full `git diff --check` is blocked by existing trailing whitespace in `web-ui/src/pages/settings/SettingsPage.jsx`
+
 # Session Log: 2026-04-30 08:55
 - **Starting Task**:
   - Plan Claude Files manager UI: file list on left, content/metadata preview on right, matching Cache/User Settings layout.
 - **Status**:
-  - Planning only. Waiting for user approval before implementation.
+  - Implemented after user clarified to keep existing Snapshots page and rename it to Files.
+- **Work Accomplished**:
+  - Renamed System menu/page surface from Snapshots to Files while keeping `SnapshotsPage.jsx`.
+  - Added `/system/files` route and redirected old snapshot routes.
+  - Expanded VPS file list to show all local files in the snapshot directory, not only images.
+  - Added single-file View, Download, Delete actions.
+  - Added modal preview for images, text/JSON-like files, PDFs, and metadata fallback.
+  - Added Claude file content proxy using Anthropic Files content endpoint.
+  - Added frontend blob download helper.
+  - Bumped server/EA versions to `v2026.04.30 11:06 - 0e523ae`.
+- **Verification**:
+  - `node --check webhook/server.js`
+  - `npm --prefix web-ui run build`
+  - `bash scripts/check_build_versions.sh origin/main`
+  - `git diff --check`
 
 # Session Log: 2026-04-30 08:43
 - **Starting Task**:

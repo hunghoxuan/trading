@@ -1,27 +1,78 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
-
 import { showDateTime } from "../../utils/format";
 
-function formatCompactDateTime(dateLike) {
-  return showDateTime(dateLike);
+function formatBytes(value) {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n) || n <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let size = n;
+  let idx = 0;
+  while (size >= 1024 && idx < units.length - 1) {
+    size /= 1024;
+    idx += 1;
+  }
+  return `${size.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
+}
+
+function isImageFile(item) {
+  const mime = String(item?.mime_type || "").toLowerCase();
+  const name = String(item?.file_name || "").toLowerCase();
+  return mime.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
+}
+
+function isTextFile(item, contentType = "") {
+  const mime = String(contentType || item?.mime_type || "").toLowerCase();
+  const name = String(item?.file_name || "").toLowerCase();
+  return mime.startsWith("text/") || mime.includes("json") || mime.includes("xml") || /\.(txt|json|csv|md|yaml|yml|log)$/i.test(name);
+}
+
+function fileKey(source, item) {
+  return source === "claude" ? String(item?.claude_file_id || item?.id || "") : String(item?.file_name || "");
+}
+
+const PAGE_SIZE_OPTIONS = [24, 48, 96, 200];
+const TYPE_OPTIONS = [
+  { value: "", label: "ALL TYPES" },
+  { value: "image", label: "IMAGES" },
+  { value: "text", label: "TEXT" },
+  { value: "pdf", label: "PDF" },
+  { value: "other", label: "OTHER" },
+];
+
+function fileType(item) {
+  const mime = String(item?.mime_type || "").toLowerCase();
+  const name = String(item?.file_name || "").toLowerCase();
+  if (isImageFile(item)) return "image";
+  if (mime.includes("pdf") || name.endsWith(".pdf")) return "pdf";
+  if (isTextFile(item)) return "text";
+  return "other";
 }
 
 export default function SnapshotsPage() {
   const [source, setSource] = useState("vps");
   const [items, setItems] = useState([]);
+  const [filter, setFilter] = useState({ q: "", type: "", page: 1, pageSize: 48 });
   const [selectedFiles, setSelectedFiles] = useState(new Set());
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [viewing, setViewing] = useState(false);
+  const [modal, setModal] = useState(null);
   const [status, setStatus] = useState({ type: "", text: "" });
 
-  const loadSnapshots = async (nextSource = source) => {
+  const closeModal = () => {
+    if (modal?.objectUrl && modal.source === "claude") URL.revokeObjectURL(modal.objectUrl);
+    setModal(null);
+  };
+
+  const loadFiles = async (nextSource = source) => {
+    closeModal();
     setLoading(true);
     setStatus({ type: "", text: "" });
     try {
       if (nextSource === "claude") {
-        const out = await api.claudeFiles({ limit: 120 });
+        const out = await api.claudeFiles({ limit: 200 });
         const localMap = out?.local_map && typeof out.local_map === "object" ? out.local_map : {};
         const byClaudeId = new Map(
           Object.entries(localMap)
@@ -30,27 +81,27 @@ export default function SnapshotsPage() {
         );
         const rows = Array.isArray(out?.data) ? out.data : [];
         setItems(rows.map((it) => {
-          const fileId = String(it?.id || "");
-          const linked = byClaudeId.get(fileId) || null;
-          const linkedLocalFile = linked?.localFile || "";
+          const id = String(it?.id || "");
+          const linked = byClaudeId.get(id) || null;
           return {
-            id: fileId,
-            file_name: String(it?.filename || fileId),
-            claude_file_id: fileId,
-            local_file: linkedLocalFile,
+            id,
+            file_name: String(it?.filename || id),
+            claude_file_id: id,
+            local_file: linked?.localFile || "",
             created_at: it?.created_at || linked?.meta?.uploaded_at || "",
             size_bytes: Number(it?.size_bytes || linked?.meta?.size_bytes || 0),
             mime_type: String(it?.mime_type || linked?.meta?.mime_type || ""),
-            url: linkedLocalFile ? `/v2/chart/snapshots/${encodeURIComponent(linkedLocalFile)}` : "",
+            downloadable: it?.downloadable !== false,
+            url: linked?.localFile ? `/v2/chart/snapshots/${encodeURIComponent(linked.localFile)}` : "",
           };
         }));
       } else {
-        const out = await api.chartSnapshots(120);
+        const out = await api.chartSnapshots(200);
         setItems(Array.isArray(out?.items) ? out.items : []);
       }
       setSelectedFiles(new Set());
     } catch (e) {
-      setStatus({ type: "error", text: String(e?.message || e || "Failed to load snapshots.") });
+      setStatus({ type: "error", text: String(e?.message || e || "Failed to load files.") });
     } finally {
       setLoading(false);
     }
@@ -58,27 +109,54 @@ export default function SnapshotsPage() {
 
   const chooseSource = (nextSource) => {
     setSource(nextSource);
-    loadSnapshots(nextSource);
+    setFilter((prev) => ({ ...prev, page: 1 }));
+    loadFiles(nextSource);
   };
 
-  const toggleFile = (fileName) => {
+  const filteredItems = useMemo(() => {
+    const q = String(filter.q || "").trim().toLowerCase();
+    const type = String(filter.type || "");
+    return items.filter((item) => {
+      if (type && fileType(item) !== type) return false;
+      if (!q) return true;
+      const haystack = [
+        item.file_name,
+        item.claude_file_id,
+        item.local_file,
+        item.mime_type,
+        item.id,
+      ].map((x) => String(x || "").toLowerCase()).join(" ");
+      return haystack.includes(q);
+    });
+  }, [filter.q, filter.type, items]);
+
+  const total = filteredItems.length;
+  const pages = Math.max(1, Math.ceil(total / Number(filter.pageSize || 48)));
+  const currentPage = Math.min(Number(filter.page || 1), pages);
+  const pageItems = useMemo(() => {
+    const pageSize = Number(filter.pageSize || 48);
+    const start = (currentPage - 1) * pageSize;
+    return filteredItems.slice(start, start + pageSize);
+  }, [currentPage, filter.pageSize, filteredItems]);
+
+  const toggleFile = (key) => {
     setSelectedFiles((prev) => {
       const next = new Set(prev);
-      if (next.has(fileName)) next.delete(fileName);
-      else next.add(fileName);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
 
-  const deleteSnapshots = async (payload) => {
+  const deleteFiles = async (payload) => {
     setDeleting(true);
     setStatus({ type: "", text: "" });
     try {
       const out = source === "claude"
         ? await api.claudeDeleteFiles(payload || {})
         : await api.chartSnapshotsDelete(payload || {});
-      await loadSnapshots();
-      setStatus({ type: "success", text: `Deleted ${Number(out?.deleted_count || 0)} ${source === "claude" ? "Claude file" : "screenshot"}(s).` });
+      await loadFiles(source);
+      setStatus({ type: "success", text: `Deleted ${Number(out?.deleted_count || 0)} file(s).` });
     } catch (e) {
       setStatus({ type: "error", text: String(e?.message || e || "Delete failed.") });
     } finally {
@@ -89,29 +167,37 @@ export default function SnapshotsPage() {
   const deleteSelected = async () => {
     const files = [...selectedFiles];
     if (!files.length) {
-      setStatus({ type: "warning", text: `No ${source === "claude" ? "Claude file" : "screenshot"} selected.` });
+      setStatus({ type: "warning", text: "No file selected." });
       return;
     }
-    await deleteSnapshots(source === "claude" ? { file_ids: files } : { files });
+    await deleteFiles(source === "claude" ? { file_ids: files } : { files });
+  };
+
+  const deleteOne = async (item) => {
+    const key = fileKey(source, item);
+    if (!key) return;
+    if (!window.confirm(`Delete ${item.file_name || key}?`)) return;
+    await deleteFiles(source === "claude" ? { file_ids: [key] } : { files: [key] });
   };
 
   const deleteAll = async () => {
-    if (source === "claude") {
-      const fileIds = items.map((it) => String(it.claude_file_id || it.id || "")).filter(Boolean);
-      if (!fileIds.length) {
-        setStatus({ type: "warning", text: "No Claude files to delete." });
-        return;
-      }
-      await deleteSnapshots({ file_ids: fileIds });
+    if (!items.length) {
+      setStatus({ type: "warning", text: "No files to delete." });
       return;
     }
-    await deleteSnapshots({ all: true });
+    if (!window.confirm(`Delete all ${source === "claude" ? "Claude" : "VPS"} files shown here?`)) return;
+    if (source === "claude") {
+      const ids = items.map((it) => fileKey(source, it)).filter(Boolean);
+      await deleteFiles({ file_ids: ids });
+      return;
+    }
+    await deleteFiles({ all: true });
   };
 
   const uploadSelectedToClaude = async () => {
     const files = [...selectedFiles];
     if (!files.length) {
-      setStatus({ type: "warning", text: "No VPS screenshot selected." });
+      setStatus({ type: "warning", text: "No VPS file selected." });
       return;
     }
     setUploading(true);
@@ -120,8 +206,9 @@ export default function SnapshotsPage() {
       const out = await api.claudeUploadSnapshots({ files });
       setStatus({
         type: out?.failed_count ? "warning" : "success",
-        text: `Uploaded ${Number(out?.uploaded_count || 0)} screenshot(s) to Claude${out?.failed_count ? `, ${Number(out.failed_count)} failed.` : "."}`,
+        text: `Uploaded ${Number(out?.uploaded_count || 0)} file(s) to Claude${out?.failed_count ? `, ${Number(out.failed_count)} failed.` : "."}`,
       });
+      await loadFiles(source);
     } catch (e) {
       setStatus({ type: "error", text: String(e?.message || e || "Claude upload failed.") });
     } finally {
@@ -129,36 +216,115 @@ export default function SnapshotsPage() {
     }
   };
 
+  const downloadFile = async (item) => {
+    if (!item) return;
+    try {
+      setStatus({ type: "", text: "" });
+      if (source === "claude") {
+        const id = fileKey(source, item);
+        const out = await api.claudeFileContent(id, true);
+        const objectUrl = URL.createObjectURL(out.blob);
+        const a = document.createElement("a");
+        a.href = objectUrl;
+        a.download = out.fileName || item.file_name || `${id}.bin`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(objectUrl);
+        return;
+      }
+      const a = document.createElement("a");
+      a.href = item.url;
+      a.download = item.file_name || "file";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      setStatus({ type: "error", text: String(e?.message || e || "Download failed.") });
+    }
+  };
+
+  const viewFile = async (item) => {
+    closeModal();
+    setViewing(true);
+    setStatus({ type: "", text: "" });
+    try {
+      if (source === "claude") {
+        const id = fileKey(source, item);
+        const out = await api.claudeFileContent(id, false);
+        const objectUrl = URL.createObjectURL(out.blob);
+        const contentType = out.contentType || item.mime_type || "";
+        const text = isTextFile(item, contentType) ? await out.blob.text() : "";
+        setModal({ item, source, objectUrl, contentType, text });
+        return;
+      }
+      setModal({ item, source, objectUrl: item.url, contentType: item.mime_type || "", text: "" });
+    } catch (e) {
+      setStatus({ type: "error", text: String(e?.message || e || "View failed.") });
+    } finally {
+      setViewing(false);
+    }
+  };
+
   useEffect(() => {
-    loadSnapshots(source);
+    loadFiles(source);
+    return () => closeModal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <section className="snapshot-builder-v2">
-      <section className="panel">
-        <div className="snapshot-gallery-head-v2">
-          <div>
-            <span className="panel-label" style={{ margin: 0 }}>Snapshots ({items.length})</span>
-            <div className="minor-text">{source === "claude" ? "Claude Files API" : "VPS file server"}</div>
-          </div>
-          <div className="snapshot-bulk-actions-v2">
-            <div className="nav-dropdown">
-              <button className="secondary-button nav-dropdown-trigger" type="button">
-                Source: {source === "claude" ? "Claude" : "VPS"}
-              </button>
-              <div className="nav-dropdown-menu">
-                <button type="button" className={source === "vps" ? "active" : ""} onClick={() => chooseSource("vps")}>VPS</button>
-                <button type="button" className={source === "claude" ? "active" : ""} onClick={() => chooseSource("claude")}>Claude</button>
+    <section className="stack-layout fadeIn">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <h2 className="page-title" style={{ margin: 0 }}>Files</h2>
+        <span className="minor-text" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+          {source === "claude" ? "Claude Files API" : "VPS local files"}
+        </span>
+      </div>
+
+      <div className="toolbar-panel">
+        <div className="toolbar-group toolbar-pagination">
+          <div className="pager-area">
+            <strong>{total}</strong>
+            {pages > 1 ? (
+              <div className="pager-mini">
+                <button className="secondary-button" type="button" disabled={currentPage <= 1} onClick={() => setFilter((f) => ({ ...f, page: Math.max(1, currentPage - 1) }))}>&lt;</button>
+                <span className="minor-text">{currentPage}/{pages}</span>
+                <button className="secondary-button" type="button" disabled={currentPage >= pages} onClick={() => setFilter((f) => ({ ...f, page: Math.min(pages, currentPage + 1) }))}>&gt;</button>
               </div>
-            </div>
-            <button className="secondary-button" type="button" onClick={() => loadSnapshots()} disabled={loading}>{loading ? "Refreshing..." : "Refresh"}</button>
-            {source === "vps" ? (
-              <button className="secondary-button" type="button" onClick={uploadSelectedToClaude} disabled={uploading || deleting}>{uploading ? "Uploading..." : "Upload to Claude"}</button>
             ) : null}
-            <button className="danger-button" type="button" onClick={deleteSelected} disabled={deleting}>{deleting ? "Deleting..." : "Delete Selected"}</button>
-            <button className="danger-button" type="button" onClick={deleteAll} disabled={deleting}>{deleting ? "Deleting..." : "Delete All"}</button>
+            <select value={filter.pageSize} onChange={(e) => setFilter((f) => ({ ...f, pageSize: Number(e.target.value), page: 1 }))}>
+              {PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
           </div>
         </div>
+
+        <div className="toolbar-group toolbar-search-filter" style={{ flexWrap: "wrap" }}>
+          <input
+            value={filter.q}
+            onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value, page: 1 }))}
+            placeholder="Search files..."
+            style={{ width: 220 }}
+          />
+          <select value={source} onChange={(e) => chooseSource(e.target.value)}>
+            <option value="vps">VPS</option>
+            <option value="claude">Claude</option>
+          </select>
+          <select value={filter.type} onChange={(e) => setFilter((f) => ({ ...f, type: e.target.value, page: 1 }))}>
+            {TYPE_OPTIONS.map((opt) => <option key={opt.value || "all"} value={opt.value}>{opt.label}</option>)}
+          </select>
+        </div>
+
+        <div className="toolbar-group toolbar-create" style={{ flexWrap: "wrap" }}>
+          <button className="secondary-button" type="button" onClick={() => loadFiles(source)} disabled={loading}>{loading ? "Refreshing..." : "Refresh"}</button>
+          {source === "vps" ? (
+            <button className="secondary-button" type="button" onClick={uploadSelectedToClaude} disabled={uploading || deleting}>{uploading ? "Uploading..." : "Upload to Claude"}</button>
+          ) : null}
+          <button className="danger-button" type="button" onClick={deleteSelected} disabled={deleting}>{deleting ? "Deleting..." : "Delete Selected"}</button>
+          <button className="danger-button" type="button" onClick={deleteAll} disabled={deleting}>{deleting ? "Deleting..." : "Delete All"}</button>
+        </div>
+      </div>
+
+      <section className="panel">
 
         {status.text ? (
           <div className={`form-message ${status.type === "error" ? "msg-error" : status.type === "warning" ? "msg-warning" : "msg-success"}`}>
@@ -166,40 +332,75 @@ export default function SnapshotsPage() {
           </div>
         ) : null}
 
-        {items.length === 0 ? (
-          <div className="minor-text">No {source === "claude" ? "Claude files" : "snapshots"} yet.</div>
+        {pageItems.length === 0 ? (
+          <div className="minor-text">No {source === "claude" ? "Claude files" : "VPS files"} yet.</div>
         ) : (
           <div className="snapshot-gallery-v2">
-            {items.map((it) => (
-              <article key={it.id} className="snapshot-card-v2">
-                <label className="snapshot-select-v2">
-                  <input
-                    type="checkbox"
-                    checked={selectedFiles.has(source === "claude" ? it.claude_file_id : it.file_name)}
-                    onChange={() => toggleFile(source === "claude" ? it.claude_file_id : it.file_name)}
-                  />
-                </label>
-                {it.url ? (
-                  <a href={it.url} target="_blank" rel="noreferrer">
-                    <img src={it.url} alt={it.file_name} />
-                  </a>
-                ) : (
-                  <div className="snapshot-card-file-v2">
-                    <strong>{String(it.mime_type || "file").toUpperCase()}</strong>
-                    <span>{source === "claude" ? "Claude file" : "Snapshot"}</span>
+            {pageItems.map((it) => {
+              const key = fileKey(source, it);
+              return (
+                <article key={key || it.file_name} className="snapshot-card-v2">
+                  <label className="snapshot-select-v2">
+                    <input
+                      type="checkbox"
+                      checked={selectedFiles.has(key)}
+                      onChange={() => toggleFile(key)}
+                    />
+                  </label>
+                  {it.url && isImageFile(it) ? (
+                    <button type="button" className="snapshot-image-button-v2" onClick={() => viewFile(it)}>
+                      <img src={it.url} alt={it.file_name} />
+                    </button>
+                  ) : (
+                    <div className="snapshot-card-file-v2">
+                      <strong>{String(it.mime_type || "file").split("/").pop().toUpperCase()}</strong>
+                      <span>{source === "claude" ? "Claude file" : "VPS file"}</span>
+                    </div>
+                  )}
+                  <div className="snapshot-meta-v2">
+                    <div className="snapshot-file-v2">{it.file_name}</div>
+                    {source === "claude" ? <div className="snapshot-time-v2">{it.claude_file_id}</div> : null}
+                    {it.local_file ? <div className="snapshot-time-v2">VPS: {it.local_file}</div> : null}
+                    <div className="snapshot-time-v2">{String(it.mime_type || "unknown")} · {formatBytes(it.size_bytes)}</div>
+                    <div className="snapshot-time-v2">{showDateTime(it.created_at)}</div>
                   </div>
-                )}
-                <div className="snapshot-meta-v2">
-                  <div className="snapshot-file-v2">{it.file_name}</div>
-                  {source === "claude" ? <div className="snapshot-time-v2">{it.claude_file_id}</div> : null}
-                  {it.local_file ? <div className="snapshot-time-v2">VPS: {it.local_file}</div> : null}
-                  <div className="snapshot-time-v2">{formatCompactDateTime(it.created_at)}</div>
-                </div>
-              </article>
-            ))}
+                  <div className="snapshot-file-actions-v2">
+                    <button className="secondary-button" type="button" onClick={() => viewFile(it)} disabled={viewing}>View</button>
+                    <button className="secondary-button" type="button" onClick={() => downloadFile(it)}>Download</button>
+                    <button className="danger-button" type="button" onClick={() => deleteOne(it)} disabled={deleting}>Delete</button>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
+
+      {modal ? (
+        <div className="snapshot-modal-backdrop-v4" onClick={closeModal}>
+          <div className="snapshot-modal-panel-v4" onClick={(e) => e.stopPropagation()}>
+            <div className="snapshot-modal-head-v4">
+              <div>
+                <span className="panel-label" style={{ margin: 0 }}>{modal.item?.file_name || "File"}</span>
+                <div className="minor-text">{modal.contentType || modal.item?.mime_type || "file"} · {formatBytes(modal.item?.size_bytes)}</div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="secondary-button" type="button" onClick={() => downloadFile(modal.item)}>Download</button>
+                <button className="danger-button" type="button" onClick={closeModal}>Close</button>
+              </div>
+            </div>
+            {isImageFile(modal.item) ? (
+              <img src={modal.objectUrl} alt={modal.item?.file_name || "file"} className="snapshot-modal-image-v2" />
+            ) : modal.text ? (
+              <pre className="snapshot-modal-pre-v2">{modal.text}</pre>
+            ) : String(modal.contentType || modal.item?.mime_type || "").toLowerCase().includes("pdf") ? (
+              <iframe title={modal.item?.file_name || "file"} src={modal.objectUrl} className="snapshot-modal-frame-v2" />
+            ) : (
+              <pre className="snapshot-modal-pre-v2">{JSON.stringify(modal.item || {}, null, 2)}</pre>
+            )}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
