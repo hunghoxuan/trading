@@ -900,25 +900,15 @@ function marketDataTtlSecByTf(tfNorm) {
 }
 
 function marketDataMemoryRead(symbolNorm, tfNorm, reqStart, reqEnd) {
-  const key = marketDataMemoryKey(symbolNorm, tfNorm);
-  const now = Date.now();
-  const arr = Array.isArray(MARKET_DATA_MEMORY_CACHE.get(key)) ? MARKET_DATA_MEMORY_CACHE.get(key) : [];
-  if (!arr.length) return null;
-  const alive = arr.filter((x) => Number(x?.expires_at_ms || 0) > now);
-  if (alive.length !== arr.length) {
-    if (alive.length) MARKET_DATA_MEMORY_CACHE.set(key, alive);
-    else MARKET_DATA_MEMORY_CACHE.delete(key);
-  }
-  for (const item of alive) {
-    const data = item?.data && typeof item.data === "object" ? item.data : null;
-    if (!data) continue;
-    const s = Number(data?.bar_start);
-    const e = Number(data?.bar_end);
-    if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
-    if (s <= reqStart && e >= reqEnd) {
-      return JSON.parse(JSON.stringify(data));
-    }
-  }
+  const key = marketDataCacheKey(symbolNorm);
+  const root = UnifiedCache.get(key, { l1Map: MARKET_DATA_MEMORY_CACHE });
+  if (!root || typeof root !== "object" || !Array.isArray(root.data)) return null;
+  const tfData = root.data.find((d) => d && d.tf === tfNorm);
+  if (!tfData || !Array.isArray(tfData.bars) || !tfData.bars.length) return null;
+  const s = Number(tfData.bar_start ?? tfData.bars[0]?.time);
+  const e = Number(tfData.bar_end ?? tfData.bars[tfData.bars.length - 1]?.time);
+  if (!Number.isFinite(s) || !Number.isFinite(e)) return null;
+  if (s <= reqStart && e >= reqEnd) return JSON.parse(JSON.stringify(tfData));
   return null;
 }
 
