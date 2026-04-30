@@ -124,18 +124,29 @@ export default function SessionClockBar({ displayTimezone }) {
 
   const renderRuler = () => {
     const ticks = [];
+    // 4 Hour: Major
     for (let i = 0; i <= 24; i += 4) {
       ticks.push(
-        <div key={`top-${i}`} className="ruler-tick major" style={{ left: `${(i / 24) * 100}%` }}>
-          <span className="tick-label">{String(i).padStart(2, '0')}:00</span>
+        <div key={`4h-${i}`} className="ruler-tick major" style={{ left: `${(i / 24) * 100}%` }}>
+          <span className="tick-label-4h">{String(i).padStart(2, '0')}:00</span>
         </div>
       );
     }
+    // 1 Hour: Sub-major
+    for (let i = 0; i <= 24; i++) {
+      if (i % 4 === 0) continue; 
+      ticks.push(
+        <div key={`1h-${i}`} className="ruler-tick sub-major" style={{ left: `${(i / 24) * 100}%` }}>
+          <span className="tick-label-1h">{String(i).padStart(2, '0')}:00</span>
+        </div>
+      );
+    }
+    // 15 Minute: Minor
     for (let i = 0; i <= 24 * 4; i++) {
       const hours = i / 4;
-      if (hours % 4 === 0) continue;
+      if (hours % 1 === 0) continue; 
       ticks.push(
-        <div key={`bot-${i}`} className="ruler-tick minor" style={{ left: `${(hours / 24) * 100}%` }} />
+        <div key={`15m-${i}`} className="ruler-tick minor" style={{ left: `${(hours / 24) * 100}%` }} />
       );
     }
     return ticks;
@@ -153,23 +164,28 @@ export default function SessionClockBar({ displayTimezone }) {
         regions.push({ s: startTz, e: endTz });
       }
 
-      return regions.map((r, idx) => (
-        <div 
-          key={`${item.id}-${idx}`}
-          className={`session-region ${isKillZone ? 'killzone' : ''}`}
-          style={{
-            left: `${(r.s / 24) * 100}%`,
-            width: `${((r.e - r.s) / 24) * 100}%`,
-            backgroundColor: item.color,
-            borderLeft: item.borderColor ? `2px solid ${item.borderColor}` : 'none',
-            borderRight: item.borderColor ? `2px solid ${item.borderColor}` : 'none',
-          }}
-          title={`${item.label}: ${item.start}:00 - ${item.end}:00 UTC`}
-        >
-          {!isKillZone && <span className="session-label">{item.label}</span>}
-          <div className="tooltip">{item.label} ({item.start}:00 - {item.end}:00 UTC)</div>
-        </div>
-      ));
+      return regions.map((r, idx) => {
+        // Determine if active
+        const isActive = currentHour >= r.s && currentHour < r.e;
+        
+        return (
+          <div 
+            key={`${item.id}-${idx}`}
+            className={`session-region ${isKillZone ? 'killzone' : ''} ${isActive ? 'active' : 'inactive'}`}
+            style={{
+              left: `${(r.s / 24) * 100}%`,
+              width: `${((r.e - r.s) / 24) * 100}%`,
+              backgroundColor: isActive ? item.color : 'rgba(100, 100, 100, 0.05)',
+              borderLeft: isActive && item.borderColor ? `2px solid ${item.borderColor}` : 'none',
+              borderRight: isActive && item.borderColor ? `2px solid ${item.borderColor}` : 'none',
+            }}
+            title={`${item.label}: ${item.start}:00 - ${item.end}:00 UTC`}
+          >
+            {!isKillZone && <span className="session-label">{item.label}</span>}
+            <div className="tooltip">{item.label} ({item.start}:00 - {item.end}:00 UTC)</div>
+          </div>
+        );
+      });
     });
   };
 

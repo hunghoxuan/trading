@@ -48,7 +48,7 @@ body {
 .msg-success { color: #10b981 !important; }
 
 /* Navigation */
-.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .brand { font-size: 22px; font-weight: 900; color: var(--text); display: flex; align-items: center; gap: 12px; }
 .brand-version { font-size: 11px; color: var(--muted); font-weight: 400; }
 .topbar nav { display: flex; align-items: center; gap: 30px; }
