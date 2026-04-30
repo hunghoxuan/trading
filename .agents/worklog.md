@@ -14,6 +14,13 @@
   - `bash scripts/check_build_versions.sh origin/main`
   - scoped `git diff --check` on touched files passed
   - full `git diff --check` is blocked by existing trailing whitespace in `web-ui/src/pages/settings/SettingsPage.jsx`
+- **Deploy**:
+  - Committed and pushed `ebf201f feat(system): add files manager`.
+  - Deployed to VPS with `bash scripts/deploy_webhook.sh`.
+  - Remote build produced `/assets/index-BOFanXjh.js`.
+  - PM2 `webhook` restarted successfully.
+  - Live health: `v2026.04.30 11:20 - 0e523ae`.
+  - Live `/system/files` serves the new UI bundle.
 
 # Session Log: 2026-04-30 08:55
 - **Starting Task**:
