@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.30 11:20 - 0e523ae"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.30 13:29 - 994e1f4"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(CHART_SNAPSHOT_DIR, ".claude-files.json");
 const AI_CONTEXT_FILE_DIR = path.resolve(__dirname, "ai_context_files");
@@ -2683,7 +2683,7 @@ function sha256File(filePath) {
 
 function mimeByFileName(fileName) {
   const n = String(fileName || "").toLowerCase();
-  if (n.endsWith(".json")) return "application/json";
+  if (n.endsWith(".json")) return "text/plain";
   if (n.endsWith(".csv")) return "text/csv";
   if (n.endsWith(".txt") || n.endsWith(".md")) return "text/plain";
   return snapshotMimeByFileName(n) || "application/octet-stream";
@@ -2708,14 +2708,15 @@ async function upsertClaudeContextFile({ apiKey, contextKey, type, absPath, file
   const key = `${contextKey}:${type}`;
   const hash = sha256File(absPath);
   const prev = map[key];
-  if (prev?.file_id && prev?.sha256 === hash) {
+  const nextMime = mimeByFileName(fileName);
+  if (prev?.file_id && prev?.sha256 === hash && String(prev?.mime_type || "") === nextMime) {
     return { ...prev, reused: true };
   }
   const uploaded = await uploadFileToClaude({
     apiKey,
     absPath,
     fileName,
-    mediaType: mimeByFileName(fileName),
+    mediaType: nextMime,
   });
   const item = {
     context_key: contextKey,
@@ -2727,7 +2728,7 @@ async function upsertClaudeContextFile({ apiKey, contextKey, type, absPath, file
     vps_path: absPath,
     file_id: String(uploaded?.id || ""),
     filename: String(uploaded?.filename || fileName),
-    mime_type: String(uploaded?.mime_type || mimeByFileName(fileName)),
+    mime_type: String(uploaded?.mime_type || nextMime),
     size_bytes: Number(uploaded?.size_bytes || fs.statSync(absPath).size || 0),
     sha256: hash,
     uploaded_at: new Date().toISOString(),
@@ -2796,6 +2797,27 @@ function makeAiContextDocumentBlock(fileId, title) {
   return {
     type: "document",
     source: { type: "file", file_id: fileId },
+  };
+}
+
+function makeAiContextTextBlock(file = {}, title = "context") {
+  const filePath = String(file?.vps_path || "").trim();
+  const fileName = path.basename(String(file?.vps_file || file?.filename || title || "context.txt"));
+  let text = "";
+  if (filePath && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    text = fs.readFileSync(filePath, "utf8");
+  } else if (fileName && fileName === String(file?.vps_file || file?.filename || fileName)) {
+    const abs = path.join(AI_CONTEXT_FILE_DIR, fileName);
+    if (fs.existsSync(abs) && fs.statSync(abs).isFile()) text = fs.readFileSync(abs, "utf8");
+  }
+  if (!text) return null;
+  const maxChars = 180000;
+  const clipped = text.length > maxChars
+    ? `${text.slice(0, maxChars)}\n\n[TRUNCATED ${text.length - maxChars} chars]`
+    : text;
+  return {
+    type: "text",
+    text: `\n\n### ${title}\nFile: ${fileName}\n\n${clipped}`,
   };
 }
 
@@ -9179,7 +9201,7 @@ const appHandler = async (req, res) => {
           sources: mt5ComputeTopWinrateRows(selectedRows, (r) => mt5StrategyFromRow(r), { limit: 100, includeDirection: false }),
           directional: mt5ComputeTopWinrateRows(selectedRows, (r) => {
             const dir = String(r.action || r.side || "BUY").toLowerCase();
-            const typeRaw = String(r.metadata?.type || r.raw_json?.type || r.order_type || "MARKET").toLowerCase();
+            const typeRaw = String(r.metadata?.type || r.raw_json?.type || r.order_type || "LIMIT").toLowerCase();
             const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
             return `${capitalize(dir)} ${capitalize(typeRaw)}`;
           }, { limit: 100, includeDirection: false }),
@@ -10792,8 +10814,8 @@ const appHandler = async (req, res) => {
             content.push({ type: "image", source: { type: "file", file_id: filesForTf.snapshot.file_id } });
           }
           for (const type of ["bars", "analysis", "tradeplans"]) {
-            const fileId = filesForTf[type]?.file_id;
-            if (fileId) content.push(makeAiContextDocumentBlock(fileId, `${item.tf} ${type}`));
+            const block = makeAiContextTextBlock(filesForTf[type], `${item.tf} ${type}`);
+            if (block) content.push(block);
           }
         }
         content.push({ type: "text", text: finalPrompt });

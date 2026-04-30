@@ -1,5 +1,21 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-30 13:29
+- **Starting Task**:
+  - Fix Claude AI error: unsupported document file format `application/json`.
+- **Work Accomplished**:
+  - Changed AI context `.json` files to use `text/plain` MIME for future Claude Files uploads.
+  - Reupload context files when cached MIME differs.
+  - Stop attaching JSON context files as Claude `document` blocks.
+  - Inject bars/analysis/tradeplans context as text blocks instead.
+  - Kept snapshot images as Claude file image references.
+  - Bumped server/EA versions to `v2026.04.30 13:29 - 994e1f4`.
+- **Verification**:
+  - `node --check webhook/server.js`
+  - `npm --prefix web-ui run build`
+  - `bash scripts/check_build_versions.sh origin/main`
+  - `git diff --check`
+
 # Session Log: 2026-04-30 11:16
 - **Starting Task**:
   - Update System Files page to match standard page layout: title, pagination, search/filter, action buttons.
