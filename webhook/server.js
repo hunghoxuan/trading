@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.30 06:34 - e80ff51"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.30 07:00 - 07c0f0a"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(CHART_SNAPSHOT_DIR, ".claude-files.json");
 const AI_CONTEXT_FILE_DIR = path.resolve(__dirname, "ai_context_files");
@@ -9462,7 +9462,8 @@ const appHandler = async (req, res) => {
     // If browser navigation (wants HTML), fall through to static server
     const accept = req.headers["accept"] || "";
     if (url.pathname === "/system/cache" && accept.includes("text/html")) {
-      // Fall through to index.html handler
+      const indexPath = path.join(CFG.uiDistPath, "index.html");
+      return serveUiFile(res, indexPath, req.method);
     } else {
       if (!requireSystemRoleForUi(req, res)) return;
       try {

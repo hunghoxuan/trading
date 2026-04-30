@@ -201,6 +201,10 @@
   },
   "active": "336f84509bfb892c",
   "lastOpenFiles": [
+    "knowledge/ai-model-guide.md",
+    "architecture/security-auth-upgrade.md",
+    "architecture/execution-hub-v2.md",
+    "architecture/mt5-product.md",
     "knowledge/README.md",
     "plans/README.md",
     "architecture/README.md",
@@ -233,10 +237,6 @@
     "skills/token-optimization.md",
     "knowledge/popular_entry_models.md",
     "skills/session-management.md",
-    "skills/browser-testing.md",
-    "plans/changelog.md",
-    "plans/bugs.md",
-    "plans/backlog.md",
     "Untitled.canvas"
   ]
 }

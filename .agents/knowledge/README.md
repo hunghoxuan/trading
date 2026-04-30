@@ -13,6 +13,7 @@ Keep notes short.
 Do not put active tasks here.
 
 Current useful files:
+- `ai-model-guide.md`
 - `deploy.md`
 - `EA_Development.md`
 - `EA_Risk_Execution_Telemetry.md`

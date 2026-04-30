@@ -1,5 +1,20 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-30 08:43
+- **Starting Task**:
+  - Read `docs/`, merge durable content into `.agents`, and remove duplicated docs.
+- **Work Accomplished**:
+  - Merged AI model guide into `.agents/knowledge/ai-model-guide.md`.
+  - Merged MT5 product design/backlog/roadmap notes into `.agents/architecture/mt5-product.md`.
+  - Merged Execution Hub V2 design/API/schema/migration into `.agents/architecture/execution-hub-v2.md`.
+  - Merged security auth upgrade into `.agents/architecture/security-auth-upgrade.md`.
+  - Updated architecture and knowledge indexes.
+  - Removed `docs/` after verifying no live repo references outside historical text.
+- **Verification**:
+  - `test ! -e docs`
+  - repo-wide `rg` for old docs references
+  - `git diff --check -- .agents docs`
+
 # Session Log: 2026-04-30 08:28
 - **Starting Task**:
   - Reconstruct `.agents` docs into short master indexes and split rules.
@@ -8,6 +23,15 @@
   - `.agents/README.md`, `.agents/rules.md`, `.agents/rules/*`
   - area indexes for architecture, plans, knowledge
   - cleanup approved stale `.agents` files/folders
+- **Work Accomplished**:
+  - Rebuilt `.agents` around master indexes and split mandatory rules.
+  - Kept `skills/` as optional playbooks, not rule source.
+  - Compressed architecture and mailbox docs.
+  - Removed obsolete redirect/workflow/empty docs from the working tree.
+- **Verification**:
+  - `find .agents -type d -empty`
+  - stale-reference `rg`
+  - `git diff --check -- .agents`
 
 # Session Log: 2026-04-29 11:16
 - **Starting Task**:

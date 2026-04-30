@@ -60,9 +60,9 @@
   position: absolute;
   top: 4px;
   left: 4px;
-  font-size: 11px;
+  font-size: 14px;
   color: #fff;
-  font-weight: 800;
+  font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   text-shadow: 0 1px 4px rgba(0,0,0,0.8);
@@ -70,10 +70,10 @@
 
 .tick-label-1h {
   position: absolute;
-  top: 5px; /* Aligned with 4h */
+  top: 4px; /* Aligned with 4h */
   left: 3px;
-  font-size: 9px;
-  color: rgba(255, 255, 255, 0.6); /* Clearer */
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.7); /* Brighter */
   font-weight: 700;
 }
 
