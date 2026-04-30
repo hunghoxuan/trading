@@ -20,7 +20,10 @@ const KILL_ZONES = [
 export default function SessionClockBar({ displayTimezone }) {
   const [now, setNow] = useState(new Date());
   const [tz, setTz] = useState(() => displayTimezone || localStorage.getItem("ui_display_timezone") || "UTC");
+  const [isLocal, setIsLocal] = useState(false);
   const [news, setNews] = useState([]);
+
+  const currentTz = isLocal ? Intl.DateTimeFormat().resolvedOptions().timeZone : tz;
 
   useEffect(() => {
     if (displayTimezone && displayTimezone !== tz) {
@@ -52,7 +55,7 @@ export default function SessionClockBar({ displayTimezone }) {
   const { timeStr, progressPct, currentHour } = useMemo(() => {
     try {
       const fmt = new Intl.DateTimeFormat('en-GB', {
-        timeZone: tz,
+        timeZone: currentTz,
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
@@ -74,7 +77,7 @@ export default function SessionClockBar({ displayTimezone }) {
     } catch (e) {
       return { timeStr: '--:--:--', progressPct: 0, currentHour: 0 };
     }
-  }, [now, tz]);
+  }, [now, currentTz]);
 
   /**
    * Helper to convert a UTC hour to the target timezone's hour-of-day (0-24)
@@ -83,7 +86,7 @@ export default function SessionClockBar({ displayTimezone }) {
     const date = new Date();
     date.setUTCHours(utcHour, utcMin, 0, 0);
     const fmt = new Intl.DateTimeFormat('en-GB', {
-      timeZone: tz,
+      timeZone: currentTz,
       hour: 'numeric',
       minute: 'numeric',
       hour12: false
@@ -108,8 +111,8 @@ export default function SessionClockBar({ displayTimezone }) {
   const countdown = useMemo(() => {
     const allEvents = [];
     KILL_ZONES.forEach(kz => {
-      allEvents.push({ h: getTzHour(kz.start), label: kz.label + ' Starts' });
-      allEvents.push({ h: getTzHour(kz.end), label: kz.label + ' Ends' });
+      allEvents.push({ h: getTzHour(kz.start), label: kz.label });
+      allEvents.push({ h: getTzHour(kz.end), label: kz.label });
     });
     
     const future = allEvents
@@ -119,8 +122,8 @@ export default function SessionClockBar({ displayTimezone }) {
 
     if (!future) return null;
     const mins = Math.floor(future.diff * 60);
-    return { text: `${future.label} in ${mins}m`, mins };
-  }, [currentHour, tz]);
+    return { text: `${future.label.toUpperCase()} : ${mins}'`, mins };
+  }, [currentHour, currentTz]);
 
   const renderRuler = () => {
     const ticks = [];
@@ -179,7 +182,6 @@ export default function SessionClockBar({ displayTimezone }) {
               borderLeft: isActive && item.borderColor ? `2px solid ${item.borderColor}` : 'none',
               borderRight: isActive && item.borderColor ? `2px solid ${item.borderColor}` : 'none',
             }}
-            title={`${item.label}: ${item.start}:00 - ${item.end}:00 UTC`}
           >
             {!isKillZone && <span className="session-label">{item.label}</span>}
             <div className="tooltip">{item.label} ({item.start}:00 - {item.end}:00 UTC)</div>
@@ -188,6 +190,8 @@ export default function SessionClockBar({ displayTimezone }) {
       });
     });
   };
+
+  const toggleTz = () => setIsLocal(!isLocal);
 
   return (
     <div className="session-clock-bar-container">
@@ -244,10 +248,12 @@ export default function SessionClockBar({ displayTimezone }) {
         </div>
 
         {/* Digital Clock & Timezone (Inside Bar, Right Aligned) */}
-        <div className="digital-clock-embedded">
+        <div className="digital-clock-embedded" onClick={toggleTz} style={{ cursor: 'pointer' }}>
           {countdown && <div className="countdown-text">{countdown.text}</div>}
           <div className="time-value-small">{timeStr}</div>
-          <div className="tz-label-small">{tz.split('/').pop().replace('_', ' ')}</div>
+          <div className="tz-label-small">
+            {isLocal ? 'LOCAL' : currentTz.split('/').pop().replace('_', ' ')}
+          </div>
         </div>
       </div>
     </div>

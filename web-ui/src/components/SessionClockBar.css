@@ -70,11 +70,11 @@
 
 .tick-label-1h {
   position: absolute;
-  top: 4px;
+  top: 5px; /* Aligned with 4h */
   left: 3px;
-  font-size: 8px;
-  color: rgba(255, 255, 255, 0.4);
-  font-weight: 600;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.6); /* Clearer */
+  font-weight: 700;
 }
 
 .regions-layer {
@@ -134,10 +134,10 @@
   border-radius: 4px;
 }
 
-/* Tooltip */
+/* Tooltip - Moved to Top (display below) to avoid cut-off */
 .tooltip {
   position: absolute;
-  bottom: 120%;
+  top: 120%; /* Moved from bottom: 120% */
   left: 50%;
   transform: translateX(-50%);
   background: rgba(15, 23, 42, 0.98);
@@ -152,13 +152,13 @@
   transition: all 0.15s ease;
   box-shadow: 0 8px 12px rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  z-index: 40;
+  z-index: 100;
 }
 
 .session-region:hover .tooltip {
   opacity: 1;
   visibility: visible;
-  bottom: 110%;
+  top: 110%; /* Moved from bottom: 110% */
 }
 
 .progress-fill {
@@ -211,20 +211,25 @@
   align-items: flex-end;
   pointer-events: none;
   z-index: 30;
+  transition: transform 0.1s;
+}
+
+.digital-clock-embedded:hover {
+  transform: scale(1.05);
 }
 
 .time-value-small {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+  font-size: 14px; /* Slightly larger */
   font-weight: 900;
-  color: #fff;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+  color: #ffffff; /* Maximum clarity */
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
 }
 
 .tz-label-small {
   font-size: 8px;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.8); /* Brighter */
   font-weight: 800;
   letter-spacing: 0.8px;
   margin-top: -2px;

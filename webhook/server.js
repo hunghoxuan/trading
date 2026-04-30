@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.30 05:09 - 7c9581c"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.30 05:59 - bed695b"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(CHART_SNAPSHOT_DIR, ".claude-files.json");
 const AI_CONTEXT_FILE_DIR = path.resolve(__dirname, "ai_context_files");
@@ -6148,45 +6148,52 @@ async function _mt5InitBackendInternal() {
     },
     async uiListCache() {
       const items = [];
-      // 1. Memory Cache
+      // 1. Memory Cache (Market Data)
       for (const [key, val] of MARKET_DATA_MEMORY_CACHE.entries()) {
         const root = val?.data;
         if (!root) continue;
-        
         const tfSummary = Array.isArray(root.data) ? root.data.map(d => d.tf).join(', ') : (root.tf || 'n/a');
         const barTotal = Array.isArray(root.data) ? root.data.reduce((sum, d) => sum + (d.bars?.length || 0), 0) : (root.bars?.length || 0);
-
         items.push({
-          key,
-          source: 'memory',
-          data: {
-            symbol: root.symbol || key,
-            tf: tfSummary,
-            bars: barTotal,
-            updated_at: root.updated_time ? new Date(root.updated_time * 1000).toISOString() : null
-          },
+          key, source: 'memory',
+          data: { symbol: root.symbol || key, tf: tfSummary, bars: barTotal, updated_at: root.updated_time ? new Date(root.updated_time * 1000).toISOString() : null },
           expires_at: val.expires_at_ms ? new Date(val.expires_at_ms).toISOString() : null
         });
       }
-      // 2. Redis Cache
+
+      // 2. Memory Cache (Misc/Settings/Calendar)
+      const calendar = MARKET_DATA_MEMORY_CACHE.get("economic_calendar:today");
+      if (calendar) {
+        items.push({
+          key: "economic_calendar:today", source: 'memory',
+          data: { label: "Economic News Today", events: calendar.data?.length || 0 },
+          expires_at: calendar.expires_at_ms ? new Date(calendar.expires_at_ms).toISOString() : null
+        });
+      }
+
+      // 3. Redis Cache
       if (CFG.redisEnabled) {
         const client = await getRedisClient();
         if (client) {
-          const keys = await client.keys('market_data:*');
-          for (const k of keys) {
-            // Check if already in memory (don't duplicate if we want unique keys)
-            // But usually we show both to show source.
-            items.push({
-              key: k,
-              source: 'redis',
-              count: 1
-            });
+          const allKeys = await client.keys('*');
+          for (const k of allKeys) {
+            // Market Data
+            if (k.startsWith('market_data:')) {
+              items.push({ key: k, source: 'redis', data: { type: 'market_data' } });
+            }
+            // Settings / User Accounts
+            else if (k.startsWith('SYSTEM:SETTINGS') || k.startsWith('USER_ACCOUNTS:')) {
+              items.push({ key: k, source: 'redis', data: { type: 'configuration' } });
+            }
+            // Calendar
+            else if (k === 'economic_calendar:today') {
+              items.push({ key: k, source: 'redis', data: { type: 'calendar' } });
+            }
           }
         }
       }
       return items;
-    }
-,
+    },
     async uiGetCacheDetail(key, source) {
       if (source === 'memory') {
         const val = MARKET_DATA_MEMORY_CACHE.get(key);
