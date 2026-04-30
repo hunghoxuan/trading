@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.30 10:27 - a889aec"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.30 11:01 - 6253427"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(CHART_SNAPSHOT_DIR, ".claude-files.json");
 const AI_CONTEXT_FILE_DIR = path.resolve(__dirname, "ai_context_files");
@@ -2411,6 +2411,10 @@ function snapshotMimeByFileName(fileName) {
   return "";
 }
 
+function fileMimeByName(fileName, fallback = "") {
+  return snapshotMimeByFileName(fileName) || contentTypeByExt(fileName) || fallback || "application/octet-stream";
+}
+
 function readClaudeSnapshotFileMap() {
   ensureChartSnapshotDir();
   try {
@@ -2521,6 +2525,40 @@ async function anthropicFilesRequest({ apiKey, method = "GET", pathName = "/v1/f
       throw new Error(`Claude Files API Error (${res.status}): ${msg}`);
     }
     return parsed;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function anthropicFilesRawRequest({ apiKey, method = "GET", pathName = "/v1/files", timeoutMs = 30000 }) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const headers = {
+    "x-api-key": String(apiKey || ""),
+    "anthropic-version": "2023-06-01",
+    "anthropic-beta": ANTHROPIC_FILES_BETA,
+  };
+  try {
+    const res = await fetch(`https://api.anthropic.com${pathName}`, {
+      method,
+      signal: ctrl.signal,
+      headers,
+    });
+    const contentType = String(res.headers.get("content-type") || "application/octet-stream");
+    const disposition = String(res.headers.get("content-disposition") || "");
+    const buffer = Buffer.from(await res.arrayBuffer());
+    if (!res.ok) {
+      let parsed = {};
+      const text = buffer.toString("utf8");
+      try {
+        parsed = text ? JSON.parse(text) : {};
+      } catch {
+        parsed = { raw: text };
+      }
+      const msg = parsed?.error?.message || parsed?.message || text || `${res.status} ${res.statusText}`;
+      throw new Error(`Claude Files API Error (${res.status}): ${msg}`);
+    }
+    return { buffer, contentType, disposition };
   } finally {
     clearTimeout(timer);
   }
@@ -2948,6 +2986,14 @@ function normalizeSnapshotFileName(fileNameRaw) {
   const safe = path.basename(raw);
   if (!safe || safe !== raw) return "";
   if (!/\.(png|jpe?g)$/i.test(safe)) return "";
+  return safe;
+}
+
+function normalizeChartFileName(fileNameRaw) {
+  const raw = String(fileNameRaw || "").trim();
+  if (!raw) return "";
+  const safe = path.basename(raw);
+  if (!safe || safe !== raw || safe.startsWith(".")) return "";
   return safe;
 }
 
@@ -10991,6 +11037,62 @@ const appHandler = async (req, res) => {
     }
   }
 
+  if (req.method === "GET" && url.pathname.startsWith("/v2/ai/claude/files/") && url.pathname.endsWith("/content")) {
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      const userId = sess.user_id || CFG.mt5DefaultUserId;
+      const claudeKey = await loadClaudeApiKeyForUser(userId);
+      if (!claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
+      const rawId = decodeURIComponent(url.pathname.replace("/v2/ai/claude/files/", "").replace(/\/content$/, "") || "").trim();
+      if (!rawId || rawId.includes("/") || rawId.includes("\\")) return json(res, 400, { ok: false, error: "Invalid Claude file id." });
+      const meta = await anthropicFilesRequest({
+        apiKey: claudeKey,
+        pathName: `/v1/files/${encodeURIComponent(rawId)}`,
+        timeoutMs: 30000,
+      }).catch(() => ({}));
+      const out = await anthropicFilesRawRequest({
+        apiKey: claudeKey,
+        pathName: `/v1/files/${encodeURIComponent(rawId)}/content`,
+        timeoutMs: 60000,
+      });
+      const fileName = String(meta?.filename || `${rawId}.bin`).replace(/[^\w.\- ()[\]]+/g, "_").slice(0, 180) || `${rawId}.bin`;
+      const dispositionMode = url.searchParams.get("download") === "1" ? "attachment" : "inline";
+      res.writeHead(200, {
+        "Content-Type": String(meta?.mime_type || out.contentType || "application/octet-stream"),
+        "Content-Disposition": `${dispositionMode}; filename="${fileName}"`,
+        "Cache-Control": "no-store",
+        "Content-Length": out.buffer.length,
+      });
+      res.end(out.buffer);
+      return;
+    } catch (error) {
+      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname.startsWith("/v2/ai/claude/files/")) {
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      const userId = sess.user_id || CFG.mt5DefaultUserId;
+      const claudeKey = await loadClaudeApiKeyForUser(userId);
+      if (!claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
+      const fileId = decodeURIComponent(url.pathname.replace("/v2/ai/claude/files/", "") || "").trim();
+      if (!fileId || fileId.includes("/") || fileId.includes("\\")) return json(res, 400, { ok: false, error: "Invalid Claude file id." });
+      const out = await anthropicFilesRequest({
+        apiKey: claudeKey,
+        pathName: `/v1/files/${encodeURIComponent(fileId)}`,
+        timeoutMs: 30000,
+      });
+      return json(res, 200, { ok: true, file: out });
+    } catch (error) {
+      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   if (req.method === "POST" && url.pathname === "/v2/ai/claude/files/upload-snapshots") {
     const sess = getUiSessionFromReq(req);
     const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
@@ -11097,19 +11199,21 @@ const appHandler = async (req, res) => {
       const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit") || 30) || 30, 200));
       const reqSessionPrefix = sanitizeSessionPrefix(url.searchParams.get("session_prefix") || "");
       const files = fs.readdirSync(CHART_SNAPSHOT_DIR)
-        .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
         .filter((f) => !reqSessionPrefix || f.includes(`_${reqSessionPrefix}_`))
         .map((f) => {
           const abs = path.join(CHART_SNAPSHOT_DIR, f);
+          if (!fs.statSync(abs).isFile()) return null;
           const st = fs.statSync(abs);
           return {
-            id: f.replace(/\.(png|jpe?g)$/i, ""),
+            id: f.replace(/\.[^.]+$/i, ""),
             file_name: f,
             created_at: new Date(st.mtimeMs || Date.now()).toISOString(),
             size_bytes: Number(st.size || 0),
+            mime_type: fileMimeByName(f),
             url: `/v2/chart/snapshots/${encodeURIComponent(f)}`,
           };
         })
+        .filter(Boolean)
         .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
         .slice(0, limit);
       return json(res, 200, { ok: true, items: files });
@@ -11152,11 +11256,9 @@ const appHandler = async (req, res) => {
         : [];
       const candidates = deleteAll
         ? fs.readdirSync(CHART_SNAPSHOT_DIR)
-          .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
           .filter((f) => !reqSessionPrefix || f.includes(`_${reqSessionPrefix}_`))
         : (reqSessionPrefix
           ? fs.readdirSync(CHART_SNAPSHOT_DIR)
-            .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
             .filter((f) => f.includes(`_${reqSessionPrefix}_`))
           : requestedFiles);
       const deleted = [];
@@ -11164,8 +11266,8 @@ const appHandler = async (req, res) => {
       const claudeMap = readClaudeSnapshotFileMap();
       const claudeFileIdsToDelete = [];
       for (const fileNameRaw of candidates) {
-        const safeName = path.basename(String(fileNameRaw || ""));
-        if (!safeName || safeName !== fileNameRaw || !/\.(png|jpg|jpeg)$/i.test(safeName)) {
+        const safeName = normalizeChartFileName(fileNameRaw);
+        if (!safeName) {
           skipped.push(fileNameRaw);
           continue;
         }
@@ -11214,13 +11316,13 @@ const appHandler = async (req, res) => {
     try {
       ensureChartSnapshotDir();
       const fileName = decodeURIComponent(url.pathname.replace("/v2/chart/snapshots/", "") || "");
-      const safeName = path.basename(fileName);
-      if (!safeName || safeName !== fileName || !/\.(png|jpg|jpeg)$/i.test(safeName)) {
-        return json(res, 400, { ok: false, error: "Invalid snapshot file" });
+      const safeName = normalizeChartFileName(fileName);
+      if (!safeName) {
+        return json(res, 400, { ok: false, error: "Invalid file" });
       }
       const abs = path.join(CHART_SNAPSHOT_DIR, safeName);
       if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
-        return json(res, 404, { ok: false, error: "Snapshot not found" });
+        return json(res, 404, { ok: false, error: "File not found" });
       }
       serveUiFile(res, abs, req.method);
       return;

@@ -30,7 +30,7 @@ export default function App() {
   const canAccessSystemPages = String(authUser?.role || "").toLowerCase() === "system";
   const settingsMenuActive = useMemo(() => {
     const p = String(location?.pathname || "");
-    return p.startsWith("/profile") || p.startsWith("/settings");
+    return p.startsWith("/profile") || p.startsWith("/settings") || p === "/system/settings";
   }, [location?.pathname]);
   const systemMenuActive = useMemo(() => {
     const p = String(location?.pathname || "");
@@ -147,7 +147,6 @@ export default function App() {
                 System
               </button>
               <div className="nav-dropdown-menu">
-                <NavLink to="/system/settings">Settings</NavLink>
                 <NavLink to="/system/snapshots">Snapshots</NavLink>
                 <NavLink to="/system/storage">Storage</NavLink>
                 <NavLink to="/system/cache">Cache</NavLink>
@@ -164,14 +163,30 @@ export default function App() {
               type="button"
               className={`secondary-button nav-dropdown-trigger ${settingsMenuActive ? "active" : ""}`}
             >
-              Settings
+              User
             </button>
             <div className="nav-dropdown-menu">
               <NavLink to="/settings/profile">Profile</NavLink>
-              <NavLink to="/settings/general">Settings</NavLink>
+              <NavLink to="/settings/general">App Settings</NavLink>
+              {canAccessSystemPages && <NavLink to="/system/settings">User Settings</NavLink>}
+              <hr style={{ border: '0', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '4px 0' }} />
+              <button 
+                onClick={handleLogout} 
+                style={{ 
+                  width: '100%', 
+                  textAlign: 'left', 
+                  background: 'none', 
+                  border: 'none', 
+                  color: '#ff4d4f', 
+                  padding: '8px 12px',
+                  fontSize: '11px',
+                  cursor: 'pointer'
+                }}
+              >
+                Logout
+              </button>
             </div>
           </div>
-          <button onClick={handleLogout} className="secondary-button" style={{ marginLeft: 8, padding: '4px 10px', fontSize: '11px' }}>Logout</button>
           <button 
              onClick={toggleTheme} 
              className="secondary-button"

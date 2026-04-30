@@ -1,5 +1,11 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-30 08:55
+- **Starting Task**:
+  - Plan Claude Files manager UI: file list on left, content/metadata preview on right, matching Cache/User Settings layout.
+- **Status**:
+  - Planning only. Waiting for user approval before implementation.
+
 # Session Log: 2026-04-30 08:43
 - **Starting Task**:
   - Read `docs/`, merge durable content into `.agents`, and remove duplicated docs.

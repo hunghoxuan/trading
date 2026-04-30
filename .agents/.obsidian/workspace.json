@@ -201,6 +201,7 @@
   },
   "active": "336f84509bfb892c",
   "lastOpenFiles": [
+    "features",
     "knowledge/ai-model-guide.md",
     "architecture/security-auth-upgrade.md",
     "architecture/execution-hub-v2.md",
@@ -216,7 +217,6 @@
     "rules/safety.md",
     "rules/planning.md",
     "rules/communication.md",
-    "features",
     "handoff",
     "communication",
     "deploy",
@@ -236,7 +236,6 @@
     "knowledge/entry_models",
     "skills/token-optimization.md",
     "knowledge/popular_entry_models.md",
-    "skills/session-management.md",
     "Untitled.canvas"
   ]
 }
