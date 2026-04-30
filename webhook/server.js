@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.30 13:29 - 994e1f4"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.30 16:26 - 02fca99"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(CHART_SNAPSHOT_DIR, ".claude-files.json");
 const AI_CONTEXT_FILE_DIR = path.resolve(__dirname, "ai_context_files");
@@ -2648,6 +2648,54 @@ function writeClaudeContextFileMap(map = {}) {
   const tmp = `${AI_CONTEXT_CLAUDE_MAP_FILE}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(map && typeof map === "object" ? map : {}, null, 2));
   fs.renameSync(tmp, AI_CONTEXT_CLAUDE_MAP_FILE);
+}
+
+function readClaudeLocalFileMap() {
+  const out = {};
+  const snapshotMap = readClaudeSnapshotFileMap();
+  for (const [localFile, meta] of Object.entries(snapshotMap || {})) {
+    if (!meta || typeof meta !== "object") continue;
+    out[localFile] = {
+      ...meta,
+      local_file: localFile,
+      vps_file: localFile,
+      vps_path: path.join(CHART_SNAPSHOT_DIR, localFile),
+      local_source: "snapshots",
+    };
+  }
+  const contextMap = readClaudeContextFileMap();
+  for (const [key, meta] of Object.entries(contextMap || {})) {
+    if (!meta || typeof meta !== "object") continue;
+    const localFile = String(meta.vps_file || meta.filename || key).trim();
+    if (!localFile) continue;
+    out[localFile] = {
+      ...meta,
+      local_file: localFile,
+      local_source: "ai_context",
+    };
+  }
+  return out;
+}
+
+function findClaudeLocalFileById(fileId) {
+  const id = String(fileId || "").trim();
+  if (!id) return null;
+  const map = readClaudeLocalFileMap();
+  for (const [localFile, meta] of Object.entries(map || {})) {
+    if (String(meta?.file_id || "") !== id) continue;
+    const safeName = path.basename(String(meta?.vps_file || meta?.filename || localFile || ""));
+    const abs = String(meta?.vps_path || "").trim()
+      || (meta?.local_source === "snapshots" ? path.join(CHART_SNAPSHOT_DIR, safeName) : path.join(AI_CONTEXT_FILE_DIR, safeName));
+    if (!abs || !fs.existsSync(abs) || !fs.statSync(abs).isFile()) return null;
+    return {
+      ...meta,
+      local_file: localFile,
+      vps_file: safeName || localFile,
+      vps_path: abs,
+      mime_type: String(meta?.mime_type || mimeByFileName(safeName || localFile)),
+    };
+  }
+  return null;
 }
 
 function aiContextToken(value, fallback = "CTX") {
@@ -11053,7 +11101,7 @@ const appHandler = async (req, res) => {
       const qs = new URLSearchParams({ limit: String(limit) });
       if (afterId) qs.set("after_id", afterId);
       const out = await anthropicFilesRequest({ apiKey: claudeKey, pathName: `/v1/files?${qs.toString()}` });
-      return json(res, 200, { ok: true, ...out, local_map: readClaudeSnapshotFileMap() });
+      return json(res, 200, { ok: true, ...out, local_map: readClaudeLocalFileMap() });
     } catch (error) {
       return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
@@ -11074,20 +11122,32 @@ const appHandler = async (req, res) => {
         pathName: `/v1/files/${encodeURIComponent(rawId)}`,
         timeoutMs: 30000,
       }).catch(() => ({}));
-      const out = await anthropicFilesRawRequest({
-        apiKey: claudeKey,
-        pathName: `/v1/files/${encodeURIComponent(rawId)}/content`,
-        timeoutMs: 60000,
-      });
+      let out = null;
+      let contentError = null;
+      try {
+        out = await anthropicFilesRawRequest({
+          apiKey: claudeKey,
+          pathName: `/v1/files/${encodeURIComponent(rawId)}/content`,
+          timeoutMs: 60000,
+        });
+      } catch (error) {
+        contentError = error;
+      }
+      const local = contentError ? findClaudeLocalFileById(rawId) : null;
+      if (contentError && !local) throw contentError;
       const fileName = String(meta?.filename || `${rawId}.bin`).replace(/[^\w.\- ()[\]]+/g, "_").slice(0, 180) || `${rawId}.bin`;
       const dispositionMode = url.searchParams.get("download") === "1" ? "attachment" : "inline";
+      const body = local ? fs.readFileSync(local.vps_path) : out.buffer;
+      const contentType = String(local?.mime_type || meta?.mime_type || out?.contentType || "application/octet-stream");
+      const finalFileName = String(local?.vps_file || fileName).replace(/[^\w.\- ()[\]]+/g, "_").slice(0, 180) || fileName;
       res.writeHead(200, {
-        "Content-Type": String(meta?.mime_type || out.contentType || "application/octet-stream"),
-        "Content-Disposition": `${dispositionMode}; filename="${fileName}"`,
+        "Content-Type": contentType,
+        "Content-Disposition": `${dispositionMode}; filename="${finalFileName}"`,
         "Cache-Control": "no-store",
-        "Content-Length": out.buffer.length,
+        "Content-Length": body.length,
+        "X-Claude-Content-Source": local ? "vps-local" : "claude",
       });
-      res.end(out.buffer);
+      res.end(body);
       return;
     } catch (error) {
       return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });

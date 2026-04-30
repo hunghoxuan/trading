@@ -1,5 +1,18 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-30 18:26
+- **Starting Task**:
+  - Fix Claude Files View/Download error for non-downloadable Claude files.
+- **Work Accomplished**:
+  - Merged Claude snapshot and AI context file maps for the Files page.
+  - Added VPS-local fallback for `/v2/ai/claude/files/:id/content` when Claude returns non-downloadable.
+  - View/Download now streams local AI context files when Claude refuses `/content`.
+  - Bumped server/EA versions to `v2026.04.30 16:26 - 02fca99`.
+- **Verification**:
+  - staged `webhook/server.js` syntax check
+  - `npm --prefix web-ui run build`
+  - staged `git diff --check`
+
 # Session Log: 2026-04-30 13:29
 - **Starting Task**:
   - Fix Claude AI error: unsupported document file format `application/json`.
