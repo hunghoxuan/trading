@@ -1,23 +1,37 @@
-# Agents Bootstrap
+# Agents Master Index
 
-Use this order every session:
+Read this first.
 
-1. [rules.md](./rules.md)
-2. [architecture/architecture.md](./architecture/architecture.md)
-3. [sync/MAILBOX.md](./sync/MAILBOX.md)
-4. [plans/sprint.md](./plans/sprint.md)
-5. [plans/bugs.md](./plans/bugs.md)
+## Boot Order
+1. `AI.md`
+2. `.agents/README.md`
+3. `.agents/rules.md`
+4. `.agents/architecture/README.md`
+5. `.agents/plans/README.md`
+6. `.agents/sync/MAILBOX.md`
+7. `.agents/worklog.md`
 
-Optional context:
-- [plans/backlog.md](./plans/backlog.md)
-- [plans/changelog.md](./plans/changelog.md)
-- [knowledge/INDEX.md](./knowledge/INDEX.md)
+## Source Of Truth
+- Rules: `.agents/rules.md` + `.agents/rules/`
+- Architecture: `.agents/architecture/`
+- Active work: `.agents/plans/sprint.md`
+- Bugs: `.agents/plans/bugs.md`
+- Handoff: `.agents/worklog.md` and `.agents/sync/MAILBOX.md`
+- Durable lessons: `.agents/knowledge/`
 
-## Folder Contract
-- `skills/`: how-to guides and execution playbooks.
-- `architecture/`: current system specification only.
-- `sync/`: inter-agent communication.
-- `plans/`: active project tracking.
-- `archive/`: old/legacy references.
+## Folder Map
+- `rules/`: mandatory behavior.
+- `architecture/`: current technical design.
+- `plans/`: sprint, bugs, backlog, changelog.
+- `sync/`: mailbox for agent-to-agent handoff.
+- `knowledge/`: durable project lessons.
+- `skills/`: optional playbooks, not law.
+- `templates/`: copy/paste task templates.
 
-Rule: if two files conflict, `architecture/` and `rules.md` are source of truth.
+## Conflict Rule
+If files disagree:
+1. `AI.md`
+2. `.agents/rules.md`
+3. `.agents/rules/*`
+4. `.agents/architecture/*`
+5. newest tracker/worklog entry

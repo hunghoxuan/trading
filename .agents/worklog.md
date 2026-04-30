@@ -1,5 +1,14 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-04-30 08:28
+- **Starting Task**:
+  - Reconstruct `.agents` docs into short master indexes and split rules.
+  - Remove approved obsolete redirect files, empty folders, and workflow duplicates after merging durable rules.
+- **Planned Scope**:
+  - `.agents/README.md`, `.agents/rules.md`, `.agents/rules/*`
+  - area indexes for architecture, plans, knowledge
+  - cleanup approved stale `.agents` files/folders
+
 # Session Log: 2026-04-29 11:16
 - **Starting Task**:
   - Fix AI page Plan 2 `+Trade` loading forever after Plan 1 `+Signal`.

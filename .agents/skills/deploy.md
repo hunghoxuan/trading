@@ -1,8 +1,10 @@
-# Deploy Skill
+# Deploy Playbook
 
-Standard deployment flow:
+Use after reading `rules/deploy.md`.
+
 1. Run local checks.
-2. Bump build versions.
-3. Commit and push.
-4. Deploy with `bash scripts/deploy_webhook.sh`.
-5. Verify health endpoints and critical route smoke tests.
+2. Bump versions.
+3. Commit and push when requested/needed.
+4. Deploy:
+   - `bash scripts/deploy_webhook.sh`
+5. Verify health + smoke routes.

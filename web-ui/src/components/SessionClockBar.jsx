@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import './SessionClockBar.css';
+import { playSound, SoundEvents } from "../utils/SoundManager";
 
 /**
  * Sessions and Kill Zones defined in UTC hours (0-24)
@@ -107,6 +108,26 @@ export default function SessionClockBar({ displayTimezone }) {
     const utcHour = (estH + 5) % 24;
     return getTzHour(utcHour, estM);
   };
+
+  const lastZoneRef = useRef(null);
+
+  const activeKillZone = useMemo(() => {
+    return KILL_ZONES.find(kz => {
+      const s = getTzHour(kz.start);
+      const e = getTzHour(kz.end);
+      if (e < s) return currentHour >= s || currentHour < e;
+      return currentHour >= s && currentHour < e;
+    });
+  }, [currentHour, currentTz]);
+
+  useEffect(() => {
+    if (activeKillZone && lastZoneRef.current !== activeKillZone.label) {
+      playSound(SoundEvents.SESSION_START);
+      lastZoneRef.current = activeKillZone.label;
+    } else if (!activeKillZone) {
+      lastZoneRef.current = null;
+    }
+  }, [activeKillZone]);
 
   const countdown = useMemo(() => {
     const allEvents = [];

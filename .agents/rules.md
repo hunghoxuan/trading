@@ -1,54 +1,22 @@
-# Project Rules (Short)
+# Rules Index
 
-## 1) Execution Defaults
-- Never change UI, layout, feature behavior, DB schema, tech stack, or architecture without confirmation first.
-- Before implementation, always provide a detailed design/plan and proposed solution covering relevant UI, layout, DB schema, technical approach, and tech stack choices.
-- Always include confirmation questions and wait for approval before implementing, unless the user explicitly asks for immediate execution or the task is a pure inspection/read-only request.
-- Use one-pass execution for clear requests.
-- Auto test + auto deploy when technically possible unless user says otherwise.
-- For code changes, run real checks and report actual results.
-- If no manual action is required, do not show a "Manual tasks" section.
+Mandatory rules live here.
 
-## 2) Build & Deploy
-- For backend/EA/UI/scripts changes, always bump both build versions:
-  - `webhook/server.js` (`SERVER_VERSION`)
-  - `mql5/TVBridgeEA.mq5` (`EA_BUILD_VERSION`)
-- Build version format must be `vY.M.d H:m - git`, using the latest pushed commit short SHA or agreed push/build number as `git`.
-- VPS/server and EA client must use the same build version.
-- Use `bash scripts/bump_build_versions.sh`.
-- Deploy guard is `bash scripts/check_build_versions.sh origin/main`.
-- Preferred deploy command: `bash scripts/deploy_webhook.sh`.
+Read all files in this order:
 
-## 3) Database Rules
-- Production storage is Postgres.
-- Verify storage/health before DB operations: `https://signal.mozasolution.com/mt5/health`.
-- Core identity rule:
-  - `id BIGSERIAL` = internal joins/updates/deletes.
-  - `sid TEXT UNIQUE NOT NULL` = human-facing UI/API identifier.
-- Keep legacy IDs during migration (`signal_id`, `trade_id`, etc.) for compatibility.
-- UI shows/searches by `sid`; backend accepts `id`, `sid`, and legacy IDs.
+1. `rules/communication.md`
+2. `rules/planning.md`
+3. `rules/safety.md`
+4. `rules/handoff.md`
+5. `rules/db.md`
+6. `rules/ui.md`
+7. `rules/deploy.md`
+8. `rules/testing.md`
 
-## 4) UI Rules
-- Follow [skills/ui-web-frontend.md](./skills/ui-web-frontend.md).
-- Form feedback colors: error red, warning yellow, success green.
-- Validation message appears directly below related input.
-- Form-level error appears above action buttons.
-
-## 5) Architecture & Safety
-- Preserve user-facing behavior unless explicitly asked to change it.
-- Never run destructive operations outside project root.
-- Never delete system files: `.agents/*`, `AI.md`, `.cursorrules`.
-
-## 6) Multi-Agent Collaboration
-- Use [sync/MAILBOX.md](./sync/MAILBOX.md) for handoff.
-- Track active work in [plans/sprint.md](./plans/sprint.md).
-- Put domain lessons in `knowledge/` to avoid repeated debugging.
-- Respect ownership in sprint tasks (`[TODO: ...]`).
-
-## 7) Session & Context Hygiene
-- **Mandatory Worklog Updates**: ALWAYS update `.agents/worklog.md` at key session stages:
-  - **STARTING**: Record the specific task/ticket you are beginning to work on to prevent duplicate work by other agents. Update the backlog/sprint status to "DOING" if applicable.
-  - **FINISHING**: Summarize all technical changes, architectural decisions, and updated build versions before ending the conversation. Update the backlog/sprint status to "DONE".
-- **Resuming Context**: At the start of EVERY new conversation, the first step MUST be to read `.agents/worklog.md` and any active `plans/sprint.md` entries.
-- Follow [skills/session-management.md](./skills/session-management.md).
-- **Caveman Mode**: Adopt extremely concise communication style to save tokens. Use [skills/token-optimization.md](./skills/token-optimization.md).
+## Global Law
+- Plan first for feature/UI/DB/architecture changes.
+- Ask approval before changing behavior unless user says execute now.
+- Preserve user-facing behavior unless explicitly changed.
+- Update worklog at START and FINISH of significant work.
+- Test real code changes.
+- Bump matched server/EA versions for backend, EA, UI, or script changes.

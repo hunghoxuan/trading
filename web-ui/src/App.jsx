@@ -19,6 +19,7 @@ import CachePage from "./pages/system/CachePage";
 import { api, getRuntimeActiveUserId, setRuntimeActiveUserId } from "./api";
 import LoginPage from "./pages/LoginPage";
 import SessionClockBar from "./components/SessionClockBar";
+import NotificationWatcher from "./components/NotificationWatcher";
 
 export default function App() {
   const [serverVersion, setServerVersion] = useState("");
@@ -110,6 +111,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <NotificationWatcher />
       <header className="topbar">
         <div className="brand">
           <span>📈 Trading</span>

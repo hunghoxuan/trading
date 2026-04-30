@@ -1,7 +1,11 @@
-# Reports Skill
+# Report Playbook
 
-When reporting completion:
-- Keep summary short and factual.
-- Include what changed, what was verified, and deployment status.
-- Do not claim tests/deploy unless actually executed.
-- If there are no manual actions, omit manual-task section.
+- Short.
+- Factual.
+- Include:
+  - changed files
+  - tests/checks
+  - deploy status
+  - versions if changed
+- Do not claim work not done.
+- Omit manual-action section if empty.

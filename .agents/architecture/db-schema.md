@@ -1,10 +1,15 @@
-# DB Schema Reference
+# DB Schema
 
-Primary schema files:
-- [`docs/mt5-product/SCHEMA.sql`](../../docs/mt5-product/SCHEMA.sql)
-- Runtime migration logic in [`webhook/server.js`](../../webhook/server.js)
+Source files:
+- `docs/mt5-product/SCHEMA.sql`
+- `webhook/server.js`
 
-Active identity policy:
-- internal key: `id`
-- public key: `sid`
-- compatibility keys retained during migration.
+Identity:
+- `id`: internal numeric key.
+- `sid`: public UI/API key.
+- legacy keys stay during migration.
+
+Rules:
+- Postgres is production.
+- Migrations must be idempotent.
+- Update this file when tables or identity policy change.

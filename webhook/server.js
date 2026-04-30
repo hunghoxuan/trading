@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.30 05:59 - bed695b"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.30 06:34 - e80ff51"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(CHART_SNAPSHOT_DIR, ".claude-files.json");
 const AI_CONTEXT_FILE_DIR = path.resolve(__dirname, "ai_context_files");
@@ -9459,22 +9459,28 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "GET" && (url.pathname === "/v2/system/cache" || url.pathname === "/system/cache")) {
-    if (!requireSystemRoleForUi(req, res)) return;
-    try {
-      const b = await mt5Backend();
-      const key = url.searchParams.get("key");
-      const source = url.searchParams.get("source") || "memory";
+    // If browser navigation (wants HTML), fall through to static server
+    const accept = req.headers["accept"] || "";
+    if (url.pathname === "/system/cache" && accept.includes("text/html")) {
+      // Fall through to index.html handler
+    } else {
+      if (!requireSystemRoleForUi(req, res)) return;
+      try {
+        const b = await mt5Backend();
+        const key = url.searchParams.get("key");
+        const source = url.searchParams.get("source") || "memory";
 
-      if (key) {
-        const detail = await b.uiGetCacheDetail(key, source);
-        return json(res, detail.ok ? 200 : 400, detail);
+        if (key) {
+          const detail = await b.uiGetCacheDetail(key, source);
+          return json(res, detail.ok ? 200 : 400, detail);
+        }
+
+        const items = await b.uiListCache();
+        return json(res, 200, { ok: true, items });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        return json(res, 400, { ok: false, error: message });
       }
-
-      const items = await b.uiListCache();
-      return json(res, 200, { ok: true, items });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      return json(res, 400, { ok: false, error: message });
     }
   }
 
