@@ -158,7 +158,7 @@ export default function SessionClockBar({ displayTimezone }) {
     }
     // 1 Hour: Sub-major
     for (let i = 0; i <= 24; i++) {
-      if (i % 4 === 0) continue; 
+      if (i % 4 === 0) continue; // Skip if 4h already rendered
       ticks.push(
         <div key={`1h-${i}`} className="ruler-tick sub-major" style={{ left: `${(i / 24) * 100}%` }}>
           <span className="tick-label-1h">{String(i).padStart(2, '0')}:00</span>
@@ -168,7 +168,7 @@ export default function SessionClockBar({ displayTimezone }) {
     // 15 Minute: Minor
     for (let i = 0; i <= 24 * 4; i++) {
       const hours = i / 4;
-      if (hours % 1 === 0) continue; 
+      if (hours % 1 === 0) continue; // Skip if 1h/4h already rendered
       ticks.push(
         <div key={`15m-${i}`} className="ruler-tick minor" style={{ left: `${(hours / 24) * 100}%` }} />
       );
