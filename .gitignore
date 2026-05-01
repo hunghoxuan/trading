@@ -10,3 +10,4 @@ tradingview/.backup/
 web-ui/dist/
 web-ui/playwright-report/
 web-ui/test-results/
+tests/logs/

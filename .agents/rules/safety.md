@@ -7,4 +7,4 @@
 - Preserve compatibility with EA, webhook, UI, and old IDs.
 - Do not expose secrets, hashes, tokens, API keys, or auth headers in UI/logs.
 - Archived/old docs are not source of truth.
-
+- Do not create new helper scripts in repo root. Put new scripts under `scripts/` (or an existing relevant subfolder) unless user explicitly requests otherwise.

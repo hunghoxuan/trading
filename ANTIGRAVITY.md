@@ -1,4 +1,4 @@
-# Cursor Entry
+# Antigravity Entry
 
 Before any plan or code change, read:
 

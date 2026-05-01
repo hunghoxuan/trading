@@ -10,5 +10,4 @@
   - build versions if changed
 - Use `.agents/sync/MAILBOX.md` only for agent-to-agent relay.
 - Keep sprint ownership markers. Do not steal `[DOING: other-agent]` work.
-- Put durable lessons in `.agents/knowledge/`.
-
+- Put durable lessons in `.agents/wiki/`.

@@ -1,6 +1,8 @@
 
 const pg = require('pg');
-require('dotenv').config({ path: '/opt/trading/webhook/.env' });
+const path = require('path');
+const rootDir = path.resolve(__dirname, '..');
+require('dotenv').config({ path: path.join(rootDir, 'webhook/.env') });
 
 const pool = new pg.Pool({ connectionString: process.env.MT5_POSTGRES_URL });
 

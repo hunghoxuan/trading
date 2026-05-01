@@ -12,6 +12,11 @@ Read all files in this order:
 6. `rules/ui.md`
 7. `rules/deploy.md`
 8. `rules/testing.md`
+9. `rules/cli.md`
+10. `rules/scratch.md`
+11. `rules/scripting.md`
+12. `rules/token.md`
+13. `rules/memory-governance.md`
 
 ## Global Law
 - Plan first for feature/UI/DB/architecture changes.

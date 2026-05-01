@@ -58,6 +58,7 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
   const [settings, setSettings] = useState([]);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState("");
+  const [secretVisibility, setSecretVisibility] = useState({});
   const [newSettingForm, setNewSettingForm] = useState({ type: "api_key", name: "GEMINI_API_KEY", value: "" });
   const [showAddForm, setShowAddForm] = useState(false);
   const [jsonDetailText, setJsonDetailText] = useState("");
@@ -105,6 +106,43 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
   const [activeTab, setActiveTab] = useState(mode === "profile" ? "PROFILE" : "PROFILE");
 
   const getSettingKey = (s) => `${String(s?.type || "")}::${String(s?.name || "")}`;
+  const getSecretKey = (settingKey, fieldKey) => `${String(settingKey || "")}::${String(fieldKey || "")}`;
+  const isSecretVisible = (settingKey, fieldKey) => Boolean(secretVisibility[getSecretKey(settingKey, fieldKey)]);
+  const toggleSecretVisible = (settingKey, fieldKey) => {
+    const key = getSecretKey(settingKey, fieldKey);
+    setSecretVisibility((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+  const maskSecretPreview = (value) => {
+    const raw = String(value || "");
+    if (!raw) return "";
+    if (raw.length <= 8) return `${raw.slice(0, 1)}****${raw.slice(-1)}`;
+    return `${raw.slice(0, 4)}****${raw.slice(-4)}`;
+  };
+  const copySecretToClipboard = async (value, keyName = "Secret") => {
+    const text = String(value || "");
+    if (!text) {
+      setSettingsMsg(`${keyName}: empty value, nothing copied.`);
+      return;
+    }
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const tmp = document.createElement("textarea");
+        tmp.value = text;
+        tmp.style.position = "fixed";
+        tmp.style.opacity = "0";
+        document.body.appendChild(tmp);
+        tmp.focus();
+        tmp.select();
+        document.execCommand("copy");
+        document.body.removeChild(tmp);
+      }
+      setSettingsMsg(`${keyName} copied to clipboard.`);
+    } catch (err) {
+      setSettingsMsg(`${keyName} copy failed: ${err?.message || "clipboard error"}`);
+    }
+  };
 
   function renderSidebarItem(s) {
     const key = getSettingKey(s);
@@ -935,16 +973,45 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
               ) : selectedSetting.type === 'api_key' ? (
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-                  {Object.entries(selectedSetting.data || {}).map(([key, val]) => (
-                    <label key={key} className="stack-layout" style={{ gap: 6 }}>
-                      <span className="minor-text" style={{ fontSize: 11 }}>{key}</span>
-                      <input
-                        type="password"
-                        value={val || ""}
-                        onChange={(e) => updateSetting(getSettingKey(selectedSetting), key, e.target.value)}
-                      />
-                    </label>
-                  ))}
+                  {Object.entries(selectedSetting.data || {}).map(([key, val]) => {
+                    const settingKey = getSettingKey(selectedSetting);
+                    const visible = isSecretVisible(settingKey, key);
+                    return (
+                      <label key={key} className="stack-layout" style={{ gap: 6 }}>
+                        <span className="minor-text" style={{ fontSize: 11 }}>{key}</span>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <input
+                            type={visible ? "text" : "password"}
+                            value={val || ""}
+                            onChange={(e) => updateSetting(settingKey, key, e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            style={{ padding: "4px 8px", fontSize: 11 }}
+                            onClick={() => toggleSecretVisible(settingKey, key)}
+                            title={visible ? "Hide value" : "Show value"}
+                          >
+                            {visible ? "Hide" : "Eye"}
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            style={{ padding: "4px 8px", fontSize: 11 }}
+                            onClick={() => copySecretToClipboard(val, key)}
+                            title="Copy decrypted value to clipboard"
+                          >
+                            Copy
+                          </button>
+                        </div>
+                        {!visible && (
+                          <span className="minor-text" style={{ fontSize: 10, opacity: 0.9 }}>
+                            {maskSecretPreview(val)}
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })}
                 </div>
               ) : String(selectedSetting.type || "").toLowerCase() === "symbols" ? (
                 <div className="stack-layout" style={{ gap: 10 }}>

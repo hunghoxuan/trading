@@ -1,4 +1,4 @@
-# Cursor Entry
+# Claude Entry
 
 Before any plan or code change, read:
 

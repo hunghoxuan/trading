@@ -1,4 +1,6 @@
-# Cursor Entry
+@RTK.md
+
+# Codex / Agents Entry
 
 Before any plan or code change, read:
 

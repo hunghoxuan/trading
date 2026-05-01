@@ -7,10 +7,9 @@
   - `vY.M.d H:m - git`
 - Server and EA versions must match.
 - Use:
-  - `bash scripts/bump_build_versions.sh`
+  - `bash scripts/deploy/bump_build_versions.sh`
 - Deploy guard:
-  - `bash scripts/check_build_versions.sh origin/main`
+  - `bash scripts/deploy/check_build_versions.sh origin/main`
 - Preferred deploy:
-  - `bash scripts/deploy_webhook.sh`
+  - `bash scripts/deploy/deploy_webhook.sh`
 - After deploy, verify health and core route smoke tests.
-

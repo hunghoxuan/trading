@@ -288,7 +288,7 @@ export default function DashboardPage() {
         <TableBlock title="Symbols" noun="Symbols" rows={Array.isArray(top.symbols) ? top.symbols : []} />
         <TableBlock title="Entry Model" noun="Models" rows={Array.isArray(top.entry_models) ? top.entry_models : []} />
         <TableBlock title="Sources" noun="Sources" rows={Array.isArray(top.sources) ? top.sources : []} />
-        <TableBlock title="Directional" noun="Directional" rows={Array.isArray(top.directional) ? top.directional : []} />
+        <TableBlock title="Order Type" noun="Order Type" rows={Array.isArray(top.directional) ? top.directional : []} />
         <TableBlock title="Accounts" noun="Accounts" rows={Array.isArray(top.accounts) ? top.accounts : []} nameFormatter={(id) => {
           const acc = accounts.find(a => a.account_id === id);
           if (!acc) return id;

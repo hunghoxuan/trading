@@ -996,6 +996,8 @@ export default function ChartSnapshotsPage() {
   const [browserTf, setBrowserTf] = useState("4h");
   const [browserPage, setBrowserPage] = useState(1);
   const [browserPageSize] = useState(12);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [symbolActivity, setSymbolActivity] = useState({ loading: false, items: [] });
 
   const [usedFiles, setUsedFiles] = useState([]);
   const [sessionPrefix, setSessionPrefix] = useState("");
@@ -2109,6 +2111,56 @@ export default function ChartSnapshotsPage() {
     if (!promptEdited) setPromptDraft(promptText);
   }, [promptText, promptEdited]);
 
+  useEffect(() => {
+    const symbol = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
+    let alive = true;
+    (async () => {
+      try {
+        setSymbolActivity((prev) => ({ ...prev, loading: true }));
+        const [tradesOut, signalsOut] = await Promise.all([
+          api.v2Trades({ symbol: symbol || undefined, page: 1, pageSize: 30 }),
+          api.trades({ symbol: symbol || undefined, page: 1, pageSize: 30 }),
+        ]);
+        const tradeItems = Array.isArray(tradesOut?.items) ? tradesOut.items : [];
+        const signalItems = Array.isArray(signalsOut?.trades) ? signalsOut.trades : [];
+        const allowed = new Set(["PENDING", "FILLED", "OPEN", "NEW"]);
+        const normalizedTrades = tradeItems
+          .filter((x) => allowed.has(String(x?.execution_status || "").toUpperCase()))
+          .map((x) => ({
+            kind: "TRADE",
+            status: String(x?.execution_status || "").toUpperCase(),
+            side: String(x?.action || x?.side || "").toUpperCase(),
+            symbol: normalizeSignalSymbol(x?.symbol || symbol),
+            entry: x?.entry,
+            tp: x?.tp,
+            sl: x?.sl,
+            updatedAt: x?.updated_at || x?.created_at,
+            id: x?.trade_id || x?.id,
+          }));
+        const normalizedSignals = signalItems
+          .filter((x) => allowed.has(String(x?.status || "").toUpperCase()))
+          .map((x) => ({
+            kind: "SIGNAL",
+            status: String(x?.status || "").toUpperCase(),
+            side: String(x?.action || x?.side || "").toUpperCase(),
+            symbol: normalizeSignalSymbol(x?.symbol || symbol),
+            entry: x?.entry || x?.target_price || x?.entry_price,
+            tp: x?.tp || x?.tp_price,
+            sl: x?.sl || x?.sl_price,
+            updatedAt: x?.updated_at || x?.created_at,
+            id: x?.signal_id || x?.id,
+          }));
+        const merged = [...normalizedTrades, ...normalizedSignals]
+          .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
+          .slice(0, 12);
+        if (alive) setSymbolActivity({ loading: false, items: merged });
+      } catch {
+        if (alive) setSymbolActivity({ loading: false, items: [] });
+      }
+    })();
+    return () => { alive = false; };
+  }, [tvSymbol, cfg.symbol]);
+
   const settingsFormNode = (
     <section className="snapshot-settings-v2">
       <div className="snapshot-template-row-v2">
@@ -2339,7 +2391,8 @@ export default function ChartSnapshotsPage() {
   return (
     <section className="snapshot-builder-v2 snapshot-builder-v3 snapshot-builder-ai-v4">
       <section className="panel snapshot-col-v3 snapshot-col-symbols-v3">
-        <div className="snapshot-symbol-row-inline-v4">
+        {/* Mobile View: Select Dropdown */}
+        <div className="snapshot-symbol-row-inline-v4 mobile-only-v4">
           <span className="panel-label" style={{ margin: 0 }}>Symbols</span>
           <select
             className="snapshot-symbol-select-v4"
@@ -2351,6 +2404,88 @@ export default function ChartSnapshotsPage() {
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
+        </div>
+
+        {/* Desktop View: Original Search & Activity List */}
+        <div className="desktop-only-v4" style={{ display: 'flex', flexDirection: 'column', gap: '10px', height: '100%' }}>
+          <div className="snapshot-symbol-row-inline-v4">
+            <span className="panel-label" style={{ margin: 0 }}>Symbols</span>
+            <input
+              list="tv-symbol-options"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && searchTerm.trim()) {
+                  setCfgField("symbol", normalizeWatchSymbol(searchTerm.trim()));
+                }
+              }}
+              placeholder="Search..."
+              style={{ width: '100%' }}
+            />
+            <button
+              className="secondary-button snapshot-plus-btn-v2"
+              type="button"
+              onClick={() => {
+                if (searchTerm.trim()) {
+                  const s = normalizeWatchSymbol(searchTerm.trim());
+                  setCfgField("symbol", s);
+                  const next = [...new Set([...watchlist, s])];
+                  saveWatchlistToDb(next).then(() => setWatchlist(next));
+                }
+              }}
+              title="Add current symbol"
+            >+</button>
+          </div>
+          <datalist id="tv-symbol-options">
+            {symbolSelectOptions.map((opt) => <option key={opt} value={opt} />)}
+          </datalist>
+          <div className="snapshot-watchlist-v2">
+            {(() => {
+              const query = String(searchTerm || "").trim().toUpperCase();
+              const filtered = watchlist.filter(s => s.toUpperCase().includes(query));
+              if (filtered.length === 0) return <span className="minor-text">No matching symbols.</span>;
+              return (
+                <div className="snapshot-tabs-v2" style={{ flexWrap: 'wrap' }}>
+                  <button
+                    className={`secondary-button snapshot-tag-v2 ${!cfg.symbol ? 'active' : ''}`}
+                    onClick={() => setCfgField('symbol', '')}
+                  >
+                    🌐 ALL
+                  </button>
+                  <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 8px' }} />
+                  {filtered.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
+                      onClick={() => setCfgField("symbol", s)}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+          <div className="snapshot-live-card-v3" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div className="snapshot-gallery-head-v2" style={{ marginBottom: 6 }}>
+              <span className="panel-label" style={{ margin: 0 }}>Related Pending / Filled / New</span>
+            </div>
+            <div className="snapshot-activity-list-v4" style={{ flex: 1, overflowY: 'auto' }}>
+              {symbolActivity.loading ? <div className="minor-text">Loading...</div> : null}
+              {!symbolActivity.loading && symbolActivity.items.length === 0 ? <div className="minor-text">No related trades/signals.</div> : null}
+              {!symbolActivity.loading && symbolActivity.items.map((x) => (
+                <article key={`${x.kind}_${x.id}`} className="snapshot-activity-card-v4">
+                  <div className="snapshot-activity-top-v4">
+                    <span className={x.side === "SELL" ? "side-sell" : "side-buy"}>{x.side || "-"}</span>
+                    <span className="cell-major">{x.symbol || "-"}</span>
+                    <span className="minor-text">{x.kind} · {x.status === "OPEN" ? "FILLED" : x.status}</span>
+                  </div>
+                  <div className="minor-text">{x.entry ?? "-"} → {x.tp ?? "-"} / {x.sl ?? "-"}</div>
+                </article>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 

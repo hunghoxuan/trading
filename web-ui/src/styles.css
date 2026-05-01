@@ -516,6 +516,10 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   .snapshot-grid-capture { grid-template-columns: repeat(3, 1fr); }
   .snapshot-grid2 { grid-template-columns: 1fr; }
   .snapshot-stats { grid-template-columns: repeat(2, 1fr); }
+  .desktop-only-v4 { display: none !important; }
+}
+@media (min-width: 961px) {
+  .mobile-only-v4 { display: none !important; }
 }
 
 /* Snapshot V2 */
