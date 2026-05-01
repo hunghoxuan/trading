@@ -997,6 +997,7 @@ export default function ChartSnapshotsPage() {
   const [browserPage, setBrowserPage] = useState(1);
   const [browserPageSize] = useState(12);
   const [searchTerm, setSearchTerm] = useState("");
+  const [apiSymbolOptions, setApiSymbolOptions] = useState([]);
   const [symbolActivity, setSymbolActivity] = useState({ loading: false, items: [] });
 
   const [usedFiles, setUsedFiles] = useState([]);
@@ -2103,6 +2104,25 @@ export default function ChartSnapshotsPage() {
   }, []);
 
   useEffect(() => {
+    const q = String(searchTerm || "").trim();
+    if (!q || q.length < 2) {
+      setApiSymbolOptions([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.chartSymbols(q, "ICMARKETS", 20);
+        if (Array.isArray(res?.symbols)) {
+          setApiSymbolOptions(res.symbols.map(s => s.symbol || s));
+        }
+      } catch (err) {
+        console.warn("chartSymbols fetch error", err);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
     if (!effectiveParsed || typeof effectiveParsed !== "object") return;
     setPosition(extractPositionFromAnalysis(effectiveParsed));
   }, [effectiveParsed]);
@@ -2391,23 +2411,7 @@ export default function ChartSnapshotsPage() {
   return (
     <section className="snapshot-builder-v2 snapshot-builder-v3 snapshot-builder-ai-v4">
       <section className="panel snapshot-col-v3 snapshot-col-symbols-v3">
-        {/* Mobile View: Select Dropdown */}
-        <div className="snapshot-symbol-row-inline-v4 mobile-only-v4">
-          <span className="panel-label" style={{ margin: 0 }}>Symbols</span>
-          <select
-            className="snapshot-symbol-select-v4"
-            value={normalizeWatchSymbol(cfg.symbol)}
-            onChange={(e) => setCfgField("symbol", normalizeWatchSymbol(e.target.value))}
-          >
-            <option value="">Select symbol</option>
-            {symbolSelectOptions.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Desktop View: Original Search & Activity List */}
-        <div className="desktop-only-v4" style={{ display: 'flex', flexDirection: 'column', gap: '10px', height: '100%' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', height: '100%' }}>
           <div className="snapshot-symbol-row-inline-v4">
             <span className="panel-label" style={{ margin: 0 }}>Symbols</span>
             <input
@@ -2437,7 +2441,7 @@ export default function ChartSnapshotsPage() {
             >+</button>
           </div>
           <datalist id="tv-symbol-options">
-            {symbolSelectOptions.map((opt) => <option key={opt} value={opt} />)}
+            {[...new Set([...symbolSelectOptions, ...apiSymbolOptions])].map((opt) => <option key={opt} value={opt} />)}
           </datalist>
           <div className="snapshot-watchlist-v2">
             {(() => {
@@ -2467,7 +2471,7 @@ export default function ChartSnapshotsPage() {
               );
             })()}
           </div>
-          <div className="snapshot-live-card-v3" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="snapshot-live-card-v3" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', marginTop: 'auto' }}>
             <div className="snapshot-gallery-head-v2" style={{ marginBottom: 6 }}>
               <span className="panel-label" style={{ margin: 0 }}>Related Pending / Filled / New</span>
             </div>
