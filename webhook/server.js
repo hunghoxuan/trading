@@ -95,7 +95,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.04.30 16:26 - 02fca99"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.01 08:38 - 5c630e7"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(CHART_SNAPSHOT_DIR, ".claude-files.json");
 const AI_CONTEXT_FILE_DIR = path.resolve(__dirname, "ai_context_files");
@@ -3030,9 +3030,39 @@ async function buildAiContextBundle({ userId, apiKey, symbol, timeframes = [], b
     .filter(Boolean)
     .slice(0, 6);
   const wanted = tfs.length ? tfs : ["D", "4H", "1H", "15M"];
-  const items = [];
-  for (const tf of wanted) {
-    items.push(await ensureAiTfContext({ userId, apiKey, symbol, tf, bars, provider, forceRefresh, forceSnapshot, includeSnapshots }));
+
+  const maxParallel = 3;
+  const items = new Array(wanted.length);
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < wanted.length) {
+      const idx = cursor;
+      cursor += 1;
+      const tf = wanted[idx];
+      try {
+        items[idx] = await ensureAiTfContext({ userId, apiKey, symbol, tf, bars, provider, forceRefresh, forceSnapshot, includeSnapshots });
+      } catch (error) {
+        items[idx] = {
+          tf: displayTfFromNorm(normalizeMarketDataTf(tf)),
+          tf_norm: normalizeMarketDataTf(tf),
+          status: "error",
+          error: error instanceof Error ? error.message : String(error || "context_failed"),
+        };
+      }
+    }
+  };
+  const runners = Array.from({ length: Math.max(1, Math.min(maxParallel, wanted.length)) }, () => worker());
+  await Promise.all(runners);
+  for (let i = 0; i < items.length; i += 1) {
+    if (!items[i]) {
+      const tf = wanted[i];
+      items[i] = {
+        tf: displayTfFromNorm(normalizeMarketDataTf(tf)),
+        tf_norm: normalizeMarketDataTf(tf),
+        status: "error",
+        error: "context_missing",
+      };
+    }
   }
   const okItems = items.filter((x) => x?.status === "ok");
   return {
@@ -3110,6 +3140,67 @@ function deleteSnapshotFilesByName(fileNames = []) {
     }
   }
   return deleted;
+}
+
+function findRecentChartSnapshots({ symbol = "", provider = "", timeframes = [], sessionPrefix = "", maxAgeMs = 15 * 60 * 1000 } = {}) {
+  ensureChartSnapshotDir();
+  const nowMs = Date.now();
+  const symbolRaw = String(symbol || "").trim().toUpperCase();
+  const providerRaw = String(provider || "").trim().toUpperCase();
+  const fullSymbol = symbolRaw.includes(":") ? symbolRaw : `${providerRaw}:${symbolRaw}`;
+  const symbolTokens = new Set(
+    [symbolRaw, fullSymbol]
+      .map((x) => sanitizeSnapshotFileToken(x || ""))
+      .filter(Boolean),
+  );
+  const wanted = (Array.isArray(timeframes) ? timeframes : String(timeframes || "").split(","))
+    .map((tf) => toTradingViewInterval(tf).toUpperCase())
+    .filter(Boolean);
+  const wantedSet = new Set(wanted);
+  const prefix = sanitizeSessionPrefix(sessionPrefix || "");
+  const byTf = new Map();
+  const files = fs.readdirSync(CHART_SNAPSHOT_DIR)
+    .filter((f) => /\.(png|jpe?g)$/i.test(f))
+    .map((f) => {
+      const abs = path.join(CHART_SNAPSHOT_DIR, f);
+      try {
+        const st = fs.statSync(abs);
+        if (!st.isFile()) return null;
+        return { file_name: f, abs, mtimeMs: Number(st.mtimeMs || 0), size_bytes: Number(st.size || 0) };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .filter((x) => !maxAgeMs || Math.abs(nowMs - x.mtimeMs) <= Number(maxAgeMs))
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  for (const item of files) {
+    const base = item.file_name.replace(/\.(png|jpe?g)$/i, "");
+    const parts = base.split("_").map((x) => String(x || "").trim()).filter(Boolean);
+    const tfToken = sanitizeSnapshotFileToken(parts[parts.length - 1] || "").toUpperCase();
+    if (!wantedSet.has(tfToken)) continue;
+    if (prefix && !base.includes(`_${prefix}_`)) continue;
+    const hasSymbol = [...symbolTokens].some((token) => token && base.includes(token));
+    if (!hasSymbol) continue;
+    if (byTf.has(tfToken)) continue;
+    byTf.set(tfToken, {
+      id: base,
+      file_name: item.file_name,
+      timeframe: tfToken,
+      created_at: new Date(item.mtimeMs || nowMs).toISOString(),
+      size_bytes: item.size_bytes,
+      mime_type: fileMimeByName(item.file_name),
+      url: `/v2/chart/snapshots/${encodeURIComponent(item.file_name)}`,
+      reused: true,
+    });
+  }
+
+  return {
+    items: wanted.map((tf) => byTf.get(tf)).filter(Boolean),
+    missing_timeframes: wanted.filter((tf) => !byTf.has(tf)),
+    target_timeframes: wanted,
+  };
 }
 
 function extractJsonFromAiText(rawText) {
@@ -10301,8 +10392,8 @@ const appHandler = async (req, res) => {
       await db.query(`
         INSERT INTO user_settings (user_id, type, name, data, status)
         VALUES
-          ($1, 'market_data_cron', 'default', $2::jsonb, 'INACTIVE'),
-          ($1, 'ai_analysis_cron', 'default', $3::jsonb, 'INACTIVE')
+          ($1, 'cron', 'market_data', $2::jsonb, 'INACTIVE'),
+          ($1, 'cron', 'ai_analysis', $3::jsonb, 'INACTIVE')
         ON CONFLICT (user_id, type, name) DO NOTHING
       `, [
         userId,
@@ -10713,6 +10804,119 @@ const appHandler = async (req, res) => {
         quality: body.quality,
       });
       return json(res, 200, { ok: true, items });
+    } catch (error) {
+      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/chart/refresh") {
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      const body = await readJson(req);
+      const userId = sess.user_id || CFG.mt5DefaultUserId;
+      const symbols = (Array.isArray(body.symbols) ? body.symbols : [body.symbol])
+        .map((x) => String(x || "").trim())
+        .filter(Boolean)
+        .slice(0, 8);
+      if (!symbols.length) return json(res, 400, { ok: false, error: "symbol or symbols is required" });
+      const timeframes = (Array.isArray(body.timeframes) ? body.timeframes : String(body.timeframes || body.tfs || "D,4H,1H,15M").split(","))
+        .map((x) => String(x || "").trim())
+        .filter(Boolean)
+        .slice(0, 8);
+      const types = new Set((Array.isArray(body.types) ? body.types : String(body.types || "context,snapshots").split(","))
+        .map((x) => String(x || "").trim().toLowerCase())
+        .filter(Boolean));
+      const wantsContext = ["context", "bars", "analysis", "tradeplans"].some((x) => types.has(x));
+      const wantsSnapshots = ["snapshot", "snapshots", "images"].some((x) => types.has(x));
+      const bars = Math.max(50, Math.min(Number(body.bars || body.lookbackBars || 300) || 300, 1000));
+      const provider = String(body.provider || "ICMARKETS").trim();
+      const force = body.force === true || asBool(body.refresh, false);
+      const sessionPrefix = sanitizeSessionPrefix(body.session_prefix || body.sessionPrefix || "");
+      const snapshotMaxAgeMs = Math.max(0, Number(body.snapshot_max_age_ms || body.snapshotMaxAgeMs || 15 * 60 * 1000) || 0);
+      const includeSnapshotsInContext = body.include_snapshots === true || body.includeSnapshots === true;
+      const claudeKey = wantsContext ? await loadClaudeApiKeyForUser(userId) : "";
+      if (wantsContext && !claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
+
+      const results = [];
+      for (const symbol of symbols) {
+        const row = {
+          symbol: normalizeMarketDataSymbol(symbol),
+          requested_symbol: symbol,
+          provider,
+          timeframes,
+          types: [...types],
+          context: null,
+          snapshots: null,
+          status: "ok",
+          errors: [],
+        };
+
+        if (wantsContext) {
+          try {
+            row.context = await buildAiContextBundle({
+              userId,
+              apiKey: claudeKey,
+              symbol,
+              timeframes,
+              bars,
+              provider,
+              forceRefresh: force,
+              forceSnapshot: false,
+              includeSnapshots: includeSnapshotsInContext,
+            });
+          } catch (error) {
+            row.status = "partial";
+            row.errors.push({ type: "context", error: error instanceof Error ? error.message : String(error) });
+          }
+        }
+
+        if (wantsSnapshots) {
+          try {
+            const cached = force
+              ? { items: [], missing_timeframes: timeframes.map((tf) => toTradingViewInterval(tf).toUpperCase()), target_timeframes: timeframes.map((tf) => toTradingViewInterval(tf).toUpperCase()) }
+              : findRecentChartSnapshots({ symbol, provider, timeframes, sessionPrefix, maxAgeMs: snapshotMaxAgeMs });
+            let created = [];
+            if (cached.missing_timeframes.length) {
+              created = await captureTradingViewSnapshotsBatch({
+                userId,
+                symbol,
+                provider,
+                session_prefix: sessionPrefix,
+                timeframes: cached.missing_timeframes,
+                lookbackBars: bars,
+                format: body.format || "jpg",
+                quality: body.quality || 55,
+                captureConcurrency: body.captureConcurrency || 2,
+              });
+            }
+            row.snapshots = {
+              target_timeframes: cached.target_timeframes,
+              cached: cached.items,
+              created,
+              items: [...cached.items, ...created],
+              matched_count: cached.items.length + created.length,
+              target_count: cached.target_timeframes.length,
+              missing_timeframes: cached.target_timeframes.filter((tf) => ![...cached.items, ...created].some((x) => String(x?.timeframe || "").toUpperCase() === tf)),
+            };
+          } catch (error) {
+            row.status = row.status === "ok" ? "partial" : row.status;
+            row.errors.push({ type: "snapshots", error: error instanceof Error ? error.message : String(error) });
+            row.snapshots = row.snapshots || { target_timeframes: timeframes, cached: [], created: [], items: [], matched_count: 0, target_count: timeframes.length, missing_timeframes: timeframes };
+          }
+        }
+
+        results.push(row);
+      }
+
+      return json(res, 200, {
+        ok: true,
+        generated_at: new Date().toISOString(),
+        symbols: results,
+        context: results.length === 1 ? results[0].context : undefined,
+        snapshots: results.length === 1 ? results[0].snapshots : undefined,
+      });
     } catch (error) {
       return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
@@ -12598,8 +12802,8 @@ async function marketDataUpdateCronState({ userId, settingName, symbol, tf, patc
   const b = await mt5Backend();
   const key = `${normalizeMarketDataSymbol(symbol)}:${normalizeMarketDataTf(tf)}`;
   const res = await b.query(
-    `SELECT data FROM user_settings WHERE user_id = $1 AND type = 'market_data_cron' AND name = $2 LIMIT 1`,
-    [userId, settingName || "default"]
+    `SELECT data FROM user_settings WHERE user_id = $1 AND type = 'cron' AND name = 'MARKET_DATA_CRON' LIMIT 1`,
+    [userId]
   );
   if (!res.rows.length) return;
   const data = (res.rows[0].data && typeof res.rows[0].data === "object") ? res.rows[0].data : {};
@@ -12608,8 +12812,8 @@ async function marketDataUpdateCronState({ userId, settingName, symbol, tf, patc
   await b.query(
     `UPDATE user_settings
         SET data = $1::jsonb, updated_at = NOW()
-      WHERE user_id = $2 AND type = 'market_data_cron' AND name = $3`,
-    [JSON.stringify({ ...data, last_sync: sync }), userId, settingName || "default"]
+      WHERE user_id = $2 AND type = 'cron' AND name = 'MARKET_DATA_CRON'`,
+    [JSON.stringify({ ...data, last_sync: sync }), userId]
   );
 }
 
@@ -12713,7 +12917,7 @@ async function mt5RunMarketDataCron() {
     SELECT s.* 
     FROM user_settings s
     JOIN users u ON s.user_id = u.user_id
-    WHERE s.type = 'market_data_cron' 
+    WHERE s.type = 'cron' AND s.name = 'MARKET_DATA_CRON'
       AND UPPER(s.status) = 'ACTIVE'
       AND (u.metadata->'settings'->>'data_cron')::boolean = true
   `);
@@ -12799,7 +13003,7 @@ async function mt5RunAiAnalysisCron() {
     SELECT s.* 
     FROM user_settings s
     JOIN users u ON s.user_id = u.user_id
-    WHERE s.type = 'ai_analysis_cron' 
+    WHERE s.type = 'cron' AND s.name = 'ANALYSIS_CRON'
       AND UPPER(s.status) = 'ACTIVE'
       AND (u.metadata->'settings'->>'analysis_cron')::boolean = true
   `);

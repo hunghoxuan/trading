@@ -16,7 +16,7 @@ const API_KEY_NAME_OPTIONS = [
   { value: "TWELVE_DATA_API_KEY", label: "Twelve Data API Key" },
 ];
 
-const SYSTEM_SETTING_TYPES = new Set(["market_data_cron", "ai_analysis_cron", "system_config"]);
+const SYSTEM_SETTING_TYPES = new Set(["system_config"]);
 const TIMEFRAME_OPTIONS = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
 
 function isSystemRole(user) {
@@ -105,6 +105,24 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
   const [activeTab, setActiveTab] = useState(mode === "profile" ? "PROFILE" : "PROFILE");
 
   const getSettingKey = (s) => `${String(s?.type || "")}::${String(s?.name || "")}`;
+
+  function renderSidebarItem(s) {
+    const key = getSettingKey(s);
+    const isCron = s.type === 'cron' || s.type.endsWith('_cron');
+    return (
+      <button
+        key={key}
+        className={`sidebar-item-v2 ${activeTab === key ? "active" : ""}`}
+        onClick={() => setActiveTab(key)}
+      >
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+           <span style={{ fontWeight: isCron ? 700 : 500, fontSize: 12 }}>{s.name}</span>
+           <span className="minor-text" style={{ fontSize: 9, opacity: 0.5 }}>{s.type}</span>
+        </div>
+        <span className={`status-badge ${settingStatusClass(s.status)}`} style={{ fontSize: 8 }}>{s.status}</span>
+      </button>
+    );
+  }
 
   async function loadData() {
     try {
@@ -386,11 +404,11 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
     [settings, activeTab],
   );
   const marketDataCronSetting = useMemo(
-    () => settings.find((s) => String(s?.type || "") === "market_data_cron" && String(s?.name || "") === "default"),
+    () => settings.find((s) => (s.type === "cron" && s.name === "market_data") || s.type === "market_data_cron"),
     [settings],
   );
   const aiAnalysisCronSetting = useMemo(
-    () => settings.find((s) => String(s?.type || "") === "ai_analysis_cron" && String(s?.name || "") === "default"),
+    () => settings.find((s) => (s.type === "cron" && s.name === "ai_analysis") || s.type === "ai_analysis_cron"),
     [settings],
   );
 
@@ -412,7 +430,7 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
       setSymbolsDetailText("");
       return;
     }
-    if (type === "market_data_cron" || type === "ai_analysis_cron") {
+    if (type === "cron" || type === "market_data_cron" || type === "ai_analysis_cron") {
       const d = selectedSetting?.data || {};
       setCronForm({
         symbols: Array.isArray(d.symbols) ? d.symbols.join(", ") : "",
@@ -477,7 +495,8 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                     }}
                   >
                     <option value="api_key">api_key</option>
-                    <option value="symbols">symbols</option>
+                    <option value="trade">trade</option>
+                    <option value="cron">cron</option>
                     <option value="note">note</option>
                   </select>
                </label>
@@ -513,127 +532,156 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
             </div>
           )}
 
-          <div className="stack-layout" style={{ gap: 2 }}>
-            {settings.map(s => {
-              const key = getSettingKey(s);
-              const isCron = ["market_data_cron", "ai_analysis_cron"].includes(s.type);
-              return (
-                <button
-                  key={key}
-                  className={`sidebar-item-v2 ${activeTab === key ? "active" : ""}`}
-                  onClick={() => setActiveTab(key)}
-                >
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
-                     <span style={{ fontWeight: isCron ? 700 : 500, fontSize: 12 }}>{s.name || s.type}</span>
-                     <span className="minor-text" style={{ fontSize: 9 }}>{s.type}</span>
-                  </div>
-                  <span className={`status-badge ${settingStatusClass(s.status)}`} style={{ fontSize: 8 }}>{s.status}</span>
-                </button>
-              );
-            })}
+          <div className="stack-layout" style={{ gap: 24, marginTop: 16 }}>
+            {/* API KEYS GROUP */}
+            {settings.filter(s => s.type === 'api_key').length > 0 && (
+              <div className="stack-layout" style={{ gap: 8 }}>
+                <div className="panel-label" style={{ fontSize: 9, opacity: 0.6 }}>API KEYS</div>
+                <div className="stack-layout" style={{ gap: 2 }}>
+                  {settings.filter(s => s.type === 'api_key').map(s => renderSidebarItem(s))}
+                </div>
+              </div>
+            )}
+
+            {/* CRONS GROUP */}
+            {settings.filter(s => s.type === 'cron' || s.type.endsWith('_cron')).length > 0 && (
+              <div className="stack-layout" style={{ gap: 8 }}>
+                <div className="panel-label" style={{ fontSize: 9, opacity: 0.6 }}>CRONS</div>
+                <div className="stack-layout" style={{ gap: 2 }}>
+                  {settings.filter(s => s.type === 'cron' || s.type.endsWith('_cron')).map(s => renderSidebarItem(s))}
+                </div>
+              </div>
+            )}
+
+            {/* WATCHLISTS GROUP */}
+            {settings.filter(s => s.type === 'trade' || s.type === 'symbols').length > 0 && (
+              <div className="stack-layout" style={{ gap: 8 }}>
+                <div className="panel-label" style={{ fontSize: 9, opacity: 0.6 }}>WATCHLISTS</div>
+                <div className="stack-layout" style={{ gap: 2 }}>
+                  {settings.filter(s => s.type === 'trade' || s.type === 'symbols').map(s => renderSidebarItem(s))}
+                </div>
+              </div>
+            )}
+
+            {/* OTHERS GROUP */}
+            {settings.filter(s => !['api_key', 'cron', 'trade', 'symbols'].includes(s.type) && !s.type.endsWith('_cron')).length > 0 && (
+              <div className="stack-layout" style={{ gap: 8 }}>
+                <div className="panel-label" style={{ fontSize: 9, opacity: 0.6 }}>OTHERS</div>
+                <div className="stack-layout" style={{ gap: 2 }}>
+                  {settings.filter(s => !['api_key', 'cron', 'trade', 'symbols'].includes(s.type) && !s.type.endsWith('_cron')).map(s => renderSidebarItem(s))}
+                </div>
+              </div>
+            )}
           </div>
         </section>
+
 
         {/* Right: Detail */}
         <section className="panel" style={{ margin: 0, minHeight: 600, overflowY: "auto" }}>
           {activeTab === "PROFILE" && (
-            <div className="fadeIn stack-layout" style={{ gap: 40 }}>
-              {/* SECTION 1: IDENTITY */}
-              <div className="stack-layout" style={{ gap: 16 }}>
-                <div className="panel-label">IDENTITY</div>
-                <UserDetailSection
-                  title=""
-                  form={profileForm}
-                  setForm={setProfileForm}
-                  roleOptions={[String(profileForm.role || "User")]}
-                  showRole={false}
-                  showActive={false}
-                  showPassword={false}
-                  primaryLabel={profileLoading ? "SAVING..." : "SAVE CHANGES"}
-                  onPrimary={saveMyAccount}
-                  primaryDisabled={profileLoading}
-                  footer={msg && !pwdLoading && activeTab === "PROFILE" ? <span className="minor-text">{msg}</span> : null}
-                />
-              </div>
-
-              {/* SECTION 2: APP PREFERENCES */}
-              <div className="stack-layout" style={{ gap: 16 }}>
-                <div className="panel-label">APP PREFERENCES</div>
-                <div className="stack-layout" style={{ gap: 20, maxWidth: 500 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                    <label className="stack-layout" style={{ gap: 6 }}>
-                      <span className="minor-text">Language</span>
-                      <select
-                        value={metadataForm.language}
-                        onChange={e => setMetadataForm(p => ({ ...p, language: e.target.value }))}
-                      >
-                        <option value="English">English</option>
-                        <option value="Vietnamese">Vietnamese</option>
-                        <option value="Deutsch">Deutsch</option>
-                      </select>
-                    </label>
-                    <label className="stack-layout" style={{ gap: 6 }}>
-                      <span className="minor-text">Display Timezone</span>
-                      <input
-                        type="text"
-                        value={metadataForm.display_timezone}
-                        onChange={e => setMetadataForm(p => ({ ...p, display_timezone: e.target.value }))}
-                        placeholder="e.g. UTC, Asia/Ho_Chi_Minh"
-                      />
-                    </label>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={metadataForm.market_data_cron}
-                        onChange={e => setMetadataForm(p => ({ ...p, market_data_cron: e.target.checked }))}
-                      />
-                      <span className="minor-text">Market Data Cron</span>
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={metadataForm.ai_analysis_cron}
-                        onChange={e => setMetadataForm(p => ({ ...p, ai_analysis_cron: e.target.checked }))}
-                      />
-                      <span className="minor-text">AI Analysis Cron</span>
-                    </label>
-                  </div>
-                  <button className="primary-button" onClick={savePreferences} disabled={metadataLoading}>
-                    {metadataLoading ? "SAVING..." : "SAVE PREFERENCES"}
-                  </button>
-                </div>
-              </div>
-
-              {/* SECTION 3: SECURITY */}
-              <div className="stack-layout" style={{ gap: 16 }}>
-                <div className="panel-label">SECURITY</div>
-                <div className="stack-layout" style={{ gap: 16, maxWidth: 400 }}>
-                  <label className="stack-layout" style={{ gap: 6 }}>
-                    <span className="minor-text">Current Password</span>
-                    <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
-                  </label>
-                  <label className="stack-layout" style={{ gap: 6 }}>
-                    <span className="minor-text">New Password</span>
-                    <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-                  </label>
-                  <label className="stack-layout" style={{ gap: 6 }}>
-                    <span className="minor-text">Confirm New Password</span>
-                    <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
-                  </label>
-                  <button className="primary-button" onClick={resetPassword} disabled={pwdLoading}>
-                    {pwdLoading ? "UPDATE PASSWORD" : "UPDATE PASSWORD"}
-                  </button>
-                </div>
-              </div>
-
-              {/* SECTION 4: EXECUTION ENGINE */}
-              {canManageExecution && (
+            <div className="fadeIn" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
+              {/* COLUMN 1: IDENTITY & SECURITY */}
+              <div className="stack-layout" style={{ gap: 40 }}>
+                {/* SECTION: IDENTITY */}
                 <div className="stack-layout" style={{ gap: 16 }}>
-                  <div className="panel-label">EXECUTION ENGINE</div>
-                  <div className="stack-layout" style={{ gap: 24 }}>
-                    <div className="stack-layout" style={{ gap: 16, maxWidth: 500 }}>
+                  <div className="panel-label">IDENTITY</div>
+                  <UserDetailSection
+                    title=""
+                    form={profileForm}
+                    setForm={setProfileForm}
+                    roleOptions={[String(profileForm.role || "User")]}
+                    showRole={false}
+                    showActive={false}
+                    showPassword={false}
+                    primaryLabel={profileLoading ? "SAVING..." : "SAVE CHANGES"}
+                    onPrimary={saveMyAccount}
+                    primaryDisabled={profileLoading}
+                  />
+                  {msg && !pwdLoading && !metadataLoading && !execLoading && (
+                    <div className="fadeIn" style={{ color: "var(--primary)", fontSize: 13, marginTop: -8 }}>{msg}</div>
+                  )}
+                </div>
+
+                {/* SECTION: SECURITY */}
+                <div className="stack-layout" style={{ gap: 16 }}>
+                  <div className="panel-label">SECURITY</div>
+                  <div className="stack-layout" style={{ gap: 16 }}>
+                    <label className="stack-layout" style={{ gap: 6 }}>
+                      <span className="minor-text">Current Password</span>
+                      <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+                    </label>
+                    <label className="stack-layout" style={{ gap: 6 }}>
+                      <span className="minor-text">New Password</span>
+                      <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                    </label>
+                    <label className="stack-layout" style={{ gap: 6 }}>
+                      <span className="minor-text">Confirm New Password</span>
+                      <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                    </label>
+                    <button className="primary-button" style={{ width: "100%" }} onClick={resetPassword} disabled={pwdLoading}>
+                      {pwdLoading ? "UPDATING..." : "UPDATE PASSWORD"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* COLUMN 2: APP PREFERENCES & EXECUTION ENGINE */}
+              <div className="stack-layout" style={{ gap: 40 }}>
+                {/* SECTION: APP PREFERENCES */}
+                <div className="stack-layout" style={{ gap: 16 }}>
+                  <div className="panel-label">APP PREFERENCES</div>
+                  <div className="stack-layout" style={{ gap: 20 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      <label className="stack-layout" style={{ gap: 6 }}>
+                        <span className="minor-text">Language</span>
+                        <select
+                          value={metadataForm.language}
+                          onChange={e => setMetadataForm(p => ({ ...p, language: e.target.value }))}
+                        >
+                          <option value="English">English</option>
+                          <option value="Vietnamese">Vietnamese</option>
+                          <option value="Deutsch">Deutsch</option>
+                        </select>
+                      </label>
+                      <label className="stack-layout" style={{ gap: 6 }}>
+                        <span className="minor-text">Display Timezone</span>
+                        <input
+                          type="text"
+                          value={metadataForm.display_timezone}
+                          onChange={e => setMetadataForm(p => ({ ...p, display_timezone: e.target.value }))}
+                          placeholder="e.g. UTC, Asia/Ho_Chi_Minh"
+                        />
+                      </label>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={metadataForm.market_data_cron}
+                          onChange={e => setMetadataForm(p => ({ ...p, market_data_cron: e.target.checked }))}
+                        />
+                        <span className="minor-text">Market Data Cron</span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={metadataForm.ai_analysis_cron}
+                          onChange={e => setMetadataForm(p => ({ ...p, ai_analysis_cron: e.target.checked }))}
+                        />
+                        <span className="minor-text">AI Analysis Cron</span>
+                      </label>
+                    </div>
+                    <button className="primary-button" onClick={savePreferences} disabled={metadataLoading}>
+                      {metadataLoading ? "SAVING..." : "SAVE PREFERENCES"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* SECTION: EXECUTION ENGINE */}
+                {canManageExecution && (
+                  <div className="stack-layout" style={{ gap: 16 }}>
+                    <div className="panel-label">EXECUTION ENGINE</div>
+                    <div className="stack-layout" style={{ gap: 16 }}>
                       <label className="stack-layout" style={{ gap: 6 }}>
                         <span className="minor-text">Account</span>
                         <select value={execForm.account_id} onChange={(e) => setExecForm((p) => ({ ...p, account_id: e.target.value }))}>
@@ -641,25 +689,28 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                           {execAccounts.map((a) => <option key={a.account_id} value={a.account_id}>{a.name || a.account_id}</option>)}
                         </select>
                       </label>
-                      <label className="stack-layout" style={{ gap: 6 }}>
-                        <span className="minor-text">Route</span>
-                        <select value={execForm.route} onChange={(e) => setExecForm((p) => ({ ...p, route: e.target.value }))}>
-                          {ROUTE_OPTIONS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
-                        </select>
-                      </label>
-                      <label className="stack-layout" style={{ gap: 6 }}>
-                        <span className="minor-text">Sources (CSV)</span>
-                        <input value={execForm.source_ids_csv} onChange={(e) => setExecForm((p) => ({ ...p, source_ids_csv: e.target.value }))} />
-                      </label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                        <label className="stack-layout" style={{ gap: 6 }}>
+                          <span className="minor-text">Route</span>
+                          <select value={execForm.route} onChange={(e) => setExecForm((p) => ({ ...p, route: e.target.value }))}>
+                            {ROUTE_OPTIONS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+                          </select>
+                        </label>
+                        <label className="stack-layout" style={{ gap: 6 }}>
+                          <span className="minor-text">Sources (CSV)</span>
+                          <input value={execForm.source_ids_csv} onChange={(e) => setExecForm((p) => ({ ...p, source_ids_csv: e.target.value }))} />
+                        </label>
+                      </div>
                       <button className="primary-button" onClick={applyExecutionProfile} disabled={execLoading}>
                         {execLoading ? "APPLYING..." : "APPLY EXECUTION"}
                       </button>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
+
 
           {selectedSetting && (
             <div className="fadeIn">
@@ -668,12 +719,23 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                     <h3 style={{ margin: 0, textTransform: "uppercase" }}>{selectedSetting.name}</h3>
                     <div className="minor-text" style={{ marginTop: 4 }}>Type: {selectedSetting.type}</div>
                  </div>
-                  <div style={{ display: "flex", gap: 12 }}>
+                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                    <select
+                      style={{ padding: "4px 8px", fontSize: 11, borderRadius: 4, background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border)" }}
+                      value={String(selectedSetting.status || "INACTIVE").toUpperCase()}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSettings(prev => prev.map(s => getSettingKey(s) === getSettingKey(selectedSetting) ? { ...s, status: val } : s));
+                      }}
+                    >
+                       <option value="ACTIVE">ACTIVE</option>
+                       <option value="INACTIVE">INACTIVE</option>
+                    </select>
+
                     <button className="primary-button" onClick={() => {
-                      if (selectedSetting.type === "market_data_cron" || selectedSetting.type === "ai_analysis_cron") {
+                      if (selectedSetting.type === "cron" || selectedSetting.type === "market_data_cron" || selectedSetting.type === "ai_analysis_cron") {
                         const nextData = {
                           ...selectedSetting.data,
-                          enabled: String(selectedSetting.status || "").toUpperCase() === "ACTIVE",
                           provider: cronForm.provider,
                           timezone: cronForm.timezone,
                           batch_size: cronForm.batch_size,
@@ -692,30 +754,17 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                         saveSetting(getSettingKey(selectedSetting));
                       }
                     }} disabled={settingsLoading}>SAVE</button>
+
                     {!SYSTEM_SETTING_TYPES.has(String(selectedSetting.type || "")) && (
                       <button className="danger-button" onClick={() => deleteSetting(selectedSetting.type, selectedSetting.name)} disabled={settingsLoading}>DELETE</button>
                     )}
                   </div>
               </div>
 
-              {selectedSetting.type === "market_data_cron" || selectedSetting.type === "ai_analysis_cron" ? (
+              {selectedSetting.type === "cron" || selectedSetting.type === "market_data_cron" || selectedSetting.type === "ai_analysis_cron" ? (
                 <div className="stack-layout fadeIn" style={{ gap: 20, maxWidth: 600 }}>
-                   <div className="stack-layout" style={{ gap: 8 }}>
-                      <span className="panel-label" style={{ fontSize: 10, marginBottom: 0 }}>STATUS</span>
-                      <select
-                        style={{ width: "100%" }}
-                        value={String(selectedSetting.status || "INACTIVE").toUpperCase()}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setSettings(prev => prev.map(s => getSettingKey(s) === getSettingKey(selectedSetting) ? { ...s, status: val } : s));
-                        }}
-                      >
-                         <option value="ACTIVE">ACTIVE</option>
-                         <option value="INACTIVE">INACTIVE</option>
-                      </select>
-                   </div>
+                   {(selectedSetting.type === "market_data_cron" || (selectedSetting.type === "cron" && selectedSetting.name === "MARKET_DATA_CRON") || (selectedSetting.type === "cron" && selectedSetting.name === "market_data")) && (
 
-                   {selectedSetting.type === "market_data_cron" && (
                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                        <label className="stack-layout" style={{ gap: 6 }}>
                          <span className="minor-text">Provider</span>
@@ -765,7 +814,7 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                       </div>
                    </div>
 
-                   {selectedSetting.type === "ai_analysis_cron" && (
+                   {(selectedSetting.type === "ai_analysis_cron" || (selectedSetting.type === "cron" && selectedSetting.name === "ai_analysis")) && (
                      <>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                           <label className="stack-layout" style={{ gap: 8 }}>
@@ -860,7 +909,6 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                    <div style={{ marginTop: 12, padding: 12, background: "var(--surface-deep)", borderRadius: 8, border: "1px solid var(--border)" }}>
                       <div className="panel-label" style={{ fontSize: 9 }}>RAW DATA PREVIEW</div>
                       <pre style={{ fontSize: 11, margin: 0 }}>{JSON.stringify({
-                        enabled: String(selectedSetting.status || "").toUpperCase() === "ACTIVE",
                         provider: cronForm.provider,
                         timezone: cronForm.timezone,
                         batch_size: cronForm.batch_size,

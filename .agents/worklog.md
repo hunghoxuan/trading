@@ -1,5 +1,22 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-05-01 10:38
+- **Starting Task**:
+  - Update Settings page layout and standardise setting names/types in DB and code.
+- **Work Accomplished**:
+  - Validated digital time toggle is already completely frontend local timezone toggle.
+  - Profile layout already uses 2 columns from earlier refactor.
+  - Ran DB migration script to change types `SYMBOLS` -> `trade` and `ai_analysis_cron`/`market_data_cron` -> `cron`.
+  - Renamed names `ai_analysis_cron:default` -> `cron:ANALYSIS_CRON` and `market_data_cron:default` -> `cron:MARKET_DATA_CRON`.
+  - Removed `enabled` field from cron settings JSON data (status field handles it at DB level).
+  - Updated `SettingsPage.jsx` to reflect new layout: single "CONFIGURATIONS" grouping, inline ACTIVE/INACTIVE dropdown, and universal DELETE (except system).
+  - Updated `webhook/server.js` queries to use `cron` type and the new `ANALYSIS_CRON`/`MARKET_DATA_CRON` names.
+  - Bumped server/EA versions to `v2026.05.01 08:38 - 5c630e7`.
+- **Verification**:
+  - `node --check webhook/server.js`
+  - `npm --prefix web-ui run build`
+  - `bash scripts/bump_build_versions.sh`
+
 # Session Log: 2026-04-30 18:26
 - **Starting Task**:
   - Fix Claude Files View/Download error for non-downloadable Claude files.
@@ -419,3 +436,113 @@
   - Persist last_price for market_data.
   - Treat Claude Files as AI context cache for bars, snapshots, analysis, and trade plans.
   - Stop AI page from sending raw bars in analyze payload.
+
+# Session Log: 2026-04-30 23:17
+- **Starting Task**:
+  - Improve AI Chart context performance with async warm-up:
+    - auto-start bars/context and snapshots on symbol load
+    - cache-first snapshot reuse before capture
+    - analyze preflight waits for warm-up with timeout fallback
+- **Work Accomplished**:
+  - Updated `/Users/macmini/Trade/Bot/trading/web-ui/src/pages/ai/ChartSnapshotsPage.jsx`:
+    - Added `warmupState` and in-flight warm-up refs (`contextWarmupRef`, `snapshotWarmupRef`) for single-flight async jobs.
+    - Added cache-first snapshot matcher (`resolveRecentSnapshots`) to reuse recent per-TF snapshots before triggering capture.
+    - Added async warm-up starters:
+      - `startContextWarmup(...)` for bars/context files
+      - `startSnapshotWarmup(...)` for snapshot readiness with missing-TF capture only
+    - Added symbol-change effect to fire both warm-up jobs in parallel.
+    - Reworked `analyzeSelected()` preflight:
+      - waits on context + snapshot warm-up concurrently (bounded timeout)
+      - uses matched snapshot files when complete
+      - gracefully continues bars/context-only when snapshots are partial/failed after timeout.
+- **Technical Decisions**:
+  - Keep bars/context as hard requirement for analyze.
+  - Keep snapshots as best-effort with timeout fallback to avoid user-visible blocking.
+  - Preserve existing freshness window (15 minutes, same-day) for snapshot cache reuse.
+- **Verification**:
+  - `npm --prefix web-ui run build` ✅
+- **Deploy Status**:
+  - Not deployed in this task.
+
+- **Follow-up Task (2026-05-01)**:
+  - Backend: parallelize `buildAiContextBundle` across multiple TFs with bounded concurrency.
+  - UI: show live readiness status near Analyze for bars/context and snapshots.
+- **Follow-up Work Accomplished**:
+  - Updated `/Users/macmini/Trade/Bot/trading/webhook/server.js`:
+    - Changed `buildAiContextBundle(...)` from sequential TF loop to bounded parallel worker pool (`maxParallel=3`).
+    - Preserved stable output ordering by writing results into indexed slots.
+    - Preserved partial-failure tolerance by converting worker errors into per-TF `status:"error"` records.
+  - Updated `/Users/macmini/Trade/Bot/trading/web-ui/src/pages/ai/ChartSnapshotsPage.jsx`:
+    - Added live readiness texts:
+      - `Bars/Context: Ready|Loading|Pending`
+      - `Snapshots: Ready|Loading|Pending (matched/target)`
+    - Rendered both statuses beside Analyze button to expose async progress clearly.
+- **Follow-up Verification**:
+  - `node --check webhook/server.js` ✅
+  - `npm --prefix web-ui run build` ✅
+
+- **Follow-up Task (2026-05-01 07:57)**:
+  - Replace raw numeric trend fallback with percent change display and color.
+  - Replace fresh/cache label with cached-age label.
+  - Update datetime formatter to show relative minutes under 60 minutes.
+- **Follow-up Work Accomplished**:
+  - Updated `/Users/macmini/Trade/Bot/trading/web-ui/src/pages/ai/ChartSnapshotsPage.jsx`:
+    - Removed `fresh/cache` text in live TF header.
+    - Added `cached ${showDateTime(...)}` display.
+    - Replaced `close_change_20` raw number display with percent (`* 100`) string.
+    - Added color coding for percent:
+      - positive: green (`var(--ok)`)
+      - negative: red (`var(--danger)`)
+      - zero: muted.
+  - Updated `/Users/macmini/Trade/Bot/trading/web-ui/src/utils/format.js`:
+    - `showDateTime(...)` now returns `"x mins ago"` when timestamp is within last 60 minutes.
+- **Follow-up Verification**:
+  - `npm --prefix web-ui run build` ✅
+
+# Session Log: 2026-05-01 10:32
+- **Starting Task**:
+  - Add client-controlled auto context flow for AI Chart:
+    - show context/snapshot/analysis status near `[CHART_CONTEXT]`
+    - introduce one refresh API for multiple symbols, TFs, and data types
+    - auto-refresh context/snapshots on symbol stay
+    - auto-analyze after refresh/snapshot readiness
+    - cancel/ignore old flows when switching symbols
+- **Work Accomplished**:
+  - Updated `/Users/macmini/Trade/Bot/trading/webhook/server.js`:
+    - Added `findRecentChartSnapshots(...)` cache-first helper for local snapshot freshness.
+    - Added `POST /v2/chart/refresh`.
+    - Endpoint supports:
+      - `symbols`
+      - `timeframes`
+      - `types` (`context`, `bars`, `snapshots`, etc.)
+      - `provider`
+      - `bars`
+      - `force`
+      - `session_prefix`
+      - `snapshot_max_age_ms`
+    - Endpoint returns per-symbol context and snapshot status while reusing cached snapshots before capture.
+  - Updated `/Users/macmini/Trade/Bot/trading/web-ui/src/api.js`:
+    - Added `api.chartRefresh(...)`.
+  - Updated `/Users/macmini/Trade/Bot/trading/web-ui/src/pages/ai/ChartSnapshotsPage.jsx`:
+    - Added UI flow state for `context`, `snapshots`, and `analysis`.
+    - Added run-token based stale result guard so switching symbols invalidates old flow results.
+    - Moved context/snapshot warm-up to the unified `chartRefresh` endpoint.
+    - Added auto-flow:
+      - starts on symbol/provider/TF/lookback change
+      - refreshes context and snapshots in parallel
+      - auto-analyzes after refresh readiness
+      - repeats every 5 minutes while user stays on same symbol
+    - Added status display beside `[CHART_CONTEXT]`.
+  - Bumped matched builds:
+    - `webhook/server.js` `SERVER_VERSION`
+    - `mql5/TVBridgeEA.mq5` `EA_BUILD_VERSION`
+    - Version: `v2026.05.01 08:35 - 5c630e7`
+- **Technical Decisions**:
+  - UI remains orchestrator; server exposes a unified refresh primitive.
+  - Old flow results are ignored by run id rather than relying on server-side cancellation.
+  - Auto-analysis is enabled; auto-add signals/trades is intentionally not enabled yet.
+- **Verification**:
+  - `node --check webhook/server.js` ✅
+  - `npm --prefix web-ui run build` ✅
+- **Deploy Status**:
+  - Not deployed in this task.
