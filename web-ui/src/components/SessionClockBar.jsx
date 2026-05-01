@@ -86,17 +86,22 @@ export default function SessionClockBar({ displayTimezone }) {
   const getTzHour = (utcHour, utcMin = 0) => {
     const date = new Date();
     date.setUTCHours(utcHour, utcMin, 0, 0);
-    const fmt = new Intl.DateTimeFormat('en-GB', {
-      timeZone: currentTz,
-      hour: 'numeric',
-      minute: 'numeric',
-      hour12: false
-    });
-    const parts = fmt.formatToParts(date);
-    const h = parseInt(parts.find(p => p.type === 'hour').value);
-    const m = parseInt(parts.find(p => p.type === 'minute').value);
-    return h + m / 60;
+    try {
+      const fmt = new Intl.DateTimeFormat('en-GB', {
+        timeZone: currentTz,
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: false
+      });
+      const parts = fmt.formatToParts(date);
+      const h = parseInt(parts.find(p => p.type === 'hour').value);
+      const m = parseInt(parts.find(p => p.type === 'minute').value);
+      return h + m / 60;
+    } catch (e) {
+      return (utcHour + utcMin / 60) % 24;
+    }
   };
+
 
   /**
    * Helper to convert EST time to TZ hour

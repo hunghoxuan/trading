@@ -84,7 +84,9 @@ export default function TradeDetailPage() {
     const rr = asNum(trade.rr_planned);
     const pnl = asNum(trade.pnl_realized);
     const meta = trade?.metadata && typeof trade.metadata === "object" ? trade.metadata : {};
-    const raw = trade?.raw_json && typeof trade.raw_json === "object" ? trade.raw_json : {};
+    const raw = (trade?.raw_json && typeof trade.raw_json === "object" && Object.keys(trade.raw_json).length > 0)
+      ? trade.raw_json
+      : (trade?.metadata?.raw_json && typeof trade.metadata.raw_json === "object" ? trade.metadata.raw_json : (trade?.metadata || {}));
     const vol = asNum(meta.used_volume) ?? asNum(trade.volume);
     const plannedVol = asNum(meta.requested_volume) ?? asNum(raw.volume) ?? asNum(trade.volume);
     const riskSize = asNum(meta.risk_money_actual ?? trade.risk_money_actual ?? trade.risk_money_planned);

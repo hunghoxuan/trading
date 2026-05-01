@@ -4438,6 +4438,7 @@ async function _mt5InitBackendInternal() {
   await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS pulled_at`).catch(() => { });
   await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS error_code`).catch(() => { });
   await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS error_message`).catch(() => { });
+  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS raw_json JSONB NULL`).catch(() => { });
 
   // Performance Indexes
   const idxSql = [
@@ -4863,13 +4864,13 @@ async function _mt5InitBackendInternal() {
               trade_id, sid, account_id, user_id, signal_id, source_id,
               entry_model, signal_tf, chart_tf,
               symbol, action, order_type, entry, sl, tp, volume, note,
-              dispatch_status, execution_status, metadata, created_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'NEW','PENDING',$18::jsonb,$19,$19)
+              dispatch_status, execution_status, metadata, raw_json, created_at, updated_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'NEW','PENDING',$18::jsonb,$19::jsonb,$20,$20)
           `, [
             tradeId, tradeSid, aid, userId, signalId, sourceId,
             payload.entry_model || null, payload.signal_tf || null, payload.chart_tf || null,
             payload.symbol, payload.action, payload.order_type || null, payload.entry, payload.sl,
-            payload.tp, payload.volume, payload.note, JSON.stringify(payload.metadata || {}), mt5NowIso()
+            payload.tp, payload.volume, payload.note, JSON.stringify(payload.metadata || {}), JSON.stringify(payload.metadata?.raw_json || {}), mt5NowIso()
           ]);
           if ((ins.rowCount || 0) > 0) {
             created++; accountIds.push(aid);
@@ -4984,7 +4985,17 @@ async function _mt5InitBackendInternal() {
           sl_pips: telemetryMeta.sl_pips ?? null,
           tp_pips: telemetryMeta.tp_pips ?? null,
           risk_money_actual: telemetryMeta.risk_money_actual ?? null,
+          ack_message: telemetryMeta.ack_message || telemetryMeta.ack_note || null,
+          ack_result: telemetryMeta.ack_result || null,
         }, res.rows[0].user_id);
+      } else {
+        // Fallback log for tracking orphan/failed acks
+        await this.log(payload.trade_id, 'trades', {
+          event: 'TRADE_ACK_FAILED',
+          reason: 'Trade not found or update failed',
+          payload_status: payload.execution_status || payload.status,
+          account_id: accountId
+        });
       }
       return { ok: res.rowCount > 0 };
     },
@@ -7363,6 +7374,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
             analysis_snapshot: rawJsonNormalized?.analysis_snapshot && typeof rawJsonNormalized.analysis_snapshot === "object"
               ? rawJsonNormalized.analysis_snapshot
               : null,
+            raw_json: rawJsonNormalized,
           },
         });
         await mt5Log(signalId, "signals", {
