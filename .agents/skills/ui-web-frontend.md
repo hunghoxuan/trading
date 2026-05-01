@@ -1,33 +1,27 @@
-# UI Playbook
+# Skill: UI Web Development
 
-Use after reading `rules/ui.md`.
+Use this skill for building high-density, professional dashboards using React and Vanilla CSS.
 
-Skeleton:
-```jsx
-<div className="stack-layout fadeIn">
-  <div className="toolbar-panel">...</div>
-  <div className="logs-layout-split">...</div>
-</div>
-```
+## Operational Rules
 
-Toolbar:
-- left: `.toolbar-pagination`
-- right: `.toolbar-search-filter`, `.toolbar-bulk-action`, `.toolbar-create`
+1.  **Design System First**: Use established CSS tokens (`--bg`, `--surface`, `--accent`).
+2.  **Micro-Animations**: All interactive elements must have hover/active states and subtle fade-ins.
+3.  **Consistency**: Use the `showDateTime` utility for all timestamps (24h clock, no seconds, no AM/PM).
 
-Tables:
-- sortable headers
-- show counts in section headers
+## Implementation Flow
 
-Dashboard:
-- wins = positive PnL trades
-- losses = negative PnL trades
-- aggregate by symbol unless asked otherwise
+1.  **Layout**:
+    - Use `.stack-layout` for vertical grouping.
+    - Use `.toolbar-panel` for action rows (Left: Pagination | Right: Search/Create).
+2.  **Components**:
+    - Implement sortable headers for all tables.
+    - Group metrics in high-density cards for the dashboard.
+3.  **Styling**:
+    - Apply `fadeIn` classes to new panels.
+    - Ensure 100% responsiveness (test Mobile vs. Desktop).
 
-Tokens:
-- `--bg`, `--surface`, `--border`, `--text`, `--muted`, `--accent`
-
-Time:
-- use `showDateTime`
-- 24h clock
-- no seconds
-- no AM/PM
+## Verification Checklist
+- [ ] Matches CSS tokens.
+- [ ] Responsive at 375px.
+- [ ] No layout shifts.
+- [ ] Consistent time formatting.
