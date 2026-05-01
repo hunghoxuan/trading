@@ -1143,18 +1143,14 @@ export default function ChartSnapshotsPage() {
     () => Boolean((analysisRaw || "").trim() || (analysisJson || "").trim() || (effectiveParsed && typeof effectiveParsed === "object" && Object.keys(effectiveParsed).length > 0)),
     [analysisRaw, analysisJson, effectiveParsed],
   );
-  const contextReadyText = warmupState.contextReady ? "Bars/Context: Ready" : (contextLoading ? "Bars/Context: Loading..." : "Bars/Context: Pending");
-  const snapshotsReadyText = warmupState.snapshotsReady
-    ? `Snapshots: Ready (${warmupState.snapshotsMatched}/${Math.max(1, warmupState.snapshotsTarget)})`
-    : `Snapshots: ${capturing ? "Loading..." : "Pending"} (${warmupState.snapshotsMatched}/${Math.max(1, warmupState.snapshotsTarget || snapshotTfs.length || 1)})`;
   const flowChipText = useMemo(() => {
-    const fmt = (label, value) => `${label}: ${value === "loading" ? "..." : value}`;
+    const fmt = (label, value) => `${label}:${value === "loading" ? "..." : value}`;
     return [
-      fmt("Context", autoFlow.context),
-      fmt("Snapshots", autoFlow.snapshots),
-      fmt("Analysis", autoFlow.analysis),
+      fmt("C", autoFlow.context),
+      `S:${autoFlow.snapshots === "loading" ? "..." : `${warmupState.snapshotsMatched}/${Math.max(1, warmupState.snapshotsTarget || snapshotTfs.length || 1)}`}`,
+      fmt("A", autoFlow.analysis),
     ].join(" | ");
-  }, [autoFlow.context, autoFlow.snapshots, autoFlow.analysis]);
+  }, [autoFlow.context, autoFlow.snapshots, autoFlow.analysis, warmupState.snapshotsMatched, warmupState.snapshotsTarget, snapshotTfs.length]);
   const responseText = useMemo(() => buildFriendlyResponse(effectiveParsed), [effectiveParsed]);
   const canAddSignal = useMemo(
     () => {
@@ -2502,17 +2498,11 @@ export default function ChartSnapshotsPage() {
                 {cfg.strategies.join("+") || "ai"} | {PROFILE_PRESETS[cfg.profile]?.label || cfg.profile}
               </span>
 
-              {marketMetadata.updated_time && (
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.03)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', flexWrap: 'wrap' }}>
+              {(marketMetadata.updated_time || autoFlow.runId) && (
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.03)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', flexWrap: 'wrap', maxWidth: 360 }}>
                   <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', boxShadow: '0 0 6px var(--accent)' }} />
-                  <span className="minor-text" style={{ fontSize: 11, fontWeight: 500 }}>
-                    {marketMetadata.source && <span style={{ textTransform: 'uppercase', marginRight: 4, opacity: 0.7 }}>[{marketMetadata.source}]</span>}
-                    Last refreshed: {showDateTime(marketMetadata.updated_time)}
-                    {marketMetadata.auto_refresh > 0 && <span style={{ opacity: 0.6, marginLeft: 4 }}>(auto {marketMetadata.auto_refresh}s)</span>}
-                  </span>
-                  <span className={`minor-text ${autoFlow.context === "failed" || autoFlow.snapshots === "failed" || autoFlow.analysis === "failed" ? "msg-error" : (autoFlow.context === "loading" || autoFlow.snapshots === "loading" || autoFlow.analysis === "loading" ? "msg-warning" : "msg-success")}`} style={{ fontSize: 11 }}>
-                    {flowChipText}
-                  </span>
+                  <span className="minor-text" style={{ fontSize: 11, fontWeight: 500 }}>{marketMetadata.updated_time ? showDateTime(marketMetadata.updated_time) : "refreshing..."}</span>
+                  <span className={`minor-text ${autoFlow.context === "failed" || autoFlow.snapshots === "failed" || autoFlow.analysis === "failed" ? "msg-error" : (autoFlow.context === "loading" || autoFlow.snapshots === "loading" || autoFlow.analysis === "loading" ? "msg-warning" : "msg-success")}`} style={{ fontSize: 11 }}>{flowChipText}</span>
                 </div>
               )}
             </div>
@@ -2537,12 +2527,6 @@ export default function ChartSnapshotsPage() {
               <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>
                 {analyzing ? "Analyzing..." : "Analyze"}
               </button>
-              <span className={`minor-text ${warmupState.contextReady ? "msg-success" : "msg-warning"}`} style={{ marginLeft: 8, fontSize: "12px" }}>
-                {contextReadyText}
-              </span>
-              <span className={`minor-text ${warmupState.snapshotsReady ? "msg-success" : "msg-warning"}`} style={{ fontSize: "12px" }}>
-                {snapshotsReadyText}
-              </span>
 
               {status.text && (
                 <span className={`minor-text ${status.type === 'error' ? 'msg-error' : (status.type === 'warning' ? 'msg-warning' : 'msg-success')}`} style={{ marginLeft: 8, fontSize: '13px' }}>
@@ -2607,11 +2591,17 @@ export default function ChartSnapshotsPage() {
                     const ctx = contextByTf.get(String(tf).toUpperCase());
                     if (!ctx) return contextLoading ? " | loading context..." : "";
                     const price = Number(ctx?.last_price);
-                    const pct = Number(ctx?.summary?.close_change_20);
+                    const change = Number(ctx?.summary?.close_change_20);
+                    const previousClose = Number.isFinite(price) && Number.isFinite(change) ? price - change : null;
+                    const pct = Number.isFinite(previousClose) && Math.abs(previousClose) > 0
+                      ? change / previousClose
+                      : null;
                     const barEndMs = Number(ctx?.bar_end) > 0 ? Number(ctx.bar_end) * 1000 : null;
                     const cachedAt = ctx?.freshness?.updated_time || ctx?.fetched_at || barEndMs || null;
                     const trendText = String(ctx?.analysis?.trend || ctx?.analysis?.bias || "").trim();
-                    const pctLabel = Number.isFinite(pct) ? `${pct > 0 ? "+" : ""}${(pct * 100).toFixed(3)}%` : "";
+                    const pctLabel = Number.isFinite(pct) && Math.abs(pct) < 1
+                      ? `${pct > 0 ? "+" : ""}${(pct * 100).toFixed(2)}%`
+                      : "";
                     const pctColor = Number.isFinite(pct) ? (pct > 0 ? "#26a69a" : (pct < 0 ? "#ef5350" : "var(--muted)")) : "inherit";
                     return (
                       <>

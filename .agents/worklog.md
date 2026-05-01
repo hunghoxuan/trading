@@ -545,4 +545,36 @@
   - `node --check webhook/server.js` ✅
   - `npm --prefix web-ui run build` ✅
 - **Deploy Status**:
-  - Not deployed in this task.
+  - Deployed after verification.
+  - Commit: `3d3826b feat(ai): auto-refresh chart context flow`
+  - Build/version: `v2026.05.01 10:05 - a6d3a8d`
+  - Production health verified:
+    - `https://trade.mozasolution.com/webhook/health`
+    - `https://trade.mozasolution.com/webhook/mt5/health`
+  - Production UI asset verified: `assets/index-C1eEsG7L.js`
+  - `POST /webhook/v2/chart/refresh` verified present via expected unauthenticated `401`.
+
+# Session Log: 2026-05-01 12:18
+- **Starting Task**:
+  - Compact AI chart status display.
+  - Remove duplicate context/snapshot status text.
+  - Fix impossible percent-change display in live TF cards.
+- **Work Accomplished**:
+  - Updated `/Users/macmini/Trade/Bot/trading/web-ui/src/pages/ai/ChartSnapshotsPage.jsx`:
+    - Replaced verbose `[CHART_CONTEXT] Last refreshed... Context...` label with compact single badge:
+      - age only (`1 mins ago`)
+      - `C:<state> | S:<matched>/<target> | A:<state>`
+    - Removed duplicate `Bars/Context` and `Snapshots` status next to Analyze.
+    - Fixed percent display:
+      - `close_change_20` is absolute price change, not percent.
+      - UI now computes `(last_price - previous_close) / previous_close`.
+      - UI suppresses percent when the computed value is unavailable or unreasonable.
+  - Bumped matched builds:
+    - `webhook/server.js` `SERVER_VERSION`
+    - `mql5/TVBridgeEA.mq5` `EA_BUILD_VERSION`
+    - Version: `v2026.05.01 10:17 - 4fe585a`
+- **Technical Note**:
+  - Bias/trend only appears when cached context includes prior AI analysis metadata. Bars-only context has price/summary but may not include trend/bias text yet.
+- **Verification**:
+  - `node --check webhook/server.js` ✅
+  - `npm --prefix web-ui run build` ✅
