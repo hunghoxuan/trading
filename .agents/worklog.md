@@ -29,3 +29,15 @@
   - Harden `showDateTime` against invalid timezone input to prevent UI crashes.
   - Add 1-minute relative-time live refresh.
   - Replace free-text User Settings timezone with safe selectable options (UTC/New York/Local).
+- **Work Accomplished**:
+  - Verified timezone normalization and guarded formatting paths are present in formatter and settings flows.
+  - Fixed session clock handling for `"Local"` timezone value to prevent invalid timezone runtime errors.
+- **Changed Files**:
+  - `/Users/macmini/Trade/Bot/trading/web-ui/src/components/SessionClockBar.jsx`
+- **Technical Decisions**:
+  - Treat `"Local"` as browser timezone (`Intl.DateTimeFormat().resolvedOptions().timeZone`) at render time.
+  - Keep fallback `"UTC"` if browser timezone is unavailable.
+- **Verification**:
+  - `npm --prefix web-ui run build` ✅
+- **Deploy Status**:
+  - Not deployed.

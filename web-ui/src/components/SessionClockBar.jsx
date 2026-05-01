@@ -20,11 +20,12 @@ const KILL_ZONES = [
 
 export default function SessionClockBar({ displayTimezone }) {
   const [now, setNow] = useState(new Date());
-  const [tz, setTz] = useState(() => displayTimezone || localStorage.getItem("ui_display_timezone") || "UTC");
+  const [tz, setTz] = useState(() => displayTimezone || localStorage.getItem("ui_display_timezone") || "Local");
   const [isLocal, setIsLocal] = useState(false);
   const [news, setNews] = useState([]);
 
-  const currentTz = isLocal ? Intl.DateTimeFormat().resolvedOptions().timeZone : tz;
+  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const currentTz = (isLocal || String(tz || "").toLowerCase() === "local") ? browserTz : tz;
 
   useEffect(() => {
     if (displayTimezone && displayTimezone !== tz) {
