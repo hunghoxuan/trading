@@ -875,6 +875,10 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   gap: 8px;
   align-items: center;
 }
+.snapshot-symbol-select-v4 {
+  width: 100%;
+  min-height: 36px;
+}
 .snapshot-plus-btn-v2 {
   min-width: 28px;
   height: 28px;
@@ -1241,8 +1245,29 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
   .snapshot-fields-v2 { grid-template-columns: repeat(2, 1fr); }
   .snapshot-tf-v2 { grid-template-columns: 1fr; }
   .snapshot-tf-v2 > div { grid-column: span 1 !important; }
-  .snapshot-symbol-row-inline-v4 { grid-template-columns: 1fr auto; }
-  .snapshot-symbol-row-inline-v4 .panel-label { grid-column: 1 / -1; }
+  .snapshot-col-v3 { padding: 16px; }
+  .snapshot-symbol-row-inline-v4 { grid-template-columns: 1fr; gap: 10px; }
+  .snapshot-symbol-row-inline-v4 .panel-label { grid-column: auto; font-size: 12px; letter-spacing: 0.08em; }
+  .snapshot-symbol-select-v4 {
+    min-height: 42px;
+    font-size: 14px;
+    padding: 0 12px;
+  }
+  .snapshot-control-card-v3 {
+    padding: 16px !important;
+    gap: 12px !important;
+  }
+  .snapshot-control-card-v3 .secondary-button,
+  .snapshot-control-card-v3 .primary-button,
+  .snapshot-control-card-v3 select,
+  .snapshot-control-card-v3 input {
+    min-height: 40px !important;
+    font-size: 14px !important;
+  }
+  .snapshot-live-grid-v4 .panel,
+  .snapshot-live-grid-v4 iframe {
+    border-radius: 10px;
+  }
   .snapshot-position-form-v3 { grid-template-columns: 1fr; }
   .snapshot-footer-row0-v3 { grid-template-columns: 1fr; }
   .snapshot-footer-row1-v3 { grid-template-columns: 1fr; }

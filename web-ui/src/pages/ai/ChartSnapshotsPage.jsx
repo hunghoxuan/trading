@@ -985,9 +985,9 @@ export default function ChartSnapshotsPage() {
   const [addingSignal, setAddingSignal] = useState(false);
   const [settingsTab, setSettingsTab] = useState("settings");
   const [responseTab, setResponseTab] = useState("text");
-  const [searchTerm, setSearchTerm] = useState("");
   const [status, setStatus] = useState({ type: "", text: "" });
   const [actionStatus, setActionStatus] = useState({ action: "", type: "", text: "" });
+  const [warmupGate, setWarmupGate] = useState({ locked: false, timedOut: false, startedAt: 0 });
 
   const [analysisRaw, setAnalysisRaw] = useState("");
   const [analysisJson, setAnalysisJson] = useState("");
@@ -1001,7 +1001,6 @@ export default function ChartSnapshotsPage() {
   const [sessionPrefix, setSessionPrefix] = useState("");
 
   const [selectedFiles, setSelectedFiles] = useState(new Set());
-  const [symbolOptions, setSymbolOptions] = useState([]);
   const [watchlist, setWatchlist] = useState(DEFAULT_WATCHLIST);
   const [analysisFilesDisplay, setAnalysisFilesDisplay] = useState([]);
   const [position, setPosition] = useState({ direction: "BUY", entry: "", tp: "", sl: "", rr: "", trade_type: "limit", note: "" });
@@ -1023,7 +1022,6 @@ export default function ChartSnapshotsPage() {
     message: "",
     updatedAt: null,
   });
-  const [symbolActivity, setSymbolActivity] = useState({ loading: false, items: [] });
   const [marketMetadata, setMarketMetadata] = useState({ source: "", updated_time: null, auto_refresh: 0 });
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [promptDraft, setPromptDraft] = useState(() => buildPrompt(DEFAULT_CONFIG));
@@ -1034,6 +1032,7 @@ export default function ChartSnapshotsPage() {
   const contextWarmupRef = useRef({ key: "", promise: null });
   const snapshotWarmupRef = useRef({ key: "", promise: null });
   const autoFlowRef = useRef({ runId: 0, key: "", timer: null });
+  const warmupUnlockTimerRef = useRef(null);
   const lastAutoAnalyzeRef = useRef("");
   const tfConfig = useMemo(() => getEffectiveTfConfig(cfg), [cfg]);
 
@@ -1074,6 +1073,13 @@ export default function ChartSnapshotsPage() {
     const fixed = FIXES[p]?.[s] || s;
     return `${p}:${fixed}`;
   }, [cfg.symbol, provider]);
+
+  const symbolSelectOptions = useMemo(() => {
+    const merged = [...watchlist];
+    const current = normalizeWatchSymbol(cfg.symbol);
+    if (current && !merged.includes(current)) merged.unshift(current);
+    return [...new Set(merged.map(normalizeWatchSymbol).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  }, [watchlist, cfg.symbol]);
 
   const promptText = useMemo(() => buildPrompt(cfg), [cfg]);
 
@@ -1207,6 +1213,17 @@ export default function ChartSnapshotsPage() {
   const waitTimeout = (ms = 10000) => new Promise((resolve) => {
     window.setTimeout(resolve, Math.max(0, Number(ms) || 0));
   });
+  const withTimeout = async (promise, ms = 10000) => {
+    try {
+      const value = await Promise.race([
+        promise.then((v) => ({ ok: true, value: v })),
+        waitTimeout(ms).then(() => ({ ok: false, timedOut: true })),
+      ]);
+      return value;
+    } catch (error) {
+      return { ok: false, timedOut: false, error };
+    }
+  };
 
   const isCurrentFlowRun = (runId) => !runId || autoFlowRef.current.runId === runId;
 
@@ -1377,6 +1394,16 @@ export default function ChartSnapshotsPage() {
   const setActionMessage = (action, type, text) => {
     setActionStatus({ action, type, text: String(text || "") });
   };
+  const normalizeUiStatus = (type, text) => {
+    const msg = String(text || "");
+    if (/bars\/context still not ready/i.test(msg) || /please retry in a few seconds/i.test(msg)) {
+      return {
+        type: "warning",
+        text: "Bars/context is warming in background. You can retry Analyze in a moment.",
+      };
+    }
+    return { type, text: msg };
+  };
 
   const fetchBarsSnapshot = async (symbol, tf, bars, forceRefresh = false) => {
     const sym = normalizeSignalSymbol(symbol || "");
@@ -1451,6 +1478,15 @@ export default function ChartSnapshotsPage() {
     const runId = Date.now();
     const activeSessionPrefix = makeSessionPrefix();
     autoFlowRef.current = { runId, key: flowKey, timer: null };
+    if (warmupUnlockTimerRef.current) {
+      window.clearTimeout(warmupUnlockTimerRef.current);
+      warmupUnlockTimerRef.current = null;
+    }
+    setWarmupGate({ locked: true, timedOut: false, startedAt: Date.now() });
+    warmupUnlockTimerRef.current = window.setTimeout(() => {
+      setWarmupGate((prev) => ({ ...prev, locked: false, timedOut: true }));
+      warmupUnlockTimerRef.current = null;
+    }, 45000);
     setSessionPrefix(activeSessionPrefix);
     setAutoFlow({ runId, context: "loading", snapshots: "loading", analysis: "idle", message: "", updatedAt: Date.now() });
     setWarmupState((prev) => ({ ...prev, contextReady: false, snapshotsReady: false }));
@@ -1488,9 +1524,25 @@ export default function ChartSnapshotsPage() {
 
     return () => {
       if (autoFlowRef.current.timer) window.clearTimeout(autoFlowRef.current.timer);
+      if (warmupUnlockTimerRef.current) {
+        window.clearTimeout(warmupUnlockTimerRef.current);
+        warmupUnlockTimerRef.current = null;
+      }
       autoFlowRef.current = { runId: runId + 1, key: "", timer: null };
     };
   }, [tvSymbol, provider, snapshotTfs.join(","), cfg.lookbackBars]);
+
+  useEffect(() => {
+    const contextDone = autoFlow.context !== "loading";
+    const snapshotsDone = autoFlow.snapshots !== "loading";
+    if (warmupGate.locked && contextDone && snapshotsDone) {
+      if (warmupUnlockTimerRef.current) {
+        window.clearTimeout(warmupUnlockTimerRef.current);
+        warmupUnlockTimerRef.current = null;
+      }
+      setWarmupGate((prev) => ({ ...prev, locked: false, timedOut: false }));
+    }
+  }, [warmupGate.locked, autoFlow.context, autoFlow.snapshots]);
 
   const analyzeFiles = async (files = [], opts = {}) => {
     setAnalyzing(true);
@@ -1576,9 +1628,10 @@ export default function ChartSnapshotsPage() {
       return out;
     } catch (e) {
       const msg = String(e?.message || e || "Analyze failed.");
-      setStatus({ type: "error", text: msg });
-      setActionMessage("analyze", "error", msg);
-      if (opts.runId) setAutoFlowForRun(opts.runId, { analysis: "failed", message: msg });
+      const normalized = normalizeUiStatus("error", msg);
+      setStatus(normalized);
+      setActionMessage("analyze", normalized.type, normalized.text);
+      if (opts.runId) setAutoFlowForRun(opts.runId, { analysis: "failed", message: normalized.text });
       return null;
     } finally {
       if (!opts.runId || isCurrentFlowRun(opts.runId)) setAnalyzing(false);
@@ -1650,44 +1703,36 @@ export default function ChartSnapshotsPage() {
       return;
     }
 
-    setStatus({ type: "warning", text: "Preparing context and snapshots..." });
+    if (warmupGate.locked) {
+      setStatus({ type: "warning", text: "Warm-up in progress. Please wait..." });
+      return;
+    }
+    setStatus({ type: "warning", text: "Starting analyze. Missing data will continue warming in background..." });
     try {
-      const [ctxSettled, snapSettled] = await Promise.allSettled([
-        Promise.race([
-          startContextWarmup({ includeSnapshots: false, force: true }),
-          waitTimeout(12000),
-        ]),
-        Promise.race([
-          startSnapshotWarmup({ captureMissing: true, sessionPrefix: activeSessionPrefix, force: true }),
-          waitTimeout(12000),
-        ]),
-      ]);
-
-      const contextOk = ctxSettled.status === "fulfilled" && !!ctxSettled.value;
-      if (!contextOk) {
-        throw new Error("Bars/context still not ready. Please retry in a few seconds.");
-      }
-
+      const contextRows = Array.isArray(aiContext?.timeframes) ? aiContext.timeframes : [];
+      const hasContext = contextRows.length > 0;
       const recent = resolveRecentSnapshots({ sessionPrefix: activeSessionPrefix });
       const readySnapshots = recent.matchedFiles.length === recent.targetTfTokens.length && recent.matchedFiles.length > 0;
+      if (!hasContext) startContextWarmup({ includeSnapshots: false, force: false }).catch(() => null);
+      if (!readySnapshots) {
+        startSnapshotWarmup({ captureMissing: true, sessionPrefix: activeSessionPrefix, force: false }).catch(() => null);
+      }
       if (readySnapshots) {
         const msg = `Using snapshots (${recent.matchedFiles.length}) from warm-up cache.`;
         setStatus({ type: "success", text: msg });
         setActionMessage("analyze", "success", msg);
-        await analyzeFiles(recent.matchedFiles);
+        await analyzeFiles(recent.matchedFiles, { context: hasContext ? aiContext : undefined });
       } else {
-        const partial = snapSettled.status === "fulfilled";
-        const msg = partial
-          ? "Snapshots still partial after timeout. Continuing with bars/context."
-          : "Snapshot prep failed. Continuing with bars/context.";
+        const msg = "Snapshots still partial. Analyze continues with bars/context while warm-up runs in background.";
         setStatus({ type: "warning", text: msg });
         setActionMessage("analyze", "warning", msg);
-        await analyzeFiles([]);
+        await analyzeFiles([], { context: hasContext ? aiContext : undefined });
       }
     } catch (e) {
       const msg = String(e?.message || e || "Analyze preflight failed.");
-      setStatus({ type: "error", text: msg });
-      setActionMessage("analyze", "error", msg);
+      const normalized = normalizeUiStatus("error", msg);
+      setStatus(normalized);
+      setActionMessage("analyze", normalized.type, normalized.text);
     }
   };
 
@@ -2056,39 +2101,6 @@ export default function ChartSnapshotsPage() {
   }, []);
 
   useEffect(() => {
-    const q = String(searchTerm || "").trim().toUpperCase();
-    if (!q || q.length < 1) {
-      setSymbolOptions([]);
-      return;
-    }
-
-    // Immediate local filtering
-    const localMatches = watchlist.filter(s => s.toUpperCase().includes(q));
-    setSymbolOptions(prev => {
-      const next = [...new Set([...localMatches, ...prev])];
-      return next.slice(0, 15);
-    });
-
-    // Debounced API search
-    const plain = q.includes(":") ? q.split(":").slice(1).join(":") : q;
-    const timer = window.setTimeout(async () => {
-      try {
-        const out = await api.chartSymbols(plain, provider || "ICMARKETS", 10);
-        const arr = Array.isArray(out?.items) ? out.items : [];
-        const remoteMatches = arr.map((x) => x.full_symbol || x.symbol).filter(Boolean);
-
-        setSymbolOptions(prev => {
-          const combined = [...new Set([...localMatches, ...remoteMatches])];
-          return combined.slice(0, 20);
-        });
-      } catch {
-        // fail silently
-      }
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [searchTerm, provider, watchlist]);
-
-  useEffect(() => {
     if (!effectiveParsed || typeof effectiveParsed !== "object") return;
     setPosition(extractPositionFromAnalysis(effectiveParsed));
   }, [effectiveParsed]);
@@ -2096,56 +2108,6 @@ export default function ChartSnapshotsPage() {
   useEffect(() => {
     if (!promptEdited) setPromptDraft(promptText);
   }, [promptText, promptEdited]);
-
-  useEffect(() => {
-    const symbol = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
-    let alive = true;
-    (async () => {
-      try {
-        setSymbolActivity((prev) => ({ ...prev, loading: true }));
-        const [tradesOut, signalsOut] = await Promise.all([
-          api.v2Trades({ symbol: symbol || undefined, page: 1, pageSize: 30 }),
-          api.trades({ symbol: symbol || undefined, page: 1, pageSize: 30 }),
-        ]);
-        const tradeItems = Array.isArray(tradesOut?.items) ? tradesOut.items : [];
-        const signalItems = Array.isArray(signalsOut?.trades) ? signalsOut.trades : [];
-        const allowed = new Set(["PENDING", "FILLED", "OPEN", "NEW"]);
-        const normalizedTrades = tradeItems
-          .filter((x) => allowed.has(String(x?.execution_status || "").toUpperCase()))
-          .map((x) => ({
-            kind: "TRADE",
-            status: String(x?.execution_status || "").toUpperCase(),
-            side: String(x?.action || x?.side || "").toUpperCase(),
-            symbol: normalizeSignalSymbol(x?.symbol || symbol),
-            entry: x?.entry,
-            tp: x?.tp,
-            sl: x?.sl,
-            updatedAt: x?.updated_at || x?.created_at,
-            id: x?.trade_id || x?.id,
-          }));
-        const normalizedSignals = signalItems
-          .filter((x) => allowed.has(String(x?.status || "").toUpperCase()))
-          .map((x) => ({
-            kind: "SIGNAL",
-            status: String(x?.status || "").toUpperCase(),
-            side: String(x?.action || x?.side || "").toUpperCase(),
-            symbol: normalizeSignalSymbol(x?.symbol || symbol),
-            entry: x?.entry || x?.target_price || x?.entry_price,
-            tp: x?.tp || x?.tp_price,
-            sl: x?.sl || x?.sl_price,
-            updatedAt: x?.updated_at || x?.created_at,
-            id: x?.signal_id || x?.id,
-          }));
-        const merged = [...normalizedTrades, ...normalizedSignals]
-          .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
-          .slice(0, 12);
-        if (alive) setSymbolActivity({ loading: false, items: merged });
-      } catch {
-        if (alive) setSymbolActivity({ loading: false, items: [] });
-      }
-    })();
-    return () => { alive = false; };
-  }, [tvSymbol, cfg.symbol]);
 
   const settingsFormNode = (
     <section className="snapshot-settings-v2">
@@ -2379,81 +2341,16 @@ export default function ChartSnapshotsPage() {
       <section className="panel snapshot-col-v3 snapshot-col-symbols-v3">
         <div className="snapshot-symbol-row-inline-v4">
           <span className="panel-label" style={{ margin: 0 }}>Symbols</span>
-          <input
-            list="tv-symbol-options"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && searchTerm.trim()) {
-                setCfgField("symbol", normalizeWatchSymbol(searchTerm.trim()));
-              }
-            }}
-            placeholder="Search..."
-          />
-          <button
-            className="secondary-button snapshot-plus-btn-v2"
-            type="button"
-            onClick={() => {
-              if (searchTerm.trim()) {
-                const s = normalizeWatchSymbol(searchTerm.trim());
-                setCfgField("symbol", s);
-                // Add to watchlist
-                const next = [...new Set([...watchlist, s])];
-                saveWatchlistToDb(next).then(() => setWatchlist(next));
-              }
-            }}
-            title="Add current symbol"
-          >+</button>
-        </div>
-        <datalist id="tv-symbol-options">
-          {symbolOptions.map((opt) => <option key={opt} value={opt} />)}
-        </datalist>
-        <div className="snapshot-watchlist-v2">
-          {(() => {
-            const query = String(searchTerm || "").trim().toUpperCase();
-            const filtered = watchlist.filter(s => s.toUpperCase().includes(query));
-            if (filtered.length === 0) return <span className="minor-text">No matching symbols.</span>;
-            return (
-              <div className="snapshot-tabs-v2">
-                <button
-                  className={`secondary-button snapshot-tag-v2 ${!cfg.symbol ? 'active' : ''}`}
-                  onClick={() => setCfgField('symbol', '')}
-                >
-                  🌐 ALL
-                </button>
-                <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 8px' }} />
-                {filtered.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
-                    onClick={() => setCfgField("symbol", s)}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            );
-          })()}
-        </div>
-        <div className="snapshot-live-card-v3">
-          <div className="snapshot-gallery-head-v2">
-            <span className="panel-label" style={{ margin: 0 }}>Related Pending / Filled / New</span>
-          </div>
-          <div className="snapshot-activity-list-v4">
-            {symbolActivity.loading ? <div className="minor-text">Loading...</div> : null}
-            {!symbolActivity.loading && symbolActivity.items.length === 0 ? <div className="minor-text">No related trades/signals.</div> : null}
-            {!symbolActivity.loading && symbolActivity.items.map((x) => (
-              <article key={`${x.kind}_${x.id}`} className="snapshot-activity-card-v4">
-                <div className="snapshot-activity-top-v4">
-                  <span className={x.side === "SELL" ? "side-sell" : "side-buy"}>{x.side || "-"}</span>
-                  <span className="cell-major">{x.symbol || "-"}</span>
-                  <span className="minor-text">{x.kind} · {x.status === "OPEN" ? "FILLED" : x.status}</span>
-                </div>
-                <div className="minor-text">{x.entry ?? "-"} → {x.tp ?? "-"} / {x.sl ?? "-"}</div>
-              </article>
+          <select
+            className="snapshot-symbol-select-v4"
+            value={normalizeWatchSymbol(cfg.symbol)}
+            onChange={(e) => setCfgField("symbol", normalizeWatchSymbol(e.target.value))}
+          >
+            <option value="">Select symbol</option>
+            {symbolSelectOptions.map((s) => (
+              <option key={s} value={s}>{s}</option>
             ))}
-          </div>
+          </select>
         </div>
       </section>
 
@@ -2522,10 +2419,10 @@ export default function ChartSnapshotsPage() {
               </select>
 
               <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>
-                {capturing ? "Snapshots..." : "Snapshots"}
+                {capturing ? "Snapshots..." : (warmupGate.locked ? "Warming..." : "Snapshots")}
               </button>
-              <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>
-                {analyzing ? "Analyzing..." : "Analyze"}
+              <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing || warmupGate.locked}>
+                {analyzing ? "Analyzing..." : (warmupGate.locked ? "Warming..." : "Analyze")}
               </button>
 
               {status.text && (
@@ -2718,11 +2615,7 @@ export default function ChartSnapshotsPage() {
         </div>
       ) : null}
 
-      {status.text ? (
-        <div className={`form-message ${status.type === "error" ? "msg-error" : status.type === "warning" ? "msg-warning" : "msg-success"}`}>
-          {status.text}
-        </div>
-      ) : null}
+      {null}
     </section>
   );
 }
