@@ -41,3 +41,30 @@
   - `npm --prefix web-ui run build` ✅
 - **Deploy Status**:
   - Not deployed.
+
+# Session Log: 2026-05-01 17:20
+- **Starting Task**:
+  - Deploy timezone safety and session clock fix to production.
+- **Work Accomplished**:
+  - Fixed deploy blocker syntax error in `webhook/server.js` (duplicate `userId` declaration).
+  - Bumped build versions for server and EA.
+  - Pushed `main` and executed remote deploy script on VPS.
+  - Verified live health and UI asset output.
+- **Changed Files**:
+  - `/Users/macmini/Trade/Bot/trading/webhook/server.js`
+  - `/Users/macmini/Trade/Bot/trading/web-ui/src/components/SessionClockBar.jsx`
+  - `/Users/macmini/Trade/Bot/trading/mql5/TVBridgeEA.mq5`
+  - `/Users/macmini/Trade/Bot/trading/.agents/worklog.md`
+- **Technical Decisions**:
+  - Keep `"Local"` timezone resolved to browser timezone with UTC fallback.
+  - Remove duplicate local variable declaration causing Node syntax failure.
+- **Verification**:
+  - `node --check webhook/server.js` ✅
+  - `npm --prefix web-ui run build` ✅
+  - `https://trade.mozasolution.com/health` ✅ version `v2026.05.01 17:16 - f912806`
+  - `https://trade.mozasolution.com/ui/` ✅ serving `index-Cqp84SPC.js`
+- **Deploy Status**:
+  - Deployed via `PUSH_FIRST=0 VPS_APP_DIR=/opt/trading bash scripts/deploy/deploy_webhook.sh` (remote pull + build + PM2 restart).
+- **Build Versions**:
+  - `SERVER_VERSION`: `v2026.05.01 17:16 - f912806`
+  - `EA_BUILD_VERSION`: `v2026.05.01 17:16 - f912806`
