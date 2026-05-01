@@ -1009,6 +1009,20 @@ export default function ChartSnapshotsPage() {
   const [barsLoading, setBarsLoading] = useState(false);
   const [aiContext, setAiContext] = useState(null);
   const [contextLoading, setContextLoading] = useState(false);
+  const [warmupState, setWarmupState] = useState({
+    contextReady: false,
+    snapshotsReady: false,
+    snapshotsMatched: 0,
+    snapshotsTarget: 0,
+  });
+  const [autoFlow, setAutoFlow] = useState({
+    runId: 0,
+    context: "idle",
+    snapshots: "idle",
+    analysis: "idle",
+    message: "",
+    updatedAt: null,
+  });
   const [symbolActivity, setSymbolActivity] = useState({ loading: false, items: [] });
   const [marketMetadata, setMarketMetadata] = useState({ source: "", updated_time: null, auto_refresh: 0 });
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
@@ -1017,6 +1031,10 @@ export default function ChartSnapshotsPage() {
   const [guideDraft, setGuideDraft] = useState(GUIDE_TEXT);
   const liteChartRef = useRef(null);
   const liteChartApiRef = useRef(null);
+  const contextWarmupRef = useRef({ key: "", promise: null });
+  const snapshotWarmupRef = useRef({ key: "", promise: null });
+  const autoFlowRef = useRef({ runId: 0, key: "", timer: null });
+  const lastAutoAnalyzeRef = useRef("");
   const tfConfig = useMemo(() => getEffectiveTfConfig(cfg), [cfg]);
 
   const tvSymbol = useMemo(() => {
@@ -1125,6 +1143,18 @@ export default function ChartSnapshotsPage() {
     () => Boolean((analysisRaw || "").trim() || (analysisJson || "").trim() || (effectiveParsed && typeof effectiveParsed === "object" && Object.keys(effectiveParsed).length > 0)),
     [analysisRaw, analysisJson, effectiveParsed],
   );
+  const contextReadyText = warmupState.contextReady ? "Bars/Context: Ready" : (contextLoading ? "Bars/Context: Loading..." : "Bars/Context: Pending");
+  const snapshotsReadyText = warmupState.snapshotsReady
+    ? `Snapshots: Ready (${warmupState.snapshotsMatched}/${Math.max(1, warmupState.snapshotsTarget)})`
+    : `Snapshots: ${capturing ? "Loading..." : "Pending"} (${warmupState.snapshotsMatched}/${Math.max(1, warmupState.snapshotsTarget || snapshotTfs.length || 1)})`;
+  const flowChipText = useMemo(() => {
+    const fmt = (label, value) => `${label}: ${value === "loading" ? "..." : value}`;
+    return [
+      fmt("Context", autoFlow.context),
+      fmt("Snapshots", autoFlow.snapshots),
+      fmt("Analysis", autoFlow.analysis),
+    ].join(" | ");
+  }, [autoFlow.context, autoFlow.snapshots, autoFlow.analysis]);
   const responseText = useMemo(() => buildFriendlyResponse(effectiveParsed), [effectiveParsed]);
   const canAddSignal = useMemo(
     () => {
@@ -1176,6 +1206,176 @@ export default function ChartSnapshotsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const waitTimeout = (ms = 10000) => new Promise((resolve) => {
+    window.setTimeout(resolve, Math.max(0, Number(ms) || 0));
+  });
+
+  const isCurrentFlowRun = (runId) => !runId || autoFlowRef.current.runId === runId;
+
+  const setAutoFlowForRun = (runId, patch) => {
+    if (!isCurrentFlowRun(runId)) return;
+    setAutoFlow((prev) => ({ ...prev, ...patch, runId: runId || prev.runId, updatedAt: Date.now() }));
+  };
+
+  const resolveRecentSnapshots = (opts = {}) => {
+    const nowMs = Date.now();
+    const activeSessionPrefix = String(opts.sessionPrefix || "").trim();
+    const targetTfTokens = [...new Set(snapshotTfs.map((x) => toTradingViewInterval(x).toUpperCase()))];
+    const tfTokenToTf = new Map();
+    snapshotTfs.forEach((tf) => {
+      const token = toTradingViewInterval(tf).toUpperCase();
+      if (token && !tfTokenToTf.has(token)) tfTokenToTf.set(token, tf);
+    });
+    const symbolRaw = String(cfg.symbol || "").trim().toUpperCase();
+    const providerRaw = String(provider || "").trim().toUpperCase();
+    const fullSymbol = symbolRaw.includes(":") ? symbolRaw : `${providerRaw}:${symbolRaw}`;
+    const symbolTokens = new Set(
+      [symbolRaw, fullSymbol, tvSymbol]
+        .map((x) => sanitizeSnapshotFileToken(x || ""))
+        .filter(Boolean),
+    );
+    const candidates = items
+      .map(parseSnapshotMeta)
+      .filter((x) => x && x.createdAtMs > 0)
+      .filter((x) => symbolTokens.has(x.symbolToken))
+      .filter((x) => targetTfTokens.includes(x.tfToken))
+      .filter((x) => !activeSessionPrefix || !x.sessionPrefix || x.sessionPrefix === activeSessionPrefix)
+      .filter((x) => isSameDay(x.createdAtMs, nowMs))
+      .filter((x) => Math.abs(nowMs - x.createdAtMs) <= 15 * 60 * 1000)
+      .sort((a, b) => b.createdAtMs - a.createdAtMs);
+
+    const byTf = new Map();
+    for (const c of candidates) {
+      if (!byTf.has(c.tfToken)) byTf.set(c.tfToken, c.fileName);
+    }
+    const matchedFiles = targetTfTokens.map((tf) => byTf.get(tf)).filter(Boolean);
+    const missingTokens = targetTfTokens.filter((tf) => !byTf.has(tf));
+    return {
+      matchedFiles,
+      targetTfTokens,
+      missingTokens,
+      missingTfs: missingTokens.map((token) => tfTokenToTf.get(token)).filter(Boolean),
+    };
+  };
+
+  const startContextWarmup = async (opts = {}) => {
+    const symbol = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
+    const warmupKey = `${symbol}|${String(provider || "").toUpperCase()}|${snapshotTfs.join(",")}|${Number(cfg.lookbackBars || 300) || 300}`;
+    if (!symbol) return null;
+    if (!opts.force && contextWarmupRef.current.key === warmupKey && contextWarmupRef.current.promise) {
+      return contextWarmupRef.current.promise;
+    }
+    const promise = (async () => {
+      if (isCurrentFlowRun(opts.runId)) setContextLoading(true);
+      setAutoFlowForRun(opts.runId, { context: "loading" });
+      const out = await api.chartRefresh({
+        symbols: [symbol],
+        provider,
+        timeframes: snapshotTfs,
+        types: ["context"],
+        bars: Number(cfg.lookbackBars || 300) || 300,
+        force: opts.refresh === true,
+        include_snapshots: opts.includeSnapshots === true,
+      });
+      const context = out?.context || out?.symbols?.[0]?.context || null;
+      if (isCurrentFlowRun(opts.runId)) {
+        setAiContext(context && typeof context === "object" ? context : null);
+        setMarketMetadata({
+          source: "chart_context",
+          updated_time: Date.now(),
+          auto_refresh: 0,
+        });
+      }
+      const rows = Array.isArray(context?.timeframes) ? context.timeframes : [];
+      const hasRows = rows.length > 0;
+      if (isCurrentFlowRun(opts.runId)) {
+        setWarmupState((prev) => ({ ...prev, contextReady: hasRows }));
+        setAutoFlowForRun(opts.runId, { context: hasRows ? "ready" : "failed" });
+      }
+      return context;
+    })().catch((error) => {
+      setAutoFlowForRun(opts.runId, { context: "failed", message: String(error?.message || error || "Context refresh failed.") });
+      throw error;
+    })().finally(() => {
+      if (isCurrentFlowRun(opts.runId)) setContextLoading(false);
+      if (contextWarmupRef.current.key === warmupKey) contextWarmupRef.current.promise = null;
+    });
+    contextWarmupRef.current = { key: warmupKey, promise };
+    return promise;
+  };
+
+  const startSnapshotWarmup = async (opts = {}) => {
+    const symbol = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
+    const warmupKey = `${symbol}|${String(provider || "").toUpperCase()}|${snapshotTfs.join(",")}|${Number(cfg.lookbackBars || 300) || 300}|${String(opts.sessionPrefix || "").trim()}`;
+    if (!symbol) return { matchedFiles: [], targetTfTokens: [], missingTokens: [], missingTfs: [] };
+    if (!opts.force && snapshotWarmupRef.current.key === warmupKey && snapshotWarmupRef.current.promise) {
+      return snapshotWarmupRef.current.promise;
+    }
+    const promise = (async () => {
+      setAutoFlowForRun(opts.runId, { snapshots: "loading" });
+      if (isCurrentFlowRun(opts.runId)) setCapturing(true);
+      const initial = resolveRecentSnapshots({ sessionPrefix: opts.sessionPrefix || "" });
+      setWarmupState((prev) => ({
+        ...prev,
+        snapshotsReady: initial.missingTokens.length === 0 && initial.targetTfTokens.length > 0,
+        snapshotsMatched: initial.matchedFiles.length,
+        snapshotsTarget: initial.targetTfTokens.length,
+      }));
+      if (!opts.captureMissing || initial.missingTfs.length === 0) {
+        setAutoFlowForRun(opts.runId, { snapshots: initial.missingTokens.length === 0 ? "ready" : "partial" });
+        return initial;
+      }
+      const out = await api.chartRefresh({
+        symbols: [tvSymbol],
+        provider,
+        timeframes: initial.missingTfs,
+        types: ["snapshots"],
+        session_prefix: String(opts.sessionPrefix || "").trim() || undefined,
+        bars: Number(cfg.lookbackBars || 300),
+        format: "jpg",
+        quality: 55,
+        snapshot_max_age_ms: 15 * 60 * 1000,
+      });
+      const snap = out?.snapshots || out?.symbols?.[0]?.snapshots || {};
+      const returnedItems = Array.isArray(snap?.items) ? snap.items : [];
+      const created = Array.isArray(snap?.created) ? snap.created : [];
+      const cached = Array.isArray(snap?.cached) ? snap.cached : [];
+      if (returnedItems.length) {
+        setItems((prev) => [...returnedItems, ...prev].slice(0, 60));
+      } else {
+        await loadSnapshots();
+      }
+      const matchedFiles = returnedItems.map((x) => String(x?.file_name || "").trim()).filter(Boolean);
+      const targetTokens = Array.isArray(snap?.target_timeframes) ? snap.target_timeframes : initial.targetTfTokens;
+      const missingTokens = Array.isArray(snap?.missing_timeframes) ? snap.missing_timeframes : [];
+      const resolved = {
+        matchedFiles,
+        targetTfTokens: targetTokens,
+        missingTokens,
+        missingTfs: missingTokens,
+        created,
+        cached,
+      };
+      setWarmupState((prev) => ({
+        ...prev,
+        snapshotsReady: resolved.missingTokens.length === 0 && resolved.targetTfTokens.length > 0,
+        snapshotsMatched: resolved.matchedFiles.length,
+        snapshotsTarget: resolved.targetTfTokens.length,
+      }));
+      setAutoFlowForRun(opts.runId, { snapshots: resolved.missingTokens.length === 0 ? "ready" : "partial" });
+      return resolved;
+    })().catch(() => {
+      setWarmupState((prev) => ({ ...prev, snapshotsReady: false }));
+      setAutoFlowForRun(opts.runId, { snapshots: "failed" });
+      return resolveRecentSnapshots({ sessionPrefix: opts.sessionPrefix || "" });
+    }).finally(() => {
+      if (isCurrentFlowRun(opts.runId)) setCapturing(false);
+      if (snapshotWarmupRef.current.key === warmupKey) snapshotWarmupRef.current.promise = null;
+    });
+    snapshotWarmupRef.current = { key: warmupKey, promise };
+    return promise;
   };
 
   const setActionMessage = (action, type, text) => {
@@ -1241,11 +1441,62 @@ export default function ChartSnapshotsPage() {
   };
 
   useEffect(() => {
-    if (!normalizeSignalSymbol(tvSymbol || cfg.symbol || "")) return;
-    loadAiContext({ includeSnapshots: false }).catch(() => null);
+    const symbol = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
+    if (!symbol) {
+      setWarmupState({ contextReady: false, snapshotsReady: false, snapshotsMatched: 0, snapshotsTarget: 0 });
+      setAutoFlow({ runId: 0, context: "idle", snapshots: "idle", analysis: "idle", message: "", updatedAt: null });
+      return;
+    }
+    if (autoFlowRef.current.timer) {
+      window.clearTimeout(autoFlowRef.current.timer);
+      autoFlowRef.current.timer = null;
+    }
+    const flowKey = `${symbol}|${provider}|${snapshotTfs.join(",")}|${Number(cfg.lookbackBars || 300) || 300}`;
+    const runId = Date.now();
+    const activeSessionPrefix = makeSessionPrefix();
+    autoFlowRef.current = { runId, key: flowKey, timer: null };
+    setSessionPrefix(activeSessionPrefix);
+    setAutoFlow({ runId, context: "loading", snapshots: "loading", analysis: "idle", message: "", updatedAt: Date.now() });
+    setWarmupState((prev) => ({ ...prev, contextReady: false, snapshotsReady: false }));
+
+    const runOnce = async (isInterval = false) => {
+      const currentRunId = autoFlowRef.current.runId;
+      const [ctxSettled, snapSettled] = await Promise.allSettled([
+        startContextWarmup({ includeSnapshots: false, runId: currentRunId, refresh: isInterval }),
+        startSnapshotWarmup({ captureMissing: true, sessionPrefix: activeSessionPrefix, runId: currentRunId }),
+      ]);
+      if (!isCurrentFlowRun(currentRunId)) return;
+      const context = ctxSettled.status === "fulfilled" ? ctxSettled.value : null;
+      const snapshots = snapSettled.status === "fulfilled" ? snapSettled.value : resolveRecentSnapshots({ sessionPrefix: activeSessionPrefix });
+      if (context) {
+        const analyzeKey = `${flowKey}|${context?.generated_at || ""}|${(snapshots?.matchedFiles || []).join(",")}`;
+        if (lastAutoAnalyzeRef.current !== analyzeKey) {
+          lastAutoAnalyzeRef.current = analyzeKey;
+          setAutoFlowForRun(currentRunId, { analysis: "loading" });
+          const analyzed = await analyzeFiles(snapshots?.matchedFiles || [], { context, runId: currentRunId, auto: true });
+          if (isCurrentFlowRun(currentRunId) && analyzed) setAutoFlowForRun(currentRunId, { analysis: "ready" });
+        }
+      } else {
+        setAutoFlowForRun(currentRunId, { analysis: "idle", message: "Context refresh failed; analysis skipped." });
+      }
+      if (isCurrentFlowRun(currentRunId)) {
+        autoFlowRef.current.timer = window.setTimeout(() => {
+          if (isCurrentFlowRun(currentRunId)) runOnce(true).catch(() => null);
+        }, 5 * 60 * 1000);
+      }
+    };
+
+    runOnce(false).catch((error) => {
+      setAutoFlowForRun(runId, { message: String(error?.message || error || "Auto flow failed.") });
+    });
+
+    return () => {
+      if (autoFlowRef.current.timer) window.clearTimeout(autoFlowRef.current.timer);
+      autoFlowRef.current = { runId: runId + 1, key: "", timer: null };
+    };
   }, [tvSymbol, provider, snapshotTfs.join(","), cfg.lookbackBars]);
 
-  const analyzeFiles = async (files = []) => {
+  const analyzeFiles = async (files = [], opts = {}) => {
     setAnalyzing(true);
     setStatus({ type: "", text: "" });
     setAnalysisRaw("");
@@ -1256,7 +1507,9 @@ export default function ChartSnapshotsPage() {
     const activeSessionPrefix = sessionPrefix || makeSessionPrefix();
     if (!sessionPrefix) setSessionPrefix(activeSessionPrefix);
     try {
-      const context = await loadAiContext({ includeSnapshots: true });
+      if (opts.runId && !isCurrentFlowRun(opts.runId)) return null;
+      const context = opts.context || await loadAiContext({ includeSnapshots: true });
+      if (opts.runId && !isCurrentFlowRun(opts.runId)) return null;
 
       const basePrompt = String(promptDraft || promptText || "").trim();
       const runtimeConfig = JSON.stringify({
@@ -1294,6 +1547,7 @@ export default function ChartSnapshotsPage() {
 
       if (Array.isArray(files) && files.length) payload.files = files;
       const out = await api.chartSnapshotsAnalyze(payload);
+      if (opts.runId && !isCurrentFlowRun(opts.runId)) return out;
       if (out?.source || out?.updated_time) {
         setMarketMetadata({
           source: out.source || "",
@@ -1323,12 +1577,15 @@ export default function ChartSnapshotsPage() {
       const msg = `Analyzed ${Array.isArray(out?.used_files) ? out.used_files.length : 0} screenshot(s).${fileMode}`;
       setStatus({ type: "success", text: msg });
       setActionMessage("analyze", "success", msg);
+      return out;
     } catch (e) {
       const msg = String(e?.message || e || "Analyze failed.");
       setStatus({ type: "error", text: msg });
       setActionMessage("analyze", "error", msg);
+      if (opts.runId) setAutoFlowForRun(opts.runId, { analysis: "failed", message: msg });
+      return null;
     } finally {
-      setAnalyzing(false);
+      if (!opts.runId || isCurrentFlowRun(opts.runId)) setAnalyzing(false);
     }
   };
 
@@ -1391,73 +1648,50 @@ export default function ChartSnapshotsPage() {
       await analyzeFiles(files);
       return;
     }
-
-    const nowMs = Date.now();
-    const targetTfTokens = [...new Set(snapshotTfs.map((x) => toTradingViewInterval(x).toUpperCase()))];
-    const symbolRaw = String(cfg.symbol || "").trim().toUpperCase();
-    const providerRaw = String(provider || "").trim().toUpperCase();
-    const fullSymbol = symbolRaw.includes(":") ? symbolRaw : `${providerRaw}:${symbolRaw}`;
-    const symbolTokens = new Set(
-      [symbolRaw, fullSymbol, tvSymbol]
-        .map((x) => sanitizeSnapshotFileToken(x || ""))
-        .filter(Boolean),
-    );
-
-    const candidates = items
-      .map(parseSnapshotMeta)
-      .filter((x) => x && x.createdAtMs > 0)
-      .filter((x) => symbolTokens.has(x.symbolToken))
-      .filter((x) => targetTfTokens.includes(x.tfToken))
-      .filter((x) => !activeSessionPrefix || !x.sessionPrefix || x.sessionPrefix === activeSessionPrefix)
-      .filter((x) => isSameDay(x.createdAtMs, nowMs))
-      .filter((x) => Math.abs(nowMs - x.createdAtMs) <= 15 * 60 * 1000)
-      .sort((a, b) => b.createdAtMs - a.createdAtMs);
-
-    const byTf = new Map();
-    for (const c of candidates) {
-      if (!byTf.has(c.tfToken)) byTf.set(c.tfToken, c.fileName);
-    }
-    const matchedFiles = targetTfTokens.map((tf) => byTf.get(tf)).filter(Boolean);
-
-    if (matchedFiles.length === targetTfTokens.length && matchedFiles.length > 0) {
-      const msg = `Using existing snapshots (${matchedFiles.length}) from last 15 minutes.`;
-      setStatus({ type: "success", text: msg });
-      setActionMessage("analyze", "success", msg);
-      await analyzeFiles(matchedFiles);
-      return;
-    }
-
-    setStatus({ type: "warning", text: "No matching recent snapshots found. Capturing new snapshots first..." });
     const tfs = [...new Set(snapshotTfs.map((x) => String(x || "").trim()).filter(Boolean))];
     if (!String(tvSymbol || "").trim() || !tfs.length) {
       setStatus({ type: "warning", text: "Symbol and at least one snapshot TF are required." });
       return;
     }
-    setCapturing(true);
+
+    setStatus({ type: "warning", text: "Preparing context and snapshots..." });
     try {
-      const out = await api.chartSnapshotCreateBatch({
-        symbol: tvSymbol,
-        provider,
-        session_prefix: activeSessionPrefix,
-        timeframes: tfs,
-        lookbackBars: Number(cfg.lookbackBars || 300),
-        format: "jpg",
-        quality: 55,
-      });
-      const created = Array.isArray(out?.items) ? out.items : [];
-      if (created.length) {
-        setItems((prev) => [...created, ...prev].slice(0, 60));
-      } else {
-        await loadSnapshots();
+      const [ctxSettled, snapSettled] = await Promise.allSettled([
+        Promise.race([
+          startContextWarmup({ includeSnapshots: false, force: true }),
+          waitTimeout(12000),
+        ]),
+        Promise.race([
+          startSnapshotWarmup({ captureMissing: true, sessionPrefix: activeSessionPrefix, force: true }),
+          waitTimeout(12000),
+        ]),
+      ]);
+
+      const contextOk = ctxSettled.status === "fulfilled" && !!ctxSettled.value;
+      if (!contextOk) {
+        throw new Error("Bars/context still not ready. Please retry in a few seconds.");
       }
-      const newFiles = created.map((x) => String(x?.file_name || "").trim()).filter(Boolean);
-      await analyzeFiles(newFiles);
+
+      const recent = resolveRecentSnapshots({ sessionPrefix: activeSessionPrefix });
+      const readySnapshots = recent.matchedFiles.length === recent.targetTfTokens.length && recent.matchedFiles.length > 0;
+      if (readySnapshots) {
+        const msg = `Using snapshots (${recent.matchedFiles.length}) from warm-up cache.`;
+        setStatus({ type: "success", text: msg });
+        setActionMessage("analyze", "success", msg);
+        await analyzeFiles(recent.matchedFiles);
+      } else {
+        const partial = snapSettled.status === "fulfilled";
+        const msg = partial
+          ? "Snapshots still partial after timeout. Continuing with bars/context."
+          : "Snapshot prep failed. Continuing with bars/context.";
+        setStatus({ type: "warning", text: msg });
+        setActionMessage("analyze", "warning", msg);
+        await analyzeFiles([]);
+      }
     } catch (e) {
-      const msg = String(e?.message || e || "Snapshots failed before analyze.");
+      const msg = String(e?.message || e || "Analyze preflight failed.");
       setStatus({ type: "error", text: msg });
       setActionMessage("analyze", "error", msg);
-    } finally {
-      setCapturing(false);
     }
   };
 
@@ -2269,12 +2503,15 @@ export default function ChartSnapshotsPage() {
               </span>
 
               {marketMetadata.updated_time && (
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.03)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)' }}>
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.03)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', flexWrap: 'wrap' }}>
                   <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', boxShadow: '0 0 6px var(--accent)' }} />
                   <span className="minor-text" style={{ fontSize: 11, fontWeight: 500 }}>
                     {marketMetadata.source && <span style={{ textTransform: 'uppercase', marginRight: 4, opacity: 0.7 }}>[{marketMetadata.source}]</span>}
                     Last refreshed: {showDateTime(marketMetadata.updated_time)}
                     {marketMetadata.auto_refresh > 0 && <span style={{ opacity: 0.6, marginLeft: 4 }}>(auto {marketMetadata.auto_refresh}s)</span>}
+                  </span>
+                  <span className={`minor-text ${autoFlow.context === "failed" || autoFlow.snapshots === "failed" || autoFlow.analysis === "failed" ? "msg-error" : (autoFlow.context === "loading" || autoFlow.snapshots === "loading" || autoFlow.analysis === "loading" ? "msg-warning" : "msg-success")}`} style={{ fontSize: 11 }}>
+                    {flowChipText}
                   </span>
                 </div>
               )}
@@ -2300,6 +2537,12 @@ export default function ChartSnapshotsPage() {
               <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing}>
                 {analyzing ? "Analyzing..." : "Analyze"}
               </button>
+              <span className={`minor-text ${warmupState.contextReady ? "msg-success" : "msg-warning"}`} style={{ marginLeft: 8, fontSize: "12px" }}>
+                {contextReadyText}
+              </span>
+              <span className={`minor-text ${warmupState.snapshotsReady ? "msg-success" : "msg-warning"}`} style={{ fontSize: "12px" }}>
+                {snapshotsReadyText}
+              </span>
 
               {status.text && (
                 <span className={`minor-text ${status.type === 'error' ? 'msg-error' : (status.type === 'warning' ? 'msg-warning' : 'msg-success')}`} style={{ marginLeft: 8, fontSize: '13px' }}>
@@ -2363,9 +2606,21 @@ export default function ChartSnapshotsPage() {
                   {(() => {
                     const ctx = contextByTf.get(String(tf).toUpperCase());
                     if (!ctx) return contextLoading ? " | loading context..." : "";
-                    const trend = ctx?.analysis?.trend || ctx?.analysis?.bias || ctx?.summary?.close_change_20;
                     const price = Number(ctx?.last_price);
-                    return ` | ${ctx?.freshness?.status || ctx?.cache_source || "cache"}${Number.isFinite(price) ? ` | ${price}` : ""}${trend ? ` | ${String(trend).slice(0, 24)}` : ""}`;
+                    const pct = Number(ctx?.summary?.close_change_20);
+                    const barEndMs = Number(ctx?.bar_end) > 0 ? Number(ctx.bar_end) * 1000 : null;
+                    const cachedAt = ctx?.freshness?.updated_time || ctx?.fetched_at || barEndMs || null;
+                    const trendText = String(ctx?.analysis?.trend || ctx?.analysis?.bias || "").trim();
+                    const pctLabel = Number.isFinite(pct) ? `${pct > 0 ? "+" : ""}${(pct * 100).toFixed(3)}%` : "";
+                    const pctColor = Number.isFinite(pct) ? (pct > 0 ? "#26a69a" : (pct < 0 ? "#ef5350" : "var(--muted)")) : "inherit";
+                    return (
+                      <>
+                        {cachedAt ? <span>{` | cached ${showDateTime(cachedAt)}`}</span> : <span>{" | cached time n/a"}</span>}
+                        {Number.isFinite(price) ? <span>{` | ${price}`}</span> : null}
+                        {pctLabel ? <span style={{ color: pctColor }}>{` | ${pctLabel}`}</span> : null}
+                        {trendText ? <span>{` | ${trendText}`}</span> : null}
+                      </>
+                    );
                   })()}
                 </div>
                 <iframe

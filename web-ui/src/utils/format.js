@@ -6,6 +6,12 @@ export function showDateTime(val) {
   if (!val) return "-";
   const date = new Date(val);
   if (isNaN(date.getTime())) return String(val);
+  const nowMs = Date.now();
+  const diffMs = nowMs - date.getTime();
+  if (diffMs >= 0 && diffMs < 60 * 60 * 1000) {
+    const mins = Math.max(1, Math.floor(diffMs / (60 * 1000)));
+    return `${mins} mins ago`;
+  }
 
   const tz = localStorage.getItem("ui_display_timezone") || "UTC";
   
