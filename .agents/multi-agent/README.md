@@ -22,6 +22,8 @@ Purpose: run multiple agents with low coupling, fast handoff, clear ownership.
 - `/.agents/multi-agent/`: playbooks and profiles
   - `PROFILES.md`
   - `profile-selection-matrix.md`
+  - `approval-policy.md`
+  - `prefix-allowlist.template.md`
 - `/.agents/templates/`: copy-paste templates
 - `/.agents/sync/MAILBOX.md`: agent-to-agent handoff log
 - `/.agents/tickets/3-active/`: live ticket tracking
