@@ -1,16 +1,19 @@
 # Trading Bot Workspace
 
-This repository uses a short, explicit AI boot flow.
+This repository uses a high-density, prefix-based AI organization for maximum efficiency.
 
-## Start Here
-1. Read [AI.md](./AI.md).
-2. Read [.agents/README.md](./.agents/README.md).
-3. Follow [.agents/rules.md](./.agents/rules.md).
+## 🚀 AI Entry Point
+All agents must start here:
+1. Read [AI.md](./AI.md) (Root Instructions).
+2. Read [.agents/BOOTSTRAP.md](./.agents/BOOTSTRAP.md) (Agent OS & Pathing).
+3. Follow [.agents/rules.md](./.agents/rules.md) (Mandatory Constraints).
 
-## Active Folder Layout
-- `.agents/skills/` task guidelines and playbooks.
-- `.agents/architecture/` latest technical specifications.
-- `.agents/sync/` inter-agent handoff.
-- `.agents/plans/` sprint/backlog/bugs/changelog tracking.
+## 📂 Project Organization
+- **`.agents/.product/`**: The "Knowledge" domain (Architecture, Features, Tickets).
+- **`.agents/.raw/`**: The "Memory" domain (Not for AI logic).
+- **`.agents/rules/`**: Global constraints and boundaries.
+- **`.agents/skills/`**: Task-specific playbooks and guidelines.
+- **`.agents/sync/`**: Agent-to-agent communication mailbox.
 
-Do not use archived documents as source of truth.
+---
+*Refer to `.agents/BOOTSTRAP.md` for the full loading sequence and execution rules.*
