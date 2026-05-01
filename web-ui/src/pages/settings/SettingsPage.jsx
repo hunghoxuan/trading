@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getRuntimeApiKey, setRuntimeApiKey, api } from "../../api";
 import UserDetailSection from "../../components/UserDetailSection";
+import { normalizeDisplayTimezone } from "../../utils/format";
 
 const ROUTE_OPTIONS = [
   { value: "ea", label: "EA Client (MT5)" },
@@ -18,6 +19,11 @@ const API_KEY_NAME_OPTIONS = [
 
 const SYSTEM_SETTING_TYPES = new Set(["system_config"]);
 const TIMEFRAME_OPTIONS = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
+const DISPLAY_TIMEZONE_OPTIONS = [
+  { value: "Local", label: "Local (Browser)" },
+  { value: "UTC", label: "UTC" },
+  { value: "America/New_York", label: "New York (America/New_York)" },
+];
 
 function isSystemRole(user) {
   return String(user?.role || "").trim().toLowerCase() === "system";
@@ -79,7 +85,7 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
   });
   const [metadataForm, setMetadataForm] = useState({
     language: "English",
-    display_timezone: "UTC",
+    display_timezone: "Local",
     market_data_cron: true,
     ai_analysis_cron: true
   });
@@ -193,7 +199,7 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
           is_active: Boolean(prof.user.is_active),
         });
         const metaSettings = prof.user.metadata?.settings || {};
-        const tz = metaSettings.display_timezone || "UTC";
+        const tz = normalizeDisplayTimezone(metaSettings.display_timezone || "Local");
         localStorage.setItem("ui_display_timezone", tz);
         setMetadataForm({
           language: metaSettings.language || "English",
@@ -307,10 +313,13 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
   async function savePreferences() {
     setMetadataLoading(true);
     try {
-      await api.updateMetadata({ settings: metadataForm });
-      localStorage.setItem("ui_display_timezone", metadataForm.display_timezone || "UTC");
+      const normalizedTz = normalizeDisplayTimezone(metadataForm.display_timezone);
+      const nextSettings = { ...metadataForm, display_timezone: normalizedTz };
+      await api.updateMetadata({ settings: nextSettings });
+      localStorage.setItem("ui_display_timezone", normalizedTz);
+      setMetadataForm(nextSettings);
       if (onUserUpdate) {
-        const nextUser = { ...authUser, metadata: { ...authUser.metadata, settings: metadataForm } };
+        const nextUser = { ...authUser, metadata: { ...authUser.metadata, settings: nextSettings } };
         onUserUpdate(nextUser);
       }
       setMsg("Preferences saved.");
@@ -700,12 +709,14 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                       </label>
                       <label className="stack-layout" style={{ gap: 6 }}>
                         <span className="minor-text">Display Timezone</span>
-                        <input
-                          type="text"
+                        <select
                           value={metadataForm.display_timezone}
                           onChange={e => setMetadataForm(p => ({ ...p, display_timezone: e.target.value }))}
-                          placeholder="e.g. UTC, Asia/Ho_Chi_Minh"
-                        />
+                        >
+                          {DISPLAY_TIMEZONE_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
                       </label>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

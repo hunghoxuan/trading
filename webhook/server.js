@@ -536,6 +536,7 @@ const StateRepo = {
     MARKET_DATA_UNIFIED: { prefix: "MARKET_DATA", ttl: 3600 }, // 1 hour unified symbol cache
     SIGNAL_DETAIL: { prefix: "SIG:DET", ttl: 3600 * 24 }, // 1 day
     TRADE_DETAIL: { prefix: "TRD:DET", ttl: 3600 * 24 }, // 1 day
+    USER_SETTINGS: { prefix: "USR:SET", ttl: 3600 * 6 },   // 6 hours
   },
 
   getL1Map(bucketName) {
@@ -734,6 +735,17 @@ async function repoGetUserTemplates(userId) {
       [userId]
     );
     return rows.map(r => ({ template_id: r.template_id, name: r.name, ...r.data }));
+  });
+}
+
+async function repoListUserSettings(userId) {
+  return await StateRepo.get("USER_SETTINGS", userId, async () => {
+    const db = await mt5InitBackend();
+    const { rows } = await db.query(
+      "SELECT type, name, data, status, created_at FROM user_settings WHERE user_id = $1 ORDER BY type ASC",
+      [userId]
+    );
+    return rows;
   });
 }
 
@@ -10432,10 +10444,8 @@ const appHandler = async (req, res) => {
           last_sync: {},
         }),
       ]);
-      const { rows } = await db.query(
-        "SELECT type, name, data, status, created_at FROM user_settings WHERE user_id = $1 ORDER BY type ASC",
-        [userId]
-      );
+      const userId = sess.user_id || CFG.mt5DefaultUserId;
+      const rows = await repoListUserSettings(userId);
       const settings = rows.map(r => ({
         ...r,
         data: r.data
@@ -10508,6 +10518,8 @@ const appHandler = async (req, res) => {
         RETURNING *
       `, [userId, body.type, settingName || body.type, data, body.status || 'active', body.value || null]);
 
+      await StateRepo.del("USER_SETTINGS", userId);
+
       if (body.type === "system_config" && settingName === "enabled_log_prefixes") {
         const b = await mt5Backend();
         if (b.refreshLogConfig) await b.refreshLogConfig();
@@ -10533,6 +10545,7 @@ const appHandler = async (req, res) => {
       const db = await mt5InitBackend();
       const userId = sess.user_id || CFG.mt5DefaultUserId;
       await db.query("DELETE FROM user_settings WHERE user_id = $1 AND type = $2 AND name = $3", [userId, type, name]);
+      await StateRepo.del("USER_SETTINGS", userId);
       return json(res, 200, { ok: true });
     } catch (e) {
       return json(res, 500, { ok: false, error: e.message });

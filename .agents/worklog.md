@@ -23,3 +23,9 @@
   - live homepage asset: `/assets/index-Dc9ouXEP.js` (old) ✅
 - **Deploy Status**:
   - Not yet live with current local changes.
+
+# Session Log: 2026-05-01 15:35
+- **Starting Task**:
+  - Harden `showDateTime` against invalid timezone input to prevent UI crashes.
+  - Add 1-minute relative-time live refresh.
+  - Replace free-text User Settings timezone with safe selectable options (UTC/New York/Local).

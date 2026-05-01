@@ -19,12 +19,14 @@ import { api, getRuntimeActiveUserId, setRuntimeActiveUserId } from "./api";
 import LoginPage from "./pages/LoginPage";
 import SessionClockBar from "./components/SessionClockBar";
 import NotificationWatcher from "./components/NotificationWatcher";
+import { normalizeDisplayTimezone } from "./utils/format";
 
 export default function App() {
   const [serverVersion, setServerVersion] = useState("");
   const [theme, setTheme] = useState(() => localStorage.getItem("ui_theme") || "dark");
   const [authLoading, setAuthLoading] = useState(true);
   const [authUser, setAuthUser] = useState(null);
+  const [, setRelativeTimeTick] = useState(0);
   const location = useLocation();
   const canAccessSystemPages = String(authUser?.role || "").toLowerCase() === "system";
   const settingsMenuActive = useMemo(() => {
@@ -45,13 +47,26 @@ export default function App() {
   }, [location?.pathname]);
 
   const displayTimezone = useMemo(() => {
-    return authUser?.metadata?.settings?.display_timezone || authUser?.metadata?.display_timezone || localStorage.getItem("ui_display_timezone") || "UTC";
+    return normalizeDisplayTimezone(
+      authUser?.metadata?.settings?.display_timezone
+      || authUser?.metadata?.display_timezone
+      || localStorage.getItem("ui_display_timezone")
+      || "Local"
+    );
   }, [authUser]);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("ui_theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    // Keep "x mins ago" labels moving forward without requiring data refetches.
+    const timer = window.setInterval(() => {
+      setRelativeTimeTick((n) => n + 1);
+    }, 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     Promise.allSettled([api.health(), api.authMe()])
@@ -64,7 +79,9 @@ export default function App() {
         if (meRes.status === "fulfilled" && meRes.value?.user) {
           const user = meRes.value.user;
           setAuthUser(user);
-          const tz = user.metadata?.settings?.display_timezone || user.metadata?.display_timezone || "UTC";
+          const tz = normalizeDisplayTimezone(
+            user.metadata?.settings?.display_timezone || user.metadata?.display_timezone || "Local"
+          );
           localStorage.setItem("ui_display_timezone", tz);
         } else {
           setAuthUser(null);
@@ -77,7 +94,9 @@ export default function App() {
   const handleUserUpdate = (user) => {
     if (user) {
       setAuthUser(user);
-      const tz = user.metadata?.settings?.display_timezone || user.metadata?.display_timezone || "UTC";
+      const tz = normalizeDisplayTimezone(
+        user.metadata?.settings?.display_timezone || user.metadata?.display_timezone || "Local"
+      );
       localStorage.setItem("ui_display_timezone", tz);
     }
   };

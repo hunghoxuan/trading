@@ -2,6 +2,50 @@
  * Formats a date value into a human-readable string, respecting the user's selected timezone.
  * Uses localStorage "ui_display_timezone" as the source of truth.
  */
+const DISPLAY_TIMEZONE_OPTIONS = new Set(["UTC", "America/New_York", "Local"]);
+
+function getBrowserTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
+}
+
+function isValidIanaTimezone(value) {
+  const tz = String(value || "").trim();
+  if (!tz) return false;
+  try {
+    // Throws RangeError for invalid timezone names.
+    new Intl.DateTimeFormat("en-GB", { timeZone: tz }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function normalizeDisplayTimezone(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "Local";
+  if (raw === "UTC") return "UTC";
+  if (raw === "America/New_York" || raw === "NewYork" || raw === "New York") return "America/New_York";
+  if (raw.toLowerCase() === "local") return "Local";
+  if (DISPLAY_TIMEZONE_OPTIONS.has(raw)) return raw;
+  if (isValidIanaTimezone(raw)) return raw;
+  return "Local";
+}
+
+function getSafeTimezoneConfig() {
+  const normalized = normalizeDisplayTimezone(localStorage.getItem("ui_display_timezone"));
+  if (normalized === "Local") {
+    return { storageValue: "Local", intlTimeZone: getBrowserTimezone() || "UTC" };
+  }
+  if (normalized === "UTC" || normalized === "America/New_York") {
+    return { storageValue: normalized, intlTimeZone: normalized };
+  }
+  return { storageValue: "Local", intlTimeZone: getBrowserTimezone() || "UTC" };
+}
+
 export function showDateTime(val) {
   if (!val) return "-";
   const date = new Date(val);
@@ -13,12 +57,12 @@ export function showDateTime(val) {
     return `${mins} mins ago`;
   }
 
-  const tz = localStorage.getItem("ui_display_timezone") || "UTC";
-  
+  const tzConfig = getSafeTimezoneConfig();
+
   try {
     // Use Intl.DateTimeFormat to convert the date to the desired timezone
     const fmt = new Intl.DateTimeFormat('en-GB', {
-      timeZone: tz,
+      timeZone: tzConfig.intlTimeZone,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -40,7 +84,7 @@ export function showDateTime(val) {
     // For relative date comparison (Today/Yesterday), we also need to get "now" in that same timezone
     const now = new Date();
     const fmtShort = new Intl.DateTimeFormat('en-GB', {
-      timeZone: tz,
+      timeZone: tzConfig.intlTimeZone,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit'
@@ -68,8 +112,8 @@ export function showDateTime(val) {
 
     return `${datePart} ${hh}:${mm}`;
   } catch (err) {
-    console.error("Format error with timezone:", tz, err);
-    // Fallback to basic UTC if timezone is invalid
+    console.error("Format error with timezone:", tzConfig.storageValue, err);
+    // Final fallback to basic UTC if formatting still fails.
     return date.toISOString().replace('T', ' ').substring(0, 16);
   }
 }
@@ -78,10 +122,10 @@ export function showDateTime(val) {
  * Compares two dates to see if they fall on the same day in the user's selected timezone.
  */
 export function isSameDay(aMs, bMs) {
-  const tz = localStorage.getItem("ui_display_timezone") || "UTC";
+  const tzConfig = getSafeTimezoneConfig();
   try {
     const fmt = new Intl.DateTimeFormat('en-GB', {
-      timeZone: tz,
+      timeZone: tzConfig.intlTimeZone,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit'
