@@ -1,5 +1,20 @@
 # Worklog: Session Continuity
 
+# Session Log: 2026-05-01 19:46
+- **Discovery: System Log Types & Architecture**:
+  - Identified 16+ distinct event types used in the MT5 Broker-link and AI-link systems.
+  - **Key Events**:
+    - `SIGNAL_FANOUT` / `DIRECT_TRADE_CREATE`: Trade instantiation.
+    - `TRADE_ACK` / `TRADE_ACK_FAILED`: MT5 execution feedback.
+    - `ACCOUNT_SYNC` / `ACCOUNT_HEARTBEAT`: MT5 connectivity and status.
+    - `TRADE_SYNC_UPDATE` / `TRADE_SYNC_CLOSE`: Broker-side state reconciliation.
+    - `AI_ANALYSIS` / `AI_RESPONSE`: AI context and signal generation audit.
+  - **Logic Flow**:
+    - Webhook API (`/mt5/ea/*`) -> `server.js` handlers -> `logs` table (metadata JSONB).
+    - AI API (`/v2/ai/*`) -> `mt5Backend.log` -> `logs` table.
+  - **Code References**:
+    - Handlers: `webhook/server.js:4800-5500` (Broker) and `10500-11500` (AI).
+
 # Session Log: 2026-05-01 10:38
 - **Starting Task**:
   - Update Settings page layout and standardise setting names/types in DB and code.
