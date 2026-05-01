@@ -2,6 +2,10 @@
 
 This file tracks the status of user-facing features and links them to technical tickets.
 
+## Technical Core
+- **Database Schema**: [./architecture/db-schema.md]
+- **External APIs**: [./architecture/external_apis.md]
+
 ## [x] AI Signal Engine
 - **Status**: Done
 - **Feature Doc**: [../features/2-done/ai_signal_engine.md]

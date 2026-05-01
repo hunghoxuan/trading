@@ -45,6 +45,71 @@
 # Session Log: 2026-05-01 18:10
 - **Starting Task**:
   - Create multi-agent docs, guidelines, folder structure, and reusable templates under `.agents/templates/`.
+- **Work Accomplished**:
+  - Added multi-agent operating docs and profiles.
+  - Created template folder and reusable task/handoff/integration/ad-hoc/sample ticket templates.
+- **Changed Files**:
+  - `/Users/macmini/Trade/Bot/trading/.agents/multi-agent/README.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/multi-agent/PROFILES.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/multi-agent/QUICKSTART.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/templates/README.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/templates/agent-task-card.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/templates/agent-handoff.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/templates/integration-gate.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/templates/ad-hoc-agent-request.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/templates/sample-feature-ticket.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/worklog.md`
+- **Technical Decisions**:
+  - Keep process minimal and low-coupling with strict file ownership and explicit gates.
+  - Reuse existing `.agents/sync/MAILBOX.md` and ticket folders, no new workflow roots.
+- **Verification**:
+  - `eza --tree --level=2 .agents/multi-agent .agents/templates` ✅
+- **Deploy Status**:
+  - Not deployed (docs/templates only).
+
+# Session Log: 2026-05-01 18:40
+- **Starting Task**:
+  - Refresh context after folder updates and extend multi-agent profiles/guidelines.
+- **Work Accomplished**:
+  - Refreshed `.agents` structure context and confirmed new folders are present.
+  - Extended multi-agent profile catalog with UI-Designer, Product Owner, BA, Tester, Fullstack Developer.
+  - Added explicit guidance that one agent can operate with multiple profiles on small tickets.
+- **Changed Files**:
+  - `/Users/macmini/Trade/Bot/trading/.agents/multi-agent/PROFILES.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/multi-agent/README.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/multi-agent/QUICKSTART.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/worklog.md`
+- **Technical Decisions**:
+  - Keep flexible role assignment by ticket type, not permanent per-agent roles.
+  - Allow profile composition for low-coupling small tickets.
+- **Verification**:
+  - `eza --tree --level=3 .agents` ✅
+  - `sed -n '1,240p' .agents/multi-agent/PROFILES.md` ✅
+- **Deploy Status**:
+  - Not deployed (docs only).
+
+# Session Log: 2026-05-01 18:55
+- **Starting Task**:
+  - Add profile selection matrix and approval-safety guidance.
+- **Work Accomplished**:
+  - Added profile selection matrix for ticket size/risk/coupling scenarios.
+  - Linked matrix into multi-agent README and quickstart flow.
+- **Changed Files**:
+  - `/Users/macmini/Trade/Bot/trading/.agents/multi-agent/profile-selection-matrix.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/multi-agent/README.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/multi-agent/QUICKSTART.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/worklog.md`
+- **Technical Decisions**:
+  - Use matrix-driven profile composition to keep low-coupling workflow predictable.
+  - Keep high-risk release approval separate from feature implementation ownership.
+- **Verification**:
+  - Manual file verification after patch apply ✅
+- **Deploy Status**:
+  - Not deployed (docs only).
+
+# Session Log: 2026-05-01 19:05
+- **Starting Task**:
+  - Add safe prefix allowlist policy and customization guide for command auto-approval.
 
 # Session Log: 2026-05-01 17:20
 - **Starting Task**:
