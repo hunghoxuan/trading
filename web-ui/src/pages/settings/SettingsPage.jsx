@@ -114,12 +114,12 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
         key={key}
         className={`sidebar-item-v2 ${activeTab === key ? "active" : ""}`}
         onClick={() => setActiveTab(key)}
+        style={{ padding: "6px 10px", minHeight: "auto", marginBottom: 2 }}
       >
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
            <span style={{ fontWeight: isCron ? 700 : 500, fontSize: 12 }}>{s.name}</span>
-           <span className="minor-text" style={{ fontSize: 9, opacity: 0.5 }}>{s.type}</span>
         </div>
-        <span className={`status-badge ${settingStatusClass(s.status)}`} style={{ fontSize: 8 }}>{s.status}</span>
+        <span className={`status-badge ${settingStatusClass(s.status)}`} style={{ fontSize: 8, padding: "2px 4px" }}>{s.status}</span>
       </button>
     );
   }
@@ -471,13 +471,6 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
 
           <div style={{ height: 1, background: "var(--border)", margin: "16px 0" }} />
 
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div className="panel-label" style={{ margin: 0 }}>CONFIGURATIONS</div>
-            <button className="secondary-button" style={{ padding: "2px 8px", fontSize: 10 }} onClick={() => setShowAddForm(!showAddForm)}>
-              {showAddForm ? "Cancel" : "+ Add"}
-            </button>
-          </div>
-
           {showAddForm && (
             <div className="stack-layout fadeIn" style={{ gap: 10, paddingBottom: 16, borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
                <label className="stack-layout" style={{ gap: 4 }}>
@@ -528,46 +521,55 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                     onChange={e => setNewSettingForm(p => ({ ...p, value: e.target.value }))}
                   />
                </label>
-               <button className="primary-button" onClick={createSetting} disabled={settingsLoading}>CREATE</button>
+               <div style={{ display: "flex", gap: 8 }}>
+                 <button className="primary-button" onClick={createSetting} disabled={settingsLoading}>CREATE</button>
+                 <button className="secondary-button" onClick={() => setShowAddForm(false)}>CANCEL</button>
+               </div>
             </div>
           )}
 
           <div className="stack-layout" style={{ gap: 24, marginTop: 16 }}>
             {/* API KEYS GROUP */}
-            {settings.filter(s => s.type === 'api_key').length > 0 && (
-              <div className="stack-layout" style={{ gap: 8 }}>
-                <div className="panel-label" style={{ fontSize: 9, opacity: 0.6 }}>API KEYS</div>
-                <div className="stack-layout" style={{ gap: 2 }}>
-                  {settings.filter(s => s.type === 'api_key').map(s => renderSidebarItem(s))}
-                </div>
+            <div className="stack-layout" style={{ gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div className="panel-label" style={{ margin: 0, opacity: 0.8 }}>API_KEY</div>
+                <button className="secondary-button" style={{ padding: "2px 8px", fontSize: 10 }} onClick={() => { setNewSettingForm({ type: 'api_key', name: 'GEMINI_API_KEY', value: '' }); setShowAddForm(true); }}>+ Add</button>
               </div>
-            )}
+              <div className="stack-layout" style={{ gap: 0 }}>
+                {settings.filter(s => s.type === 'api_key').map(s => renderSidebarItem(s))}
+              </div>
+            </div>
 
             {/* CRONS GROUP */}
-            {settings.filter(s => s.type === 'cron' || s.type.endsWith('_cron')).length > 0 && (
-              <div className="stack-layout" style={{ gap: 8 }}>
-                <div className="panel-label" style={{ fontSize: 9, opacity: 0.6 }}>CRONS</div>
-                <div className="stack-layout" style={{ gap: 2 }}>
-                  {settings.filter(s => s.type === 'cron' || s.type.endsWith('_cron')).map(s => renderSidebarItem(s))}
-                </div>
+            <div className="stack-layout" style={{ gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div className="panel-label" style={{ margin: 0, opacity: 0.8 }}>CRON</div>
+                <button className="secondary-button" style={{ padding: "2px 8px", fontSize: 10 }} onClick={() => { setNewSettingForm({ type: 'cron', name: '', value: '' }); setShowAddForm(true); }}>+ Add</button>
               </div>
-            )}
+              <div className="stack-layout" style={{ gap: 0 }}>
+                {settings.filter(s => s.type === 'cron' || s.type.endsWith('_cron')).map(s => renderSidebarItem(s))}
+              </div>
+            </div>
 
             {/* WATCHLISTS GROUP */}
-            {settings.filter(s => s.type === 'trade' || s.type === 'symbols').length > 0 && (
-              <div className="stack-layout" style={{ gap: 8 }}>
-                <div className="panel-label" style={{ fontSize: 9, opacity: 0.6 }}>WATCHLISTS</div>
-                <div className="stack-layout" style={{ gap: 2 }}>
-                  {settings.filter(s => s.type === 'trade' || s.type === 'symbols').map(s => renderSidebarItem(s))}
-                </div>
+            <div className="stack-layout" style={{ gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div className="panel-label" style={{ margin: 0, opacity: 0.8 }}>TRADE</div>
+                <button className="secondary-button" style={{ padding: "2px 8px", fontSize: 10 }} onClick={() => { setNewSettingForm({ type: 'trade', name: '', value: '' }); setShowAddForm(true); }}>+ Add</button>
               </div>
-            )}
+              <div className="stack-layout" style={{ gap: 0 }}>
+                {settings.filter(s => s.type === 'trade' || s.type === 'symbols').map(s => renderSidebarItem(s))}
+              </div>
+            </div>
 
             {/* OTHERS GROUP */}
             {settings.filter(s => !['api_key', 'cron', 'trade', 'symbols'].includes(s.type) && !s.type.endsWith('_cron')).length > 0 && (
               <div className="stack-layout" style={{ gap: 8 }}>
-                <div className="panel-label" style={{ fontSize: 9, opacity: 0.6 }}>OTHERS</div>
-                <div className="stack-layout" style={{ gap: 2 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div className="panel-label" style={{ margin: 0, opacity: 0.8 }}>OTHERS</div>
+                  <button className="secondary-button" style={{ padding: "2px 8px", fontSize: 10 }} onClick={() => { setNewSettingForm({ type: 'note', name: '', value: '' }); setShowAddForm(true); }}>+ Add</button>
+                </div>
+                <div className="stack-layout" style={{ gap: 0 }}>
                   {settings.filter(s => !['api_key', 'cron', 'trade', 'symbols'].includes(s.type) && !s.type.endsWith('_cron')).map(s => renderSidebarItem(s))}
                 </div>
               </div>
