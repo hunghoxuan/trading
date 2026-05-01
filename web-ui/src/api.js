@@ -681,6 +681,8 @@ export const api = {
   chartSnapshots: (limit = 30) => get(`/v2/chart/snapshots?limit=${encodeURIComponent(limit)}`),
   chartSnapshotsDelete: (payload = {}) => post("/v2/chart/snapshots/delete", payload),
   getSettings: () => get("/v2/settings"),
+  getSettingSecret: (type, name, field = "value") =>
+    get(`/v2/settings/secret?type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}&field=${encodeURIComponent(field)}`),
   upsertSetting: (payload = {}) => post("/v2/settings", payload),
   deleteSetting: (type, name) => del(`/v2/settings/${encodeURIComponent(type)}/${encodeURIComponent(name)}`),
 };

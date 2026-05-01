@@ -143,6 +143,21 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
       setSettingsMsg(`${keyName} copy failed: ${err?.message || "clipboard error"}`);
     }
   };
+  const revealApiKeyField = async (setting, fieldKey = "value") => {
+    const settingKey = getSettingKey(setting);
+    try {
+      const out = await api.getSettingSecret(setting.type, setting.name, fieldKey);
+      const plain = String(out?.value || "");
+      setSettings((prev) => prev.map((x) => {
+        if (getSettingKey(x) !== settingKey) return x;
+        return { ...x, data: { ...(x.data || {}), [fieldKey]: plain } };
+      }));
+      return plain;
+    } catch (err) {
+      setSettingsMsg(err?.message || "Failed to reveal secret.");
+      return "";
+    }
+  };
 
   function renderSidebarItem(s) {
     const key = getSettingKey(s);
@@ -989,7 +1004,12 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                             type="button"
                             className="secondary-button"
                             style={{ padding: "4px 8px", fontSize: 11 }}
-                            onClick={() => toggleSecretVisible(settingKey, key)}
+                            onClick={async () => {
+                              if (!visible) {
+                                await revealApiKeyField(selectedSetting, key);
+                              }
+                              toggleSecretVisible(settingKey, key);
+                            }}
                             title={visible ? "Hide value" : "Show value"}
                           >
                             {visible ? "Hide" : "Eye"}
@@ -998,7 +1018,14 @@ export default function SettingsPage({ authUser, mode = "settings", onUserUpdate
                             type="button"
                             className="secondary-button"
                             style={{ padding: "4px 8px", fontSize: 11 }}
-                            onClick={() => copySecretToClipboard(val, key)}
+                            onClick={async () => {
+                              const plain = await revealApiKeyField(selectedSetting, key);
+                              if (!plain) {
+                                setSettingsMsg(`${key}: empty value, nothing copied.`);
+                                return;
+                              }
+                              await copySecretToClipboard(plain, key);
+                            }}
                             title="Copy decrypted value to clipboard"
                           >
                             Copy

@@ -10426,9 +10426,36 @@ const appHandler = async (req, res) => {
       );
       const settings = rows.map(r => ({
         ...r,
-        data: r.type === 'api_key' ? decryptObject(r.data) : r.data
+        data: r.data
       }));
       return json(res, 200, { ok: true, settings });
+    } catch (e) {
+      return json(res, 500, { ok: false, error: e.message });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/v2/settings/secret") {
+    const sess = getUiSessionFromReq(req);
+    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
+    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    try {
+      const type = String(url.searchParams.get("type") || "").trim();
+      const name = String(url.searchParams.get("name") || "").trim();
+      const field = String(url.searchParams.get("field") || "value").trim();
+      if (!type || !name) return json(res, 400, { ok: false, error: "Missing type or name" });
+      if (type !== "api_key") return json(res, 400, { ok: false, error: "Secret reveal is only supported for api_key type" });
+
+      const db = await mt5InitBackend();
+      const userId = sess.user_id || CFG.mt5DefaultUserId;
+      const rowRes = await db.query(
+        "SELECT data FROM user_settings WHERE user_id = $1 AND type = $2 AND name = $3 LIMIT 1",
+        [userId, type, name]
+      );
+      if (!rowRes.rows.length) return json(res, 404, { ok: false, error: "Setting not found" });
+
+      const enc = rowRes.rows[0]?.data && typeof rowRes.rows[0].data === "object" ? rowRes.rows[0].data : {};
+      const dec = decryptObject(enc);
+      return json(res, 200, { ok: true, value: String(dec?.[field] || "") });
     } catch (e) {
       return json(res, 500, { ok: false, error: e.message });
     }
