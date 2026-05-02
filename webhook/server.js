@@ -70,7 +70,12 @@ function asNum(value, fallback = NaN) {
 }
 
 function parseKeySet(value) {
-  return new Set(envStr(value).split(",").map((s) => s.trim()).filter(Boolean));
+  return new Set(
+    envStr(value)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
 }
 
 function envStr(value, fallback = "") {
@@ -95,18 +100,34 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.02 14:22 - 5699eca"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(
+  process.env.WEBHOOK_SERVER_VERSION,
+  "v2026.05.02 14:22 - 5699eca",
+); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
-const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(CHART_SNAPSHOT_DIR, ".claude-files.json");
+const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(
+  CHART_SNAPSHOT_DIR,
+  ".claude-files.json",
+);
 const AI_CONTEXT_FILE_DIR = path.resolve(__dirname, "ai_context_files");
-const AI_CONTEXT_CLAUDE_MAP_FILE = path.join(AI_CONTEXT_FILE_DIR, ".claude-context-files.json");
+const AI_CONTEXT_CLAUDE_MAP_FILE = path.join(
+  AI_CONTEXT_FILE_DIR,
+  ".claude-context-files.json",
+);
 const ANTHROPIC_FILES_BETA = "files-api-2025-04-14";
 
 function readDiskStats(mountPath = "/") {
   try {
-    const out = execFileSync("df", ["-Pk", mountPath], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-    const lines = String(out || "").trim().split(/\r?\n/);
-    const row = String(lines[lines.length - 1] || "").trim().split(/\s+/);
+    const out = execFileSync("df", ["-Pk", mountPath], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const lines = String(out || "")
+      .trim()
+      .split(/\r?\n/);
+    const row = String(lines[lines.length - 1] || "")
+      .trim()
+      .split(/\s+/);
     if (row.length < 6) return null;
     const totalKb = Number(row[1] || 0);
     const usedKb = Number(row[2] || 0);
@@ -128,8 +149,15 @@ function readDiskStats(mountPath = "/") {
 function readPathSizeBytes(absPath) {
   try {
     if (!absPath || !fs.existsSync(absPath)) return 0;
-    const out = execFileSync("du", ["-sk", absPath], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-    const kb = Number(String(out || "").trim().split(/\s+/)[0] || 0);
+    const out = execFileSync("du", ["-sk", absPath], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const kb = Number(
+      String(out || "")
+        .trim()
+        .split(/\s+/)[0] || 0,
+    );
     return Number.isFinite(kb) ? kb * 1024 : 0;
   } catch {
     return 0;
@@ -144,13 +172,25 @@ function cleanupSystemStorageArtifacts() {
     before,
   };
   const addAction = (name, ok, detail = "") => {
-    report.actions.push({ name, ok: Boolean(ok), detail: String(detail || "") });
+    report.actions.push({
+      name,
+      ok: Boolean(ok),
+      detail: String(detail || ""),
+    });
   };
 
   // 1) Flush PM2 logs
   try {
-    const r = spawnSync("pm2", ["flush"], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", timeout: 20000 });
-    addAction("pm2_flush", r.status === 0, r.status === 0 ? "ok" : String(r.stderr || r.stdout || "failed"));
+    const r = spawnSync("pm2", ["flush"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      encoding: "utf8",
+      timeout: 20000,
+    });
+    addAction(
+      "pm2_flush",
+      r.status === 0,
+      r.status === 0 ? "ok" : String(r.stderr || r.stdout || "failed"),
+    );
   } catch (e) {
     addAction("pm2_flush", false, String(e?.message || e));
   }
@@ -160,14 +200,24 @@ function cleanupSystemStorageArtifacts() {
     const pgDir = "/var/log/postgresql";
     let truncated = 0;
     if (fs.existsSync(pgDir)) {
-      const files = fs.readdirSync(pgDir).filter((f) => /\.log(\.\d+)?$/i.test(f));
+      const files = fs
+        .readdirSync(pgDir)
+        .filter((f) => /\.log(\.\d+)?$/i.test(f));
       for (const fileName of files) {
         const abs = path.join(pgDir, fileName);
         try {
           fs.truncateSync(abs, 0);
           truncated += 1;
         } catch {
-          const run = spawnSync("sudo", ["-u", "postgres", "truncate", "-s", "0", abs], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", timeout: 15000 });
+          const run = spawnSync(
+            "sudo",
+            ["-u", "postgres", "truncate", "-s", "0", abs],
+            {
+              stdio: ["ignore", "pipe", "pipe"],
+              encoding: "utf8",
+              timeout: 15000,
+            },
+          );
           if (run.status === 0) truncated += 1;
         }
       }
@@ -179,8 +229,16 @@ function cleanupSystemStorageArtifacts() {
 
   // 3) Apt cache cleanup
   try {
-    const r = spawnSync("apt-get", ["clean"], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", timeout: 30000 });
-    addAction("apt_clean", r.status === 0, r.status === 0 ? "ok" : String(r.stderr || r.stdout || "failed"));
+    const r = spawnSync("apt-get", ["clean"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      encoding: "utf8",
+      timeout: 30000,
+    });
+    addAction(
+      "apt_clean",
+      r.status === 0,
+      r.status === 0 ? "ok" : String(r.stderr || r.stdout || "failed"),
+    );
   } catch (e) {
     addAction("apt_clean", false, String(e?.message || e));
   }
@@ -188,8 +246,13 @@ function cleanupSystemStorageArtifacts() {
   // 4) Remove npm cache blobs
   try {
     const cacheDir = "/root/.npm/_cacache";
-    if (fs.existsSync(cacheDir)) fs.rmSync(cacheDir, { recursive: true, force: true });
-    addAction("npm_cache_cleanup", true, fs.existsSync(cacheDir) ? "partial" : "ok");
+    if (fs.existsSync(cacheDir))
+      fs.rmSync(cacheDir, { recursive: true, force: true });
+    addAction(
+      "npm_cache_cleanup",
+      true,
+      fs.existsSync(cacheDir) ? "partial" : "ok",
+    );
   } catch (e) {
     addAction("npm_cache_cleanup", false, String(e?.message || e));
   }
@@ -210,7 +273,7 @@ function cleanupSystemStorageArtifacts() {
             fs.rmSync(abs, { recursive: true, force: true });
             removed += 1;
           }
-        } catch { }
+        } catch {}
       }
     }
     addAction("tmp_cleanup", true, `removed=${removed}`);
@@ -233,7 +296,7 @@ function cleanupSystemStorageArtifacts() {
             fs.unlinkSync(abs);
             removed += 1;
           }
-        } catch { }
+        } catch {}
       }
     }
     addAction("old_snapshots_prune", true, `removed=${removed}`);
@@ -243,8 +306,14 @@ function cleanupSystemStorageArtifacts() {
 
   const after = readDiskStats("/") || {};
   report.after = after;
-  if (Number.isFinite(before?.avail_bytes) && Number.isFinite(after?.avail_bytes)) {
-    report.freed_bytes = Math.max(0, Number(after.avail_bytes) - Number(before.avail_bytes));
+  if (
+    Number.isFinite(before?.avail_bytes) &&
+    Number.isFinite(after?.avail_bytes)
+  ) {
+    report.freed_bytes = Math.max(
+      0,
+      Number(after.avail_bytes) - Number(before.avail_bytes),
+    );
   } else {
     report.freed_bytes = null;
   }
@@ -262,11 +331,13 @@ const CFG = {
   signalApiKey: envStr(process.env.SIGNAL_API_KEY),
   adminKey: envStr(process.env.ADMIN_KEY || process.env.SIGNAL_API_KEY),
 
-
   telegramBotToken: envStr(process.env.TELEGRAM_BOT_TOKEN),
   telegramChatId: envStr(process.env.TELEGRAM_CHAT_ID),
 
-  allowSymbols: envStr(process.env.ALLOW_SYMBOLS).split(",").map((s) => s.trim().toUpperCase()).filter(Boolean),
+  allowSymbols: envStr(process.env.ALLOW_SYMBOLS)
+    .split(",")
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean),
 
   binanceMode: envStr(process.env.BINANCE_MODE).toLowerCase(),
   binanceProduct: envStr(process.env.BINANCE_PRODUCT, "spot").toLowerCase(),
@@ -288,10 +359,18 @@ const CFG = {
   mt5Enabled: asBool(process.env.MT5_ENABLED, true),
   mt5Storage: "postgres",
   mt5TvAlertApiKeys: parseKeySet(process.env.MT5_TV_ALERT_API_KEYS),
-  mt5TvWebhookTokens: parseKeySet(process.env.MT5_TV_WEBHOOK_TOKENS || process.env.TV_WEBHOOK_TOKENS),
+  mt5TvWebhookTokens: parseKeySet(
+    process.env.MT5_TV_WEBHOOK_TOKENS || process.env.TV_WEBHOOK_TOKENS,
+  ),
   mt5EaApiKeys: parseKeySet(process.env.MT5_EA_API_KEYS),
-  mt5AuthAllowLegacyPayloadKey: asBool(process.env.MT5_AUTH_ALLOW_LEGACY_PAYLOAD_KEY, true),
-  mt5AuthAllowLegacyQueryKey: asBool(process.env.MT5_AUTH_ALLOW_LEGACY_QUERY_KEY, true),
+  mt5AuthAllowLegacyPayloadKey: asBool(
+    process.env.MT5_AUTH_ALLOW_LEGACY_PAYLOAD_KEY,
+    true,
+  ),
+  mt5AuthAllowLegacyQueryKey: asBool(
+    process.env.MT5_AUTH_ALLOW_LEGACY_QUERY_KEY,
+    true,
+  ),
   mt5V2DualWriteEnabled: asBool(process.env.MT5_V2_DUAL_WRITE_ENABLED, false),
   mt5V2BrokerApiEnabled: asBool(process.env.MT5_V2_BROKER_API_ENABLED, true),
   mt5V2LeaseSeconds: asNum(process.env.MT5_V2_LEASE_SECONDS, 30),
@@ -301,69 +380,201 @@ const CFG = {
   mt5PruneDays: asNum(process.env.MT5_PRUNE_DAYS, 14),
   mt5PruneIntervalMinutes: asNum(process.env.MT5_PRUNE_INTERVAL_MINUTES, 60),
   twelveDataApiKey: envStr(process.env.TWELVE_DATA_API_KEY),
-  mt5PostgresUrl: envStr(process.env.MT5_POSTGRES_URL) || envStr(process.env.POSTGRES_URL) || envStr(process.env.POSTGRE_URL),
+  mt5PostgresUrl:
+    envStr(process.env.MT5_POSTGRES_URL) ||
+    envStr(process.env.POSTGRES_URL) ||
+    envStr(process.env.POSTGRE_URL),
   redisEnabled: asBool(process.env.REDIS_ENABLED, true),
   redisUrl: envStr(process.env.REDIS_URL, "redis://127.0.0.1:6379"),
   marketDataCronEnabled: asBool(process.env.MARKET_DATA_CRON_ENABLED, true),
-  marketDataCronQueueEnabled: asBool(process.env.MARKET_DATA_CRON_QUEUE_ENABLED, true),
-  marketDataCronConcurrency: Math.max(1, Math.min(16, Math.round(asNum(process.env.MARKET_DATA_CRON_CONCURRENCY, 4)))),
-  marketDataCronBatchSize: Math.max(1, Math.min(50, Math.round(asNum(process.env.MARKET_DATA_CRON_BATCH_SIZE, 8)))),
-  marketDataChunkMaxBars: Math.max(50, Math.min(1000, Math.round(asNum(process.env.MARKET_DATA_CHUNK_MAX_BARS, 500)))),
-  marketDataDefaultTimezone: envStr(process.env.MARKET_DATA_DEFAULT_TIMEZONE, "America/New_York"),
-  uiDistPath: path.resolve(__dirname, envStr(process.env.WEB_UI_DIST_PATH || process.env.WEBHOOK_UI_DIST_PATH, "../web-ui/dist")),
-  landingDistPath: path.resolve(__dirname, envStr(process.env.WEB_LANDING_DIST_PATH, "../web")),
+  marketDataCronQueueEnabled: asBool(
+    process.env.MARKET_DATA_CRON_QUEUE_ENABLED,
+    true,
+  ),
+  marketDataCronConcurrency: Math.max(
+    1,
+    Math.min(
+      16,
+      Math.round(asNum(process.env.MARKET_DATA_CRON_CONCURRENCY, 4)),
+    ),
+  ),
+  marketDataCronBatchSize: Math.max(
+    1,
+    Math.min(50, Math.round(asNum(process.env.MARKET_DATA_CRON_BATCH_SIZE, 8))),
+  ),
+  marketDataChunkMaxBars: Math.max(
+    50,
+    Math.min(
+      1000,
+      Math.round(asNum(process.env.MARKET_DATA_CHUNK_MAX_BARS, 500)),
+    ),
+  ),
+  marketDataDefaultTimezone: envStr(
+    process.env.MARKET_DATA_DEFAULT_TIMEZONE,
+    "America/New_York",
+  ),
+  uiDistPath: path.resolve(
+    __dirname,
+    envStr(
+      process.env.WEB_UI_DIST_PATH || process.env.WEBHOOK_UI_DIST_PATH,
+      "../web-ui/dist",
+    ),
+  ),
+  landingDistPath: path.resolve(
+    __dirname,
+    envStr(process.env.WEB_LANDING_DIST_PATH, "../web"),
+  ),
   uiAuthEnabled: asBool(process.env.UI_AUTH_ENABLED, true),
-  uiBootstrapEmail: envStr(process.env.UI_BOOTSTRAP_EMAIL, "hung.hoxuan@gmail.com").toLowerCase(),
-  uiBootstrapPassword: envStr(process.env.UI_BOOTSTRAP_PASSWORD, "BceTzkUuznrX7WDLTODBh077"),
-  uiSessionTtlSeconds: asNum(process.env.UI_SESSION_TTL_SECONDS, 60 * 60 * 24 * 7),
+  uiBootstrapEmail: envStr(
+    process.env.UI_BOOTSTRAP_EMAIL,
+    "hung.hoxuan@gmail.com",
+  ).toLowerCase(),
+  uiBootstrapPassword: envStr(
+    process.env.UI_BOOTSTRAP_PASSWORD,
+    "BceTzkUuznrX7WDLTODBh077",
+  ),
+  uiSessionTtlSeconds: asNum(
+    process.env.UI_SESSION_TTL_SECONDS,
+    60 * 60 * 24 * 7,
+  ),
 };
 
 const AI_RESPONSE_SCHEMA_VERSION = "1.2.0";
 const AI_RESPONSE_SCHEMA = {
   symbol: "",
-  timeframes: [{
-    tf: "MN|W|D|4H|1H|15M|5M|1M", trend: "Bullish|Bearish|Ranging",
-    structure: "BOS|CHoCH|MSB|Continuation|Ranging",
-    phase: "Trending|Retracement|Reversal|Consolidation|Breakout|Breakdown|Distribution|Accumulation",
-    bias: "Long|Short|Neutral", poiAlign: true, did: "", next: "",
-    keyBreaks: [{ event: "BOS|CHoCH|MSB|Retest|Sweep|Rejection", price: null, direction: "Bull|Bear" }],
-    path: [{ step: 1, action: "Retrace|Continue|Sweep|Reverse|Consolidate|Break", target: null, condition: "" }]
-  }],
-  pdArrays: [{
-    id: 1, tf: "", type: "OB|FVG|Breaker|Mitigation Block|Void|Rejection Block|Propulsion Block",
-    dir: "Bull|Bear", strength: "Strong|Weak", top: null, bot: null,
-    status: "Fresh|Tested|Mitigated|Broken", touched: 0, note: ""
-  }],
-  keyLevels: [{
-    name: "PDH|PDL|PWH|PWL|PMH|PML|WeeklyOpen|DailyOpen|MidnightOpen|NYOpen|EQH|EQL|BSL|SSL",
-    price: null, swept: false
-  }],
+  timeframes: [
+    {
+      tf: "MN|W|D|4H|1H|15M|5M|1M",
+      trend: "Bullish|Bearish|Ranging",
+      structure: "BOS|CHoCH|MSB|Continuation|Ranging",
+      phase:
+        "Trending|Retracement|Reversal|Consolidation|Breakout|Breakdown|Distribution|Accumulation",
+      bias: "Long|Short|Neutral",
+      poiAlign: true,
+      did: "",
+      next: "",
+      keyBreaks: [
+        {
+          event: "BOS|CHoCH|MSB|Retest|Sweep|Rejection",
+          price: null,
+          direction: "Bull|Bear",
+        },
+      ],
+      path: [
+        {
+          step: 1,
+          action: "Retrace|Continue|Sweep|Reverse|Consolidate|Break",
+          target: null,
+          condition: "",
+        },
+      ],
+    },
+  ],
+  pdArrays: [
+    {
+      id: 1,
+      tf: "",
+      type: "OB|FVG|Breaker|Mitigation Block|Void|Rejection Block|Propulsion Block",
+      dir: "Bull|Bear",
+      strength: "Strong|Weak",
+      top: null,
+      bot: null,
+      status: "Fresh|Tested|Mitigated|Broken",
+      touched: 0,
+      note: "",
+    },
+  ],
+  keyLevels: [
+    {
+      name: "PDH|PDL|PWH|PWL|PMH|PML|WeeklyOpen|DailyOpen|MidnightOpen|NYOpen|EQH|EQL|BSL|SSL",
+      price: null,
+      swept: false,
+    },
+  ],
   dol: { target: "", price: null, type: "BSL|SSL|FVG|OB|Void", tf: "" },
   checklist: {
-    buy: { score: 0, highPassed: 0, highTotal: 0, items: [{ category: "Structure|PD_Arrays|Liquidity|Session|Correlation|VWAP|Fibonacci|Candle_Patterns|Indicators|Risk", item: "", weight: "High|Medium|Low", passed: false, pdRef: null, note: "" }] },
-    sell: { score: 0, highPassed: 0, highTotal: 0, items: [{ category: "", item: "", weight: "High|Medium|Low", passed: false, pdRef: null, note: "" }] }
+    buy: {
+      score: 0,
+      highPassed: 0,
+      highTotal: 0,
+      items: [
+        {
+          category:
+            "Structure|PD_Arrays|Liquidity|Session|Correlation|VWAP|Fibonacci|Candle_Patterns|Indicators|Risk",
+          item: "",
+          weight: "High|Medium|Low",
+          passed: false,
+          pdRef: null,
+          note: "",
+        },
+      ],
+    },
+    sell: {
+      score: 0,
+      highPassed: 0,
+      highTotal: 0,
+      items: [
+        {
+          category: "",
+          item: "",
+          weight: "High|Medium|Low",
+          passed: false,
+          pdRef: null,
+          note: "",
+        },
+      ],
+    },
   },
-  tradePlan: [{
-    dir: "BUY|SELL", profile: "Position|Swing|Intraday|Scalp",
-    type: "Limit|Stop Limit|Market", session: "Asian|London|NewYork|LondonClose|Overlap",
-    model: "", entry: null, sl: null, be: null, tps: [{ price: null, pct: null, rr: null }],
-    riskPct: null, rr: null, skipReasons: [{ reason: "", severity: "High|Medium|Low" }],
-    skip: "Skip|Reduce|Proceed|Wait", confidence: 0, note: ""
-  }],
+  tradePlan: [
+    {
+      dir: "BUY|SELL",
+      profile: "Position|Swing|Intraday|Scalp",
+      type: "Limit|Stop Limit|Market",
+      session: "Asian|London|NewYork|LondonClose|Overlap",
+      model: "",
+      entry: null,
+      sl: null,
+      be: null,
+      tps: [{ price: null, pct: null, rr: null }],
+      riskPct: null,
+      rr: null,
+      skipReasons: [{ reason: "", severity: "High|Medium|Low" }],
+      skip: "Skip|Reduce|Proceed|Wait",
+      confidence: 0,
+      note: "",
+    },
+  ],
   verdict: {
-    action: "BUY|SELL|WAIT", tier: "A|B|C|NoTrade",
-    confidence: 0, invalidation: "", nextPoi: { price: null, tf: "", type: "" }, note: ""
-  }
+    action: "BUY|SELL|WAIT",
+    tier: "A|B|C|NoTrade",
+    confidence: 0,
+    invalidation: "",
+    nextPoi: { price: null, tf: "", type: "" },
+    note: "",
+  },
 };
 
 const AI_CHECKLIST_BANK = [
-  ["Structure", "HTF bias aligned (D/W)", "High"], ["Structure", "ITF bias aligned (4H)", "High"], ["Structure", "LTF CHoCH/BOS confirmed", "High"],
-  ["PD_Arrays", "Entry at fresh OB/FVG", "High"], ["PD_Arrays", "OB+FVG overlap", "High"], ["PD_Arrays", "POI within premium/discount", "High"],
-  ["Liquidity", "Clear draw on liquidity identified", "High"], ["Liquidity", "BSL/SSL swept before entry", "High"], ["Liquidity", "PDH/PDL or PWH/PWL as DOL", "Medium"],
-  ["Session", "Killzone active (London/NY)", "High"], ["Session", "Power of 3 phase aligned", "High"], ["Session", "No high-impact news within 30min", "High"],
-  ["Correlation", "SMT divergence confirmed", "High"], ["VWAP", "VWAP aligns with OB/FVG", "High"], ["Fibonacci", "Entry at 0.618-0.786 retracement", "High"],
-  ["Candle_Patterns", "Displacement or rejection candle at POI", "High"], ["Indicators", "RSI/volume/ATR confirms setup", "Medium"], ["Risk", "RR >= 2.5 and SL behind structure", "High"],
-  ["Risk", "Entry not late (POI <50% consumed)", "High"], ["Risk", "Partial profit plan defined", "Medium"]
+  ["Structure", "HTF bias aligned (D/W)", "High"],
+  ["Structure", "ITF bias aligned (4H)", "High"],
+  ["Structure", "LTF CHoCH/BOS confirmed", "High"],
+  ["PD_Arrays", "Entry at fresh OB/FVG", "High"],
+  ["PD_Arrays", "OB+FVG overlap", "High"],
+  ["PD_Arrays", "POI within premium/discount", "High"],
+  ["Liquidity", "Clear draw on liquidity identified", "High"],
+  ["Liquidity", "BSL/SSL swept before entry", "High"],
+  ["Liquidity", "PDH/PDL or PWH/PWL as DOL", "Medium"],
+  ["Session", "Killzone active (London/NY)", "High"],
+  ["Session", "Power of 3 phase aligned", "High"],
+  ["Session", "No high-impact news within 30min", "High"],
+  ["Correlation", "SMT divergence confirmed", "High"],
+  ["VWAP", "VWAP aligns with OB/FVG", "High"],
+  ["Fibonacci", "Entry at 0.618-0.786 retracement", "High"],
+  ["Candle_Patterns", "Displacement or rejection candle at POI", "High"],
+  ["Indicators", "RSI/volume/ATR confirms setup", "Medium"],
+  ["Risk", "RR >= 2.5 and SL behind structure", "High"],
+  ["Risk", "Entry not late (POI <50% consumed)", "High"],
+  ["Risk", "Partial profit plan defined", "Medium"],
 ];
 
 function buildAiSchemaPromptText() {
@@ -402,8 +613,11 @@ function mt5GenerateId(prefix = "ID") {
 }
 
 function mt5NormalizeSymbol(s) {
-  const val = typeof s === 'string' ? s : (s?.symbol || s?.s || "");
-  return String(val).toUpperCase().replace(/[\/\-\_\.]/g, "").trim();
+  const val = typeof s === "string" ? s : s?.symbol || s?.s || "";
+  return String(val)
+    .toUpperCase()
+    .replace(/[\/\-\_\.]/g, "")
+    .trim();
 }
 
 async function mt5Log(objectId, objectTable, metadata = {}, userId = null) {
@@ -411,7 +625,9 @@ async function mt5Log(objectId, objectTable, metadata = {}, userId = null) {
   if (b.log) return await b.log(objectId, objectTable, metadata, userId);
   // Fallback for non-postgres or bootstrapping
   const now = mt5NowIso();
-  console.log(`[LOG][${objectTable}][${objectId}] user=${userId} metadata=${JSON.stringify(metadata)}`);
+  console.log(
+    `[LOG][${objectTable}][${objectId}] user=${userId} metadata=${JSON.stringify(metadata)}`,
+  );
 }
 
 function json(res, statusCode, data) {
@@ -467,12 +683,13 @@ const UnifiedCache = {
             const data = JSON.parse(cached);
             if (!validator || validator(data)) {
               if (onHitL2) onHitL2(data);
-              if (l1Map) l1Map.set(key, { data, expires_at_ms: now + (ttlSec * 1000) });
+              if (l1Map)
+                l1Map.set(key, { data, expires_at_ms: now + ttlSec * 1000 });
               return data;
             }
           }
         }
-      } catch (e) { }
+      } catch (e) {}
     }
 
     // 3. Fallback (DB or API) with Request Collapsing
@@ -505,7 +722,7 @@ const UnifiedCache = {
   async set(key, data, options = {}) {
     const { l1Map, l2Prefix, ttlSec } = options;
     const now = Date.now();
-    const expires_at_ms = now + (ttlSec * 1000);
+    const expires_at_ms = now + ttlSec * 1000;
 
     if (l1Map) l1Map.set(key, { data, expires_at_ms });
 
@@ -513,10 +730,12 @@ const UnifiedCache = {
       const client = await getRedisClient();
       if (client) {
         const fullKey = `${l2Prefix}:${key}`;
-        await client.set(fullKey, JSON.stringify(data), { EX: ttlSec }).catch(() => { });
+        await client
+          .set(fullKey, JSON.stringify(data), { EX: ttlSec })
+          .catch(() => {});
       }
     }
-  }
+  },
 };
 const MARKET_DATA_MEMORY_MAX_KEYS = 500;
 
@@ -528,19 +747,20 @@ const StateRepo = {
   BUCKETS: {
     SYSTEM_SETTINGS: { prefix: "SYS:CFG", ttl: 3600 * 24 }, // 1 day
     USER_PROFILE: { prefix: "USR:PRO", ttl: 3600 * 12 }, // 12 hours
-    USER_ACCOUNTS: { prefix: "USR:ACC", ttl: 3600 * 1 },  // 1 hour
+    USER_ACCOUNTS: { prefix: "USR:ACC", ttl: 3600 * 1 }, // 1 hour
     USER_WATCHLIST: { prefix: "USR:WTL", ttl: 3600 * 24 }, // 1 day
-    USER_TEMPLATES: { prefix: "USR:TPL", ttl: 3600 * 6 },  // 6 hours
-    SIGNALS_PENDING: { prefix: "SIG:PEN", ttl: 600 },       // 10 mins (dynamic)
-    MARKET_LATEST: { prefix: "MKT:LAT", ttl: 300 },       // 5 mins
+    USER_TEMPLATES: { prefix: "USR:TPL", ttl: 3600 * 6 }, // 6 hours
+    SIGNALS_PENDING: { prefix: "SIG:PEN", ttl: 600 }, // 10 mins (dynamic)
+    MARKET_LATEST: { prefix: "MKT:LAT", ttl: 300 }, // 5 mins
     MARKET_DATA_UNIFIED: { prefix: "MARKET_DATA", ttl: 3600 }, // 1 hour unified symbol cache
     SIGNAL_DETAIL: { prefix: "SIG:DET", ttl: 3600 * 24 }, // 1 day
     TRADE_DETAIL: { prefix: "TRD:DET", ttl: 3600 * 24 }, // 1 day
-    USER_SETTINGS: { prefix: "USR:SET", ttl: 3600 * 6 },   // 6 hours
+    USER_SETTINGS: { prefix: "USR:SET", ttl: 3600 * 6 }, // 6 hours
   },
 
   getL1Map(bucketName) {
-    if (bucketName === "MARKET_LATEST" || bucketName === "MARKET_DATA_UNIFIED") return MARKET_DATA_MEMORY_CACHE;
+    if (bucketName === "MARKET_LATEST" || bucketName === "MARKET_DATA_UNIFIED")
+      return MARKET_DATA_MEMORY_CACHE;
     return null; // Shared L1 not strictly needed for non-high-frequency keys yet
   },
 
@@ -552,7 +772,7 @@ const StateRepo = {
       l1Map: this.getL1Map(bucketKey),
       l2Prefix: bucket.prefix,
       ttlSec: bucket.ttl,
-      fallback
+      fallback,
     });
   },
 
@@ -563,7 +783,7 @@ const StateRepo = {
     return await UnifiedCache.set(id, data, {
       l1Map: this.getL1Map(bucketKey),
       l2Prefix: bucket.prefix,
-      ttlSec: bucket.ttl
+      ttlSec: bucket.ttl,
     });
   },
 
@@ -578,9 +798,9 @@ const StateRepo = {
     // Clear L2
     if (CFG.redisEnabled) {
       const client = await getRedisClient();
-      if (client) await client.del(`${bucket.prefix}:${id}`).catch(() => { });
+      if (client) await client.del(`${bucket.prefix}:${id}`).catch(() => {});
     }
-  }
+  },
 };
 
 /**
@@ -589,9 +809,16 @@ const StateRepo = {
 async function repoGetSystemSettings() {
   return await StateRepo.get("SYSTEM_SETTINGS", "global", async () => {
     const db = await mt5InitBackend();
-    const { rows } = await db.query("SELECT data FROM user_settings WHERE type = 'api_key' AND user_id = $1", [CFG.mt5DefaultUserId]);
+    const { rows } = await db.query(
+      "SELECT data FROM user_settings WHERE type = 'api_key' AND user_id = $1",
+      [CFG.mt5DefaultUserId],
+    );
     const raw = rows[0]?.data || {};
-    try { return decryptObject(raw); } catch { return raw; }
+    try {
+      return decryptObject(raw);
+    } catch {
+      return raw;
+    }
   });
 }
 
@@ -601,30 +828,37 @@ async function refreshEconomicCalendar() {
     const url = "https://nfs.forexfactory.com/ff_calendar_thisweek.json";
     const resp = await fetch(url, { timeout: 10000 }).catch(() => null);
     if (!resp || !resp.ok) return;
-    
+
     const data = await resp.json();
     if (!Array.isArray(data)) return;
 
     // Filter for today's high impact events
-    const today = new Date().toISOString().split('T')[0];
-    const filtered = data.filter(item => {
+    const today = new Date().toISOString().split("T")[0];
+    const filtered = data.filter((item) => {
       // item.date format is usually "MM-DD-YYYY"
-      const dateParts = item.date.split('-');
+      const dateParts = item.date.split("-");
       if (dateParts.length !== 3) return false;
       const itemDate = `${dateParts[2]}-${dateParts[0]}-${dateParts[1]}`;
-      
+
       return itemDate === today && item.impact === "High";
     });
 
     if (CFG.redisEnabled) {
       const client = await getRedisClient();
       if (client) {
-        await client.setEx("economic_calendar:today", 86400, JSON.stringify(filtered)).catch(() => {});
+        await client
+          .setEx("economic_calendar:today", 86400, JSON.stringify(filtered))
+          .catch(() => {});
       }
     }
-    MARKET_DATA_MEMORY_CACHE.set("economic_calendar:today", { data: filtered, expires_at_ms: Date.now() + 3600000 });
-    
-    console.log(`[news] Refreshed economic calendar: ${filtered.length} high-impact events today.`);
+    MARKET_DATA_MEMORY_CACHE.set("economic_calendar:today", {
+      data: filtered,
+      expires_at_ms: Date.now() + 3600000,
+    });
+
+    console.log(
+      `[news] Refreshed economic calendar: ${filtered.length} high-impact events today.`,
+    );
   } catch (e) {
     console.error("[news] Failed to refresh economic calendar:", e.message);
   }
@@ -639,7 +873,12 @@ async function repoGetUserAccounts(userId) {
     const b = await mt5Backend();
     // Use the backend's existing listAccounts or direct query if not available
     if (b.listAccounts) return await b.listAccounts({ userId });
-    const { rows } = await (await mt5InitBackend()).query("SELECT * FROM user_accounts WHERE user_id = $1 AND status != 'ARCHIVED'", [userId]);
+    const { rows } = await (
+      await mt5InitBackend()
+    ).query(
+      "SELECT * FROM user_accounts WHERE user_id = $1 AND status != 'ARCHIVED'",
+      [userId],
+    );
     return rows;
   });
 }
@@ -653,26 +892,40 @@ async function repoUpsertUnifiedMarketData(symbol, tf, dataUpdate) {
   if (!symbolNorm) return null;
 
   // Read-Modify-Write pattern
-  let current = await StateRepo.get("MARKET_DATA_UNIFIED", symbolNorm) || {
+  let current = (await StateRepo.get("MARKET_DATA_UNIFIED", symbolNorm)) || {
     symbol: symbolNorm,
     updated_time: 0,
     utc_time_range: "",
     bar_start: 0,
     bar_end: 0,
-    data: []
+    data: [],
   };
 
   const tfNorm = normalizeMarketDataTf(tf);
   const timeframeData = {
     tf: tfNorm,
-    market_analysis: dataUpdate.market_analysis || dataUpdate.metadata || dataUpdate.summary || null,
+    market_analysis:
+      dataUpdate.market_analysis ||
+      dataUpdate.metadata ||
+      dataUpdate.summary ||
+      null,
     bars: Array.isArray(dataUpdate.bars) ? dataUpdate.bars : [],
-    last_price: dataUpdate.last_price ?? (Array.isArray(dataUpdate.bars) && dataUpdate.bars.length ? dataUpdate.bars[dataUpdate.bars.length - 1]?.close : null),
-    last_price_at: dataUpdate.last_price_at ?? (Array.isArray(dataUpdate.bars) && dataUpdate.bars.length ? dataUpdate.bars[dataUpdate.bars.length - 1]?.time : null),
+    last_price:
+      dataUpdate.last_price ??
+      (Array.isArray(dataUpdate.bars) && dataUpdate.bars.length
+        ? dataUpdate.bars[dataUpdate.bars.length - 1]?.close
+        : null),
+    last_price_at:
+      dataUpdate.last_price_at ??
+      (Array.isArray(dataUpdate.bars) && dataUpdate.bars.length
+        ? dataUpdate.bars[dataUpdate.bars.length - 1]?.time
+        : null),
   };
 
   // Update or Add timeframe
-  const dataIdx = current.data.findIndex(d => normalizeMarketDataTf(d.tf) === tfNorm);
+  const dataIdx = current.data.findIndex(
+    (d) => normalizeMarketDataTf(d.tf) === tfNorm,
+  );
   if (dataIdx >= 0) {
     current.data[dataIdx] = timeframeData;
   } else {
@@ -712,9 +965,15 @@ async function repoUpsertUnifiedMarketData(symbol, tf, dataUpdate) {
 async function repoGetPendingSignals(userId = "all") {
   return await StateRepo.get("SIGNALS_PENDING", userId, async () => {
     const db = await mt5InitBackend();
-    const where = userId === "all" ? "status IN ('NEW', 'PENDING')" : "status IN ('NEW', 'PENDING') AND user_id = $1";
+    const where =
+      userId === "all"
+        ? "status IN ('NEW', 'PENDING')"
+        : "status IN ('NEW', 'PENDING') AND user_id = $1";
     const params = userId === "all" ? [] : [userId];
-    const { rows } = await db.query(`SELECT * FROM signals WHERE ${where} ORDER BY created_at DESC`, params);
+    const { rows } = await db.query(
+      `SELECT * FROM signals WHERE ${where} ORDER BY created_at DESC`,
+      params,
+    );
     return rows;
   });
 }
@@ -722,7 +981,10 @@ async function repoGetPendingSignals(userId = "all") {
 async function repoGetUserWatchlist(userId) {
   return await StateRepo.get("USER_WATCHLIST", userId, async () => {
     const db = await mt5InitBackend();
-    const { rows } = await db.query("SELECT metadata->'watchlist' as watchlist FROM users WHERE user_id = $1", [userId]);
+    const { rows } = await db.query(
+      "SELECT metadata->'watchlist' as watchlist FROM users WHERE user_id = $1",
+      [userId],
+    );
     return rows[0]?.watchlist || [];
   });
 }
@@ -732,9 +994,13 @@ async function repoGetUserTemplates(userId) {
     const db = await mt5InitBackend();
     const { rows } = await db.query(
       "SELECT id as template_id, name, data FROM user_templates WHERE user_id = $1 ORDER BY created_at DESC",
-      [userId]
+      [userId],
     );
-    return rows.map(r => ({ template_id: r.template_id, name: r.name, ...r.data }));
+    return rows.map((r) => ({
+      template_id: r.template_id,
+      name: r.name,
+      ...r.data,
+    }));
   });
 }
 
@@ -743,7 +1009,7 @@ async function repoListUserSettings(userId) {
     const db = await mt5InitBackend();
     const { rows } = await db.query(
       "SELECT type, name, data, status, created_at FROM user_settings WHERE user_id = $1 ORDER BY type ASC",
-      [userId]
+      [userId],
     );
     return rows;
   });
@@ -757,19 +1023,27 @@ function nowUnixSec() {
 }
 
 function normalizeMarketDataSymbol(rawSymbol) {
-  const base = String(rawSymbol || "").trim().toUpperCase();
+  const base = String(rawSymbol || "")
+    .trim()
+    .toUpperCase();
   if (!base) return "";
-  const noProvider = base.includes(":") ? base.split(":").slice(1).join(":").trim().toUpperCase() : base;
+  const noProvider = base.includes(":")
+    ? base.split(":").slice(1).join(":").trim().toUpperCase()
+    : base;
   return noProvider.replace(/[^A-Z0-9]/g, "");
 }
 
 function normalizeMarketDataTf(tfRaw) {
-  const interval = String(timeframeToTwelve(tfRaw || "15m") || "15min").trim().toLowerCase();
+  const interval = String(timeframeToTwelve(tfRaw || "15m") || "15min")
+    .trim()
+    .toLowerCase();
   return interval || "15min";
 }
 
 function parseTfTokenToSeconds(tfToken) {
-  const s = String(tfToken || "").trim().toLowerCase();
+  const s = String(tfToken || "")
+    .trim()
+    .toLowerCase();
   if (!s) return 60;
   const m = s.match(/^(\d+)\s*(min|m|hour|h|day|d|week|w|month|mo)$/i);
   if (m) {
@@ -790,12 +1064,15 @@ function estimateRequestedBarsRange({ tfNorm, bars, nowSec = nowUnixSec() }) {
   const sec = Math.max(60, parseTfTokenToSeconds(tfNorm));
   const count = Math.max(1, Number(bars) || 300);
   const alignedEnd = Math.floor(Math.max(1, nowSec) / sec) * sec;
-  const start = alignedEnd - ((count - 1) * sec);
+  const start = alignedEnd - (count - 1) * sec;
   return { start, end: alignedEnd, sec };
 }
 
 function normalizeMarketDataTimezone(rawTimezone) {
-  const tz = String(rawTimezone || CFG?.marketDataDefaultTimezone || "America/New_York").trim() || "America/New_York";
+  const tz =
+    String(
+      rawTimezone || CFG?.marketDataDefaultTimezone || "America/New_York",
+    ).trim() || "America/New_York";
   try {
     Intl.DateTimeFormat("en-US", { timeZone: tz }).format(new Date());
     return tz;
@@ -806,13 +1083,22 @@ function normalizeMarketDataTimezone(rawTimezone) {
 
 function normalizeMarketDataBar(rawBar) {
   if (!rawBar || typeof rawBar !== "object") return null;
-  const time = Number(rawBar.time ?? rawBar.t ?? rawBar.bar_start ?? rawBar.bar_start_unix);
+  const time = Number(
+    rawBar.time ?? rawBar.t ?? rawBar.bar_start ?? rawBar.bar_start_unix,
+  );
   const open = Number(rawBar.open ?? rawBar.o);
   const high = Number(rawBar.high ?? rawBar.h);
   const low = Number(rawBar.low ?? rawBar.l);
   const close = Number(rawBar.close ?? rawBar.c);
   const volume = Number(rawBar.volume ?? rawBar.v);
-  if (!Number.isFinite(time) || !Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) return null;
+  if (
+    !Number.isFinite(time) ||
+    !Number.isFinite(open) ||
+    !Number.isFinite(high) ||
+    !Number.isFinite(low) ||
+    !Number.isFinite(close)
+  )
+    return null;
   const out = {
     time: Math.floor(time),
     open,
@@ -841,13 +1127,14 @@ function detectMarketDataGapCandidates(bars = [], tfNorm = "1min") {
     const cur = Number(bars[i]?.time);
     if (!Number.isFinite(prev) || !Number.isFinite(cur)) continue;
     const missing = Math.round((cur - prev) / sec) - 1;
-    if (missing > 0) out.push({ after: prev, before: cur, missing_bars: missing });
+    if (missing > 0)
+      out.push({ after: prev, before: cur, missing_bars: missing });
   }
   return out;
 }
 
 function serializeSnapshotForDb(snapshot) {
-  if (!snapshot || typeof snapshot !== 'object') return "";
+  if (!snapshot || typeof snapshot !== "object") return "";
   const bars = normalizeMarketDataBars(snapshot.bars);
   return JSON.stringify({
     version: 2,
@@ -870,21 +1157,23 @@ function deserializeSnapshotFromDb(dbData) {
     if (parsed && typeof parsed === "object") {
       return { ...parsed, bars: normalizeMarketDataBars(parsed.bars) };
     }
-  } catch { }
-  const lines = raw.split('\n').filter(l => l.trim().length > 0);
+  } catch {}
+  const lines = raw.split("\n").filter((l) => l.trim().length > 0);
   return {
     timezone: "UTC",
-    bars: lines.map(s => {
-      const parts = s.split(',');
-      if (parts.length < 5) return null;
-      return normalizeMarketDataBar({
-        low: Number(parts[0]),
-        high: Number(parts[1]),
-        open: Number(parts[2]),
-        time: Number(parts[3]),
-        close: Number(parts[4])
-      });
-    }).filter(Boolean)
+    bars: lines
+      .map((s) => {
+        const parts = s.split(",");
+        if (parts.length < 5) return null;
+        return normalizeMarketDataBar({
+          low: Number(parts[0]),
+          high: Number(parts[1]),
+          open: Number(parts[2]),
+          time: Number(parts[3]),
+          close: Number(parts[4]),
+        });
+      })
+      .filter(Boolean),
   };
 }
 
@@ -914,9 +1203,11 @@ function marketDataTtlSecByTf(tfNorm) {
 function marketDataMemoryRead(symbolNorm, tfNorm, reqStart, reqEnd) {
   const key = marketDataCacheKey(symbolNorm);
   const root = UnifiedCache.get(key, { l1Map: MARKET_DATA_MEMORY_CACHE });
-  if (!root || typeof root !== "object" || !Array.isArray(root.data)) return null;
+  if (!root || typeof root !== "object" || !Array.isArray(root.data))
+    return null;
   const tfData = root.data.find((d) => d && d.tf === tfNorm);
-  if (!tfData || !Array.isArray(tfData.bars) || !tfData.bars.length) return null;
+  if (!tfData || !Array.isArray(tfData.bars) || !tfData.bars.length)
+    return null;
   const s = Number(tfData.bar_start ?? tfData.bars[0]?.time);
   const e = Number(tfData.bar_end ?? tfData.bars[tfData.bars.length - 1]?.time);
   if (!Number.isFinite(s) || !Number.isFinite(e)) return null;
@@ -928,18 +1219,18 @@ async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
   const db = await mt5InitBackend();
   const res = await db.query(
     `SELECT symbol, tf as timeframe, bar_start, bar_end, data, metadata, last_price, last_price_at
-     FROM market_data 
+     FROM market_data
      WHERE symbol = $1 AND tf = $2 AND bar_start <= $3 AND bar_end >= $4
      ORDER BY bar_end DESC
      LIMIT 1`,
-    [symbolNorm, tfNorm, reqStart, reqEnd]
+    [symbolNorm, tfNorm, reqStart, reqEnd],
   );
   if (!res.rows?.length) return null;
   const row = res.rows[0];
   let bars = [];
   try {
-    bars = typeof row.data === "string" ? JSON.parse(row.data) : (row.data || []);
-  } catch (e) { }
+    bars = typeof row.data === "string" ? JSON.parse(row.data) : row.data || [];
+  } catch (e) {}
   return {
     symbol: row.symbol,
     timeframe: row.timeframe,
@@ -947,32 +1238,54 @@ async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
     bar_end: row.bar_end,
     bars,
     metadata: row.metadata,
-    last_price: row.last_price === null || row.last_price === undefined ? null : Number(row.last_price),
-    last_price_at: row.last_price_at || null
+    last_price:
+      row.last_price === null || row.last_price === undefined
+        ? null
+        : Number(row.last_price),
+    last_price_at: row.last_price_at || null,
   };
 }
 
 async function marketDataDbWrite(symbolNorm, tfNorm, data) {
   const db = await mt5InitBackend();
   const barsStr = JSON.stringify(data.bars || []);
-  const lastBar = Array.isArray(data.bars) && data.bars.length ? data.bars[data.bars.length - 1] : null;
+  const lastBar =
+    Array.isArray(data.bars) && data.bars.length
+      ? data.bars[data.bars.length - 1]
+      : null;
   const lastPrice = Number(data.last_price ?? lastBar?.close);
   const lastPriceAtSec = Number(data.last_price_at_sec ?? lastBar?.time);
-  const lastPriceAtIso = Number.isFinite(lastPriceAtSec) ? new Date(lastPriceAtSec * 1000).toISOString() : null;
-  const metadata = data.metadata && typeof data.metadata === "object" ? { ...data.metadata } : {};
+  const lastPriceAtIso = Number.isFinite(lastPriceAtSec)
+    ? new Date(lastPriceAtSec * 1000).toISOString()
+    : null;
+  const metadata =
+    data.metadata && typeof data.metadata === "object"
+      ? { ...data.metadata }
+      : {};
   if (Number.isFinite(lastPrice)) metadata.last_price = lastPrice;
   if (lastPriceAtIso) metadata.last_price_at = lastPriceAtIso;
-  const metaStr = Object.keys(metadata).length ? JSON.stringify(metadata) : null;
+  const metaStr = Object.keys(metadata).length
+    ? JSON.stringify(metadata)
+    : null;
   await db.query(
     `INSERT INTO market_data (symbol, tf, bar_start, bar_end, data, metadata, last_price, last_price_at, updated_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-     ON CONFLICT (symbol, tf, bar_start, bar_end) DO UPDATE SET 
+     ON CONFLICT (symbol, tf, bar_start, bar_end) DO UPDATE SET
        data = EXCLUDED.data,
        metadata = COALESCE(EXCLUDED.metadata, market_data.metadata),
        last_price = COALESCE(EXCLUDED.last_price, market_data.last_price),
        last_price_at = COALESCE(EXCLUDED.last_price_at, market_data.last_price_at),
        updated_at = NOW()`,
-    [symbolNorm, tfNorm, data.bar_start, data.bar_end, barsStr, metaStr, Number.isFinite(lastPrice) ? lastPrice : null, lastPriceAtIso]
+    [
+      symbolNorm,
+      tfNorm,
+      data.bar_start,
+      data.bar_end,
+      barsStr,
+      metaStr,
+      Number.isFinite(lastPrice) ? lastPrice : null,
+      lastPriceAtIso,
+    ],
   );
 }
 
@@ -984,14 +1297,18 @@ async function getRedisClient() {
     try {
       const client = createRedisClient({ url: CFG.redisUrl });
       client.on("error", (err) => {
-        const msg = err instanceof Error ? err.message : String(err || "unknown");
+        const msg =
+          err instanceof Error ? err.message : String(err || "unknown");
         console.warn("[Redis] client error:", msg);
       });
       await client.connect();
       REDIS_CLIENT = client;
       return REDIS_CLIENT;
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error || "connect_failed");
+      const msg =
+        error instanceof Error
+          ? error.message
+          : String(error || "connect_failed");
       console.warn("[Redis] connect failed:", msg);
       REDIS_CLIENT = null;
       return null;
@@ -1008,24 +1325,25 @@ async function marketDataRedisRead(symbolNorm, tfNorm, reqStart, reqEnd) {
   const key = marketDataCacheKey(symbolNorm);
   const raw = await client.get(key).catch(() => "");
   if (!raw) return null;
-  
+
   let root = null;
   try {
     root = JSON.parse(raw);
   } catch {
     return null;
   }
-  
+
   if (!root || !Array.isArray(root.data)) return null;
-  
+
   // Find the specific timeframe in the data array
-  const tfData = root.data.find(d => d.tf === tfNorm);
-  if (!tfData || !Array.isArray(tfData.bars) || !tfData.bars.length) return null;
-  
+  const tfData = root.data.find((d) => d.tf === tfNorm);
+  if (!tfData || !Array.isArray(tfData.bars) || !tfData.bars.length)
+    return null;
+
   const s = Number(tfData.bar_start);
   const e = Number(tfData.bar_end);
   if (!Number.isFinite(s) || !Number.isFinite(e)) return null;
-  
+
   if (s <= reqStart && e >= reqEnd) {
     return tfData;
   }
@@ -1035,15 +1353,23 @@ async function marketDataRedisRead(symbolNorm, tfNorm, reqStart, reqEnd) {
 function marketDataMemoryWrite(symbolNorm, tfNorm, data) {
   const key = marketDataCacheKey(symbolNorm);
   const ttl = 1800; // Unified TTL for symbol (30m)
-  
+
   let root = UnifiedCache.get(key, { l1Map: MARKET_DATA_MEMORY_CACHE });
-  if (!root || typeof root !== 'object') {
-    root = { symbol: symbolNorm, updated_time: Math.floor(Date.now() / 1000), data: [] };
+  if (!root || typeof root !== "object") {
+    root = {
+      symbol: symbolNorm,
+      updated_time: Math.floor(Date.now() / 1000),
+      data: [],
+    };
   }
-  
+
   // Update or Add TF
-  const existingIdx = root.data.findIndex(d => d.tf === tfNorm);
-  const tfEntry = { ...data, tf: tfNorm, updated_time: Math.floor(Date.now() / 1000) };
+  const existingIdx = root.data.findIndex((d) => d.tf === tfNorm);
+  const tfEntry = {
+    ...data,
+    tf: tfNorm,
+    updated_time: Math.floor(Date.now() / 1000),
+  };
   if (existingIdx >= 0) {
     root.data[existingIdx] = tfEntry;
   } else {
@@ -1051,7 +1377,11 @@ function marketDataMemoryWrite(symbolNorm, tfNorm, data) {
   }
   root.updated_time = tfEntry.updated_time;
 
-  UnifiedCache.set(key, root, { l1Map: MARKET_DATA_MEMORY_CACHE, l2Prefix: 'market_data', ttlSec: ttl });
+  UnifiedCache.set(key, root, {
+    l1Map: MARKET_DATA_MEMORY_CACHE,
+    l2Prefix: "market_data",
+    ttlSec: ttl,
+  });
 }
 
 async function marketDataRedisWrite(symbolNorm, tfNorm, snapshot) {
@@ -1067,18 +1397,22 @@ async function marketDataRedisWrite(symbolNorm, tfNorm, snapshot) {
     if (raw) root = JSON.parse(raw);
   } catch {}
 
-  if (!root || typeof root !== 'object') {
-    root = { symbol: symbolNorm, updated_time: Math.floor(Date.now() / 1000), data: [] };
+  if (!root || typeof root !== "object") {
+    root = {
+      symbol: symbolNorm,
+      updated_time: Math.floor(Date.now() / 1000),
+      data: [],
+    };
   }
 
-  const tfEntry = { 
-    ...snapshot, 
-    tf: tfNorm, 
+  const tfEntry = {
+    ...snapshot,
+    tf: tfNorm,
     updated_time: Math.floor(Date.now() / 1000),
-    source: snapshot.source || 'remote_api'
+    source: snapshot.source || "remote_api",
   };
 
-  const existingIdx = root.data.findIndex(d => d.tf === tfNorm);
+  const existingIdx = root.data.findIndex((d) => d.tf === tfNorm);
   if (existingIdx >= 0) {
     root.data[existingIdx] = tfEntry;
   } else {
@@ -1086,7 +1420,7 @@ async function marketDataRedisWrite(symbolNorm, tfNorm, snapshot) {
   }
   root.updated_time = tfEntry.updated_time;
 
-  await client.setEx(key, ttl, JSON.stringify(root)).catch(() => { });
+  await client.setEx(key, ttl, JSON.stringify(root)).catch(() => {});
 }
 
 async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
@@ -1110,12 +1444,12 @@ async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
   let firstSl = null;
   let firstTp = null;
 
-  res.rows.forEach(row => {
+  res.rows.forEach((row) => {
     const snap = deserializeSnapshotFromDb(row.data);
     if (!snap) return;
     if (firstSl === null) firstSl = snap.sl;
     if (firstTp === null) firstTp = snap.tp;
-    snap.bars.forEach(b => dedup.set(b.time, b));
+    snap.bars.forEach((b) => dedup.set(b.time, b));
   });
 
   const mergedBars = [...dedup.values()].sort((a, b) => a.time - b.time);
@@ -1130,7 +1464,10 @@ async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
     sl: firstSl,
     tp: firstTp,
     timezone: "UTC",
-    gap_candidates: detectMarketDataGapCandidates(mergedBars, tfNorm).slice(0, 20),
+    gap_candidates: detectMarketDataGapCandidates(mergedBars, tfNorm).slice(
+      0,
+      20,
+    ),
   };
 }
 
@@ -1140,7 +1477,10 @@ async function marketDataDbUpsert(symbolNorm, tfNorm, snapshot) {
 
   const db = await mt5InitBackend();
   const tfSec = Math.max(60, parseTfTokenToSeconds(tfNorm));
-  const maxBars = Math.max(50, Math.min(1000, Number(CFG.marketDataChunkMaxBars) || 500));
+  const maxBars = Math.max(
+    50,
+    Math.min(1000, Number(CFG.marketDataChunkMaxBars) || 500),
+  );
 
   // 1. Fetch existing overlapping or adjacent data to merge
   // We expand the range slightly to catch nearby segments
@@ -1149,20 +1489,20 @@ async function marketDataDbUpsert(symbolNorm, tfNorm, snapshot) {
   const expand = tfSec * maxBars;
 
   const existing = await db.query(
-    `SELECT id, data FROM market_data 
+    `SELECT id, data FROM market_data
       WHERE symbol = $1 AND tf = $2
         AND NOT (bar_end < $3 OR bar_start > $4)`,
-    [symbolNorm, tfNorm, s - expand, e + expand]
+    [symbolNorm, tfNorm, s - expand, e + expand],
   );
 
   const dedup = new Map();
   // Add existing bars
-  existing.rows.forEach(row => {
+  existing.rows.forEach((row) => {
     const snap = deserializeSnapshotFromDb(row.data);
-    if (snap?.bars) snap.bars.forEach(b => dedup.set(b.time, b));
+    if (snap?.bars) snap.bars.forEach((b) => dedup.set(b.time, b));
   });
   // Add new bars
-  bars.forEach(b => dedup.set(b.time, b));
+  bars.forEach((b) => dedup.set(b.time, b));
 
   const mergedBars = [...dedup.values()].sort((a, b) => a.time - b.time);
   const chunks = [];
@@ -1185,10 +1525,10 @@ async function marketDataDbUpsert(symbolNorm, tfNorm, snapshot) {
   // 2. Replace old overlapping chunks with deterministic max-size chunks.
   const client = await db.connect();
   try {
-    await client.query('BEGIN');
+    await client.query("BEGIN");
     if (existing.rows.length > 0) {
-      const ids = existing.rows.map(r => r.id);
-      await client.query('DELETE FROM market_data WHERE id = ANY($1)', [ids]);
+      const ids = existing.rows.map((r) => r.id);
+      await client.query("DELETE FROM market_data WHERE id = ANY($1)", [ids]);
     }
     for (const chunk of chunks) {
       const chunkLastBar = chunkBarsForLastPrice(chunk.data);
@@ -1204,11 +1544,13 @@ async function marketDataDbUpsert(symbolNorm, tfNorm, snapshot) {
           chunk.bar_end,
           chunk.data,
           chunkLastBar?.close ?? null,
-          chunkLastBar?.time ? new Date(Number(chunkLastBar.time) * 1000).toISOString() : null,
-        ]
+          chunkLastBar?.time
+            ? new Date(Number(chunkLastBar.time) * 1000).toISOString()
+            : null,
+        ],
       );
     }
-    await client.query('COMMIT');
+    await client.query("COMMIT");
     await marketDataUpdateCronState({
       userId: snapshot.user_id || CFG.mt5DefaultUserId,
       settingName: snapshot.setting_name || "default",
@@ -1219,11 +1561,14 @@ async function marketDataDbUpsert(symbolNorm, tfNorm, snapshot) {
         last_bar_start: mergedBars[mergedBars.length - 1]?.time || null,
         chunk_count: chunks.length,
         bar_count: mergedBars.length,
-        gap_candidates: detectMarketDataGapCandidates(mergedBars, tfNorm).slice(0, 20),
+        gap_candidates: detectMarketDataGapCandidates(mergedBars, tfNorm).slice(
+          0,
+          20,
+        ),
       },
-    }).catch(() => { });
+    }).catch(() => {});
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client.query("ROLLBACK");
     throw err;
   } finally {
     client.release();
@@ -1231,11 +1576,15 @@ async function marketDataDbUpsert(symbolNorm, tfNorm, snapshot) {
 }
 
 function normalizeEmail(emailRaw) {
-  return String(emailRaw || "").trim().toLowerCase();
+  return String(emailRaw || "")
+    .trim()
+    .toLowerCase();
 }
 
 function normalizeUserRole(roleRaw) {
-  const role = String(roleRaw || "").trim().toLowerCase();
+  const role = String(roleRaw || "")
+    .trim()
+    .toLowerCase();
   if (role === "system") return "System";
   if (role === "admin") return "Admin";
   if (role === "user") return "User";
@@ -1245,8 +1594,18 @@ function normalizeUserRole(roleRaw) {
 
 function normalizeUserActive(activeRaw, fallback = true) {
   if (typeof activeRaw === "boolean") return activeRaw;
-  if (activeRaw === 1 || activeRaw === "1" || String(activeRaw || "").toLowerCase() === "true") return true;
-  if (activeRaw === 0 || activeRaw === "0" || String(activeRaw || "").toLowerCase() === "false") return false;
+  if (
+    activeRaw === 1 ||
+    activeRaw === "1" ||
+    String(activeRaw || "").toLowerCase() === "true"
+  )
+    return true;
+  if (
+    activeRaw === 0 ||
+    activeRaw === "0" ||
+    String(activeRaw || "").toLowerCase() === "false"
+  )
+    return false;
   return Boolean(fallback);
 }
 
@@ -1276,9 +1635,17 @@ function uiPublicAccountView(row) {
     account_id: String(row?.account_id || ""),
     user_id: String(row?.user_id || ""),
     name: String(row?.name || ""),
-    balance: row?.balance === null || row?.balance === undefined ? null : Number(row.balance),
+    balance:
+      row?.balance === null || row?.balance === undefined
+        ? null
+        : Number(row.balance),
     status: String(row?.status || ""),
-    metadata: row?.metadata && typeof row.metadata === "object" ? row.metadata : (row?.metadata ? row.metadata : null),
+    metadata:
+      row?.metadata && typeof row.metadata === "object"
+        ? row.metadata
+        : row?.metadata
+          ? row.metadata
+          : null,
     created_at: String(row?.created_at || ""),
     updated_at: String(row?.updated_at || ""),
   };
@@ -1294,25 +1661,30 @@ function makeSaltHex() {
   return crypto.randomBytes(16).toString("hex");
 }
 
-const UUID_V4ISH_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_V4ISH_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function makeCompactId(prefix = "ID", chars = 8) {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const size = Math.max(4, Number(chars) || 8);
   const bytes = crypto.randomBytes(size);
   let body = "";
-  for (let i = 0; i < size; i += 1) body += alphabet[bytes[i] % alphabet.length];
+  for (let i = 0; i < size; i += 1)
+    body += alphabet[bytes[i] % alphabet.length];
   return `${String(prefix || "ID").toUpperCase()}_${body}`;
 }
 
 // --- Security & Encryption ---
 
 const ENCRYPTION_ALGO = "aes-256-gcm";
-const ENCRYPTION_KEY_SECRET = envStr(process.env.ENCRYPTION_KEY, "a_very_secret_32_byte_key_placeholder_123"); // 32 bytes for aes-256
+const ENCRYPTION_KEY_SECRET = envStr(
+  process.env.ENCRYPTION_KEY,
+  "a_very_secret_32_byte_key_placeholder_123",
+); // 32 bytes for aes-256
 
 function getEncryptionKey() {
   // Ensure the key is exactly 32 bytes
-  return crypto.createHash('sha256').update(ENCRYPTION_KEY_SECRET).digest();
+  return crypto.createHash("sha256").update(ENCRYPTION_KEY_SECRET).digest();
 }
 
 /**
@@ -1323,11 +1695,11 @@ function encryptData(text) {
   const iv = crypto.randomBytes(12);
   const key = getEncryptionKey();
   const cipher = crypto.createCipheriv(ENCRYPTION_ALGO, key, iv);
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  const tag = cipher.getAuthTag().toString('hex');
+  let encrypted = cipher.update(text, "utf8", "hex");
+  encrypted += cipher.final("hex");
+  const tag = cipher.getAuthTag().toString("hex");
   // Format: iv:tag:encrypted
-  return `${iv.toString('hex')}:${tag}:${encrypted}`;
+  return `${iv.toString("hex")}:${tag}:${encrypted}`;
 }
 
 /**
@@ -1335,21 +1707,24 @@ function encryptData(text) {
  */
 function decryptData(cipherText) {
   if (!cipherText) return null;
-  const parts = cipherText.split(':');
+  const parts = cipherText.split(":");
   if (parts.length !== 3) return cipherText; // Return as is if not encrypted format (legacy support)
 
   try {
-    const iv = Buffer.from(parts[0], 'hex');
-    const tag = Buffer.from(parts[1], 'hex');
+    const iv = Buffer.from(parts[0], "hex");
+    const tag = Buffer.from(parts[1], "hex");
     const encrypted = parts[2];
     const key = getEncryptionKey();
     const decipher = crypto.createDecipheriv(ENCRYPTION_ALGO, key, iv);
     decipher.setAuthTag(tag);
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
+    let decrypted = decipher.update(encrypted, "hex", "utf8");
+    decrypted += decipher.final("utf8");
     return decrypted;
   } catch (err) {
-    console.warn("[security] Decryption failed, returning raw string (might be plaintext or bad key)", err.message);
+    console.warn(
+      "[security] Decryption failed, returning raw string (might be plaintext or bad key)",
+      err.message,
+    );
     return cipherText;
   }
 }
@@ -1358,7 +1733,7 @@ function decryptData(cipherText) {
  * Encrypt/Decrypt object values (for JSONB data containing multiple keys)
  */
 function encryptObject(obj) {
-  if (!obj || typeof obj !== 'object') return obj;
+  if (!obj || typeof obj !== "object") return obj;
   const out = {};
   for (const [k, v] of Object.entries(obj)) {
     out[k] = encryptData(String(v || ""));
@@ -1367,7 +1742,7 @@ function encryptObject(obj) {
 }
 
 function decryptObject(obj) {
-  if (!obj || typeof obj !== 'object') return obj;
+  if (!obj || typeof obj !== "object") return obj;
   const out = {};
   for (const [k, v] of Object.entries(obj)) {
     out[k] = decryptData(String(v || ""));
@@ -1376,7 +1751,9 @@ function decryptObject(obj) {
 }
 
 function hashPassword(passwordRaw, saltHex) {
-  return crypto.scryptSync(String(passwordRaw || ""), saltHex, 64).toString("hex");
+  return crypto
+    .scryptSync(String(passwordRaw || ""), saltHex, 64)
+    .toString("hex");
 }
 
 const ALLOWED_AI_API_KEY_NAMES = new Set([
@@ -1388,17 +1765,35 @@ const ALLOWED_AI_API_KEY_NAMES = new Set([
 ]);
 
 function normalizeAiApiKeyName(rawName) {
-  const name = String(rawName || "").trim().toUpperCase();
-  if (name === "GEMINI" || name === "GOOGLE_GEMINI" || name === "GEMINI_KEY") return "GEMINI_API_KEY";
+  const name = String(rawName || "")
+    .trim()
+    .toUpperCase();
+  if (name === "GEMINI" || name === "GOOGLE_GEMINI" || name === "GEMINI_KEY")
+    return "GEMINI_API_KEY";
   if (name === "OPENAI" || name === "OPENAI_KEY") return "OPENAI_API_KEY";
   if (name === "DEEPSEEK" || name === "DEEPSEEK_KEY") return "DEEPSEEK_API_KEY";
-  if (name === "CLAUDE" || name === "ANTHROPIC" || name === "ANTHROPIC_API_KEY" || name === "CLAUDE_KEY") return "CLAUDE_API_KEY";
-  if (name === "TWELVE" || name === "TWELVEDATA" || name === "TWELVE_DATA" || name === "TWELVE_DATA_KEY") return "TWELVE_DATA_API_KEY";
+  if (
+    name === "CLAUDE" ||
+    name === "ANTHROPIC" ||
+    name === "ANTHROPIC_API_KEY" ||
+    name === "CLAUDE_KEY"
+  )
+    return "CLAUDE_API_KEY";
+  if (
+    name === "TWELVE" ||
+    name === "TWELVEDATA" ||
+    name === "TWELVE_DATA" ||
+    name === "TWELVE_DATA_KEY"
+  )
+    return "TWELVE_DATA_API_KEY";
   return name;
 }
 
 function hashApiKey(raw) {
-  return crypto.createHash("sha256").update(String(raw || ""), "utf8").digest("hex");
+  return crypto
+    .createHash("sha256")
+    .update(String(raw || ""), "utf8")
+    .digest("hex");
 }
 
 function timingSafeEqHex(aHex, bHex) {
@@ -1445,7 +1840,8 @@ function parseLegacyUiAuthStateFromFile() {
       password_salt: passwordSalt,
       password_hash: passwordHash,
       updated_at: parsed.updated_at || new Date().toISOString(),
-      created_at: parsed.created_at || parsed.updated_at || new Date().toISOString(),
+      created_at:
+        parsed.created_at || parsed.updated_at || new Date().toISOString(),
     };
   } catch {
     return null;
@@ -1517,7 +1913,8 @@ async function uiReadAuthStateByUserId(userIdRaw) {
 
 async function uiWriteAuthState(nextState) {
   const b = await mt5Backend();
-  if (!b.upsertUiAuthUser) throw new Error("UI auth storage is not supported by the current backend");
+  if (!b.upsertUiAuthUser)
+    throw new Error("UI auth storage is not supported by the current backend");
   await b.upsertUiAuthUser({
     user_id: String(nextState.user_id || CFG.mt5DefaultUserId),
     email: normalizeEmail(nextState.email),
@@ -1526,26 +1923,38 @@ async function uiWriteAuthState(nextState) {
     is_active: normalizeUserActive(nextState.is_active, true),
     password_salt: String(nextState.password_salt || ""),
     password_hash: String(nextState.password_hash || ""),
-    updated_at: normalizeIsoTimestamp(nextState.updated_at, new Date().toISOString()),
+    updated_at: normalizeIsoTimestamp(
+      nextState.updated_at,
+      new Date().toISOString(),
+    ),
     created_at: normalizeIsoTimestamp(nextState.created_at, mt5NowIso()),
   });
 }
 
 async function uiAuthUpdateProfile(sess, patch = {}) {
-  const state = await uiReadAuthStateByUserId(sess.user_id) || await uiReadAuthStateByEmail(sess.email);
+  const state =
+    (await uiReadAuthStateByUserId(sess.user_id)) ||
+    (await uiReadAuthStateByEmail(sess.email));
   if (!state) return { ok: false, error: "User not found" };
-  const nextName = String((patch.name ?? patch.name ?? state.name ?? "")).trim();
+  const nextName = String(patch.name ?? patch.name ?? state.name ?? "").trim();
   const nextEmail = normalizeEmail(patch.email ?? state.email);
   if (!nextName) return { ok: false, error: "Name is required" };
-  if (!isValidEmail(nextEmail)) return { ok: false, error: "Valid email is required" };
+  if (!isValidEmail(nextEmail))
+    return { ok: false, error: "Valid email is required" };
 
   const duplicate = await uiReadAuthStateByEmail(nextEmail);
-  if (duplicate && String(duplicate.user_id || "") !== String(state.user_id || "")) {
+  if (
+    duplicate &&
+    String(duplicate.user_id || "") !== String(state.user_id || "")
+  ) {
     return { ok: false, error: "Email is already used by another user" };
   }
 
   const duplicateName = await uiReadAuthStateByName(nextName);
-  if (duplicateName && String(duplicateName.user_id || "") !== String(state.user_id || "")) {
+  if (
+    duplicateName &&
+    String(duplicateName.user_id || "") !== String(state.user_id || "")
+  ) {
     return { ok: false, error: "Name is already taken" };
   }
 
@@ -1566,7 +1975,8 @@ async function uiAuthUpdateProfile(sess, patch = {}) {
 
 async function uiListUsers() {
   const b = await mt5Backend();
-  if (!b.listUiUsers) throw new Error("User listing is not supported by the current backend");
+  if (!b.listUiUsers)
+    throw new Error("User listing is not supported by the current backend");
   const rows = await b.listUiUsers();
   return (Array.isArray(rows) ? rows : []).map(uiPublicUserView);
 }
@@ -1577,10 +1987,13 @@ async function uiCreateUser(payload = {}) {
   const role = normalizeUserRole(payload.role || "User");
   const password = String(payload.password || "");
   if (!name) return { ok: false, error: "Name is required" };
-  if (!isValidEmail(email)) return { ok: false, error: "Valid email is required" };
-  if (password.length < 8) return { ok: false, error: "Password must be at least 8 characters" };
+  if (!isValidEmail(email))
+    return { ok: false, error: "Valid email is required" };
+  if (password.length < 8)
+    return { ok: false, error: "Password must be at least 8 characters" };
   const duplicateEmail = await uiReadAuthStateByEmail(email);
-  if (duplicateEmail) return { ok: false, error: "Email is already used by another user" };
+  if (duplicateEmail)
+    return { ok: false, error: "Email is already used by another user" };
   const duplicateName = await uiReadAuthStateByName(name);
   if (duplicateName) return { ok: false, error: "Name is already taken" };
   let userId = String(payload.user_id || "").trim();
@@ -1610,7 +2023,15 @@ async function uiCreateUser(payload = {}) {
   });
   return {
     ok: true,
-    user: uiPublicUserView({ user_id: userId, name: name, email, role, is_active: true, updated_at: now, created_at: now }),
+    user: uiPublicUserView({
+      user_id: userId,
+      name: name,
+      email,
+      role,
+      is_active: true,
+      updated_at: now,
+      created_at: now,
+    }),
   };
 }
 
@@ -1619,12 +2040,18 @@ async function uiUpdateUserById(userIdRaw, payload = {}) {
   if (!userId) return { ok: false, error: "user_id is required" };
   const current = await uiReadAuthStateByUserId(userId);
   if (!current) return { ok: false, error: "User not found" };
-  const nextName = String((payload.name ?? payload.name ?? current.name ?? "")).trim();
+  const nextName = String(
+    payload.name ?? payload.name ?? current.name ?? "",
+  ).trim();
   const nextEmail = normalizeEmail(payload.email ?? current.email);
   const nextRole = normalizeUserRole(payload.role ?? current.role);
-  const nextActive = normalizeUserActive(payload.is_active ?? payload.isActive ?? current.is_active, true);
+  const nextActive = normalizeUserActive(
+    payload.is_active ?? payload.isActive ?? current.is_active,
+    true,
+  );
   if (!nextName) return { ok: false, error: "Name is required" };
-  if (!isValidEmail(nextEmail)) return { ok: false, error: "Valid email is required" };
+  if (!isValidEmail(nextEmail))
+    return { ok: false, error: "Valid email is required" };
   const duplicate = await uiReadAuthStateByEmail(nextEmail);
   if (duplicate && String(duplicate.user_id || "") !== userId) {
     return { ok: false, error: "Email is already used by another user" };
@@ -1634,12 +2061,17 @@ async function uiUpdateUserById(userIdRaw, payload = {}) {
     return { ok: false, error: "Name is already taken" };
   }
   const isDefaultUser = userId === String(CFG.mt5DefaultUserId);
-  const password = payload.password === undefined ? "" : String(payload.password || "");
+  const password =
+    payload.password === undefined ? "" : String(payload.password || "");
   if (payload.password !== undefined && password && password.length < 8) {
     return { ok: false, error: "Password must be at least 8 characters" };
   }
-  const salt = payload.password ? makeSaltHex() : String(current.password_salt || "");
-  const hash = payload.password ? hashPassword(password, salt) : String(current.password_hash || "");
+  const salt = payload.password
+    ? makeSaltHex()
+    : String(current.password_salt || "");
+  const hash = payload.password
+    ? hashPassword(password, salt)
+    : String(current.password_hash || "");
   const next = {
     user_id: userId,
     name: nextName,
@@ -1659,7 +2091,11 @@ async function uiDeleteUserById(userIdRaw) {
   const userId = String(userIdRaw || "").trim();
   if (!userId) return { ok: false, error: "user_id is required" };
   const b = await mt5Backend();
-  if (!b.deleteUiAuthUserById) return { ok: false, error: "User deletion is not supported by the current backend" };
+  if (!b.deleteUiAuthUserById)
+    return {
+      ok: false,
+      error: "User deletion is not supported by the current backend",
+    };
   return b.deleteUiAuthUserById(userId);
 }
 
@@ -1683,28 +2119,52 @@ async function uiUpsertUserAccount(userIdRaw, payload = {}) {
   if (!userId) return { ok: false, error: "user_id is required" };
   const user = await uiReadAuthStateByUserId(userId);
   if (!user) return { ok: false, error: "User not found" };
-  const accountId = String(payload.account_id || payload.accountId || crypto.randomUUID()).trim();
+  const accountId = String(
+    payload.account_id || payload.accountId || crypto.randomUUID(),
+  ).trim();
   const name = String(payload.name || "").trim();
   if (!accountId) return { ok: false, error: "account_id is required" };
   if (!name) return { ok: false, error: "Account name is required" };
   const b = await mt5Backend();
-  if (!b.upsertUserAccount) return { ok: false, error: "Account management is not supported by this backend" };
+  if (!b.upsertUserAccount)
+    return {
+      ok: false,
+      error: "Account management is not supported by this backend",
+    };
   const row = await b.upsertUserAccount(userId, {
     account_id: accountId,
     name,
-    balance: payload.balance === null || payload.balance === undefined || payload.balance === "" ? null : Number(payload.balance),
+    balance:
+      payload.balance === null ||
+      payload.balance === undefined ||
+      payload.balance === ""
+        ? null
+        : Number(payload.balance),
     status: String(payload.status || ""),
-    metadata: payload.metadata && typeof payload.metadata === "object" ? payload.metadata : null,
+    metadata:
+      payload.metadata && typeof payload.metadata === "object"
+        ? payload.metadata
+        : null,
   });
-  return { ok: true, account: uiPublicAccountView(row || { account_id: accountId, user_id: userId, name }) };
+  return {
+    ok: true,
+    account: uiPublicAccountView(
+      row || { account_id: accountId, user_id: userId, name },
+    ),
+  };
 }
 
 async function uiDeleteUserAccount(userIdRaw, accountIdRaw) {
   const userId = String(userIdRaw || "").trim();
   const accountId = String(accountIdRaw || "").trim();
-  if (!userId || !accountId) return { ok: false, error: "user_id and account_id are required" };
+  if (!userId || !accountId)
+    return { ok: false, error: "user_id and account_id are required" };
   const b = await mt5Backend();
-  if (!b.deleteUserAccount) return { ok: false, error: "Account management is not supported by this backend" };
+  if (!b.deleteUserAccount)
+    return {
+      ok: false,
+      error: "Account management is not supported by this backend",
+    };
   await b.deleteUserAccount(userId, accountId);
   return { ok: true };
 }
@@ -1712,7 +2172,8 @@ async function uiDeleteUserAccount(userIdRaw, accountIdRaw) {
 async function uiEnsureAuthBootstrap() {
   const targetEmail = normalizeEmail(CFG.uiBootstrapEmail);
   const existing = await uiReadAuthStateByEmail(targetEmail);
-  if (existing && existing.password_salt && existing.password_hash) return existing;
+  if (existing && existing.password_salt && existing.password_hash)
+    return existing;
 
   const legacy = parseLegacyUiAuthStateFromFile();
   const seed = legacy || uiDefaultAuthState(targetEmail);
@@ -1745,16 +2206,32 @@ function parseCookies(req) {
 }
 
 function setUiSessionCookie(res, token) {
-  const ttl = Math.max(300, Number.isFinite(CFG.uiSessionTtlSeconds) ? CFG.uiSessionTtlSeconds : 60 * 60 * 24 * 7);
-  res.setHeader("Set-Cookie", `tvb_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${ttl}`);
+  const ttl = Math.max(
+    300,
+    Number.isFinite(CFG.uiSessionTtlSeconds)
+      ? CFG.uiSessionTtlSeconds
+      : 60 * 60 * 24 * 7,
+  );
+  res.setHeader(
+    "Set-Cookie",
+    `tvb_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${ttl}`,
+  );
 }
 
 function clearUiSessionCookie(res) {
-  res.setHeader("Set-Cookie", "tvb_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+  res.setHeader(
+    "Set-Cookie",
+    "tvb_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+  );
 }
 
 function createUiSession(user) {
-  const ttl = Math.max(300, Number.isFinite(CFG.uiSessionTtlSeconds) ? CFG.uiSessionTtlSeconds : 60 * 60 * 24 * 7);
+  const ttl = Math.max(
+    300,
+    Number.isFinite(CFG.uiSessionTtlSeconds)
+      ? CFG.uiSessionTtlSeconds
+      : 60 * 60 * 24 * 7,
+  );
   const token = crypto.randomBytes(32).toString("hex");
   const email = normalizeEmail(user?.email || "");
   const userId = String(user?.user_id || CFG.mt5DefaultUserId);
@@ -1789,16 +2266,50 @@ function getUiSessionFromReq(req) {
   }
   const cookies = parseCookies(req);
   const token = String(cookies.tvb_session || "");
-  if (!token) return { ok: false, email: "", token: "", user_id: "", name: "", role: "", is_active: false };
+  if (!token)
+    return {
+      ok: false,
+      email: "",
+      token: "",
+      user_id: "",
+      name: "",
+      role: "",
+      is_active: false,
+    };
   const sess = UI_SESSIONS.get(token);
-  if (!sess) return { ok: false, email: "", token, user_id: "", name: "", role: "", is_active: false };
+  if (!sess)
+    return {
+      ok: false,
+      email: "",
+      token,
+      user_id: "",
+      name: "",
+      role: "",
+      is_active: false,
+    };
   if (Number(sess.expires_at || 0) <= nowUnixSec()) {
     UI_SESSIONS.delete(token);
-    return { ok: false, email: "", token, user_id: "", name: "", role: "", is_active: false };
+    return {
+      ok: false,
+      email: "",
+      token,
+      user_id: "",
+      name: "",
+      role: "",
+      is_active: false,
+    };
   }
   if (!normalizeUserActive(sess.is_active, true)) {
     UI_SESSIONS.delete(token);
-    return { ok: false, email: "", token, user_id: "", name: "", role: "", is_active: false };
+    return {
+      ok: false,
+      email: "",
+      token,
+      user_id: "",
+      name: "",
+      role: "",
+      is_active: false,
+    };
   }
   return {
     ok: true,
@@ -1823,7 +2334,10 @@ async function uiAuthGetVerifiedUser(emailRaw, passwordRaw) {
     if (!bootstrapState) return null;
     return {
       user_id: String(bootstrapState.user_id || CFG.mt5DefaultUserId),
-      name: String(bootstrapState.name || fallbackNameFromEmail(bootstrapState.email || email)),
+      name: String(
+        bootstrapState.name ||
+          fallbackNameFromEmail(bootstrapState.email || email),
+      ),
       email: normalizeEmail(bootstrapState.email || email),
       role: normalizeUserRole(bootstrapState.role || UI_ROLE_SYSTEM),
       is_active: true,
@@ -1833,7 +2347,10 @@ async function uiAuthGetVerifiedUser(emailRaw, passwordRaw) {
   if (!state) return null;
   if (!normalizeUserActive(state.is_active, true)) return null;
   if (!email || email !== normalizeEmail(state.email)) return null;
-  const actualHash = hashPassword(String(passwordRaw || ""), state.password_salt);
+  const actualHash = hashPassword(
+    String(passwordRaw || ""),
+    state.password_salt,
+  );
   const dbPasswordOk = timingSafeEqHex(actualHash, state.password_hash);
   if (!dbPasswordOk) return null;
   return {
@@ -1849,9 +2366,14 @@ async function uiAuthGetVerifiedUser(emailRaw, passwordRaw) {
 async function uiAuthChangePassword(emailRaw, currentPassword, newPassword) {
   const state = await uiReadAuthStateByEmail(emailRaw);
   if (!state) return { ok: false, error: "User not found" };
-  const currentHash = hashPassword(String(currentPassword || ""), state.password_salt);
-  if (!timingSafeEqHex(currentHash, state.password_hash)) return { ok: false, error: "Current password is incorrect" };
-  if (String(newPassword || "").length < 8) return { ok: false, error: "New password must be at least 8 characters" };
+  const currentHash = hashPassword(
+    String(currentPassword || ""),
+    state.password_salt,
+  );
+  if (!timingSafeEqHex(currentHash, state.password_hash))
+    return { ok: false, error: "Current password is incorrect" };
+  if (String(newPassword || "").length < 8)
+    return { ok: false, error: "New password must be at least 8 characters" };
   const nextSalt = makeSaltHex();
   const next = {
     user_id: String(state.user_id || CFG.mt5DefaultUserId),
@@ -1900,7 +2422,9 @@ function serveUiFile(res, filePath, method = "GET") {
   const headers = {
     "Content-Type": contentTypeByExt(filePath),
     "Content-Length": body.length,
-    "Cache-Control": filePath.endsWith(".html") ? "no-store" : "public, max-age=86400",
+    "Cache-Control": filePath.endsWith(".html")
+      ? "no-store"
+      : "public, max-age=86400",
   };
   res.writeHead(200, headers);
   if (method === "HEAD") {
@@ -1923,22 +2447,41 @@ function ensureAiContextFileDir() {
 }
 
 function sanitizeSnapshotToken(value, fallback = "chart") {
-  const raw = String(value || fallback).trim().toUpperCase();
-  const token = raw.replace(/[^A-Z0-9:_-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+  const raw = String(value || fallback)
+    .trim()
+    .toUpperCase();
+  const token = raw
+    .replace(/[^A-Z0-9:_-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
   return token || fallback;
 }
 
 function sanitizeSnapshotFileToken(value, fallback = "chart") {
-  const raw = String(value || fallback).trim().toUpperCase();
-  const token = raw.replace(/[^A-Z0-9_-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+  const raw = String(value || fallback)
+    .trim()
+    .toUpperCase();
+  const token = raw
+    .replace(/[^A-Z0-9_-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
   return token || fallback;
 }
 
 function sanitizeSessionPrefix(value, fallback = "") {
-  const raw = String(value || "").trim().toUpperCase();
-  const token = raw.replace(/[^A-Z0-9_-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase();
+  const token = raw
+    .replace(/[^A-Z0-9_-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
   if (token) return token.slice(0, 32);
-  return String(fallback || "").trim().toUpperCase().replace(/[^A-Z0-9_-]+/g, "_").slice(0, 32);
+  return String(fallback || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]+/g, "_")
+    .slice(0, 32);
 }
 
 function normalizePublicSidBase(raw, fallbackPrefix = "ID") {
@@ -1949,7 +2492,10 @@ function normalizePublicSidBase(raw, fallbackPrefix = "ID") {
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");
   if (cleaned) return cleaned.slice(0, 48);
-  return `${String(fallbackPrefix || "ID").toUpperCase()}_${snapshotTimestampToken(Date.now()).replace(/[^0-9_]/g, "")}`.slice(0, 48);
+  return `${String(fallbackPrefix || "ID").toUpperCase()}_${snapshotTimestampToken(Date.now()).replace(/[^0-9_]/g, "")}`.slice(
+    0,
+    48,
+  );
 }
 
 function snapshotTimestampToken(dateLike = Date.now()) {
@@ -1963,7 +2509,9 @@ function snapshotTimestampToken(dateLike = Date.now()) {
 }
 
 function toTradingViewInterval(tfRaw) {
-  const tf = String(tfRaw || "5").trim().toLowerCase();
+  const tf = String(tfRaw || "5")
+    .trim()
+    .toLowerCase();
   if (!tf) return "5";
   if (/^\d+$/.test(tf)) return tf;
   if (tf.endsWith("m")) return tf.slice(0, -1) || "5";
@@ -1975,22 +2523,34 @@ function toTradingViewInterval(tfRaw) {
 }
 
 function toTradingViewSymbol(inputSymbol, provider) {
-  const raw = String(inputSymbol || "").trim().toUpperCase();
+  const raw = String(inputSymbol || "")
+    .trim()
+    .toUpperCase();
   if (!raw) return "BINANCE:BTCUSDT";
   if (raw.includes(":")) return raw;
-  const prov = String(provider || "").trim().toUpperCase();
+  const prov = String(provider || "")
+    .trim()
+    .toUpperCase();
   if (prov) return `${prov}:${raw}`;
   return `BINANCE:${raw}`;
 }
 
 function cleanTvHtmlMarker(text) {
-  return String(text || "").replace(/<\/?em>/gi, "").trim();
+  return String(text || "")
+    .replace(/<\/?em>/gi, "")
+    .trim();
 }
 
-async function fetchTradingViewSymbolSearch(textRaw, exchangeRaw = "", limitRaw = 10) {
+async function fetchTradingViewSymbolSearch(
+  textRaw,
+  exchangeRaw = "",
+  limitRaw = 10,
+) {
   const text = String(textRaw || "").trim();
   if (!text) return [];
-  const exchange = String(exchangeRaw || "").trim().toUpperCase();
+  const exchange = String(exchangeRaw || "")
+    .trim()
+    .toUpperCase();
   const limit = Math.max(1, Math.min(Number(limitRaw || 10) || 10, 50));
   const qs = new URLSearchParams({
     text,
@@ -2007,22 +2567,26 @@ async function fetchTradingViewSymbolSearch(textRaw, exchangeRaw = "", limitRaw 
       signal: ctrl.signal,
       headers: {
         "User-Agent": "Mozilla/5.0",
-        "Origin": "https://www.tradingview.com",
-        "Referer": "https://www.tradingview.com/",
-        "Accept": "application/json,text/plain,*/*",
+        Origin: "https://www.tradingview.com",
+        Referer: "https://www.tradingview.com/",
+        Accept: "application/json,text/plain,*/*",
       },
     });
     if (!res.ok) return [];
     const out = await res.json().catch(() => []);
     if (!Array.isArray(out)) return [];
     return out.slice(0, limit).map((row) => {
-      const prefix = String(row?.prefix || row?.source_id || row?.exchange || "").toUpperCase();
+      const prefix = String(
+        row?.prefix || row?.source_id || row?.exchange || "",
+      ).toUpperCase();
       const symbol = cleanTvHtmlMarker(row?.symbol || "");
       return {
         symbol,
         prefix,
         full_symbol: prefix && symbol ? `${prefix}:${symbol}` : symbol,
-        exchange: String(row?.exchange || row?.source2?.name || row?.source_id || "").trim(),
+        exchange: String(
+          row?.exchange || row?.source2?.name || row?.source_id || "",
+        ).trim(),
         description: cleanTvHtmlMarker(row?.description || ""),
         type: String(row?.type || ""),
         provider_id: String(row?.provider_id || ""),
@@ -2037,37 +2601,59 @@ async function fetchTradingViewSymbolSearch(textRaw, exchangeRaw = "", limitRaw 
 }
 
 async function resolveTradingViewSymbolForCapture(inputSymbol, provider) {
-  const raw = String(inputSymbol || "").trim().toUpperCase();
+  const raw = String(inputSymbol || "")
+    .trim()
+    .toUpperCase();
   if (!raw) return "BINANCE:BTCUSDT";
   if (raw.includes(":")) return raw;
-  const preferred = String(provider || "ICMARKETS").trim().toUpperCase();
-  const exactInPreferred = await fetchTradingViewSymbolSearch(raw, preferred, 8);
-  const preferredExact = exactInPreferred.find((x) => String(x.symbol || "").toUpperCase() === raw);
-  if (preferredExact?.full_symbol) return preferredExact.full_symbol.toUpperCase();
-  if (exactInPreferred[0]?.full_symbol) return String(exactInPreferred[0].full_symbol).toUpperCase();
+  const preferred = String(provider || "ICMARKETS")
+    .trim()
+    .toUpperCase();
+  const exactInPreferred = await fetchTradingViewSymbolSearch(
+    raw,
+    preferred,
+    8,
+  );
+  const preferredExact = exactInPreferred.find(
+    (x) => String(x.symbol || "").toUpperCase() === raw,
+  );
+  if (preferredExact?.full_symbol)
+    return preferredExact.full_symbol.toUpperCase();
+  if (exactInPreferred[0]?.full_symbol)
+    return String(exactInPreferred[0].full_symbol).toUpperCase();
   const anyMatches = await fetchTradingViewSymbolSearch(raw, "", 8);
-  const anyExact = anyMatches.find((x) => String(x.symbol || "").toUpperCase() === raw);
+  const anyExact = anyMatches.find(
+    (x) => String(x.symbol || "").toUpperCase() === raw,
+  );
   if (anyExact?.full_symbol) return anyExact.full_symbol.toUpperCase();
-  if (anyMatches[0]?.full_symbol) return String(anyMatches[0].full_symbol).toUpperCase();
+  if (anyMatches[0]?.full_symbol)
+    return String(anyMatches[0].full_symbol).toUpperCase();
   return toTradingViewSymbol(raw, preferred || "ICMARKETS");
 }
 
 function loadPlaywrightMaybe() {
   try {
     return require("playwright");
-  } catch { }
+  } catch {}
   try {
-    return require(path.join(__dirname, "..", "web-ui", "node_modules", "playwright"));
-  } catch { }
+    return require(
+      path.join(__dirname, "..", "web-ui", "node_modules", "playwright"),
+    );
+  } catch {}
   return null;
 }
 
 function resolvePlaywrightChromiumExecutablePath() {
-  const fromEnv = String(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || process.env.PLAYWRIGHT_EXECUTABLE_PATH || "").trim();
+  const fromEnv = String(
+    process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ||
+      process.env.PLAYWRIGHT_EXECUTABLE_PATH ||
+      "",
+  ).trim();
   if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
   try {
     const base = "/root/.cache/ms-playwright";
-    const entries = fs.readdirSync(base, { withFileTypes: true })
+    const entries = fs
+      .readdirSync(base, { withFileTypes: true })
       .filter((d) => d.isDirectory() && /^chromium-\d+$/.test(d.name))
       .map((d) => d.name)
       .sort((a, b) => {
@@ -2084,26 +2670,41 @@ function resolvePlaywrightChromiumExecutablePath() {
         if (fs.existsSync(candidate)) return candidate;
       }
     }
-  } catch { }
+  } catch {}
   return "";
 }
 
 async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
   ensureChartSnapshotDir();
-  const symbol = await resolveTradingViewSymbolForCapture(opts.symbol, opts.provider);
+  const symbol = await resolveTradingViewSymbolForCapture(
+    opts.symbol,
+    opts.provider,
+  );
   const interval = toTradingViewInterval(opts.timeframe || opts.tf);
   const width = Math.max(480, Math.min(Number(opts.width || 960) || 960, 2400));
-  const height = Math.max(270, Math.min(Number(opts.height || 540) || 540, 1600));
-  const theme = String(opts.theme || "dark").toLowerCase() === "light" ? "light" : "dark";
-  const lookbackBars = Math.max(50, Math.min(Number(opts.lookbackBars || 300) || 300, 5000));
+  const height = Math.max(
+    270,
+    Math.min(Number(opts.height || 540) || 540, 1600),
+  );
+  const theme =
+    String(opts.theme || "dark").toLowerCase() === "light" ? "light" : "dark";
+  const lookbackBars = Math.max(
+    50,
+    Math.min(Number(opts.lookbackBars || 300) || 300, 5000),
+  );
   const outFormatRaw = String(opts.format || "jpg").toLowerCase();
   const outFormat = outFormatRaw === "png" ? "png" : "jpg";
-  const jpgQuality = Math.max(20, Math.min(Number(opts.quality || 55) || 55, 95));
+  const jpgQuality = Math.max(
+    20,
+    Math.min(Number(opts.quality || 55) || 55, 95),
+  );
 
   const ts = Date.now();
   const symbolToken = sanitizeSnapshotFileToken(symbol);
   const tfToken = sanitizeSnapshotFileToken(interval, "TF");
-  const sessionPrefix = sanitizeSessionPrefix(opts.session_prefix || opts.sessionPrefix || "");
+  const sessionPrefix = sanitizeSessionPrefix(
+    opts.session_prefix || opts.sessionPrefix || "",
+  );
   const userId = String(opts.userId || "").trim();
   const userPrefix = userId ? `UID_${userId}_` : "";
   const baseName = sessionPrefix
@@ -2117,7 +2718,10 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
     outPath = path.join(CHART_SNAPSHOT_DIR, fileName);
     dupIdx += 1;
   }
-  const context = await browser.newContext({ viewport: { width: width + 24, height: height + 64 }, deviceScaleFactor: 1 });
+  const context = await browser.newContext({
+    viewport: { width: width + 24, height: height + 64 },
+    deviceScaleFactor: 1,
+  });
   try {
     const page = await context.newPage();
     await page.setContent(
@@ -2161,7 +2765,9 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
       `,
       { waitUntil: "domcontentloaded" },
     );
-    await page.waitForFunction(() => window.__tvReady === true, { timeout: 15000 });
+    await page.waitForFunction(() => window.__tvReady === true, {
+      timeout: 15000,
+    });
     let intervalSec = 300;
     try {
       intervalSec = await page.evaluate((tvInterval) => {
@@ -2177,33 +2783,47 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
       intervalSec = 300;
     }
     try {
-      await page.evaluate(({ bars, sec }) => {
-        function applyRange() {
-          try {
-            const chart = window?.TradingView?.widget?.activeChart ? window.TradingView.widget.activeChart() : null;
-            if (!chart || typeof chart.setVisibleRange !== "function") {
+      await page.evaluate(
+        ({ bars, sec }) => {
+          function applyRange() {
+            try {
+              const chart = window?.TradingView?.widget?.activeChart
+                ? window.TradingView.widget.activeChart()
+                : null;
+              if (!chart || typeof chart.setVisibleRange !== "function") {
+                window.__tvShotReady = true;
+                return;
+              }
+              const to = Math.floor(Date.now() / 1000);
+              const from = Math.max(
+                0,
+                to -
+                  Math.max(50, Number(bars) || 300) *
+                    Math.max(60, Number(sec) || 300),
+              );
+              chart.setVisibleRange({ from, to });
+              setTimeout(() => {
+                window.__tvShotReady = true;
+              }, 900);
+            } catch {
               window.__tvShotReady = true;
-              return;
             }
-            const to = Math.floor(Date.now() / 1000);
-            const from = Math.max(0, to - Math.max(50, Number(bars) || 300) * Math.max(60, Number(sec) || 300));
-            chart.setVisibleRange({ from, to });
-            setTimeout(() => { window.__tvShotReady = true; }, 900);
-          } catch {
-            window.__tvShotReady = true;
           }
-        }
-        if (window?.TradingView?.widget?.onChartReady) {
-          window.TradingView.widget.onChartReady(applyRange);
-        } else {
-          setTimeout(applyRange, 700);
-        }
-      }, { bars: lookbackBars, sec: intervalSec });
+          if (window?.TradingView?.widget?.onChartReady) {
+            window.TradingView.widget.onChartReady(applyRange);
+          } else {
+            setTimeout(applyRange, 700);
+          }
+        },
+        { bars: lookbackBars, sec: intervalSec },
+      );
     } catch {
       // page may still be renderable even if evaluate step fails
     }
     try {
-      await page.waitForFunction(() => window.__tvShotReady === true, { timeout: 12000 });
+      await page.waitForFunction(() => window.__tvShotReady === true, {
+        timeout: 12000,
+      });
     } catch {
       await page.waitForTimeout(1800);
     }
@@ -2215,9 +2835,20 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
     for (let i = 0; i < 2 && !shotOk; i += 1) {
       try {
         if (outFormat === "png") {
-          await root.screenshot({ path: outPath, type: "png", animations: "disabled", timeout: 20000 });
+          await root.screenshot({
+            path: outPath,
+            type: "png",
+            animations: "disabled",
+            timeout: 20000,
+          });
         } else {
-          await root.screenshot({ path: outPath, type: "jpeg", quality: jpgQuality, animations: "disabled", timeout: 20000 });
+          await root.screenshot({
+            path: outPath,
+            type: "jpeg",
+            quality: jpgQuality,
+            animations: "disabled",
+            timeout: 20000,
+          });
         }
         shotOk = true;
       } catch (e) {
@@ -2231,13 +2862,32 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
         const el = document.querySelector("#tv-root");
         if (!el) return null;
         const r = el.getBoundingClientRect();
-        return { x: Math.max(0, Math.floor(r.left)), y: Math.max(0, Math.floor(r.top)), width: Math.max(1, Math.floor(r.width)), height: Math.max(1, Math.floor(r.height)) };
+        return {
+          x: Math.max(0, Math.floor(r.left)),
+          y: Math.max(0, Math.floor(r.top)),
+          width: Math.max(1, Math.floor(r.width)),
+          height: Math.max(1, Math.floor(r.height)),
+        };
       });
-      if (!box) throw (lastShotErr || new Error("Chart root not found for screenshot"));
+      if (!box)
+        throw lastShotErr || new Error("Chart root not found for screenshot");
       if (outFormat === "png") {
-        await page.screenshot({ path: outPath, type: "png", clip: box, animations: "disabled", timeout: 20000 });
+        await page.screenshot({
+          path: outPath,
+          type: "png",
+          clip: box,
+          animations: "disabled",
+          timeout: 20000,
+        });
       } else {
-        await page.screenshot({ path: outPath, type: "jpeg", quality: jpgQuality, clip: box, animations: "disabled", timeout: 20000 });
+        await page.screenshot({
+          path: outPath,
+          type: "jpeg",
+          quality: jpgQuality,
+          clip: box,
+          animations: "disabled",
+          timeout: 20000,
+        });
       }
     }
 
@@ -2251,14 +2901,32 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
           const el = document.querySelector("#tv-root");
           if (!el) return null;
           const r = el.getBoundingClientRect();
-          return { x: Math.max(0, Math.floor(r.left)), y: Math.max(0, Math.floor(r.top)), width: Math.max(1, Math.floor(r.width)), height: Math.max(1, Math.floor(r.height)) };
+          return {
+            x: Math.max(0, Math.floor(r.left)),
+            y: Math.max(0, Math.floor(r.top)),
+            width: Math.max(1, Math.floor(r.width)),
+            height: Math.max(1, Math.floor(r.height)),
+          };
         });
         if (box) {
           try {
             if (outFormat === "png") {
-              await page.screenshot({ path: outPath, type: "png", clip: box, animations: "disabled", timeout: 20000 });
+              await page.screenshot({
+                path: outPath,
+                type: "png",
+                clip: box,
+                animations: "disabled",
+                timeout: 20000,
+              });
             } else {
-              await page.screenshot({ path: outPath, type: "jpeg", quality: jpgQuality, clip: box, animations: "disabled", timeout: 20000 });
+              await page.screenshot({
+                path: outPath,
+                type: "jpeg",
+                quality: jpgQuality,
+                clip: box,
+                animations: "disabled",
+                timeout: 20000,
+              });
             }
           } catch (screenErr) {
             lastShotErr = screenErr;
@@ -2288,7 +2956,10 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
           height: Math.max(1, Number(r.height || 0)),
         };
       });
-      if (!box) throw (lastShotErr || new Error("Chart root not found for CDP screenshot"));
+      if (!box)
+        throw (
+          lastShotErr || new Error("Chart root not found for CDP screenshot")
+        );
       const cdp = await context.newCDPSession(page);
       const shot = await cdp.send("Page.captureScreenshot", {
         format: outFormat === "png" ? "png" : "jpeg",
@@ -2303,11 +2974,14 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
           scale: 1,
         },
       });
-      if (!shot?.data) throw (lastShotErr || new Error("CDP screenshot returned empty payload"));
+      if (!shot?.data)
+        throw lastShotErr || new Error("CDP screenshot returned empty payload");
       fs.writeFileSync(outPath, Buffer.from(String(shot.data), "base64"));
     }
   } finally {
-    try { await context.close(); } catch { }
+    try {
+      await context.close();
+    } catch {}
   }
 
   const st = fs.statSync(outPath);
@@ -2330,16 +3004,20 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
 
 function isLikelyChromiumCrash(error) {
   const msg = String(error?.message || error || "").toLowerCase();
-  return msg.includes("target crashed")
-    || msg.includes("page crashed")
-    || msg.includes("browser has been closed")
-    || msg.includes("target page, context or browser has been closed");
+  return (
+    msg.includes("target crashed") ||
+    msg.includes("page crashed") ||
+    msg.includes("browser has been closed") ||
+    msg.includes("target page, context or browser has been closed")
+  );
 }
 
 async function captureTradingViewSnapshot(opts = {}) {
   const playwright = loadPlaywrightMaybe();
   if (!playwright || !playwright.chromium) {
-    throw new Error("Playwright not found. Install in webhook or web-ui workspace.");
+    throw new Error(
+      "Playwright not found. Install in webhook or web-ui workspace.",
+    );
   }
   const executablePath = resolvePlaywrightChromiumExecutablePath();
   let lastErr = null;
@@ -2347,7 +3025,13 @@ async function captureTradingViewSnapshot(opts = {}) {
     const browser = await playwright.chromium.launch({
       headless: true,
       executablePath: executablePath || undefined,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--no-zygote"],
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--no-zygote",
+      ],
     });
     try {
       return await captureTradingViewSnapshotWithBrowser(browser, opts);
@@ -2368,7 +3052,9 @@ async function captureTradingViewSnapshot(opts = {}) {
 async function captureTradingViewSnapshotsBatch(opts = {}) {
   const playwright = loadPlaywrightMaybe();
   if (!playwright || !playwright.chromium) {
-    throw new Error("Playwright not found. Install in webhook or web-ui workspace.");
+    throw new Error(
+      "Playwright not found. Install in webhook or web-ui workspace.",
+    );
   }
   const inputTfs = Array.isArray(opts.timeframes) ? opts.timeframes : [];
   const normalized = inputTfs
@@ -2376,13 +3062,28 @@ async function captureTradingViewSnapshotsBatch(opts = {}) {
     .filter(Boolean)
     .slice(0, 10);
   const timeframes = normalized.length ? normalized : ["15m", "4h", "1D"];
-  const requestedConcurrency = Math.max(1, Math.min(3, Math.floor(asNum(opts.captureConcurrency, asNum(process.env.SNAPSHOT_CAPTURE_CONCURRENCY, 1)))));
+  const requestedConcurrency = Math.max(
+    1,
+    Math.min(
+      3,
+      Math.floor(
+        asNum(
+          opts.captureConcurrency,
+          asNum(process.env.SNAPSHOT_CAPTURE_CONCURRENCY, 1),
+        ),
+      ),
+    ),
+  );
   const concurrency = Math.min(requestedConcurrency, timeframes.length);
   const executablePath = resolvePlaywrightChromiumExecutablePath();
   const browser = await playwright.chromium.launch({
     headless: true,
     executablePath: executablePath || undefined,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+    ],
   });
   try {
     const items = new Array(timeframes.length);
@@ -2395,11 +3096,19 @@ async function captureTradingViewSnapshotsBatch(opts = {}) {
         if (idx >= timeframes.length) return;
         const tf = timeframes[idx];
         try {
-          const one = await captureTradingViewSnapshotWithBrowser(browser, { ...opts, timeframe: tf, tf });
+          const one = await captureTradingViewSnapshotWithBrowser(browser, {
+            ...opts,
+            timeframe: tf,
+            tf,
+          });
           items[idx] = one;
         } catch (error) {
           if (isLikelyChromiumCrash(error)) {
-            const one = await captureTradingViewSnapshot({ ...opts, timeframe: tf, tf });
+            const one = await captureTradingViewSnapshot({
+              ...opts,
+              timeframe: tf,
+              tf,
+            });
             items[idx] = one;
           } else {
             throw error;
@@ -2424,15 +3133,24 @@ function snapshotMimeByFileName(fileName) {
 }
 
 function fileMimeByName(fileName, fallback = "") {
-  return snapshotMimeByFileName(fileName) || contentTypeByExt(fileName) || fallback || "application/octet-stream";
+  return (
+    snapshotMimeByFileName(fileName) ||
+    contentTypeByExt(fileName) ||
+    fallback ||
+    "application/octet-stream"
+  );
 }
 
 function readClaudeSnapshotFileMap() {
   ensureChartSnapshotDir();
   try {
     if (!fs.existsSync(CHART_SNAPSHOT_CLAUDE_MAP_FILE)) return {};
-    const parsed = JSON.parse(fs.readFileSync(CHART_SNAPSHOT_CLAUDE_MAP_FILE, "utf8"));
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    const parsed = JSON.parse(
+      fs.readFileSync(CHART_SNAPSHOT_CLAUDE_MAP_FILE, "utf8"),
+    );
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
   } catch {
     return {};
   }
@@ -2441,7 +3159,10 @@ function readClaudeSnapshotFileMap() {
 function writeClaudeSnapshotFileMap(map = {}) {
   ensureChartSnapshotDir();
   const tmp = `${CHART_SNAPSHOT_CLAUDE_MAP_FILE}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(map && typeof map === "object" ? map : {}, null, 2));
+  fs.writeFileSync(
+    tmp,
+    JSON.stringify(map && typeof map === "object" ? map : {}, null, 2),
+  );
   fs.renameSync(tmp, CHART_SNAPSHOT_CLAUDE_MAP_FILE);
 }
 
@@ -2463,14 +3184,17 @@ function getMappedClaudeSnapshotFile(fileName, absPath) {
 
 function setMappedClaudeSnapshotFile(fileName, absPath, uploaded = {}) {
   const safeName = normalizeSnapshotFileName(fileName);
-  if (!safeName || !uploaded?.id || !absPath || !fs.existsSync(absPath)) return null;
+  if (!safeName || !uploaded?.id || !absPath || !fs.existsSync(absPath))
+    return null;
   const st = fs.statSync(absPath);
   const map = readClaudeSnapshotFileMap();
   const item = {
     local_file: safeName,
     file_id: String(uploaded.id || ""),
     filename: String(uploaded.filename || safeName),
-    mime_type: String(uploaded.mime_type || snapshotMimeByFileName(safeName) || ""),
+    mime_type: String(
+      uploaded.mime_type || snapshotMimeByFileName(safeName) || "",
+    ),
     size_bytes: Number(uploaded.size_bytes || st.size || 0),
     mtime_ms: Number(st.mtimeMs || 0),
     created_at: String(uploaded.created_at || new Date().toISOString()),
@@ -2496,21 +3220,31 @@ function removeMappedClaudeSnapshotFiles(fileNames = []) {
 }
 
 async function loadClaudeApiKeyForUser(userId) {
-  const cfgRows = await (await mt5InitBackend()).query(
+  const cfgRows = await (
+    await mt5InitBackend()
+  ).query(
     "SELECT name, data FROM user_settings WHERE user_id = $1 AND type = 'api_key'",
     [userId],
   );
   for (const row of cfgRows.rows || []) {
     const name = normalizeAiApiKeyName(row?.name);
     if (name !== "CLAUDE_API_KEY") continue;
-    const dec = decryptObject(row?.data && typeof row.data === "object" ? row.data : {});
+    const dec = decryptObject(
+      row?.data && typeof row.data === "object" ? row.data : {},
+    );
     const value = String(dec?.value || "").trim();
     if (value) return value;
   }
   return "";
 }
 
-async function anthropicFilesRequest({ apiKey, method = "GET", pathName = "/v1/files", body = undefined, timeoutMs = 30000 }) {
+async function anthropicFilesRequest({
+  apiKey,
+  method = "GET",
+  pathName = "/v1/files",
+  body = undefined,
+  timeoutMs = 30000,
+}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const headers = {
@@ -2533,7 +3267,11 @@ async function anthropicFilesRequest({ apiKey, method = "GET", pathName = "/v1/f
       parsed = { raw: text };
     }
     if (!res.ok) {
-      const msg = parsed?.error?.message || parsed?.message || text || `${res.status} ${res.statusText}`;
+      const msg =
+        parsed?.error?.message ||
+        parsed?.message ||
+        text ||
+        `${res.status} ${res.statusText}`;
       throw new Error(`Claude Files API Error (${res.status}): ${msg}`);
     }
     return parsed;
@@ -2542,7 +3280,12 @@ async function anthropicFilesRequest({ apiKey, method = "GET", pathName = "/v1/f
   }
 }
 
-async function anthropicFilesRawRequest({ apiKey, method = "GET", pathName = "/v1/files", timeoutMs = 30000 }) {
+async function anthropicFilesRawRequest({
+  apiKey,
+  method = "GET",
+  pathName = "/v1/files",
+  timeoutMs = 30000,
+}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const headers = {
@@ -2556,7 +3299,9 @@ async function anthropicFilesRawRequest({ apiKey, method = "GET", pathName = "/v
       signal: ctrl.signal,
       headers,
     });
-    const contentType = String(res.headers.get("content-type") || "application/octet-stream");
+    const contentType = String(
+      res.headers.get("content-type") || "application/octet-stream",
+    );
     const disposition = String(res.headers.get("content-disposition") || "");
     const buffer = Buffer.from(await res.arrayBuffer());
     if (!res.ok) {
@@ -2567,7 +3312,11 @@ async function anthropicFilesRawRequest({ apiKey, method = "GET", pathName = "/v
       } catch {
         parsed = { raw: text };
       }
-      const msg = parsed?.error?.message || parsed?.message || text || `${res.status} ${res.statusText}`;
+      const msg =
+        parsed?.error?.message ||
+        parsed?.message ||
+        text ||
+        `${res.status} ${res.statusText}`;
       throw new Error(`Claude Files API Error (${res.status}): ${msg}`);
     }
     return { buffer, contentType, disposition };
@@ -2576,11 +3325,17 @@ async function anthropicFilesRawRequest({ apiKey, method = "GET", pathName = "/v
   }
 }
 
-async function uploadSnapshotToClaudeFile({ apiKey, fileName, absPath, mediaType }) {
+async function uploadSnapshotToClaudeFile({
+  apiKey,
+  fileName,
+  absPath,
+  mediaType,
+}) {
   const cached = getMappedClaudeSnapshotFile(fileName, absPath);
   if (cached?.file_id) return { ...cached, reused: true };
   const safeName = normalizeSnapshotFileName(fileName);
-  if (!safeName || !absPath || !fs.existsSync(absPath)) throw new Error("Invalid snapshot file for Claude upload.");
+  if (!safeName || !absPath || !fs.existsSync(absPath))
+    throw new Error("Invalid snapshot file for Claude upload.");
   const bytes = fs.readFileSync(absPath);
   const form = new FormData();
   form.append("file", new Blob([bytes], { type: mediaType }), safeName);
@@ -2648,8 +3403,12 @@ function readClaudeContextFileMap() {
   ensureAiContextFileDir();
   try {
     if (!fs.existsSync(AI_CONTEXT_CLAUDE_MAP_FILE)) return {};
-    const parsed = JSON.parse(fs.readFileSync(AI_CONTEXT_CLAUDE_MAP_FILE, "utf8"));
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    const parsed = JSON.parse(
+      fs.readFileSync(AI_CONTEXT_CLAUDE_MAP_FILE, "utf8"),
+    );
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
   } catch {
     return {};
   }
@@ -2658,7 +3417,10 @@ function readClaudeContextFileMap() {
 function writeClaudeContextFileMap(map = {}) {
   ensureAiContextFileDir();
   const tmp = `${AI_CONTEXT_CLAUDE_MAP_FILE}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(map && typeof map === "object" ? map : {}, null, 2));
+  fs.writeFileSync(
+    tmp,
+    JSON.stringify(map && typeof map === "object" ? map : {}, null, 2),
+  );
   fs.renameSync(tmp, AI_CONTEXT_CLAUDE_MAP_FILE);
 }
 
@@ -2695,37 +3457,57 @@ function findClaudeLocalFileById(fileId) {
   const map = readClaudeLocalFileMap();
   for (const [localFile, meta] of Object.entries(map || {})) {
     if (String(meta?.file_id || "") !== id) continue;
-    const safeName = path.basename(String(meta?.vps_file || meta?.filename || localFile || ""));
-    const abs = String(meta?.vps_path || "").trim()
-      || (meta?.local_source === "snapshots" ? path.join(CHART_SNAPSHOT_DIR, safeName) : path.join(AI_CONTEXT_FILE_DIR, safeName));
+    const safeName = path.basename(
+      String(meta?.vps_file || meta?.filename || localFile || ""),
+    );
+    const abs =
+      String(meta?.vps_path || "").trim() ||
+      (meta?.local_source === "snapshots"
+        ? path.join(CHART_SNAPSHOT_DIR, safeName)
+        : path.join(AI_CONTEXT_FILE_DIR, safeName));
     if (!abs || !fs.existsSync(abs) || !fs.statSync(abs).isFile()) return null;
     return {
       ...meta,
       local_file: localFile,
       vps_file: safeName || localFile,
       vps_path: abs,
-      mime_type: String(meta?.mime_type || mimeByFileName(safeName || localFile)),
+      mime_type: String(
+        meta?.mime_type || mimeByFileName(safeName || localFile),
+      ),
     };
   }
   return null;
 }
 
 function aiContextToken(value, fallback = "CTX") {
-  return sanitizeSnapshotFileToken(value, fallback).replace(/_+/g, "_").slice(0, 96) || fallback;
+  return (
+    sanitizeSnapshotFileToken(value, fallback)
+      .replace(/_+/g, "_")
+      .slice(0, 96) || fallback
+  );
 }
 
 function aiContextFileName({ symbol, tf, barEnd, type, ext = "json" }) {
   const sym = aiContextToken(normalizeMarketDataSymbol(symbol), "SYMBOL");
   const tfToken = aiContextToken(displayTfFromNorm(tf), "TF");
   const end = Number(barEnd || 0);
-  const stamp = Number.isFinite(end) && end > 0
-    ? new Date(end * 1000).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")
-    : new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const stamp =
+    Number.isFinite(end) && end > 0
+      ? new Date(end * 1000)
+          .toISOString()
+          .replace(/[-:]/g, "")
+          .replace(/\.\d{3}Z$/, "Z")
+      : new Date()
+          .toISOString()
+          .replace(/[-:]/g, "")
+          .replace(/\.\d{3}Z$/, "Z");
   return `${sym}_${tfToken}_${stamp}_${aiContextToken(type, "context").toLowerCase()}.${ext}`;
 }
 
 function displayTfFromNorm(tfNorm) {
-  const s = String(tfNorm || "").trim().toLowerCase();
+  const s = String(tfNorm || "")
+    .trim()
+    .toLowerCase();
   if (s === "1day" || s === "day" || s === "1d") return "D";
   if (s === "1week" || s === "week" || s === "1w") return "W";
   if (s === "1month" || s === "month" || s === "1mo") return "MN";
@@ -2738,7 +3520,10 @@ function displayTfFromNorm(tfNorm) {
 }
 
 function sha256File(filePath) {
-  return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+  return crypto
+    .createHash("sha256")
+    .update(fs.readFileSync(filePath))
+    .digest("hex");
 }
 
 function mimeByFileName(fileName) {
@@ -2750,10 +3535,15 @@ function mimeByFileName(fileName) {
 }
 
 async function uploadFileToClaude({ apiKey, absPath, fileName, mediaType }) {
-  if (!absPath || !fs.existsSync(absPath) || !fs.statSync(absPath).isFile()) throw new Error("Claude upload file does not exist.");
+  if (!absPath || !fs.existsSync(absPath) || !fs.statSync(absPath).isFile())
+    throw new Error("Claude upload file does not exist.");
   const bytes = fs.readFileSync(absPath);
   const form = new FormData();
-  form.append("file", new Blob([bytes], { type: mediaType || mimeByFileName(fileName) }), fileName);
+  form.append(
+    "file",
+    new Blob([bytes], { type: mediaType || mimeByFileName(fileName) }),
+    fileName,
+  );
   return anthropicFilesRequest({
     apiKey,
     method: "POST",
@@ -2763,13 +3553,26 @@ async function uploadFileToClaude({ apiKey, absPath, fileName, mediaType }) {
   });
 }
 
-async function upsertClaudeContextFile({ apiKey, contextKey, type, absPath, fileName, symbol, tf, barEnd }) {
+async function upsertClaudeContextFile({
+  apiKey,
+  contextKey,
+  type,
+  absPath,
+  fileName,
+  symbol,
+  tf,
+  barEnd,
+}) {
   const map = readClaudeContextFileMap();
   const key = `${contextKey}:${type}`;
   const hash = sha256File(absPath);
   const prev = map[key];
   const nextMime = mimeByFileName(fileName);
-  if (prev?.file_id && prev?.sha256 === hash && String(prev?.mime_type || "") === nextMime) {
+  if (
+    prev?.file_id &&
+    prev?.sha256 === hash &&
+    String(prev?.mime_type || "") === nextMime
+  ) {
     return { ...prev, reused: true };
   }
   const uploaded = await uploadFileToClaude({
@@ -2797,7 +3600,12 @@ async function upsertClaudeContextFile({ apiKey, contextKey, type, absPath, file
   writeClaudeContextFileMap(map);
   const oldFileId = String(prev?.file_id || "");
   if (oldFileId && oldFileId !== item.file_id) {
-    anthropicFilesRequest({ apiKey, method: "DELETE", pathName: `/v1/files/${encodeURIComponent(oldFileId)}`, timeoutMs: 15000 }).catch(() => { });
+    anthropicFilesRequest({
+      apiKey,
+      method: "DELETE",
+      pathName: `/v1/files/${encodeURIComponent(oldFileId)}`,
+      timeoutMs: 15000,
+    }).catch(() => {});
   }
   return { ...item, reused: false };
 }
@@ -2805,7 +3613,8 @@ async function upsertClaudeContextFile({ apiKey, contextKey, type, absPath, file
 function writeAiContextJsonFile(fileName, data) {
   ensureAiContextFileDir();
   const safe = path.basename(String(fileName || ""));
-  if (!safe || safe !== fileName || !/\.json$/i.test(safe)) throw new Error("Invalid AI context file name.");
+  if (!safe || safe !== fileName || !/\.json$/i.test(safe))
+    throw new Error("Invalid AI context file name.");
   const abs = path.join(AI_CONTEXT_FILE_DIR, safe);
   fs.writeFileSync(abs, JSON.stringify(data, null, 2));
   return abs;
@@ -2819,8 +3628,12 @@ function summarizeBarsForAi(bars = [], tfNorm = "") {
   const closes = arr.map((b) => Number(b.close)).filter(Number.isFinite);
   const last = arr[arr.length - 1];
   const recent = arr.slice(-30);
-  const recentHigh = Math.max(...recent.map((b) => Number(b.high)).filter(Number.isFinite));
-  const recentLow = Math.min(...recent.map((b) => Number(b.low)).filter(Number.isFinite));
+  const recentHigh = Math.max(
+    ...recent.map((b) => Number(b.high)).filter(Number.isFinite),
+  );
+  const recentLow = Math.min(
+    ...recent.map((b) => Number(b.low)).filter(Number.isFinite),
+  );
   let trSum = 0;
   let trCount = 0;
   for (let i = Math.max(1, arr.length - 14); i < arr.length; i += 1) {
@@ -2848,7 +3661,10 @@ function summarizeBarsForAi(bars = [], tfNorm = "") {
     recent_high: Number.isFinite(recentHigh) ? recentHigh : null,
     recent_low: Number.isFinite(recentLow) ? recentLow : null,
     atr_14: trCount ? trSum / trCount : null,
-    close_change_20: closes.length >= 21 ? closes[closes.length - 1] - closes[closes.length - 21] : null,
+    close_change_20:
+      closes.length >= 21
+        ? closes[closes.length - 1] - closes[closes.length - 21]
+        : null,
   };
 }
 
@@ -2862,19 +3678,26 @@ function makeAiContextDocumentBlock(fileId, title) {
 
 function makeAiContextTextBlock(file = {}, title = "context") {
   const filePath = String(file?.vps_path || "").trim();
-  const fileName = path.basename(String(file?.vps_file || file?.filename || title || "context.txt"));
+  const fileName = path.basename(
+    String(file?.vps_file || file?.filename || title || "context.txt"),
+  );
   let text = "";
   if (filePath && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
     text = fs.readFileSync(filePath, "utf8");
-  } else if (fileName && fileName === String(file?.vps_file || file?.filename || fileName)) {
+  } else if (
+    fileName &&
+    fileName === String(file?.vps_file || file?.filename || fileName)
+  ) {
     const abs = path.join(AI_CONTEXT_FILE_DIR, fileName);
-    if (fs.existsSync(abs) && fs.statSync(abs).isFile()) text = fs.readFileSync(abs, "utf8");
+    if (fs.existsSync(abs) && fs.statSync(abs).isFile())
+      text = fs.readFileSync(abs, "utf8");
   }
   if (!text) return null;
   const maxChars = 180000;
-  const clipped = text.length > maxChars
-    ? `${text.slice(0, maxChars)}\n\n[TRUNCATED ${text.length - maxChars} chars]`
-    : text;
+  const clipped =
+    text.length > maxChars
+      ? `${text.slice(0, maxChars)}\n\n[TRUNCATED ${text.length - maxChars} chars]`
+      : text;
   return {
     type: "text",
     text: `\n\n### ${title}\nFile: ${fileName}\n\n${clipped}`,
@@ -2882,7 +3705,10 @@ function makeAiContextTextBlock(file = {}, title = "context") {
 }
 
 function marketDataFreshness(snapshot = {}, tfNorm = "") {
-  const tfSec = Math.max(60, parseTfTokenToSeconds(tfNorm || snapshot.tf_norm || snapshot.timeframe));
+  const tfSec = Math.max(
+    60,
+    parseTfTokenToSeconds(tfNorm || snapshot.tf_norm || snapshot.timeframe),
+  );
   const barEnd = Number(snapshot.bar_end || 0);
   const now = nowUnixSec();
   const tolerance = Math.min(Math.max(90, Math.floor(tfSec * 0.25)), 900);
@@ -2931,7 +3757,17 @@ async function loadTradePlansForAiContext(userId, symbolNorm) {
   }
 }
 
-async function ensureAiTfContext({ userId, apiKey, symbol, tf, bars = 300, provider = "ICMARKETS", forceRefresh = false, forceSnapshot = false, includeSnapshots = true }) {
+async function ensureAiTfContext({
+  userId,
+  apiKey,
+  symbol,
+  tf,
+  bars = 300,
+  provider = "ICMARKETS",
+  forceRefresh = false,
+  forceSnapshot = false,
+  includeSnapshots = true,
+}) {
   const symbolNorm = normalizeMarketDataSymbol(symbol);
   const tfNorm = normalizeMarketDataTf(tf);
   const snapshot = await buildAnalysisSnapshotFromTwelve({
@@ -2941,7 +3777,12 @@ async function ensureAiTfContext({ userId, apiKey, symbol, tf, bars = 300, provi
     timeframe: tf,
   });
   if (String(snapshot?.status || "").toLowerCase() !== "ok") {
-    return { tf: displayTfFromNorm(tfNorm), status: "error", error: snapshot?.reason || "market_data_failed", snapshot };
+    return {
+      tf: displayTfFromNorm(tfNorm),
+      status: "error",
+      error: snapshot?.reason || "market_data_failed",
+      snapshot,
+    };
   }
   const freshness = marketDataFreshness(snapshot, tfNorm);
   const barsArr = normalizeMarketDataBars(snapshot.bars);
@@ -2949,9 +3790,24 @@ async function ensureAiTfContext({ userId, apiKey, symbol, tf, bars = 300, provi
   const barEnd = Number(snapshot.bar_end || summary.bar_end || 0);
   const contextKey = `${symbolNorm}:${displayTfFromNorm(tfNorm)}:${barEnd || "latest"}`;
   const lastPrice = Number(snapshot.last_price ?? summary.last_price);
-  const barsFileName = aiContextFileName({ symbol: symbolNorm, tf: tfNorm, barEnd, type: "bars" });
-  const analysisFileName = aiContextFileName({ symbol: symbolNorm, tf: tfNorm, barEnd, type: "analysis" });
-  const tradePlansFileName = aiContextFileName({ symbol: symbolNorm, tf: tfNorm, barEnd, type: "tradeplans" });
+  const barsFileName = aiContextFileName({
+    symbol: symbolNorm,
+    tf: tfNorm,
+    barEnd,
+    type: "bars",
+  });
+  const analysisFileName = aiContextFileName({
+    symbol: symbolNorm,
+    tf: tfNorm,
+    barEnd,
+    type: "analysis",
+  });
+  const tradePlansFileName = aiContextFileName({
+    symbol: symbolNorm,
+    tf: tfNorm,
+    barEnd,
+    type: "tradeplans",
+  });
 
   const barsAbs = writeAiContextJsonFile(barsFileName, {
     kind: "bars",
@@ -2970,7 +3826,8 @@ async function ensureAiTfContext({ userId, apiKey, symbol, tf, bars = 300, provi
     symbol: symbolNorm,
     tf: displayTfFromNorm(tfNorm),
     bar_end: barEnd,
-    analysis: snapshot.metadata || snapshot.market_analysis || snapshot.summary || {},
+    analysis:
+      snapshot.metadata || snapshot.market_analysis || snapshot.summary || {},
   });
   const tradePlans = await loadTradePlansForAiContext(userId, symbolNorm);
   const tradePlansAbs = writeAiContextJsonFile(tradePlansFileName, {
@@ -2981,14 +3838,42 @@ async function ensureAiTfContext({ userId, apiKey, symbol, tf, bars = 300, provi
     plans: tradePlans,
   });
 
-  const barsFile = await upsertClaudeContextFile({ apiKey, contextKey, type: "bars", absPath: barsAbs, fileName: barsFileName, symbol: symbolNorm, tf: tfNorm, barEnd });
-  const analysisFile = await upsertClaudeContextFile({ apiKey, contextKey, type: "analysis", absPath: analysisAbs, fileName: analysisFileName, symbol: symbolNorm, tf: tfNorm, barEnd });
-  const tradePlansFile = await upsertClaudeContextFile({ apiKey, contextKey, type: "tradeplans", absPath: tradePlansAbs, fileName: tradePlansFileName, symbol: symbolNorm, tf: tfNorm, barEnd });
+  const barsFile = await upsertClaudeContextFile({
+    apiKey,
+    contextKey,
+    type: "bars",
+    absPath: barsAbs,
+    fileName: barsFileName,
+    symbol: symbolNorm,
+    tf: tfNorm,
+    barEnd,
+  });
+  const analysisFile = await upsertClaudeContextFile({
+    apiKey,
+    contextKey,
+    type: "analysis",
+    absPath: analysisAbs,
+    fileName: analysisFileName,
+    symbol: symbolNorm,
+    tf: tfNorm,
+    barEnd,
+  });
+  const tradePlansFile = await upsertClaudeContextFile({
+    apiKey,
+    contextKey,
+    type: "tradeplans",
+    absPath: tradePlansAbs,
+    fileName: tradePlansFileName,
+    symbol: symbolNorm,
+    tf: tfNorm,
+    barEnd,
+  });
 
   const contextMap = readClaudeContextFileMap();
   const snapshotKey = `${contextKey}:snapshot`;
   let snapshotFile = contextMap[snapshotKey] || null;
-  const snapshotFresh = snapshotFile?.file_id && Number(snapshotFile.bar_end || 0) >= barEnd;
+  const snapshotFresh =
+    snapshotFile?.file_id && Number(snapshotFile.bar_end || 0) >= barEnd;
   if (includeSnapshots && (forceSnapshot || !snapshotFresh)) {
     const shot = await captureTradingViewSnapshot({
       userId,
@@ -3006,7 +3891,13 @@ async function ensureAiTfContext({ userId, apiKey, symbol, tf, bars = 300, provi
       contextKey,
       type: "snapshot",
       absPath: shotAbs,
-      fileName: aiContextFileName({ symbol: symbolNorm, tf: tfNorm, barEnd, type: "snapshot", ext: "jpg" }),
+      fileName: aiContextFileName({
+        symbol: symbolNorm,
+        tf: tfNorm,
+        barEnd,
+        type: "snapshot",
+        ext: "jpg",
+      }),
       symbol: symbolNorm,
       tf: tfNorm,
       barEnd,
@@ -3026,7 +3917,8 @@ async function ensureAiTfContext({ userId, apiKey, symbol, tf, bars = 300, provi
     bar_end: barEnd,
     last_price: Number.isFinite(lastPrice) ? lastPrice : null,
     summary,
-    analysis: snapshot.metadata || snapshot.market_analysis || snapshot.summary || {},
+    analysis:
+      snapshot.metadata || snapshot.market_analysis || snapshot.summary || {},
     files: {
       snapshot: snapshotFile,
       bars: barsFile,
@@ -3036,8 +3928,20 @@ async function ensureAiTfContext({ userId, apiKey, symbol, tf, bars = 300, provi
   };
 }
 
-async function buildAiContextBundle({ userId, apiKey, symbol, timeframes = [], bars = 300, provider = "ICMARKETS", forceRefresh = false, forceSnapshot = false, includeSnapshots = true }) {
-  const tfs = (Array.isArray(timeframes) ? timeframes : String(timeframes || "").split(","))
+async function buildAiContextBundle({
+  userId,
+  apiKey,
+  symbol,
+  timeframes = [],
+  bars = 300,
+  provider = "ICMARKETS",
+  forceRefresh = false,
+  forceSnapshot = false,
+  includeSnapshots = true,
+}) {
+  const tfs = (
+    Array.isArray(timeframes) ? timeframes : String(timeframes || "").split(",")
+  )
     .map((x) => String(x || "").trim())
     .filter(Boolean)
     .slice(0, 6);
@@ -3052,18 +3956,34 @@ async function buildAiContextBundle({ userId, apiKey, symbol, timeframes = [], b
       cursor += 1;
       const tf = wanted[idx];
       try {
-        items[idx] = await ensureAiTfContext({ userId, apiKey, symbol, tf, bars, provider, forceRefresh, forceSnapshot, includeSnapshots });
+        items[idx] = await ensureAiTfContext({
+          userId,
+          apiKey,
+          symbol,
+          tf,
+          bars,
+          provider,
+          forceRefresh,
+          forceSnapshot,
+          includeSnapshots,
+        });
       } catch (error) {
         items[idx] = {
           tf: displayTfFromNorm(normalizeMarketDataTf(tf)),
           tf_norm: normalizeMarketDataTf(tf),
           status: "error",
-          error: error instanceof Error ? error.message : String(error || "context_failed"),
+          error:
+            error instanceof Error
+              ? error.message
+              : String(error || "context_failed"),
         };
       }
     }
   };
-  const runners = Array.from({ length: Math.max(1, Math.min(maxParallel, wanted.length)) }, () => worker());
+  const runners = Array.from(
+    { length: Math.max(1, Math.min(maxParallel, wanted.length)) },
+    () => worker(),
+  );
   await Promise.all(runners);
   for (let i = 0; i < items.length; i += 1) {
     if (!items[i]) {
@@ -3081,14 +4001,20 @@ async function buildAiContextBundle({ userId, apiKey, symbol, timeframes = [], b
     symbol: normalizeMarketDataSymbol(symbol),
     generated_at: new Date().toISOString(),
     timeframes: items,
-    current_price: okItems.find((x) => Number.isFinite(Number(x.last_price)))?.last_price ?? null,
-    context_files: okItems.flatMap((item) => Object.entries(item.files || {}).map(([type, file]) => ({
-      tf: item.tf,
-      type,
-      file_id: file?.file_id || "",
-      filename: file?.filename || file?.vps_file || "",
-      reused: file?.reused === true,
-    })).filter((x) => x.file_id)),
+    current_price:
+      okItems.find((x) => Number.isFinite(Number(x.last_price)))?.last_price ??
+      null,
+    context_files: okItems.flatMap((item) =>
+      Object.entries(item.files || {})
+        .map(([type, file]) => ({
+          tf: item.tf,
+          type,
+          file_id: file?.file_id || "",
+          filename: file?.filename || file?.vps_file || "",
+          reused: file?.reused === true,
+        }))
+        .filter((x) => x.file_id),
+    ),
   };
 }
 
@@ -3117,18 +4043,28 @@ function collectSnapshotFilesFromValue(value, out = new Set(), depth = 0) {
     return out;
   }
   if (Array.isArray(value)) {
-    for (const item of value) collectSnapshotFilesFromValue(item, out, depth + 1);
+    for (const item of value)
+      collectSnapshotFilesFromValue(item, out, depth + 1);
     return out;
   }
   if (typeof value === "object") {
     const obj = value;
-    const focusedKeys = ["files", "used_files", "snapshot_files", "analysis_files", "images", "screenshots"];
+    const focusedKeys = [
+      "files",
+      "used_files",
+      "snapshot_files",
+      "analysis_files",
+      "images",
+      "screenshots",
+    ];
     for (const k of focusedKeys) {
-      if (Object.prototype.hasOwnProperty.call(obj, k)) collectSnapshotFilesFromValue(obj[k], out, depth + 1);
+      if (Object.prototype.hasOwnProperty.call(obj, k))
+        collectSnapshotFilesFromValue(obj[k], out, depth + 1);
     }
     // Also scan nested structures to support legacy payload shapes.
     for (const v of Object.values(obj)) {
-      if (v && typeof v === "object") collectSnapshotFilesFromValue(v, out, depth + 1);
+      if (v && typeof v === "object")
+        collectSnapshotFilesFromValue(v, out, depth + 1);
     }
     return out;
   }
@@ -3154,31 +4090,51 @@ function deleteSnapshotFilesByName(fileNames = []) {
   return deleted;
 }
 
-function findRecentChartSnapshots({ symbol = "", provider = "", timeframes = [], sessionPrefix = "", maxAgeMs = 15 * 60 * 1000 } = {}) {
+function findRecentChartSnapshots({
+  symbol = "",
+  provider = "",
+  timeframes = [],
+  sessionPrefix = "",
+  maxAgeMs = 15 * 60 * 1000,
+} = {}) {
   ensureChartSnapshotDir();
   const nowMs = Date.now();
-  const symbolRaw = String(symbol || "").trim().toUpperCase();
-  const providerRaw = String(provider || "").trim().toUpperCase();
-  const fullSymbol = symbolRaw.includes(":") ? symbolRaw : `${providerRaw}:${symbolRaw}`;
+  const symbolRaw = String(symbol || "")
+    .trim()
+    .toUpperCase();
+  const providerRaw = String(provider || "")
+    .trim()
+    .toUpperCase();
+  const fullSymbol = symbolRaw.includes(":")
+    ? symbolRaw
+    : `${providerRaw}:${symbolRaw}`;
   const symbolTokens = new Set(
     [symbolRaw, fullSymbol]
       .map((x) => sanitizeSnapshotFileToken(x || ""))
       .filter(Boolean),
   );
-  const wanted = (Array.isArray(timeframes) ? timeframes : String(timeframes || "").split(","))
+  const wanted = (
+    Array.isArray(timeframes) ? timeframes : String(timeframes || "").split(",")
+  )
     .map((tf) => toTradingViewInterval(tf).toUpperCase())
     .filter(Boolean);
   const wantedSet = new Set(wanted);
   const prefix = sanitizeSessionPrefix(sessionPrefix || "");
   const byTf = new Map();
-  const files = fs.readdirSync(CHART_SNAPSHOT_DIR)
+  const files = fs
+    .readdirSync(CHART_SNAPSHOT_DIR)
     .filter((f) => /\.(png|jpe?g)$/i.test(f))
     .map((f) => {
       const abs = path.join(CHART_SNAPSHOT_DIR, f);
       try {
         const st = fs.statSync(abs);
         if (!st.isFile()) return null;
-        return { file_name: f, abs, mtimeMs: Number(st.mtimeMs || 0), size_bytes: Number(st.size || 0) };
+        return {
+          file_name: f,
+          abs,
+          mtimeMs: Number(st.mtimeMs || 0),
+          size_bytes: Number(st.size || 0),
+        };
       } catch {
         return null;
       }
@@ -3189,11 +4145,18 @@ function findRecentChartSnapshots({ symbol = "", provider = "", timeframes = [],
 
   for (const item of files) {
     const base = item.file_name.replace(/\.(png|jpe?g)$/i, "");
-    const parts = base.split("_").map((x) => String(x || "").trim()).filter(Boolean);
-    const tfToken = sanitizeSnapshotFileToken(parts[parts.length - 1] || "").toUpperCase();
+    const parts = base
+      .split("_")
+      .map((x) => String(x || "").trim())
+      .filter(Boolean);
+    const tfToken = sanitizeSnapshotFileToken(
+      parts[parts.length - 1] || "",
+    ).toUpperCase();
     if (!wantedSet.has(tfToken)) continue;
     if (prefix && !base.includes(`_${prefix}_`)) continue;
-    const hasSymbol = [...symbolTokens].some((token) => token && base.includes(token));
+    const hasSymbol = [...symbolTokens].some(
+      (token) => token && base.includes(token),
+    );
     if (!hasSymbol) continue;
     if (byTf.has(tfToken)) continue;
     byTf.set(tfToken, {
@@ -3222,7 +4185,10 @@ function extractJsonFromAiText(rawText) {
     const match = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
     if (match) clean = match[1];
   }
-  clean = clean.replace(/^```json/, "").replace(/```$/, "").trim();
+  clean = clean
+    .replace(/^```json/, "")
+    .replace(/```$/, "")
+    .trim();
   try {
     const parsed = JSON.parse(clean);
     return { parsed, clean };
@@ -3254,7 +4220,9 @@ async function anthropicListModels(apiKey) {
 }
 
 function pickPreferredAnthropicModel(ids = [], preferred = "") {
-  const list = Array.isArray(ids) ? ids.map((x) => String(x || "").trim()).filter(Boolean) : [];
+  const list = Array.isArray(ids)
+    ? ids.map((x) => String(x || "").trim()).filter(Boolean)
+    : [];
   const want = String(preferred || "").trim();
   if (want && list.includes(want)) return want;
   const priority = [
@@ -3273,7 +4241,14 @@ function pickPreferredAnthropicModel(ids = [], preferred = "") {
   return list[0] || want;
 }
 
-async function anthropicMessagesWithFallback({ apiKey, model, messages, maxTokens = 1600, timeoutMs = 90000, beta = "" }) {
+async function anthropicMessagesWithFallback({
+  apiKey,
+  model,
+  messages,
+  maxTokens = 1600,
+  timeoutMs = 90000,
+  beta = "",
+}) {
   const requestOnce = async (useModel) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -3300,11 +4275,14 @@ async function anthropicMessagesWithFallback({ apiKey, model, messages, maxToken
     }
   };
 
-  let useModel = String(model || "claude-sonnet-4-0").trim() || "claude-sonnet-4-0";
+  let useModel =
+    String(model || "claude-sonnet-4-0").trim() || "claude-sonnet-4-0";
   let res = await requestOnce(useModel);
   if (!res.ok && res.status === 404) {
     const errText = await res.text().catch(() => "");
-    const modelNotFound = String(errText || "").toLowerCase().includes("model");
+    const modelNotFound = String(errText || "")
+      .toLowerCase()
+      .includes("model");
     if (modelNotFound) {
       const ids = await anthropicListModels(apiKey);
       const fallbackModel = pickPreferredAnthropicModel(ids, useModel);
@@ -3312,11 +4290,17 @@ async function anthropicMessagesWithFallback({ apiKey, model, messages, maxToken
         useModel = fallbackModel;
         res = await requestOnce(useModel);
       } else {
-        const fake = new Response(errText, { status: 404, statusText: "Not Found" });
+        const fake = new Response(errText, {
+          status: 404,
+          statusText: "Not Found",
+        });
         return { ok: false, response: fake, modelUsed: useModel };
       }
     } else {
-      const fake = new Response(errText, { status: res.status, statusText: res.statusText });
+      const fake = new Response(errText, {
+        status: res.status,
+        statusText: res.statusText,
+      });
       return { ok: false, response: fake, modelUsed: useModel };
     }
   }
@@ -3332,7 +4316,11 @@ function normalizeHostHeader(hostRaw) {
 }
 
 function isTradeHost(hostname) {
-  return hostname === "trade.mozasolution.com" || hostname === "localhost" || hostname === "127.0.0.1";
+  return (
+    hostname === "trade.mozasolution.com" ||
+    hostname === "localhost" ||
+    hostname === "127.0.0.1"
+  );
 }
 
 function isLandingHost(hostname) {
@@ -3370,7 +4358,10 @@ function tryServeLanding(url, req, res, hostname) {
   if (!["GET", "HEAD"].includes(req.method)) return false;
   if (!isLandingHost(hostname)) return false;
   if (!fs.existsSync(CFG.landingDistPath)) {
-    return json(res, 404, { ok: false, error: `Landing dist folder not found: ${CFG.landingDistPath}` });
+    return json(res, 404, {
+      ok: false,
+      error: `Landing dist folder not found: ${CFG.landingDistPath}`,
+    });
   }
 
   if (url.pathname === "/" || url.pathname === "/index.html") {
@@ -3379,12 +4370,16 @@ function tryServeLanding(url, req, res, hostname) {
       serveUiFile(res, indexPath, req.method);
       return true;
     }
-    return json(res, 404, { ok: false, error: `Landing entry not found: ${indexPath}` });
+    return json(res, 404, {
+      ok: false,
+      error: `Landing entry not found: ${indexPath}`,
+    });
   }
 
   if (!url.pathname.startsWith("/landing-assets/")) return false;
   const rel = url.pathname.replace(/^\/landing-assets\/+/, "");
-  if (!rel || rel.includes("..")) return json(res, 400, { ok: false, error: "Invalid landing asset path" });
+  if (!rel || rel.includes(".."))
+    return json(res, 400, { ok: false, error: "Invalid landing asset path" });
   const requested = path.join(CFG.landingDistPath, "assets", rel);
   if (!fs.existsSync(requested) || !fs.statSync(requested).isFile()) {
     return json(res, 404, { ok: false, error: "Landing asset not found" });
@@ -3396,11 +4391,17 @@ function tryServeLanding(url, req, res, hostname) {
 function tryServeUi(url, req, res, hostname) {
   if (!["GET", "HEAD"].includes(req.method)) return false;
   const isTradeRootUiPath = isTradeHost(hostname) && !isApiPath(url.pathname);
-  const isUiPath = url.pathname.startsWith("/ui") || (url.pathname.startsWith("/system") && !isApiPath(url.pathname)) || isTradeRootUiPath;
+  const isUiPath =
+    url.pathname.startsWith("/ui") ||
+    (url.pathname.startsWith("/system") && !isApiPath(url.pathname)) ||
+    isTradeRootUiPath;
   const isUiAssetPath = url.pathname.startsWith("/assets/");
   if (!isUiPath && !isUiAssetPath) return false;
   if (!fs.existsSync(CFG.uiDistPath)) {
-    return json(res, 404, { ok: false, error: `UI dist folder not found: ${CFG.uiDistPath}` });
+    return json(res, 404, {
+      ok: false,
+      error: `UI dist folder not found: ${CFG.uiDistPath}`,
+    });
   }
 
   let rel;
@@ -3434,7 +4435,10 @@ function tryServeUi(url, req, res, hostname) {
     serveUiFile(res, indexPath, req.method);
     return true;
   }
-  return json(res, 404, { ok: false, error: `UI entry not found: ${indexPath}` });
+  return json(res, 404, {
+    ok: false,
+    error: `UI entry not found: ${indexPath}`,
+  });
 }
 
 async function readJson(req) {
@@ -3470,7 +4474,9 @@ const ENTRY_MODEL_NORMALIZE_RULES = [
 ];
 
 function mt5CollapseWhitespace(value) {
-  return String(value || "").replace(/\s+/g, " ").trim();
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function mt5EntryModelLooksVerbose(value) {
@@ -3508,41 +4514,58 @@ function mt5MergeNote(base, addition) {
 
 function mt5DeriveEntryModelAndNote(payload = {}, opts = {}) {
   const rawEntryModel = mt5CollapseWhitespace(
-    payload.entry_model
-    ?? payload.entryModel
-    ?? payload.model
-    ?? payload.strategy
-    ?? opts.fallbackModel
-    ?? "",
+    payload.entry_model ??
+      payload.entryModel ??
+      payload.model ??
+      payload.strategy ??
+      opts.fallbackModel ??
+      "",
   );
   const entryModel = mt5NormalizeEntryModel(rawEntryModel, {
     fallback: opts.fallbackModel || payload.source || "MANUAL",
   });
   const baseNote = mt5BuildNote(payload);
-  const note = mt5EntryModelLooksVerbose(rawEntryModel) ? mt5MergeNote(baseNote, rawEntryModel) : baseNote;
+  const note = mt5EntryModelLooksVerbose(rawEntryModel)
+    ? mt5MergeNote(baseNote, rawEntryModel)
+    : baseNote;
   return { entryModel, note, entryModelRaw: rawEntryModel || null };
 }
 
 function normalizeSignal(payload) {
-  const strategy = String(payload.strategy || payload.source || payload.system || "UnknownStrategy");
+  const strategy = String(
+    payload.strategy || payload.source || payload.system || "UnknownStrategy",
+  );
   const symbol = String(payload.symbol || payload.ticker || "").toUpperCase();
   const side = normalizeSide(payload.side || payload.action);
-  const tradeId = envStr(payload.signal_id ?? payload.id ?? payload.trade_id ?? payload.tradeId);
+  const tradeId = envStr(
+    payload.signal_id ?? payload.id ?? payload.trade_id ?? payload.tradeId,
+  );
   const timeframe = String(payload.timeframe || payload.tf || "n/a");
   const orderTypeRaw = envStr(payload.order_type ?? payload.orderType);
   const orderType = orderTypeRaw ? mt5NormalizeOrderType(payload) : "market";
-  const chartTf = envStr(payload.chart_tf ?? payload.chartTf ?? payload.timeframe ?? payload.tf);
+  const chartTf = envStr(
+    payload.chart_tf ?? payload.chartTf ?? payload.timeframe ?? payload.tf,
+  );
   const signalTf = envStr(payload.signal_tf ?? payload.signalTf);
   const price = asNum(payload.price ?? payload.entry, NaN);
   const sl = asNum(payload.stop_loss ?? payload.sl, NaN);
   const tp = asNum(payload.take_profit ?? payload.tp, NaN);
-  const derived = mt5DeriveEntryModelAndNote(payload, { fallbackModel: strategy || "UnknownStrategy" });
+  const derived = mt5DeriveEntryModelAndNote(payload, {
+    fallbackModel: strategy || "UnknownStrategy",
+  });
   const note = derived.note || String(payload.note || payload.comment || "");
-  const signalTime = payload.time || payload.timestamp || new Date().toISOString();
+  const signalTime =
+    payload.time || payload.timestamp || new Date().toISOString();
   const quantity = asNum(payload.quantity ?? payload.qty, NaN);
-  const userId = envStr(payload.user_id ?? payload.userId ?? payload.user ?? CFG.mt5DefaultUserId, CFG.mt5DefaultUserId);
+  const userId = envStr(
+    payload.user_id ?? payload.userId ?? payload.user ?? CFG.mt5DefaultUserId,
+    CFG.mt5DefaultUserId,
+  );
   const rrPlanned = asNum(payload.rr ?? payload.risk_reward, NaN);
-  const riskMoneyPlanned = asNum(payload.risk_money ?? payload.money_risk ?? payload.riskMoney, NaN);
+  const riskMoneyPlanned = asNum(
+    payload.risk_money ?? payload.money_risk ?? payload.riskMoney,
+    NaN,
+  );
 
   if (!symbol) throw new Error("Missing symbol");
   if (!Number.isFinite(price) || price <= 0) throw new Error("Invalid price");
@@ -3565,7 +4588,9 @@ function normalizeSignal(payload) {
     user_id: userId,
     entry_model: derived.entryModel || null,
     rr_planned: Number.isFinite(rrPlanned) ? rrPlanned : null,
-    risk_money_planned: Number.isFinite(riskMoneyPlanned) ? riskMoneyPlanned : null,
+    risk_money_planned: Number.isFinite(riskMoneyPlanned)
+      ? riskMoneyPlanned
+      : null,
     risk_pct_planned: asNum(payload.risk_pct ?? payload.riskPct ?? 1.0, 1.0),
     rejection_reason: null,
     raw: payload,
@@ -3573,7 +4598,10 @@ function normalizeSignal(payload) {
 }
 
 function enforceRiskAndPolicy(signal) {
-  if (CFG.allowSymbols.length > 0 && !CFG.allowSymbols.includes(signal.symbol)) {
+  if (
+    CFG.allowSymbols.length > 0 &&
+    !CFG.allowSymbols.includes(signal.symbol)
+  ) {
     throw new Error(`Symbol ${signal.symbol} is not in ALLOW_SYMBOLS`);
   }
 
@@ -3581,7 +4609,9 @@ function enforceRiskAndPolicy(signal) {
     const risk = Math.abs(signal.price - signal.sl);
     const riskPct = signal.price > 0 ? (risk / signal.price) * 100 : 0;
     if (riskPct > CFG.maxRiskPct) {
-      throw new Error(`Risk ${riskPct.toFixed(2)}% exceeds MAX_RISK_PCT ${CFG.maxRiskPct}%`);
+      throw new Error(
+        `Risk ${riskPct.toFixed(2)}% exceeds MAX_RISK_PCT ${CFG.maxRiskPct}%`,
+      );
     }
   }
 }
@@ -3597,7 +4627,11 @@ function formatSignal(signal) {
 
 async function sendTelegram(text) {
   if (!CFG.telegramBotToken || !CFG.telegramChatId) {
-    return { ok: false, skipped: true, reason: "Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID" };
+    return {
+      ok: false,
+      skipped: true,
+      reason: "Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID",
+    };
   }
   const endpoint = `https://api.telegram.org/bot${CFG.telegramBotToken}/sendMessage`;
   const response = await fetch(endpoint, {
@@ -3657,7 +4691,9 @@ async function binanceSignedRequest(method, route, params) {
   }
 
   if (!res.ok) {
-    throw new Error(`Binance ${route} failed ${res.status}: ${JSON.stringify(body)}`);
+    throw new Error(
+      `Binance ${route} failed ${res.status}: ${JSON.stringify(body)}`,
+    );
   }
   return body;
 }
@@ -3677,7 +4713,9 @@ function resolveBinanceSizing(signal) {
   ) {
     return { quoteOrderQty: String(CFG.binanceDefaultQuoteQty) };
   }
-  throw new Error("No valid quantity. Provide signal.quantity or BINANCE_DEFAULT_QTY (or BINANCE_DEFAULT_QUOTE_QTY for spot BUY)");
+  throw new Error(
+    "No valid quantity. Provide signal.quantity or BINANCE_DEFAULT_QTY (or BINANCE_DEFAULT_QUOTE_QTY for spot BUY)",
+  );
 }
 
 async function executeBinance(signal) {
@@ -3688,15 +4726,20 @@ async function executeBinance(signal) {
     return { broker: "binance", status: "skipped", reason };
   }
   if (!CFG.binanceApiKey || !CFG.binanceApiSecret) {
-    return { broker: "binance", status: "skipped", reason: "Missing BINANCE_API_KEY/SECRET" };
+    return {
+      broker: "binance",
+      status: "skipped",
+      reason: "Missing BINANCE_API_KEY/SECRET",
+    };
   }
   if (!["spot", "um_futures"].includes(CFG.binanceProduct)) {
     throw new Error("BINANCE_PRODUCT must be spot|um_futures");
   }
 
-  const clientOrderId = `tv_${signal.strategy}_${signal.symbol}_${Date.now()}`.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 36);
+  const clientOrderId = `tv_${signal.strategy}_${signal.symbol}_${Date.now()}`
+    .replace(/[^a-zA-Z0-9_]/g, "")
+    .slice(0, 36);
   const sizing = resolveBinanceSizing(signal);
-
 
   if (CFG.binanceProduct === "spot") {
     const order = await binanceSignedRequest("POST", "/api/v3/order", {
@@ -3764,7 +4807,9 @@ async function executeBinance(signal) {
 }
 
 async function executeCTrader(signal, opts = {}) {
-  const mode = String(opts?.mode || CFG.ctraderMode || "").trim().toLowerCase();
+  const mode = String(opts?.mode || CFG.ctraderMode || "")
+    .trim()
+    .toLowerCase();
   const modeEnabled = ["demo", "live"].includes(mode);
   const enabled = opts?.forceEnabled ? modeEnabled : CFG.ctraderEnabled;
   if (!enabled) {
@@ -3774,9 +4819,12 @@ async function executeCTrader(signal, opts = {}) {
     return { broker: "ctrader", status: "skipped", reason };
   }
   if (!CFG.ctraderExecutorUrl) {
-    return { broker: "ctrader", status: "skipped", reason: "Set CTRADER_EXECUTOR_URL" };
+    return {
+      broker: "ctrader",
+      status: "skipped",
+      reason: "Set CTRADER_EXECUTOR_URL",
+    };
   }
-
 
   const headers = { "Content-Type": "application/json" };
   if (CFG.ctraderExecutorApiKey) {
@@ -3802,7 +4850,9 @@ async function executeCTrader(signal, opts = {}) {
   }
 
   if (!res.ok) {
-    throw new Error(`cTrader executor failed ${res.status}: ${JSON.stringify(body)}`);
+    throw new Error(
+      `cTrader executor failed ${res.status}: ${JSON.stringify(body)}`,
+    );
   }
 
   return {
@@ -3818,15 +4868,23 @@ function buildExecSummary(execResults) {
     .map((r) => {
       const broker = r.broker || "broker";
       const status = r.status || "unknown";
-      const detail = r.reason ? `(${r.reason})` : r.orderId ? `(#${r.orderId})` : "";
+      const detail = r.reason
+        ? `(${r.reason})`
+        : r.orderId
+          ? `(#${r.orderId})`
+          : "";
       return `${broker}:${status}${detail ? " " + detail : ""}`;
     })
     .join(" | ");
 }
 
 async function resolveExecutionPlan(signal) {
-  const userId = String(signal?.user_id || CFG.mt5DefaultUserId).trim() || CFG.mt5DefaultUserId;
-  const profile = await mt5GetActiveExecutionProfileV2(userId).catch(() => null);
+  const userId =
+    String(signal?.user_id || CFG.mt5DefaultUserId).trim() ||
+    CFG.mt5DefaultUserId;
+  const profile = await mt5GetActiveExecutionProfileV2(userId).catch(
+    () => null,
+  );
   if (!profile) {
     return {
       kind: "legacy",
@@ -3836,14 +4894,18 @@ async function resolveExecutionPlan(signal) {
       profile: null,
     };
   }
-  const route = String(profile.route || "").trim().toLowerCase();
+  const route = String(profile.route || "")
+    .trim()
+    .toLowerCase();
   if (route === "ctrader") {
     return {
       kind: "profile",
       runMt5: false,
       runBinance: false,
       runCTrader: true,
-      ctraderMode: String(profile.ctrader_mode || CFG.ctraderMode || "demo").toLowerCase(),
+      ctraderMode: String(
+        profile.ctrader_mode || CFG.ctraderMode || "demo",
+      ).toLowerCase(),
       profile,
     };
   }
@@ -3867,14 +4929,22 @@ async function handleSignal(payload) {
     const mt5Res = await executeMt5(signal);
     execResults.push(mt5Res);
   } else {
-    execResults.push({ broker: "mt5", status: "skipped", reason: "Execution profile route != mt5" });
+    execResults.push({
+      broker: "mt5",
+      status: "skipped",
+      reason: "Execution profile route != mt5",
+    });
   }
 
   if (plan.runBinance) {
     const binanceRes = await executeBinance(signal);
     execResults.push(binanceRes);
   } else {
-    execResults.push({ broker: "binance", status: "skipped", reason: "Execution profile route disabled" });
+    execResults.push({
+      broker: "binance",
+      status: "skipped",
+      reason: "Execution profile route disabled",
+    });
   }
 
   if (plan.runCTrader) {
@@ -3885,7 +4955,11 @@ async function handleSignal(payload) {
     });
     execResults.push(ctraderRes);
   } else {
-    execResults.push({ broker: "ctrader", status: "skipped", reason: "Execution profile route disabled" });
+    execResults.push({
+      broker: "ctrader",
+      status: "skipped",
+      reason: "Execution profile route disabled",
+    });
   }
 
   const text = formatSignal(signal);
@@ -3894,12 +4968,14 @@ async function handleSignal(payload) {
   return {
     ok: true,
     signal,
-    execution_plan: plan?.profile ? {
-      profile_id: plan.profile.profile_id || null,
-      route: plan.profile.route || null,
-      account_id: plan.profile.account_id || null,
-      ctrader_mode: plan.ctraderMode || null,
-    } : null,
+    execution_plan: plan?.profile
+      ? {
+          profile_id: plan.profile.profile_id || null,
+          route: plan.profile.route || null,
+          account_id: plan.profile.account_id || null,
+          ctrader_mode: plan.ctraderMode || null,
+        }
+      : null,
     execution: execResults,
     telegram,
   };
@@ -3931,7 +5007,9 @@ function mt5RenewSignalIdFromExisting(baseId, existingIds) {
       max = Math.max(max, 0);
       continue;
     }
-    const match = id.match(new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.(\\d+)$`));
+    const match = id.match(
+      new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.(\\d+)$`),
+    );
     if (!match) continue;
     const n = Number(match[1]);
     if (Number.isFinite(n) && n > max) max = n;
@@ -3941,11 +5019,11 @@ function mt5RenewSignalIdFromExisting(baseId, existingIds) {
 
 let MT5_BACKEND = null;
 
-
 function mt5MapDbRow(row) {
   if (!row) return null;
   const rawInput = row.raw_json || {};
-  const raw = typeof rawInput === "object" && rawInput !== null ? { ...rawInput } : {};
+  const raw =
+    typeof rawInput === "object" && rawInput !== null ? { ...rawInput } : {};
   const rawPrice = Number(raw.price);
   if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
     raw.price = null;
@@ -3954,19 +5032,44 @@ function mt5MapDbRow(row) {
   if (!Number.isFinite(rawEntry) || rawEntry <= 0) {
     raw.entry = null;
   }
-  const execEntry = row.entry_price_exec === null || row.entry_price_exec === undefined ? null : Number(row.entry_price_exec);
-  const execSl = row.sl_exec === null || row.sl_exec === undefined ? null : Number(row.sl_exec);
-  const execTp = row.tp_exec === null || row.tp_exec === undefined ? null : Number(row.tp_exec);
-  const rowEntry = row.entry === null || row.entry === undefined ? null : Number(row.entry);
+  const execEntry =
+    row.entry_price_exec === null || row.entry_price_exec === undefined
+      ? null
+      : Number(row.entry_price_exec);
+  const execSl =
+    row.sl_exec === null || row.sl_exec === undefined
+      ? null
+      : Number(row.sl_exec);
+  const execTp =
+    row.tp_exec === null || row.tp_exec === undefined
+      ? null
+      : Number(row.tp_exec);
+  const rowEntry =
+    row.entry === null || row.entry === undefined ? null : Number(row.entry);
   const entryFromRaw = Number(raw.entry ?? raw.price);
-  const resolvedEntry = Number.isFinite(rowEntry) && rowEntry > 0
-    ? rowEntry
-    : (Number.isFinite(entryFromRaw) && entryFromRaw > 0 ? entryFromRaw : null);
+  const resolvedEntry =
+    Number.isFinite(rowEntry) && rowEntry > 0
+      ? rowEntry
+      : Number.isFinite(entryFromRaw) && entryFromRaw > 0
+        ? entryFromRaw
+        : null;
   const normalizedModel = mt5NormalizeEntryModel(
-    row.entry_model || raw.entry_model || raw.entryModel || raw.model || raw.strategy || "",
+    row.entry_model ||
+      raw.entry_model ||
+      raw.entryModel ||
+      raw.model ||
+      raw.strategy ||
+      "",
     { fallback: row.source_id || row.source || "manual" },
   );
-  const tfFallback = String(row.signal_tf || raw.signal_tf || raw.signalTf || raw.sourceTf || raw.timeframe || "");
+  const tfFallback = String(
+    row.signal_tf ||
+      raw.signal_tf ||
+      raw.signalTf ||
+      raw.sourceTf ||
+      raw.timeframe ||
+      "",
+  );
   return {
     id: row.id === null || row.id === undefined ? null : Number(row.id),
     sid: String(row.sid || row.signal_id || ""),
@@ -3982,16 +5085,33 @@ function mt5MapDbRow(row) {
     sl: row.sl === null || row.sl === undefined ? null : Number(row.sl),
     tp: row.tp === null || row.tp === undefined ? null : Number(row.tp),
     entry: resolvedEntry,
-    rr_planned: row.rr_planned === null || row.rr_planned === undefined ? null : Number(row.rr_planned),
-    risk_money_planned: row.risk_money_planned === null || row.risk_money_planned === undefined ? null : Number(row.risk_money_planned),
-    pnl_money_realized: row.pnl_money_realized === null || row.pnl_money_realized === undefined ? null : Number(row.pnl_money_realized),
-    entry_price_exec: Number.isFinite(execEntry) && execEntry > 0 ? execEntry : null,
+    rr_planned:
+      row.rr_planned === null || row.rr_planned === undefined
+        ? null
+        : Number(row.rr_planned),
+    risk_money_planned:
+      row.risk_money_planned === null || row.risk_money_planned === undefined
+        ? null
+        : Number(row.risk_money_planned),
+    pnl_money_realized:
+      row.pnl_money_realized === null || row.pnl_money_realized === undefined
+        ? null
+        : Number(row.pnl_money_realized),
+    entry_price_exec:
+      Number.isFinite(execEntry) && execEntry > 0 ? execEntry : null,
     sl_exec: Number.isFinite(execSl) && execSl > 0 ? execSl : null,
     tp_exec: Number.isFinite(execTp) && execTp > 0 ? execTp : null,
     note: String(row.note || ""),
     raw_json: raw,
     signal_tf: tfFallback,
-    chart_tf: String(row.chart_tf || raw.chart_tf || raw.chartTf || raw.chartTimeframe || tfFallback || ""),
+    chart_tf: String(
+      row.chart_tf ||
+        raw.chart_tf ||
+        raw.chartTf ||
+        raw.chartTimeframe ||
+        tfFallback ||
+        "",
+    ),
     entry_model: normalizedModel,
     status: String(row.status || ""),
     execution_status: String(row.execution_status || ""),
@@ -4005,31 +5125,32 @@ function mt5MapDbRow(row) {
   };
 }
 
-
 let MT5_INIT_PROMISE = null;
 
 async function mt5InitBackend() {
-
   if (MT5_BACKEND) return MT5_BACKEND;
   if (MT5_INIT_PROMISE) return MT5_INIT_PROMISE;
-  MT5_INIT_PROMISE = _mt5InitBackendInternal().catch(e => {
+  MT5_INIT_PROMISE = _mt5InitBackendInternal().catch((e) => {
     MT5_INIT_PROMISE = null;
     throw e;
   });
   return MT5_INIT_PROMISE;
 }
 
-
 async function _mt5InitBackendInternal() {
   if (!CFG.mt5PostgresUrl) {
-    throw new Error("MT5_STORAGE=postgres but POSTGRES_URL/POSTGRE_URL/MT5_POSTGRES_URL is empty");
+    throw new Error(
+      "MT5_STORAGE=postgres but POSTGRES_URL/POSTGRE_URL/MT5_POSTGRES_URL is empty",
+    );
   }
   let pgModule;
 
   try {
     pgModule = require("pg");
   } catch {
-    throw new Error("MT5 postgres backend requires `pg` package. Run: npm install pg");
+    throw new Error(
+      "MT5 postgres backend requires `pg` package. Run: npm install pg",
+    );
   }
 
   const { Pool } = pgModule;
@@ -4040,8 +5161,8 @@ async function _mt5InitBackendInternal() {
     connectionTimeoutMillis: 5000,
   });
 
-  pool.on('error', (err) => {
-    console.error('[Postgres Pool Error]', err);
+  pool.on("error", (err) => {
+    console.error("[Postgres Pool Error]", err);
   });
 
   // NEW UNIFIED SCHEMA (v2.2 simplified)
@@ -4099,6 +5220,7 @@ async function _mt5InitBackendInternal() {
     ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT 'default';
     ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'ACTIVE';
     ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+    ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS value TEXT;
     DROP INDEX IF EXISTS idx_user_settings_singleton;
     DROP INDEX IF EXISTS idx_user_settings_user_type_name;
     ALTER TABLE user_settings DROP CONSTRAINT IF EXISTS user_settings_user_type_name_key;
@@ -4211,7 +5333,9 @@ async function _mt5InitBackendInternal() {
     ALTER TABLE trades ADD COLUMN IF NOT EXISTS order_type TEXT NULL;
   `);
 
-  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS entry DOUBLE PRECISION NULL`);
+  await pool.query(
+    `ALTER TABLE signals ADD COLUMN IF NOT EXISTS entry DOUBLE PRECISION NULL`,
+  );
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS market_data (
@@ -4227,10 +5351,26 @@ async function _mt5InitBackendInternal() {
       CONSTRAINT market_data_symbol_tf_range_key UNIQUE (symbol, tf, bar_start, bar_end)
     );
   `);
-  await pool.query(`ALTER TABLE market_data ADD COLUMN IF NOT EXISTS metadata JSONB NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE market_data ADD COLUMN IF NOT EXISTS last_price DOUBLE PRECISION NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE market_data ADD COLUMN IF NOT EXISTS last_price_at TIMESTAMPTZ NULL`).catch(() => { });
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_market_data_symbol_tf_bar ON market_data(symbol, tf, bar_start, bar_end)`).catch(() => { });
+  await pool
+    .query(
+      `ALTER TABLE market_data ADD COLUMN IF NOT EXISTS metadata JSONB NULL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE market_data ADD COLUMN IF NOT EXISTS last_price DOUBLE PRECISION NULL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE market_data ADD COLUMN IF NOT EXISTS last_price_at TIMESTAMPTZ NULL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `CREATE INDEX IF NOT EXISTS idx_market_data_symbol_tf_bar ON market_data(symbol, tf, bar_start, bar_end)`,
+    )
+    .catch(() => {});
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ea_logs (
       id SERIAL PRIMARY KEY,
@@ -4242,8 +5382,10 @@ async function _mt5InitBackendInternal() {
     );
   `);
 
-  await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`).catch(() => { });
-  await pool.query(`
+  await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`).catch(() => {});
+  await pool
+    .query(
+      `
     CREATE OR REPLACE FUNCTION gen_sid(prefix TEXT DEFAULT '', chars_limit INT DEFAULT 8)
     RETURNS TEXT
     LANGUAGE plpgsql
@@ -4260,85 +5402,215 @@ async function _mt5InitBackendInternal() {
       RETURN p || '_' || rnd;
     END;
     $$;
-  `).catch(() => { });
+  `,
+    )
+    .catch(() => {});
 
   // Migration: Merge legacy events into unified logs and drop old tables
   try {
-    await pool.query(`
+    await pool
+      .query(
+        `
       INSERT INTO logs (object_id, object_table, metadata, created_at)
       SELECT signal_id, 'signals', payload_json || jsonb_build_object('legacy_event_type', event_type), event_time
       FROM signal_events
-    `).catch(() => { });
-    await pool.query(`
+    `,
+      )
+      .catch(() => {});
+    await pool
+      .query(
+        `
       INSERT INTO logs (object_id, object_table, metadata, created_at)
       SELECT trade_id, 'trades', payload_json || jsonb_build_object('legacy_event_type', event_type), event_time
       FROM trade_events
-    `).catch(() => { });
+    `,
+      )
+      .catch(() => {});
   } catch (e) {
     // Legacy tables might already be gone
   }
 
-  const legacyTables = ['signal_events', 'trade_events', 'source_events', 'mt5_signals', 'account_sources', 'ui_auth_users', 'user_api_keys', 'brokers'];
+  const legacyTables = [
+    "signal_events",
+    "trade_events",
+    "source_events",
+    "mt5_signals",
+    "account_sources",
+    "ui_auth_users",
+    "user_api_keys",
+    "brokers",
+  ];
   for (const t of legacyTables) {
-    await pool.query(`DROP TABLE IF EXISTS ${t} CASCADE`).catch(() => { });
+    await pool.query(`DROP TABLE IF EXISTS ${t} CASCADE`).catch(() => {});
   }
 
   // Migration: Rename user_name to name in users table if it exists
-  await pool.query(`ALTER TABLE users RENAME COLUMN user_name TO name`).catch(() => { });
+  await pool
+    .query(`ALTER TABLE users RENAME COLUMN user_name TO name`)
+    .catch(() => {});
 
   // Migration: Strip legacy columns from signals/trades that Postgres persists despite IF NOT EXISTS definitions
   const legacySigCols = [
-    'pnl_money_realized', 'entry_price_exec', 'sl_exec', 'tp_exec',
-    'sl_pips', 'tp_pips', 'pip_value_per_lot', 'risk_money_actual',
-    'reward_money_planned', 'reward_money_actual', 'ack_status', 'ack_ticket', 'ack_error',
-    'locked_at', 'ack_at', 'opened_at', 'closed_at'
+    "pnl_money_realized",
+    "entry_price_exec",
+    "sl_exec",
+    "tp_exec",
+    "sl_pips",
+    "tp_pips",
+    "pip_value_per_lot",
+    "risk_money_actual",
+    "reward_money_planned",
+    "reward_money_actual",
+    "ack_status",
+    "ack_ticket",
+    "ack_error",
+    "locked_at",
+    "ack_at",
+    "opened_at",
+    "closed_at",
   ];
   for (const col of legacySigCols) {
-    await pool.query(`ALTER TABLE signals DROP COLUMN IF EXISTS ${col}`).catch(() => { });
+    await pool
+      .query(`ALTER TABLE signals DROP COLUMN IF EXISTS ${col}`)
+      .catch(() => {});
   }
 
   // Migration: keep schema simple and aligned with v2.2 fields.
-  await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS balance_start`).catch(() => { });
-  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS source_id TEXT NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS sid TEXT NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS risk_money_planned DOUBLE PRECISION NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS risk_pct_planned DOUBLE PRECISION NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS rejection_reason TEXT NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS id BIGSERIAL`).catch(() => { });
+  await pool
+    .query(`ALTER TABLE users DROP COLUMN IF EXISTS balance_start`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS source_id TEXT NULL`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS sid TEXT NULL`)
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE signals ADD COLUMN IF NOT EXISTS risk_money_planned DOUBLE PRECISION NULL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE signals ADD COLUMN IF NOT EXISTS risk_pct_planned DOUBLE PRECISION NULL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE signals ADD COLUMN IF NOT EXISTS rejection_reason TEXT NULL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS id BIGSERIAL`)
+    .catch(() => {});
 
-  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS sid TEXT NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS rejection_reason TEXT NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS id BIGSERIAL`).catch(() => { });
+  await pool
+    .query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS sid TEXT NULL`)
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE trades ADD COLUMN IF NOT EXISTS rejection_reason TEXT NULL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS id BIGSERIAL`)
+    .catch(() => {});
 
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS id BIGSERIAL`).catch(() => { });
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS sid TEXT NULL`).catch(() => { });
+  await pool
+    .query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS id BIGSERIAL`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS sid TEXT NULL`)
+    .catch(() => {});
 
-  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS id BIGSERIAL`).catch(() => { });
-  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS sid TEXT NULL`).catch(() => { });
+  await pool
+    .query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS id BIGSERIAL`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS sid TEXT NULL`)
+    .catch(() => {});
 
-  await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS id BIGSERIAL`).catch(() => { });
-  await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS sid TEXT NULL`).catch(() => { });
+  await pool
+    .query(
+      `ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS id BIGSERIAL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS sid TEXT NULL`,
+    )
+    .catch(() => {});
 
-  await pool.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS entry_model TEXT NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS name TEXT`).catch(() => { });
-  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS balance DOUBLE PRECISION NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_hash TEXT NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_last4 TEXT NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_rotated_at TIMESTAMPTZ NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS source_ids_cache JSONB NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE accounts DROP COLUMN IF EXISTS broker_id`).catch(() => { });
-  await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS source_ids JSONB NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS ctrader_mode TEXT NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS ctrader_account_id TEXT NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS metadata JSONB NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`).catch(() => { });
+  await pool
+    .query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS entry_model TEXT NULL`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS name TEXT`)
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS balance DOUBLE PRECISION NULL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_hash TEXT NULL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_last4 TEXT NULL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS api_key_rotated_at TIMESTAMPTZ NULL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS source_ids_cache JSONB NULL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE accounts DROP COLUMN IF EXISTS broker_id`)
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS source_ids JSONB NULL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS ctrader_mode TEXT NULL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS ctrader_account_id TEXT NULL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS metadata JSONB NULL`,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE execution_profiles ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`,
+    )
+    .catch(() => {});
 
   // Compatibility migration: absorb legacy AI templates from both the old
   // physical table and deprecated user_settings rows into user_templates.
   try {
-    const legacyAiTemplatesTable = await pool.query(`SELECT to_regclass('public.ai_templates') AS table_name`);
+    const legacyAiTemplatesTable = await pool.query(
+      `SELECT to_regclass('public.ai_templates') AS table_name`,
+    );
     if (legacyAiTemplatesTable.rows?.[0]?.table_name) {
-      await pool.query(`
+      await pool
+        .query(
+          `
         INSERT INTO user_templates (user_id, name, data, status, created_at, updated_at)
         SELECT
           COALESCE(NULLIF(t.user_id, ''), $1) AS user_id,
@@ -4348,11 +5620,17 @@ async function _mt5InitBackendInternal() {
           COALESCE(t.created_at, NOW()) AS created_at,
           COALESCE(t.updated_at, NOW()) AS updated_at
         FROM ai_templates t
-      `, [CFG.mt5DefaultUserId]).catch(() => { });
-      await pool.query(`DROP TABLE IF EXISTS ai_templates`).catch(() => { });
+      `,
+          [CFG.mt5DefaultUserId],
+        )
+        .catch(() => {});
+      await pool.query(`DROP TABLE IF EXISTS ai_templates`).catch(() => {});
     }
   } catch (e) {
-    console.warn("[mt5-db] legacy ai_templates migration skipped:", e?.message || e);
+    console.warn(
+      "[mt5-db] legacy ai_templates migration skipped:",
+      e?.message || e,
+    );
   }
 
   try {
@@ -4374,16 +5652,23 @@ async function _mt5InitBackendInternal() {
             AND ut.name = COALESCE(NULLIF(s.name, ''), 'Migrated Template ' || substr(md5(s.id::text), 1, 6))
         )
     `);
-    await pool.query(`DELETE FROM user_settings WHERE type = 'ai_template'`).catch(() => { });
+    await pool
+      .query(`DELETE FROM user_settings WHERE type = 'ai_template'`)
+      .catch(() => {});
   } catch (e) {
-    console.warn("[mt5-db] user_settings ai_template migration skipped:", e?.message || e);
+    console.warn(
+      "[mt5-db] user_settings ai_template migration skipped:",
+      e?.message || e,
+    );
   }
 
   // Compatibility migration: many existing VPS installs still have the real
   // account rows only in legacy `accounts`. Backfill `user_accounts` so the
   // Accounts UI and EA API-key auth both see the same data.
   try {
-    const legacyAccountsTable = await pool.query(`SELECT to_regclass('public.accounts') AS table_name`);
+    const legacyAccountsTable = await pool.query(
+      `SELECT to_regclass('public.accounts') AS table_name`,
+    );
     if (legacyAccountsTable.rows?.[0]?.table_name) {
       await pool.query(`
         INSERT INTO user_accounts (
@@ -4422,35 +5707,85 @@ async function _mt5InitBackendInternal() {
     console.warn("[mt5-db] legacy accounts backfill skipped:", e?.message || e);
   }
 
-  await pool.query(`ALTER TABLE trades RENAME COLUMN side TO action`).catch(() => { });
-  await pool.query(`ALTER TABLE trades RENAME COLUMN intent_entry TO entry`).catch(() => { });
-  await pool.query(`ALTER TABLE trades RENAME COLUMN intent_sl TO sl`).catch(() => { });
-  await pool.query(`ALTER TABLE trades RENAME COLUMN intent_tp TO tp`).catch(() => { });
-  await pool.query(`ALTER TABLE trades RENAME COLUMN intent_note TO note`).catch(() => { });
-  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS volume FLOAT8 NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS user_id TEXT NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS entry_model TEXT NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS signal_tf TEXT NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS chart_tf TEXT NULL`).catch(() => { });
-  await pool.query(`ALTER TABLE trades DROP CONSTRAINT IF EXISTS trades_execution_status_check`).catch(() => { });
-  await pool.query(`
+  await pool
+    .query(`ALTER TABLE trades RENAME COLUMN side TO action`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades RENAME COLUMN intent_entry TO entry`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades RENAME COLUMN intent_sl TO sl`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades RENAME COLUMN intent_tp TO tp`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades RENAME COLUMN intent_note TO note`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS volume FLOAT8 NULL`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS user_id TEXT NULL`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS entry_model TEXT NULL`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS signal_tf TEXT NULL`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS chart_tf TEXT NULL`)
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE trades DROP CONSTRAINT IF EXISTS trades_execution_status_check`,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `
     ALTER TABLE trades
     ADD CONSTRAINT trades_execution_status_check
     CHECK (execution_status = ANY (ARRAY['PENDING','OPEN','CLOSED','REJECTED','CANCELLED']))
-  `).catch(() => { });
-  await pool.query(`ALTER TABLE trades DROP CONSTRAINT IF EXISTS trades_close_reason_check`).catch(() => { });
-  await pool.query(`
+  `,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `ALTER TABLE trades DROP CONSTRAINT IF EXISTS trades_close_reason_check`,
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `
     ALTER TABLE trades
     ADD CONSTRAINT trades_close_reason_check
     CHECK (close_reason IS NULL OR close_reason = ANY (ARRAY['TP','SL','MANUAL','CANCEL','EXPIRED','FAIL','SNAPSHOT']))
-  `).catch(() => { });
-  await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS origin_kind`).catch(() => { });
-  await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS intent_volume`).catch(() => { });
-  await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS broker_order_id`).catch(() => { });
-  await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS pulled_at`).catch(() => { });
-  await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS error_code`).catch(() => { });
-  await pool.query(`ALTER TABLE trades DROP COLUMN IF EXISTS error_message`).catch(() => { });
-  await pool.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS raw_json JSONB NULL`).catch(() => { });
+  `,
+    )
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades DROP COLUMN IF EXISTS origin_kind`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades DROP COLUMN IF EXISTS intent_volume`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades DROP COLUMN IF EXISTS broker_order_id`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades DROP COLUMN IF EXISTS pulled_at`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades DROP COLUMN IF EXISTS error_code`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades DROP COLUMN IF EXISTS error_message`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS raw_json JSONB NULL`)
+    .catch(() => {});
 
   // Performance Indexes
   const idxSql = [
@@ -4469,19 +5804,25 @@ async function _mt5InitBackendInternal() {
     // Logs
     `CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_logs_object ON logs(object_id, object_table)`,
-    `CREATE INDEX IF NOT EXISTS idx_logs_user ON logs(user_id)`
+    `CREATE INDEX IF NOT EXISTS idx_logs_user ON logs(user_id)`,
   ];
   for (const sql of idxSql) {
-    await pool.query(sql).catch(e => console.error(`[db-idx] failed: ${sql}`, e.message));
+    await pool
+      .query(sql)
+      .catch((e) => console.error(`[db-idx] failed: ${sql}`, e.message));
   }
-  await pool.query(`
+  await pool
+    .query(
+      `
     UPDATE trades t
     SET entry_model = COALESCE(NULLIF(t.entry_model, ''), NULLIF(s.entry_model, ''), s.raw_json->>'entry_model'),
         signal_tf = COALESCE(NULLIF(t.signal_tf, ''), s.signal_tf),
         chart_tf = COALESCE(NULLIF(t.chart_tf, ''), s.chart_tf)
     FROM signals s
     WHERE t.signal_id = s.signal_id
-  `).catch(() => { });
+  `,
+    )
+    .catch(() => {});
 
   const idSidMigrations = [
     { table: "users", legacy: "user_id", prefix: "USR" },
@@ -4491,12 +5832,23 @@ async function _mt5InitBackendInternal() {
     { table: "sources", legacy: "source_id", prefix: "SRC" },
     { table: "execution_profiles", legacy: "profile_id", prefix: "PRF" },
   ];
-  const UUID_REGEX_SQL = "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
+  const UUID_REGEX_SQL =
+    "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
   for (const { table, legacy, prefix } of idSidMigrations) {
-    await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS id BIGSERIAL`).catch(() => { });
-    await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS sid TEXT`).catch(() => { });
-    await pool.query(`ALTER TABLE ${table} ALTER COLUMN sid SET DEFAULT gen_sid('${prefix}', 8)`).catch(() => { });
-    await pool.query(`
+    await pool
+      .query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS id BIGSERIAL`)
+      .catch(() => {});
+    await pool
+      .query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS sid TEXT`)
+      .catch(() => {});
+    await pool
+      .query(
+        `ALTER TABLE ${table} ALTER COLUMN sid SET DEFAULT gen_sid('${prefix}', 8)`,
+      )
+      .catch(() => {});
+    await pool
+      .query(
+        `
       UPDATE ${table}
       SET sid = CASE
         WHEN COALESCE(NULLIF(${legacy}, ''), '') <> ''
@@ -4505,67 +5857,112 @@ async function _mt5InitBackendInternal() {
         ELSE gen_sid('${prefix}', 8)
       END
       WHERE sid IS NULL OR sid = ''
-    `).catch(() => { });
+    `,
+      )
+      .catch(() => {});
     // Normalize old UUID-style sids into compact custom SIDs.
-    await pool.query(`
+    await pool
+      .query(
+        `
       UPDATE ${table}
       SET sid = gen_sid('${prefix}', 8)
       WHERE sid ~* '${UUID_REGEX_SQL}'
-    `).catch(() => { });
-    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_${table}_id ON ${table}(id)`).catch(() => { });
-    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_${table}_sid ON ${table}(sid)`).catch(() => { });
-    await pool.query(`ALTER TABLE ${table} ALTER COLUMN sid SET NOT NULL`).catch(() => { });
+    `,
+      )
+      .catch(() => {});
+    await pool
+      .query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_${table}_id ON ${table}(id)`)
+      .catch(() => {});
+    await pool
+      .query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS uq_${table}_sid ON ${table}(sid)`,
+      )
+      .catch(() => {});
+    await pool
+      .query(`ALTER TABLE ${table} ALTER COLUMN sid SET NOT NULL`)
+      .catch(() => {});
   }
   // Normalize legacy UUID-style users.user_id into compact IDs when safe.
-  const legacyUuidUsers = await pool.query(`
+  const legacyUuidUsers = await pool
+    .query(
+      `
     SELECT user_id
     FROM users
     WHERE user_id ~* '${UUID_REGEX_SQL}'
-  `).catch(() => ({ rows: [] }));
-  for (const row of (legacyUuidUsers.rows || [])) {
+  `,
+    )
+    .catch(() => ({ rows: [] }));
+  for (const row of legacyUuidUsers.rows || []) {
     const oldUserId = String(row?.user_id || "").trim();
     if (!oldUserId) continue;
     if (oldUserId === String(CFG.mt5DefaultUserId || "")) continue;
-    const refRes = await pool.query(`
+    const refRes = await pool
+      .query(
+        `
       SELECT
         (SELECT COUNT(*) FROM user_accounts WHERE user_id = $1) AS accounts_count,
         (SELECT COUNT(*) FROM signals WHERE user_id = $1) AS signals_count,
         (SELECT COUNT(*) FROM trades WHERE user_id = $1) AS trades_count,
         (SELECT COUNT(*) FROM user_settings WHERE user_id = $1) AS settings_count,
         (SELECT COUNT(*) FROM execution_profiles WHERE user_id = $1) AS profiles_count
-    `, [oldUserId]).catch(() => ({ rows: [] }));
+    `,
+        [oldUserId],
+      )
+      .catch(() => ({ rows: [] }));
     const refRow = refRes.rows?.[0] || {};
-    const totalRefs = Number(refRow.accounts_count || 0)
-      + Number(refRow.signals_count || 0)
-      + Number(refRow.trades_count || 0)
-      + Number(refRow.settings_count || 0)
-      + Number(refRow.profiles_count || 0);
+    const totalRefs =
+      Number(refRow.accounts_count || 0) +
+      Number(refRow.signals_count || 0) +
+      Number(refRow.trades_count || 0) +
+      Number(refRow.settings_count || 0) +
+      Number(refRow.profiles_count || 0);
     if (totalRefs > 0) continue;
     let nextUserId = "";
     for (let i = 0; i < 8; i += 1) {
-      const genRes = await pool.query(`SELECT gen_sid('USR', 8) AS v`).catch(() => ({ rows: [] }));
+      const genRes = await pool
+        .query(`SELECT gen_sid('USR', 8) AS v`)
+        .catch(() => ({ rows: [] }));
       const candidate = String(genRes.rows?.[0]?.v || "").trim();
       if (!candidate) continue;
-      const exists = await pool.query(`SELECT 1 FROM users WHERE user_id = $1 LIMIT 1`, [candidate]).catch(() => ({ rows: [{ ok: 1 }] }));
+      const exists = await pool
+        .query(`SELECT 1 FROM users WHERE user_id = $1 LIMIT 1`, [candidate])
+        .catch(() => ({ rows: [{ ok: 1 }] }));
       if (!exists.rows?.length) {
         nextUserId = candidate;
         break;
       }
     }
     if (!nextUserId) continue;
-    await pool.query(`UPDATE users SET user_id = $1, updated_at = NOW() WHERE user_id = $2`, [nextUserId, oldUserId]).catch(() => { });
+    await pool
+      .query(
+        `UPDATE users SET user_id = $1, updated_at = NOW() WHERE user_id = $2`,
+        [nextUserId, oldUserId],
+      )
+      .catch(() => {});
   }
 
   // Ensure default user
   const now = mt5NowIso();
-  await pool.query(`
+  await pool.query(
+    `
     INSERT INTO users (user_id, email, password_hash, role, created_at, updated_at)
     VALUES ($1, $2, $3, $4, $5, $6)
     ON CONFLICT (user_id) DO UPDATE SET
       role = EXCLUDED.role,
       updated_at = EXCLUDED.updated_at
-  `, [CFG.mt5DefaultUserId, "System", "", UI_ROLE_SYSTEM, mt5NowIso(), mt5NowIso()]);
-  await pool.query(`
+  `,
+    [
+      CFG.mt5DefaultUserId,
+      "System",
+      "",
+      UI_ROLE_SYSTEM,
+      mt5NowIso(),
+      mt5NowIso(),
+    ],
+  );
+  await pool
+    .query(
+      `
     WITH legacy AS (
       SELECT email, password_salt, password_hash, updated_at
       FROM ui_auth_users
@@ -4581,33 +5978,68 @@ async function _mt5InitBackendInternal() {
         updated_at = COALESCE(legacy.updated_at, NOW())
     FROM legacy
     WHERE u.user_id = $1
-  `, [CFG.mt5DefaultUserId, UI_ROLE_SYSTEM]).catch(() => {
-    // Legacy table may not exist; safe to ignore.
-  });
+  `,
+      [CFG.mt5DefaultUserId, UI_ROLE_SYSTEM],
+    )
+    .catch(() => {
+      // Legacy table may not exist; safe to ignore.
+    });
 
   // Legacy migration paths removed; using Postgres-exclusive storage.
 
-  async function allocateUniqueSid(client, table, baseRaw, fallbackPrefix = "ID") {
-    const allowed = new Set(["users", "accounts", "user_accounts", "signals", "trades", "sources", "execution_profiles"]);
+  async function allocateUniqueSid(
+    client,
+    table,
+    baseRaw,
+    fallbackPrefix = "ID",
+  ) {
+    const allowed = new Set([
+      "users",
+      "accounts",
+      "user_accounts",
+      "signals",
+      "trades",
+      "sources",
+      "execution_profiles",
+    ]);
     const tableName = String(table || "").trim();
     if (!allowed.has(tableName)) {
-      const fallbackRes = await client.query(`SELECT gen_sid($1, 8) AS sid`, [String(fallbackPrefix || "ID").slice(0, 6).toUpperCase()]).catch(() => ({ rows: [] }));
-      return String(fallbackRes.rows?.[0]?.sid || normalizePublicSidBase(baseRaw, fallbackPrefix));
+      const fallbackRes = await client
+        .query(`SELECT gen_sid($1, 8) AS sid`, [
+          String(fallbackPrefix || "ID")
+            .slice(0, 6)
+            .toUpperCase(),
+        ])
+        .catch(() => ({ rows: [] }));
+      return String(
+        fallbackRes.rows?.[0]?.sid ||
+          normalizePublicSidBase(baseRaw, fallbackPrefix),
+      );
     }
     const base = normalizePublicSidBase(baseRaw, fallbackPrefix);
     for (let i = 0; i < 120; i += 1) {
       const candidate = i === 0 ? base : `${base}_${i + 1}`;
-      const exists = await client.query(`SELECT 1 FROM ${tableName} WHERE sid = $1 LIMIT 1`, [candidate]).catch(() => ({ rows: [{ exists: 1 }] }));
+      const exists = await client
+        .query(`SELECT 1 FROM ${tableName} WHERE sid = $1 LIMIT 1`, [candidate])
+        .catch(() => ({ rows: [{ exists: 1 }] }));
       if (!exists.rows?.length) return candidate.slice(0, 64);
     }
-    const fallbackRes = await client.query(`SELECT gen_sid($1, 8) AS sid`, [String(fallbackPrefix || "ID").slice(0, 6).toUpperCase()]).catch(() => ({ rows: [] }));
+    const fallbackRes = await client
+      .query(`SELECT gen_sid($1, 8) AS sid`, [
+        String(fallbackPrefix || "ID")
+          .slice(0, 6)
+          .toUpperCase(),
+      ])
+      .catch(() => ({ rows: [] }));
     return String(fallbackRes.rows?.[0]?.sid || base.slice(0, 64));
   }
 
   let LOG_ENABLED_PREFIXES = [];
   async function loadLoggingConfig() {
     try {
-      const res = await pool.query(`SELECT value FROM user_settings WHERE name = 'enabled_log_prefixes' LIMIT 1`);
+      const res = await pool.query(
+        `SELECT value FROM user_settings WHERE name = 'enabled_log_prefixes' LIMIT 1`,
+      );
       if (res.rows.length > 0) {
         const val = res.rows[0].value;
         LOG_ENABLED_PREFIXES = Array.isArray(val) ? val : [];
@@ -4627,21 +6059,34 @@ async function _mt5InitBackendInternal() {
     query: (q, p) => pool.query(q, p),
     info: { url: CFG.mt5PostgresUrl.replace(/:[^:@/]+@/, ":***@") },
     async log(objectId, objectTable, metadata = {}, userId = null) {
-      const eventName = String(metadata.event || metadata.event_type || "INFO").toUpperCase();
-      const isEnabled = LOG_ENABLED_PREFIXES.some(p => eventName.startsWith(p));
+      const eventName = String(
+        metadata.event || metadata.event_type || "INFO",
+      ).toUpperCase();
+      const isEnabled = LOG_ENABLED_PREFIXES.some((p) =>
+        eventName.startsWith(p),
+      );
       if (!isEnabled) {
         // console.log(`[LOG_SKIPPED] ${eventName}`); // Debug
         return;
       }
-      await pool.query(`
+      await pool.query(
+        `
         INSERT INTO logs (object_id, object_table, metadata, user_id, created_at)
         VALUES ($1, $2, $3, $4, NOW())
-      `, [objectId, objectTable, JSON.stringify(metadata), userId]);
+      `,
+        [objectId, objectTable, JSON.stringify(metadata), userId],
+      );
     },
     refreshLogConfig: loadLoggingConfig,
     async upsertSignal(signal) {
-      const signalSid = await allocateUniqueSid(pool, "signals", signal.sid || signal.signal_id, "SIG");
-      const r = await pool.query(`
+      const signalSid = await allocateUniqueSid(
+        pool,
+        "signals",
+        signal.sid || signal.signal_id,
+        "SIG",
+      );
+      const r = await pool.query(
+        `
         INSERT INTO signals (
           signal_id, sid, created_at, user_id, source, source_id, symbol, side, order_type, entry, sl, tp,
           entry_model, signal_tf, chart_tf, rr_planned, risk_money_planned, risk_pct_planned,
@@ -4649,18 +6094,39 @@ async function _mt5InitBackendInternal() {
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,$22)
         ON CONFLICT (signal_id) DO NOTHING
         RETURNING signal_id
-      `, [
-        signal.signal_id, signalSid, signal.created_at, signal.user_id, signal.source, signal.source_id,
-        signal.symbol, signal.side, signal.order_type || null, signal.entry, signal.sl, signal.tp, signal.entry_model || null,
-        signal.signal_tf, signal.chart_tf, signal.rr_planned, signal.risk_money_planned, signal.risk_pct_planned,
-        signal.note, signal.rejection_reason, JSON.stringify(signal.raw_json || {}), signal.status || 'NEW'
-      ]);
+      `,
+        [
+          signal.signal_id,
+          signalSid,
+          signal.created_at,
+          signal.user_id,
+          signal.source,
+          signal.source_id,
+          signal.symbol,
+          signal.side,
+          signal.order_type || null,
+          signal.entry,
+          signal.sl,
+          signal.tp,
+          signal.entry_model || null,
+          signal.signal_tf,
+          signal.chart_tf,
+          signal.rr_planned,
+          signal.risk_money_planned,
+          signal.risk_pct_planned,
+          signal.note,
+          signal.rejection_reason,
+          JSON.stringify(signal.raw_json || {}),
+          signal.status || "NEW",
+        ],
+      );
       return { inserted: (r.rowCount || 0) > 0 };
     },
     async findSignalById(signalId) {
       const sid = String(signalId || "").trim();
       if (!sid) return null;
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         SELECT *
         FROM signals
         WHERE signal_id = $1
@@ -4668,38 +6134,55 @@ async function _mt5InitBackendInternal() {
            OR raw_json->>'trade_id' = $1
         ORDER BY CASE WHEN signal_id = $1 THEN 0 ELSE 1 END, created_at DESC
         LIMIT 1
-      `, [sid]);
+      `,
+        [sid],
+      );
       const row = res.rows?.[0] || null;
       if (!row) return null;
-      const raw = row.raw_json && typeof row.raw_json === "object" ? row.raw_json : {};
-      const side = String(row.side || raw.action || raw.side || "BUY").toUpperCase();
+      const raw =
+        row.raw_json && typeof row.raw_json === "object" ? row.raw_json : {};
+      const side = String(
+        row.side || raw.action || raw.side || "BUY",
+      ).toUpperCase();
       const volumeRaw = Number(raw.volume ?? raw.lots ?? CFG.mt5DefaultLot);
       return {
         ...row,
         action: side,
-        volume: Number.isFinite(volumeRaw) && volumeRaw > 0 ? volumeRaw : CFG.mt5DefaultLot,
+        volume:
+          Number.isFinite(volumeRaw) && volumeRaw > 0
+            ? volumeRaw
+            : CFG.mt5DefaultLot,
       };
     },
     async getSignalByTicket(ticket) {
       const tk = String(ticket || "").trim();
       if (!tk) return null;
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         SELECT s.*
         FROM trades t
         LEFT JOIN signals s ON s.signal_id = t.signal_id
         WHERE t.broker_trade_id = $1
         ORDER BY t.updated_at DESC, t.created_at DESC
         LIMIT 1
-      `, [tk]);
+      `,
+        [tk],
+      );
       const row = res.rows?.[0] || null;
       if (!row) return null;
-      const raw = row.raw_json && typeof row.raw_json === "object" ? row.raw_json : {};
-      const side = String(row.side || raw.action || raw.side || "BUY").toUpperCase();
+      const raw =
+        row.raw_json && typeof row.raw_json === "object" ? row.raw_json : {};
+      const side = String(
+        row.side || raw.action || raw.side || "BUY",
+      ).toUpperCase();
       const volumeRaw = Number(raw.volume ?? raw.lots ?? CFG.mt5DefaultLot);
       return {
         ...row,
         action: side,
-        volume: Number.isFinite(volumeRaw) && volumeRaw > 0 ? volumeRaw : CFG.mt5DefaultLot,
+        volume:
+          Number.isFinite(volumeRaw) && volumeRaw > 0
+            ? volumeRaw
+            : CFG.mt5DefaultLot,
       };
     },
     async pullAndLockSignalById(signalId) {
@@ -4708,7 +6191,8 @@ async function _mt5InitBackendInternal() {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const sel = await client.query(`
+        const sel = await client.query(
+          `
           SELECT *
           FROM signals
           WHERE signal_id = $1
@@ -4717,7 +6201,9 @@ async function _mt5InitBackendInternal() {
           ORDER BY CASE WHEN signal_id = $1 THEN 0 ELSE 1 END, created_at DESC
           LIMIT 1
           FOR UPDATE
-        `, [sid]);
+        `,
+          [sid],
+        );
         const row = sel.rows?.[0] || null;
         if (!row) {
           await client.query("COMMIT");
@@ -4730,22 +6216,33 @@ async function _mt5InitBackendInternal() {
         }
         let outRow = row;
         if (cur === "NEW") {
-          const upd = await client.query(`
+          const upd = await client.query(
+            `
             UPDATE signals
             SET status = 'LOCKED'
             WHERE signal_id = $1
             RETURNING *
-          `, [sid]);
+          `,
+            [sid],
+          );
           outRow = upd.rows?.[0] || row;
         }
         await client.query("COMMIT");
-        const raw = outRow.raw_json && typeof outRow.raw_json === "object" ? outRow.raw_json : {};
-        const side = String(outRow.side || raw.action || raw.side || "BUY").toUpperCase();
+        const raw =
+          outRow.raw_json && typeof outRow.raw_json === "object"
+            ? outRow.raw_json
+            : {};
+        const side = String(
+          outRow.side || raw.action || raw.side || "BUY",
+        ).toUpperCase();
         const volumeRaw = Number(raw.volume ?? raw.lots ?? CFG.mt5DefaultLot);
         return {
           ...outRow,
           action: side,
-          volume: Number.isFinite(volumeRaw) && volumeRaw > 0 ? volumeRaw : CFG.mt5DefaultLot,
+          volume:
+            Number.isFinite(volumeRaw) && volumeRaw > 0
+              ? volumeRaw
+              : CFG.mt5DefaultLot,
         };
       } catch (e) {
         await client.query("ROLLBACK");
@@ -4761,36 +6258,43 @@ async function _mt5InitBackendInternal() {
         await client.query("BEGIN");
 
         // 1. Unified Trades table: Pending Actions (Mod/Close/Cancel) OR New Signals
-        const selTrd = await client.query(`
+        const selTrd = await client.query(
+          `
           SELECT * FROM trades
           WHERE (
             (execution_status IN ('PENDING_MOD', 'PENDING_CLOSE', 'PENDING_CANCEL'))
             OR (dispatch_status = 'NEW' AND execution_status = 'PENDING')
           )
           AND (account_id = $1::TEXT OR account_id IS NULL OR account_id = '')
-          ORDER BY 
+          ORDER BY
             CASE WHEN dispatch_status = 'NEW' THEN 1 ELSE 2 END ASC,
             created_at ASC
           LIMIT 1
           FOR UPDATE SKIP LOCKED
-        `, [aid]);
+        `,
+          [aid],
+        );
 
         if (selTrd.rows.length > 0) {
           const row = selTrd.rows[0];
 
-          let taskType = 'OPEN';
-          if (row.execution_status === 'PENDING_MOD') taskType = 'MODIFY';
-          else if (row.execution_status === 'PENDING_CLOSE') taskType = 'CLOSE';
-          else if (row.execution_status === 'PENDING_CANCEL') taskType = 'CANCEL';
+          let taskType = "OPEN";
+          if (row.execution_status === "PENDING_MOD") taskType = "MODIFY";
+          else if (row.execution_status === "PENDING_CLOSE") taskType = "CLOSE";
+          else if (row.execution_status === "PENDING_CANCEL")
+            taskType = "CANCEL";
 
-          await client.query(`
-            UPDATE trades 
-            SET dispatch_status = 'LEASED', 
-                lease_token = $1, 
+          await client.query(
+            `
+            UPDATE trades
+            SET dispatch_status = 'LEASED',
+                lease_token = $1,
                 lease_expires_at = NOW() + INTERVAL '1 minute',
                 updated_at = NOW()
             WHERE trade_id = $2
-          `, [mt5GenerateId("LT"), row.trade_id]);
+          `,
+            [mt5GenerateId("LT"), row.trade_id],
+          );
 
           await client.query("COMMIT");
 
@@ -4804,7 +6308,7 @@ async function _mt5InitBackendInternal() {
             sl: row.sl,
             tp: row.tp,
             signal_id: row.signal_id || row.trade_id,
-            ticket: row.broker_trade_id
+            ticket: row.broker_trade_id,
           };
         }
 
@@ -4819,19 +6323,22 @@ async function _mt5InitBackendInternal() {
 
         if (selSig.rows.length > 0) {
           const row = selSig.rows[0];
-          await client.query(`UPDATE signals SET status = 'LEASED' WHERE signal_id = $1`, [row.signal_id]);
+          await client.query(
+            `UPDATE signals SET status = 'LEASED' WHERE signal_id = $1`,
+            [row.signal_id],
+          );
           await client.query("COMMIT");
 
           return {
             task_id: row.signal_id,
-            type: 'OPEN',
+            type: "OPEN",
             symbol: row.symbol,
             action: row.side,
             volume: row.volume || 0.01,
             price: row.price,
             sl: row.sl,
             tp: row.tp,
-            signal_id: row.signal_id
+            signal_id: row.signal_id,
           };
         }
 
@@ -4839,7 +6346,7 @@ async function _mt5InitBackendInternal() {
         return null;
       } catch (e) {
         await client.query("ROLLBACK");
-        console.error('[MT5 Backend] pullAndLockNextTask error:', e);
+        console.error("[MT5 Backend] pullAndLockNextTask error:", e);
         throw e;
       } finally {
         client.release();
@@ -4848,7 +6355,7 @@ async function _mt5InitBackendInternal() {
     async pullAndLockNextSignal() {
       // Compatibility wrapper
       const t = await this.pullAndLockNextTask();
-      if (!t || t.type !== 'OPEN') return null;
+      if (!t || t.type !== "OPEN") return null;
       return t;
     },
     async fanoutSignalTradeV2(payload = {}) {
@@ -4860,40 +6367,80 @@ async function _mt5InitBackendInternal() {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const accounts = await client.query(`SELECT account_id FROM user_accounts WHERE user_id = $1 AND status != 'ARCHIVED'`, [userId]);
-        let created = 0; const accountIds = [];
+        const accounts = await client.query(
+          `SELECT account_id FROM user_accounts WHERE user_id = $1 AND status != 'ARCHIVED'`,
+          [userId],
+        );
+        let created = 0;
+        const accountIds = [];
         for (const row of accounts.rows || []) {
           const aid = row.account_id;
           const tradeId = mt5GenerateId("TRD");
           const tradeSid = await allocateUniqueSid(
             client,
             "trades",
-            payload.trade_sid || payload.sid || `${payload.symbol || "TRD"}_${payload.session_prefix || ""}`,
+            payload.trade_sid ||
+              payload.sid ||
+              `${payload.symbol || "TRD"}_${payload.session_prefix || ""}`,
             "TRD",
           );
-          const ins = await client.query(`
+          const ins = await client.query(
+            `
             INSERT INTO trades (
               trade_id, sid, account_id, user_id, signal_id, source_id,
               entry_model, signal_tf, chart_tf,
               symbol, action, order_type, entry, sl, tp, volume, note,
               dispatch_status, execution_status, metadata, raw_json, created_at, updated_at
             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'NEW','PENDING',$18::jsonb,$19::jsonb,$20,$20)
-          `, [
-            tradeId, tradeSid, aid, userId, signalId, sourceId,
-            payload.entry_model || null, payload.signal_tf || null, payload.chart_tf || null,
-            payload.symbol, payload.action, payload.order_type || null, payload.entry, payload.sl,
-            payload.tp, payload.volume, payload.note, JSON.stringify(payload.metadata || {}), JSON.stringify(payload.metadata?.raw_json || {}), mt5NowIso()
-          ]);
+          `,
+            [
+              tradeId,
+              tradeSid,
+              aid,
+              userId,
+              signalId,
+              sourceId,
+              payload.entry_model || null,
+              payload.signal_tf || null,
+              payload.chart_tf || null,
+              payload.symbol,
+              payload.action,
+              payload.order_type || null,
+              payload.entry,
+              payload.sl,
+              payload.tp,
+              payload.volume,
+              payload.note,
+              JSON.stringify(payload.metadata || {}),
+              JSON.stringify(payload.metadata?.raw_json || {}),
+              mt5NowIso(),
+            ],
+          );
           if ((ins.rowCount || 0) > 0) {
-            created++; accountIds.push(aid);
-            await client.query(`INSERT INTO logs (object_id, object_table, metadata, user_id) VALUES ($1,'trades',$2,$3)`,
-              [tradeId, JSON.stringify(signalId ? { event: 'SIGNAL_FANOUT', signal_id: signalId } : { event: 'DIRECT_TRADE_CREATE' }), userId]);
+            created++;
+            accountIds.push(aid);
+            await client.query(
+              `INSERT INTO logs (object_id, object_table, metadata, user_id) VALUES ($1,'trades',$2,$3)`,
+              [
+                tradeId,
+                JSON.stringify(
+                  signalId
+                    ? { event: "SIGNAL_FANOUT", signal_id: signalId }
+                    : { event: "DIRECT_TRADE_CREATE" },
+                ),
+                userId,
+              ],
+            );
           }
         }
         await client.query("COMMIT");
         return { created, account_ids: accountIds };
-      } catch (e) { await client.query("ROLLBACK"); throw e; }
-      finally { client.release(); }
+      } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+      } finally {
+        client.release();
+      }
     },
     async pullLeasedTradesV2(accountId, maxItems = 1, leaseSeconds = 30) {
       const aid = String(accountId || "").trim();
@@ -4902,30 +6449,60 @@ async function _mt5InitBackendInternal() {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const sel = await client.query(`
+        const sel = await client.query(
+          `
           SELECT * FROM trades
           WHERE account_id = $1 AND (dispatch_status = 'NEW' OR (dispatch_status = 'LEASED' AND lease_expires_at < NOW()))
           ORDER BY created_at ASC LIMIT $2 FOR UPDATE SKIP LOCKED
-        `, [aid, Math.max(1, Math.min(100, Number(maxItems) || 1))]);
+        `,
+          [aid, Math.max(1, Math.min(100, Number(maxItems) || 1))],
+        );
         const out = [];
         for (const row of sel.rows || []) {
           const leaseToken = crypto.randomUUID();
-          const leaseExpiresAt = new Date(Date.now() + leaseSec * 1000).toISOString();
-          await client.query(`UPDATE trades SET dispatch_status = 'LEASED', lease_token = $1, lease_expires_at = $2, updated_at = NOW() WHERE trade_id = $3`, [leaseToken, leaseExpiresAt, row.trade_id]);
-          out.push({ ...row, lease_token: leaseToken, lease_expires_at: leaseExpiresAt });
+          const leaseExpiresAt = new Date(
+            Date.now() + leaseSec * 1000,
+          ).toISOString();
+          await client.query(
+            `UPDATE trades SET dispatch_status = 'LEASED', lease_token = $1, lease_expires_at = $2, updated_at = NOW() WHERE trade_id = $3`,
+            [leaseToken, leaseExpiresAt, row.trade_id],
+          );
+          out.push({
+            ...row,
+            lease_token: leaseToken,
+            lease_expires_at: leaseExpiresAt,
+          });
         }
-        await client.query("COMMIT"); return out;
-      } catch (e) { await client.query("ROLLBACK"); throw e; } finally { client.release(); }
+        await client.query("COMMIT");
+        return out;
+      } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+      } finally {
+        client.release();
+      }
     },
     async ackTradeV2(accountId, payload = {}) {
       const now = mt5NowIso();
       const openedAt = payload.opened_at || payload.openedAt || null;
       const closedAt = payload.closed_at || payload.closedAt || null;
-      const isClosed = ["CLOSED", "TP", "SL", "CANCELLED"].includes(String(payload.execution_status || "").toUpperCase());
-      const usedVolumeRaw = Number(payload.used_volume ?? payload.usedVolume ?? payload.volume ?? payload.requested_volume ?? payload.requestedVolume);
-      const usedVolume = Number.isFinite(usedVolumeRaw) && usedVolumeRaw > 0 ? usedVolumeRaw : null;
+      const isClosed = ["CLOSED", "TP", "SL", "CANCELLED"].includes(
+        String(payload.execution_status || "").toUpperCase(),
+      );
+      const usedVolumeRaw = Number(
+        payload.used_volume ??
+          payload.usedVolume ??
+          payload.volume ??
+          payload.requested_volume ??
+          payload.requestedVolume,
+      );
+      const usedVolume =
+        Number.isFinite(usedVolumeRaw) && usedVolumeRaw > 0
+          ? usedVolumeRaw
+          : null;
       const telemetryPatch = {
-        requested_volume: payload.requested_volume ?? payload.requestedVolume ?? null,
+        requested_volume:
+          payload.requested_volume ?? payload.requestedVolume ?? null,
         used_volume: usedVolume,
         requested_sl: payload.requested_sl ?? payload.requestedSl ?? null,
         requested_tp: payload.requested_tp ?? payload.requestedTp ?? null,
@@ -4936,12 +6513,19 @@ async function _mt5InitBackendInternal() {
         free_margin: payload.free_margin ?? payload.freeMargin ?? null,
         balance: payload.balance ?? null,
         equity: payload.equity ?? null,
-        pip_value_per_lot: payload.pip_value_per_lot ?? payload.pipValuePerLot ?? null,
+        pip_value_per_lot:
+          payload.pip_value_per_lot ?? payload.pipValuePerLot ?? null,
         sl_pips: payload.sl_pips ?? payload.slPips ?? null,
         tp_pips: payload.tp_pips ?? payload.tpPips ?? null,
-        risk_money_actual: payload.risk_money_actual ?? payload.riskMoneyActual ?? null,
-        reward_money_planned: payload.reward_money_planned ?? payload.rewardMoneyPlanned ?? null,
-        entry_price_exec: payload.entry_price_exec ?? payload.entry_exec ?? payload.entryExec ?? null,
+        risk_money_actual:
+          payload.risk_money_actual ?? payload.riskMoneyActual ?? null,
+        reward_money_planned:
+          payload.reward_money_planned ?? payload.rewardMoneyPlanned ?? null,
+        entry_price_exec:
+          payload.entry_price_exec ??
+          payload.entry_exec ??
+          payload.entryExec ??
+          null,
         signal_ts: payload.signal_ts ?? payload.signalTs ?? null,
         exec_ts: payload.exec_ts ?? payload.execTs ?? null,
         ack_result: payload.result ?? payload.retcode ?? payload.code ?? null,
@@ -4952,15 +6536,16 @@ async function _mt5InitBackendInternal() {
         Object.entries(telemetryPatch).filter(([, v]) => {
           if (v === null || v === undefined) return false;
           return String(v).trim() !== "";
-        })
+        }),
       );
 
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
          UPDATE trades
          SET dispatch_status = 'CONSUMED',
-             execution_status = $1, 
-             broker_trade_id = $2, 
-             entry_exec = $3, 
+             execution_status = $1,
+             broker_trade_id = $2,
+             entry_exec = $3,
              pnl_realized = CASE WHEN $10 = TRUE THEN $4 ELSE pnl_realized END,
              volume = COALESCE($11, volume),
              order_type = COALESCE($13, order_type),
@@ -4969,68 +6554,90 @@ async function _mt5InitBackendInternal() {
                ELSE COALESCE(metadata, '{}'::jsonb) || $12::jsonb
              END,
              opened_at = COALESCE($5, opened_at, CASE WHEN $1 = 'OPEN' THEN $6 ELSE NULL END),
-             closed_at = COALESCE($7, CASE WHEN $1 = 'CLOSED' THEN $6 ELSE NULL END), 
+             closed_at = COALESCE($7, CASE WHEN $1 = 'CLOSED' THEN $6 ELSE NULL END),
              updated_at = $6
          WHERE trade_id = $8 AND account_id = $9 RETURNING user_id, opened_at, closed_at
-       `, [
-        payload.execution_status,
-        payload.broker_trade_id,
-        payload.entry_exec,
-        payload.pnl_realized,
-        openedAt,
-        now,
-        closedAt,
-        payload.trade_id,
-        accountId,
-        isClosed,
-        usedVolume,
-        JSON.stringify(telemetryMeta),
-        payload.order_type || null
-      ]);
+       `,
+        [
+          payload.execution_status,
+          payload.broker_trade_id,
+          payload.entry_exec,
+          payload.pnl_realized,
+          openedAt,
+          now,
+          closedAt,
+          payload.trade_id,
+          accountId,
+          isClosed,
+          usedVolume,
+          JSON.stringify(telemetryMeta),
+          payload.order_type || null,
+        ],
+      );
       if (res.rowCount > 0) {
-        await this.log(payload.trade_id, 'trades', {
-          event: 'TRADE_ACK',
-          status: payload.execution_status,
-          pnl: isClosed ? payload.pnl_realized : null,
-          requested_volume: payload.requested_volume ?? payload.requestedVolume ?? null,
-          used_volume: usedVolume,
-          sl_pips: telemetryMeta.sl_pips ?? null,
-          tp_pips: telemetryMeta.tp_pips ?? null,
-          risk_money_actual: telemetryMeta.risk_money_actual ?? null,
-          ack_message: telemetryMeta.ack_message || telemetryMeta.ack_note || null,
-          ack_result: telemetryMeta.ack_result || null,
-        }, res.rows[0].user_id);
+        await this.log(
+          payload.trade_id,
+          "trades",
+          {
+            event: "TRADE_ACK",
+            status: payload.execution_status,
+            pnl: isClosed ? payload.pnl_realized : null,
+            requested_volume:
+              payload.requested_volume ?? payload.requestedVolume ?? null,
+            used_volume: usedVolume,
+            sl_pips: telemetryMeta.sl_pips ?? null,
+            tp_pips: telemetryMeta.tp_pips ?? null,
+            risk_money_actual: telemetryMeta.risk_money_actual ?? null,
+            ack_message:
+              telemetryMeta.ack_message || telemetryMeta.ack_note || null,
+            ack_result: telemetryMeta.ack_result || null,
+          },
+          res.rows[0].user_id,
+        );
       } else {
         // Fallback log for tracking orphan/failed acks
-        await this.log(payload.trade_id, 'trades', {
-          event: 'TRADE_ACK_FAILED',
-          reason: 'Trade not found or update failed',
+        await this.log(payload.trade_id, "trades", {
+          event: "TRADE_ACK_FAILED",
+          reason: "Trade not found or update failed",
           payload_status: payload.execution_status || payload.status,
-          account_id: accountId
+          account_id: accountId,
         });
       }
       return { ok: res.rowCount > 0 };
     },
     async ackSignal(signalId, status, ticket, error, extra = {}) {
       const s = String(status || "").toUpperCase();
-      const isClosed = ["CLOSED", "TP", "SL", "CANCEL", "CANCELLED", "EXPIRED", "FAIL"].includes(s);
+      const isClosed = [
+        "CLOSED",
+        "TP",
+        "SL",
+        "CANCEL",
+        "CANCELLED",
+        "EXPIRED",
+        "FAIL",
+      ].includes(s);
       let tradeExec = "OPEN";
       if (["NEW", "LOCKED", "PLACED"].includes(s)) tradeExec = "PENDING";
       else if (["TP", "SL", "CLOSED"].includes(s)) tradeExec = "CLOSED";
-      else if (["CANCEL", "CANCELLED", "EXPIRED"].includes(s)) tradeExec = "CANCELLED";
+      else if (["CANCEL", "CANCELLED", "EXPIRED"].includes(s))
+        tradeExec = "CANCELLED";
       else if (s === "FAIL") tradeExec = "REJECTED";
 
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const res = await client.query(`
+        const res = await client.query(
+          `
           UPDATE signals
           SET status = $1
           WHERE signal_id = $2
           RETURNING user_id
-        `, [s, signalId]);
+        `,
+          [s, signalId],
+        );
 
-        await client.query(`
+        await client.query(
+          `
           UPDATE trades
           SET execution_status = $1,
               broker_trade_id = COALESCE(NULLIF($3, ''), broker_trade_id),
@@ -5040,21 +6647,42 @@ async function _mt5InitBackendInternal() {
               closed_at = CASE WHEN $4 = TRUE THEN NOW() ELSE closed_at END,
               updated_at = NOW()
           WHERE signal_id = $2
-        `, [tradeExec, signalId, ticket || '', isClosed, extra.pnl_money_realized ?? null, JSON.stringify({
-          sl_pips: extra.sl_pips ?? null,
-          tp_pips: extra.tp_pips ?? null,
-          pip_value_per_lot: extra.pip_value_per_lot ?? null,
-          risk_money_actual: extra.risk_money_actual ?? null,
-          reward_money_planned: extra.reward_money_planned ?? null,
-          entry_price_exec: extra.entry_price_exec ?? null,
-          sl_exec: extra.sl_exec ?? null,
-          tp_exec: extra.tp_exec ?? null,
-          last_ack_telemetry_at: new Date().toISOString(),
-        }), extra.order_type || null]);
+        `,
+          [
+            tradeExec,
+            signalId,
+            ticket || "",
+            isClosed,
+            extra.pnl_money_realized ?? null,
+            JSON.stringify({
+              sl_pips: extra.sl_pips ?? null,
+              tp_pips: extra.tp_pips ?? null,
+              pip_value_per_lot: extra.pip_value_per_lot ?? null,
+              risk_money_actual: extra.risk_money_actual ?? null,
+              reward_money_planned: extra.reward_money_planned ?? null,
+              entry_price_exec: extra.entry_price_exec ?? null,
+              sl_exec: extra.sl_exec ?? null,
+              tp_exec: extra.tp_exec ?? null,
+              last_ack_telemetry_at: new Date().toISOString(),
+            }),
+            extra.order_type || null,
+          ],
+        );
 
         await client.query("COMMIT");
         if (res.rowCount > 0) {
-          await this.log(signalId, 'signals', { event: 'SIGNAL_EA_ACK', status: s, trade_execution_status: tradeExec, ticket, error }, res.rows[0].user_id);
+          await this.log(
+            signalId,
+            "signals",
+            {
+              event: "SIGNAL_EA_ACK",
+              status: s,
+              trade_execution_status: tradeExec,
+              ticket,
+              error,
+            },
+            res.rows[0].user_id,
+          );
         }
         return { ok: res.rowCount > 0 };
       } catch (e) {
@@ -5066,7 +6694,10 @@ async function _mt5InitBackendInternal() {
     },
     async brokerSyncV2(accountId, payload = {}) {
       const aid = String(accountId || "").trim();
-      const acc = await pool.query(`SELECT user_id, metadata FROM user_accounts WHERE account_id = $1`, [aid]);
+      const acc = await pool.query(
+        `SELECT user_id, metadata FROM user_accounts WHERE account_id = $1`,
+        [aid],
+      );
       const uid = acc.rows[0]?.user_id || CFG.mt5DefaultUserId;
       const existingMeta = acc.rows[0]?.metadata || {};
 
@@ -5075,13 +6706,23 @@ async function _mt5InitBackendInternal() {
         balance: Number(payload.balance || existingMeta.balance || 0),
         equity: Number(payload.equity || existingMeta.equity || 0),
         margin: Number(payload.margin || existingMeta.margin || 0),
-        free_margin: Number(payload.free_margin || existingMeta.free_margin || 0),
-        health_updated_at: new Date().toISOString()
+        free_margin: Number(
+          payload.free_margin || existingMeta.free_margin || 0,
+        ),
+        health_updated_at: new Date().toISOString(),
       };
 
-      await pool.query(`UPDATE user_accounts SET metadata = $1, updated_at = NOW() WHERE account_id = $2`, [JSON.stringify(newMeta), aid]);
+      await pool.query(
+        `UPDATE user_accounts SET metadata = $1, updated_at = NOW() WHERE account_id = $2`,
+        [JSON.stringify(newMeta), aid],
+      );
       await StateRepo.del("USER_ACCOUNTS", uid);
-      await this.log(aid, 'accounts', { event: 'ACCOUNT_SYNC', data: payload }, uid);
+      await this.log(
+        aid,
+        "accounts",
+        { event: "ACCOUNT_SYNC", data: payload },
+        uid,
+      );
 
       const merged = new Map();
       const seenTickets = new Set();
@@ -5095,7 +6736,7 @@ async function _mt5InitBackendInternal() {
       };
       const pushItems = (arr = []) => {
         for (const raw of Array.isArray(arr) ? arr : []) {
-          if (!raw || typeof raw !== 'object') continue;
+          if (!raw || typeof raw !== "object") continue;
           const signalId = String(raw.signal_id || "").trim();
           const ticketCandidates = mt5TicketCandidates(raw);
           const ticket = ticketCandidates[0] || null;
@@ -5105,23 +6746,57 @@ async function _mt5InitBackendInternal() {
           const pnl = Number.isFinite(pnlRaw) ? pnlRaw : null;
           const volumeRaw = Number(raw.volume || raw.lots);
           const volume = Number.isFinite(volumeRaw) ? volumeRaw : null;
-          const symbol = String(raw.symbol || "").trim().toUpperCase();
-          const action = String(raw.action || raw.side || "").trim().toUpperCase();
-          const reasonRaw = String(raw.reason || raw.close_reason || "").trim().toUpperCase();
+          const symbol = String(raw.symbol || "")
+            .trim()
+            .toUpperCase();
+          const action = String(raw.action || raw.side || "")
+            .trim()
+            .toUpperCase();
+          const reasonRaw = String(raw.reason || raw.close_reason || "")
+            .trim()
+            .toUpperCase();
           const closeReason = mt5CloseReasonFromSync(raw);
           const openedAt = raw.opened_at || raw.openedAt || null;
           const closedAt = raw.closed_at || raw.closedAt || null;
-          let statusRaw = String(raw.status || "").trim().toUpperCase();
+          let statusRaw = String(raw.status || "")
+            .trim()
+            .toUpperCase();
           if (!statusRaw) {
-            if (reasonRaw === "TP" || reasonRaw === "DEAL_REASON_TP") statusRaw = "TP";
-            else if (reasonRaw === "SL" || reasonRaw === "SO" || reasonRaw === "DEAL_REASON_SL" || reasonRaw === "DEAL_REASON_SO") statusRaw = "SL";
-            else if (reasonRaw === "CLIENT" || reasonRaw === "MOBILE" || reasonRaw === "EXPERT" || reasonRaw === "MANUAL") statusRaw = "CANCEL";
+            if (reasonRaw === "TP" || reasonRaw === "DEAL_REASON_TP")
+              statusRaw = "TP";
+            else if (
+              reasonRaw === "SL" ||
+              reasonRaw === "SO" ||
+              reasonRaw === "DEAL_REASON_SL" ||
+              reasonRaw === "DEAL_REASON_SO"
+            )
+              statusRaw = "SL";
+            else if (
+              reasonRaw === "CLIENT" ||
+              reasonRaw === "MOBILE" ||
+              reasonRaw === "EXPERT" ||
+              reasonRaw === "MANUAL"
+            )
+              statusRaw = "CANCEL";
             else if (pnl !== null) statusRaw = "CLOSED";
           }
           let executionStatus = "PENDING";
-          if (statusRaw === "START" || statusRaw === "OPEN") executionStatus = "OPEN";
-          else if (statusRaw === "PLACED" || statusRaw === "NEW" || statusRaw === "PENDING") executionStatus = "PENDING";
-          else if (statusRaw === "TP" || statusRaw === "SL" || statusRaw === "CANCEL" || statusRaw === "FAIL" || statusRaw === "CLOSED") executionStatus = "CLOSED";
+          if (statusRaw === "START" || statusRaw === "OPEN")
+            executionStatus = "OPEN";
+          else if (
+            statusRaw === "PLACED" ||
+            statusRaw === "NEW" ||
+            statusRaw === "PENDING"
+          )
+            executionStatus = "PENDING";
+          else if (
+            statusRaw === "TP" ||
+            statusRaw === "SL" ||
+            statusRaw === "CANCEL" ||
+            statusRaw === "FAIL" ||
+            statusRaw === "CLOSED"
+          )
+            executionStatus = "CLOSED";
           const key = ticket ? `tk:${ticket}` : `sig:${signalId}`;
           const prev = merged.get(key);
           if (!prev) {
@@ -5142,8 +6817,12 @@ async function _mt5InitBackendInternal() {
             });
           } else {
             if (!prev.signal_id && signalId) prev.signal_id = signalId;
-            prev.ticket_candidates = Array.from(new Set([...(prev.ticket_candidates || []), ...ticketCandidates]));
-            if (statusRank(executionStatus) > statusRank(prev.execution_status)) {
+            prev.ticket_candidates = Array.from(
+              new Set([...(prev.ticket_candidates || []), ...ticketCandidates]),
+            );
+            if (
+              statusRank(executionStatus) > statusRank(prev.execution_status)
+            ) {
               prev.execution_status = executionStatus;
               prev.status_raw = statusRaw || prev.status_raw;
             }
@@ -5169,22 +6848,30 @@ async function _mt5InitBackendInternal() {
       let synced = 0;
       for (const it of items) {
         let res = { rowCount: 0 };
-        const ticketCandidates = Array.isArray(it.ticket_candidates) && it.ticket_candidates.length
-          ? it.ticket_candidates
-          : (it.ticket ? [it.ticket] : []);
+        const ticketCandidates =
+          Array.isArray(it.ticket_candidates) && it.ticket_candidates.length
+            ? it.ticket_candidates
+            : it.ticket
+              ? [it.ticket]
+              : [];
         const syncMeta = JSON.stringify({
           broker_ticket_candidates: ticketCandidates,
           broker_position_id: ticketCandidates[0] || null,
           close_reason: it.close_reason || null,
           last_sync_source: "broker_sync_v2",
         });
-        const syncSymbol = String(it.symbol || "").trim().toUpperCase();
-        const syncAction = String(it.action || "").trim().toUpperCase();
+        const syncSymbol = String(it.symbol || "")
+          .trim()
+          .toUpperCase();
+        const syncAction = String(it.action || "")
+          .trim()
+          .toUpperCase();
         if (ticketCandidates.length) {
           const openedAt = it.opened_at || null;
           const closedAt = it.closed_at || null;
           if (syncSymbol) {
-            await pool.query(`
+            await pool.query(
+              `
               UPDATE trades
               SET broker_trade_id = NULL,
                   execution_status = CASE WHEN execution_status = 'OPEN' THEN 'PENDING' ELSE execution_status END,
@@ -5194,13 +6881,21 @@ async function _mt5InitBackendInternal() {
                 AND broker_trade_id = ANY($2::text[])
                 AND symbol <> $3
                 AND execution_status IN ('PENDING','OPEN')
-            `, [aid, ticketCandidates, syncSymbol, JSON.stringify({
-              broker_ticket_mismatch_cleared: ticketCandidates,
-              broker_ticket_mismatch_symbol: syncSymbol,
-              broker_ticket_mismatch_at: new Date().toISOString(),
-            })]);
+            `,
+              [
+                aid,
+                ticketCandidates,
+                syncSymbol,
+                JSON.stringify({
+                  broker_ticket_mismatch_cleared: ticketCandidates,
+                  broker_ticket_mismatch_symbol: syncSymbol,
+                  broker_ticket_mismatch_at: new Date().toISOString(),
+                }),
+              ],
+            );
           }
-          res = await pool.query(`
+          res = await pool.query(
+            `
             UPDATE trades
             SET dispatch_status = CASE
                   WHEN dispatch_status IN ('NEW','LEASED') THEN 'CONSUMED'
@@ -5230,11 +6925,27 @@ async function _mt5InitBackendInternal() {
                 OR metadata->>'order_ticket' = ANY($4::text[])
               )
             RETURNING trade_id
-          `, [it.execution_status, it.pnl, aid, ticketCandidates, openedAt, closedAt, it.volume, it.close_reason, it.ticket || "", syncMeta, syncSymbol, it.order_type || null]);
+          `,
+            [
+              it.execution_status,
+              it.pnl,
+              aid,
+              ticketCandidates,
+              openedAt,
+              closedAt,
+              it.volume,
+              it.close_reason,
+              it.ticket || "",
+              syncMeta,
+              syncSymbol,
+              it.order_type || null,
+            ],
+          );
         }
         if (it.signal_id) {
           if (res.rowCount === 0) {
-            res = await pool.query(`
+            res = await pool.query(
+              `
             UPDATE trades
             SET dispatch_status = CASE
                   WHEN dispatch_status IN ('NEW','LEASED') THEN 'CONSUMED'
@@ -5265,12 +6976,27 @@ async function _mt5InitBackendInternal() {
               LIMIT 1
             )
             RETURNING trade_id
-            `, [it.execution_status, it.ticket, it.pnl, aid, it.signal_id, it.volume, it.close_reason, syncMeta, it.opened_at || null, it.closed_at || null, it.order_type || null]);
+            `,
+              [
+                it.execution_status,
+                it.ticket,
+                it.pnl,
+                aid,
+                it.signal_id,
+                it.volume,
+                it.close_reason,
+                syncMeta,
+                it.opened_at || null,
+                it.closed_at || null,
+                it.order_type || null,
+              ],
+            );
           }
         }
         if (res.rowCount === 0 && ticketCandidates.length) {
           // Last-resort fallback: bind ticket to oldest unresolved trade for this account.
-          res = await pool.query(`
+          res = await pool.query(
+            `
             UPDATE trades
             SET dispatch_status = CASE
                   WHEN dispatch_status IN ('NEW','LEASED') THEN 'CONSUMED'
@@ -5302,21 +7028,40 @@ async function _mt5InitBackendInternal() {
               LIMIT 1
             )
             RETURNING trade_id
-          `, [it.execution_status, it.ticket, it.pnl, aid, it.volume, it.close_reason, syncMeta, it.closed_at || null, syncSymbol, syncAction, it.order_type || null]);
+          `,
+            [
+              it.execution_status,
+              it.ticket,
+              it.pnl,
+              aid,
+              it.volume,
+              it.close_reason,
+              syncMeta,
+              it.closed_at || null,
+              syncSymbol,
+              syncAction,
+              it.order_type || null,
+            ],
+          );
         }
         matched += res.rowCount;
         if (res.rowCount > 0) {
           synced++;
           const tid = String(res.rows?.[0]?.trade_id || "").trim();
           if (tid) {
-            await this.log(tid, 'trades', {
-              event: 'TRADE_SYNC_UPDATE',
-              status_raw: it.status_raw,
-              execution_status: it.execution_status,
-              ticket: it.ticket || null,
-              signal_id: it.signal_id || null,
-              pnl: it.pnl,
-            }, uid);
+            await this.log(
+              tid,
+              "trades",
+              {
+                event: "TRADE_SYNC_UPDATE",
+                status_raw: it.status_raw,
+                execution_status: it.execution_status,
+                ticket: it.ticket || null,
+                signal_id: it.signal_id || null,
+                pnl: it.pnl,
+              },
+              uid,
+            );
           }
         }
       }
@@ -5327,7 +7072,8 @@ async function _mt5InitBackendInternal() {
           if (!tradeId) continue;
           let resolvedPnl = Number(row?.pnl_realized);
           if (!Number.isFinite(resolvedPnl)) {
-            const pnlRes = await pool.query(`
+            const pnlRes = await pool.query(
+              `
               SELECT metadata->>'pnl' AS pnl
               FROM logs
               WHERE object_table = 'trades'
@@ -5335,32 +7081,43 @@ async function _mt5InitBackendInternal() {
                 AND metadata->>'event' IN ('SYNC_UPDATE', 'TRADE_SYNC_UPDATE')
               ORDER BY created_at DESC, log_id DESC
               LIMIT 1
-            `, [tradeId]);
+            `,
+              [tradeId],
+            );
             const raw = String(pnlRes.rows?.[0]?.pnl ?? "").trim();
             const inferred = Number(raw);
             if (Number.isFinite(inferred)) {
               resolvedPnl = inferred;
-              await pool.query(`
+              await pool.query(
+                `
                 UPDATE trades
                 SET pnl_realized = COALESCE(pnl_realized, $2),
                     updated_at = NOW()
                 WHERE trade_id = $1
-              `, [tradeId, inferred]);
+              `,
+                [tradeId, inferred],
+              );
             }
           }
-          await this.log(tradeId, 'trades', {
-            event: 'TRADE_SYNC_CLOSE',
-            ticket: row?.broker_trade_id || null,
-            execution_status: row?.execution_status || null,
-            close_reason: row?.close_reason || null,
-            pnl_inferred: Number.isFinite(resolvedPnl) ? resolvedPnl : null,
-          }, uid);
+          await this.log(
+            tradeId,
+            "trades",
+            {
+              event: "TRADE_SYNC_CLOSE",
+              ticket: row?.broker_trade_id || null,
+              execution_status: row?.execution_status || null,
+              close_reason: row?.close_reason || null,
+              pnl_inferred: Number.isFinite(resolvedPnl) ? resolvedPnl : null,
+            },
+            uid,
+          );
         }
       };
       let closed_by_snapshot = 0;
       if (snapshotComplete) {
         if (seenTickets.size > 0) {
-          const closeRes = await pool.query(`
+          const closeRes = await pool.query(
+            `
             UPDATE trades
             SET execution_status = CASE WHEN execution_status = 'PENDING' THEN 'CANCELLED' ELSE 'CLOSED' END,
                 close_reason = COALESCE(close_reason, CASE WHEN execution_status = 'PENDING' THEN 'CANCEL' ELSE 'MANUAL' END),
@@ -5372,11 +7129,14 @@ async function _mt5InitBackendInternal() {
               AND broker_trade_id <> ''
               AND NOT (broker_trade_id = ANY($2::text[]))
             RETURNING trade_id, broker_trade_id, execution_status, close_reason, pnl_realized
-          `, [aid, Array.from(seenTickets)]);
+          `,
+            [aid, Array.from(seenTickets)],
+          );
           closed_by_snapshot = Number(closeRes.rowCount || 0);
           await finalizeSnapshotClosures(closeRes.rows || []);
         } else {
-          const closeRes = await pool.query(`
+          const closeRes = await pool.query(
+            `
             UPDATE trades
             SET execution_status = CASE WHEN execution_status = 'PENDING' THEN 'CANCELLED' ELSE 'CLOSED' END,
                 close_reason = COALESCE(close_reason, CASE WHEN execution_status = 'PENDING' THEN 'CANCEL' ELSE 'MANUAL' END),
@@ -5387,13 +7147,21 @@ async function _mt5InitBackendInternal() {
               AND broker_trade_id IS NOT NULL
               AND broker_trade_id <> ''
             RETURNING trade_id, broker_trade_id, execution_status, close_reason, pnl_realized
-          `, [aid]);
+          `,
+            [aid],
+          );
           closed_by_snapshot = Number(closeRes.rowCount || 0);
           await finalizeSnapshotClosures(closeRes.rows || []);
         }
       }
 
-      return { ok: true, synced, matched, received: items.length, closed_by_snapshot };
+      return {
+        ok: true,
+        synced,
+        matched,
+        received: items.length,
+        closed_by_snapshot,
+      };
     },
     async brokerHeartbeatV2(accountId, payload = {}) {
       const aid = String(accountId || "").trim();
@@ -5403,37 +7171,60 @@ async function _mt5InitBackendInternal() {
       const margin = asNum(payload.margin, null);
       const freeMargin = asNum(payload.free_margin, null);
 
-      const acc = await pool.query(`SELECT user_id, metadata FROM user_accounts WHERE account_id = $1`, [aid]);
+      const acc = await pool.query(
+        `SELECT user_id, metadata FROM user_accounts WHERE account_id = $1`,
+        [aid],
+      );
       const uid = acc.rows[0]?.user_id || CFG.mt5DefaultUserId;
       const oldMeta = acc.rows[0]?.metadata || {};
 
-      await pool.query(`
-        UPDATE user_accounts 
+      await pool.query(
+        `
+        UPDATE user_accounts
         SET balance = COALESCE($1, balance),
             metadata = $2,
-            updated_at = $3 
+            updated_at = $3
         WHERE account_id = $4
-      `, [
-        balance,
-        JSON.stringify({ ...oldMeta, equity, margin, free_margin: freeMargin }),
-        now,
-        aid
-      ]);
+      `,
+        [
+          balance,
+          JSON.stringify({
+            ...oldMeta,
+            equity,
+            margin,
+            free_margin: freeMargin,
+          }),
+          now,
+          aid,
+        ],
+      );
 
-      await this.log(aid, 'accounts', { event: 'ACCOUNT_HEARTBEAT', payload }, uid);
+      await this.log(
+        aid,
+        "accounts",
+        { event: "ACCOUNT_HEARTBEAT", payload },
+        uid,
+      );
       return { ok: true };
     },
     async listSignals(limit, filters = {}, userId = null) {
-      const clauses = ["signal_id NOT LIKE 'SYSTEM_%'"]; const params = [];
-      if (typeof filters === 'string') {
+      const clauses = ["signal_id NOT LIKE 'SYSTEM_%'"];
+      const params = [];
+      if (typeof filters === "string") {
         // Legacy support
         if (filters) {
           params.push(filters);
           clauses.push(`status = $${params.length}`);
         }
       } else {
-        if (filters.status) { params.push(filters.status); clauses.push(`status = $${params.length}`); }
-        if (filters.symbol) { params.push(filters.symbol); clauses.push(`symbol = $${params.length}`); }
+        if (filters.status) {
+          params.push(filters.status);
+          clauses.push(`status = $${params.length}`);
+        }
+        if (filters.symbol) {
+          params.push(filters.symbol);
+          clauses.push(`symbol = $${params.length}`);
+        }
         if (filters.q) {
           params.push(`%${String(filters.q)}%`);
           const p = `$${params.length}`;
@@ -5445,10 +7236,14 @@ async function _mt5InitBackendInternal() {
            )`);
         }
       }
-      if (userId) { params.push(userId); clauses.push(`user_id = $${params.length}`); }
+      if (userId) {
+        params.push(userId);
+        clauses.push(`user_id = $${params.length}`);
+      }
       const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
       params.push(limit);
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         SELECT
           s.*,
           t.broker_trade_id AS ack_ticket,
@@ -5468,15 +7263,24 @@ async function _mt5InitBackendInternal() {
         ${where}
         ORDER BY s.created_at DESC
         LIMIT $${params.length}
-      `, params);
+      `,
+        params,
+      );
       return (res.rows || []).map((r) => mt5MapDbRow(r)).filter(Boolean);
     },
     async listTradesV2(filters = {}, page = 1, pageSize = 50) {
-      const safePage = Math.max(1, Number(page) || 1); const safePageSize = Math.max(1, Math.min(200, Number(pageSize) || 50));
-      const offset = (safePage - 1) * safePageSize; const clauses = []; const params = [];
-      const tradeIds = Array.isArray(filters.trade_ids) ? filters.trade_ids.map((v) => String(v || "").trim()).filter(Boolean) : [];
+      const safePage = Math.max(1, Number(page) || 1);
+      const safePageSize = Math.max(1, Math.min(200, Number(pageSize) || 50));
+      const offset = (safePage - 1) * safePageSize;
+      const clauses = [];
+      const params = [];
+      const tradeIds = Array.isArray(filters.trade_ids)
+        ? filters.trade_ids.map((v) => String(v || "").trim()).filter(Boolean)
+        : [];
       if (tradeIds.length) {
-        const numericIds = tradeIds.map((v) => mt5ParseNumericId(v)).filter((v) => v != null);
+        const numericIds = tradeIds
+          .map((v) => mt5ParseNumericId(v))
+          .filter((v) => v != null);
         const idParts = [];
         if (numericIds.length) {
           params.push(numericIds);
@@ -5487,18 +7291,51 @@ async function _mt5InitBackendInternal() {
         idParts.push(`sid = ANY($${params.length}::text[])`);
         clauses.push(`(${idParts.join(" OR ")})`);
       }
-      if (filters.user_id) { params.push(filters.user_id); clauses.push(`user_id = $${params.length}`); }
-      if (filters.account_id) { params.push(filters.account_id); clauses.push(`account_id = $${params.length}`); }
-      if (filters.source_id) { params.push(filters.source_id); clauses.push(`source_id = $${params.length}`); }
-      if (filters.dispatch_status) { params.push(filters.dispatch_status); clauses.push(`dispatch_status = $${params.length}`); }
-      if (filters.execution_status) { params.push(filters.execution_status); clauses.push(`execution_status = $${params.length}`); }
-      if (filters.created_from) { params.push(filters.created_from); clauses.push(`created_at >= $${params.length}`); }
-      if (filters.created_to) { params.push(filters.created_to); clauses.push(`created_at <= $${params.length}`); }
-      if (filters.symbol) { params.push(filters.symbol); clauses.push(`symbol = $${params.length}`); }
+      if (filters.user_id) {
+        params.push(filters.user_id);
+        clauses.push(`user_id = $${params.length}`);
+      }
+      if (filters.account_id) {
+        params.push(filters.account_id);
+        clauses.push(`account_id = $${params.length}`);
+      }
+      if (filters.source_id) {
+        params.push(filters.source_id);
+        clauses.push(`source_id = $${params.length}`);
+      }
+      if (filters.dispatch_status) {
+        params.push(filters.dispatch_status);
+        clauses.push(`dispatch_status = $${params.length}`);
+      }
+      if (filters.execution_status) {
+        params.push(filters.execution_status);
+        clauses.push(`execution_status = $${params.length}`);
+      }
+      if (filters.created_from) {
+        params.push(filters.created_from);
+        clauses.push(`created_at >= $${params.length}`);
+      }
+      if (filters.created_to) {
+        params.push(filters.created_to);
+        clauses.push(`created_at <= $${params.length}`);
+      }
+      if (filters.symbol) {
+        params.push(filters.symbol);
+        clauses.push(`symbol = $${params.length}`);
+      }
       const actionFilter = filters.action || filters.side;
-      if (actionFilter) { params.push(actionFilter); clauses.push(`action = $${params.length}`); }
-      if (filters.entry_model) { params.push(filters.entry_model); clauses.push(`entry_model = $${params.length}`); }
-      if (filters.chart_tf) { params.push(filters.chart_tf); clauses.push(`chart_tf = $${params.length}`); }
+      if (actionFilter) {
+        params.push(actionFilter);
+        clauses.push(`action = $${params.length}`);
+      }
+      if (filters.entry_model) {
+        params.push(filters.entry_model);
+        clauses.push(`entry_model = $${params.length}`);
+      }
+      if (filters.chart_tf) {
+        params.push(filters.chart_tf);
+        clauses.push(`chart_tf = $${params.length}`);
+      }
       if (filters.q) {
         params.push(`%${String(filters.q)}%`);
         const p = `$${params.length}`;
@@ -5517,26 +7354,55 @@ async function _mt5InitBackendInternal() {
         )`);
       }
       const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-      const countRes = await pool.query(`SELECT COUNT(*) FROM trades ${where}`, params);
+      const countRes = await pool.query(
+        `SELECT COUNT(*) FROM trades ${where}`,
+        params,
+      );
       params.push(safePageSize, offset);
-      const res = await pool.query(`SELECT * FROM trades ${where} ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
-      return { items: res.rows, total: parseInt(countRes.rows[0].count), page: safePage, pageSize: safePageSize };
+      const res = await pool.query(
+        `SELECT * FROM trades ${where} ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        params,
+      );
+      return {
+        items: res.rows,
+        total: parseInt(countRes.rows[0].count),
+        page: safePage,
+        pageSize: safePageSize,
+      };
     },
     async updateTradeManualV2(tradeId, userId = null, payload = {}) {
       const tid = String(tradeId || "").trim();
       if (!tid) return { ok: false, error: "trade_id is required" };
       const numericId = mt5ParseNumericId(tid);
-      const stRaw = String(payload.execution_status || payload.status || "").trim().toUpperCase();
-      const allowed = new Set(["PENDING", "OPEN", "CLOSED", "CANCELLED", "REJECTED", "PENDING_MOD", "PENDING_CLOSE", "PENDING_CANCEL"]);
+      const stRaw = String(payload.execution_status || payload.status || "")
+        .trim()
+        .toUpperCase();
+      const allowed = new Set([
+        "PENDING",
+        "OPEN",
+        "CLOSED",
+        "CANCELLED",
+        "REJECTED",
+        "PENDING_MOD",
+        "PENDING_CLOSE",
+        "PENDING_CANCEL",
+      ]);
       if (!allowed.has(stRaw)) {
-        return { ok: false, error: "execution_status must be one of: PENDING, OPEN, CLOSED, CANCELLED, REJECTED, PENDING_MOD, PENDING_CLOSE, PENDING_CANCEL" };
+        return {
+          ok: false,
+          error:
+            "execution_status must be one of: PENDING, OPEN, CLOSED, CANCELLED, REJECTED, PENDING_MOD, PENDING_CLOSE, PENDING_CANCEL",
+        };
       }
       const pnlRaw = payload.pnl_realized ?? payload.pnl;
       const pnlNum = Number(pnlRaw);
-      const pnl = stRaw === "PENDING"
-        ? 0
-        : (Number.isFinite(pnlNum) ? pnlNum : null);
-      const closeReasonRaw = String(payload.close_reason || payload.reason || "").trim().toUpperCase();
+      const pnl =
+        stRaw === "PENDING" ? 0 : Number.isFinite(pnlNum) ? pnlNum : null;
+      const closeReasonRaw = String(
+        payload.close_reason || payload.reason || "",
+      )
+        .trim()
+        .toUpperCase();
       const closeReason = closeReasonRaw || null;
       const params = [stRaw, pnl, closeReason, numericId, tid];
       const clauses = [];
@@ -5545,7 +7411,8 @@ async function _mt5InitBackendInternal() {
         clauses.push(`user_id = $${params.length}`);
       }
       const whereUser = clauses.length ? ` AND ${clauses.join(" AND ")}` : "";
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         UPDATE trades
         SET execution_status = $1::text,
             pnl_realized = CASE WHEN $2::double precision IS NULL THEN pnl_realized ELSE $2::double precision END,
@@ -5562,19 +7429,29 @@ async function _mt5InitBackendInternal() {
         )
           ${whereUser}
         RETURNING id, sid, trade_id, signal_id, user_id, execution_status, pnl_realized, close_reason, closed_at
-      `, params);
-      if ((res.rowCount || 0) === 0) return { ok: false, error: "trade not found" };
+      `,
+        params,
+      );
+      if ((res.rowCount || 0) === 0)
+        return { ok: false, error: "trade not found" };
       const row = res.rows[0];
-      await this.log(row.trade_id, "trades", {
-        event: "TRADE_MANUAL_EDIT",
-        execution_status: row.execution_status,
-        pnl_realized: row.pnl_realized,
-        close_reason: row.close_reason || null,
-      }, row.user_id || CFG.mt5DefaultUserId);
+      await this.log(
+        row.trade_id,
+        "trades",
+        {
+          event: "TRADE_MANUAL_EDIT",
+          execution_status: row.execution_status,
+          pnl_realized: row.pnl_realized,
+          close_reason: row.close_reason || null,
+        },
+        row.user_id || CFG.mt5DefaultUserId,
+      );
       return { ok: true, item: row };
     },
     async bulkActionTradesV2(action, filters = {}) {
-      const act = String(action || "").trim().toLowerCase();
+      const act = String(action || "")
+        .trim()
+        .toLowerCase();
       if (!act) return { ok: false, error: "action is required" };
       if (!["close_all", "cancel_all", "delete_all"].includes(act)) {
         return { ok: false, error: "unsupported action" };
@@ -5584,11 +7461,16 @@ async function _mt5InitBackendInternal() {
       const clauses = [];
       const closeReason = act === "cancel_all" ? "CANCEL" : "MANUAL";
       // Change: Mark as PENDING_CLOSE/CANCEL so EA can pick it up
-      const nextStatus = act === "cancel_all" ? "PENDING_CANCEL" : "PENDING_CLOSE";
+      const nextStatus =
+        act === "cancel_all" ? "PENDING_CANCEL" : "PENDING_CLOSE";
       const params = isDelete ? [] : [closeReason, nextStatus];
-      const tradeIds = Array.isArray(filters.trade_ids) ? filters.trade_ids.map((v) => String(v || "").trim()).filter(Boolean) : [];
+      const tradeIds = Array.isArray(filters.trade_ids)
+        ? filters.trade_ids.map((v) => String(v || "").trim()).filter(Boolean)
+        : [];
       if (tradeIds.length) {
-        const numericIds = tradeIds.map((v) => mt5ParseNumericId(v)).filter((v) => v != null);
+        const numericIds = tradeIds
+          .map((v) => mt5ParseNumericId(v))
+          .filter((v) => v != null);
         const parts = [];
         if (numericIds.length) {
           params.push(numericIds);
@@ -5599,12 +7481,30 @@ async function _mt5InitBackendInternal() {
         parts.push(`sid = ANY($${baseOffset + params.length}::text[])`);
         clauses.push(`(${parts.join(" OR ")})`);
       }
-      if (filters.user_id) { params.push(filters.user_id); clauses.push(`user_id = $${baseOffset + params.length}`); }
-      if (filters.account_id) { params.push(filters.account_id); clauses.push(`account_id = $${baseOffset + params.length}`); }
-      if (filters.source_id) { params.push(filters.source_id); clauses.push(`source_id = $${baseOffset + params.length}`); }
-      if (filters.execution_status) { params.push(filters.execution_status); clauses.push(`execution_status = $${baseOffset + params.length}`); }
-      if (filters.created_from) { params.push(filters.created_from); clauses.push(`created_at >= $${baseOffset + params.length}`); }
-      if (filters.created_to) { params.push(filters.created_to); clauses.push(`created_at <= $${baseOffset + params.length}`); }
+      if (filters.user_id) {
+        params.push(filters.user_id);
+        clauses.push(`user_id = $${baseOffset + params.length}`);
+      }
+      if (filters.account_id) {
+        params.push(filters.account_id);
+        clauses.push(`account_id = $${baseOffset + params.length}`);
+      }
+      if (filters.source_id) {
+        params.push(filters.source_id);
+        clauses.push(`source_id = $${baseOffset + params.length}`);
+      }
+      if (filters.execution_status) {
+        params.push(filters.execution_status);
+        clauses.push(`execution_status = $${baseOffset + params.length}`);
+      }
+      if (filters.created_from) {
+        params.push(filters.created_from);
+        clauses.push(`created_at >= $${baseOffset + params.length}`);
+      }
+      if (filters.created_to) {
+        params.push(filters.created_to);
+        clauses.push(`created_at <= $${baseOffset + params.length}`);
+      }
       if (filters.q) {
         params.push(`%${String(filters.q)}%`);
         const p = `$${baseOffset + params.length}`;
@@ -5622,25 +7522,32 @@ async function _mt5InitBackendInternal() {
           OR note ILIKE ${p}
         )`);
       }
-      if (act === "close_all") clauses.push(`execution_status IN ('OPEN','PENDING')`);
+      if (act === "close_all")
+        clauses.push(`execution_status IN ('OPEN','PENDING')`);
       if (act === "cancel_all") clauses.push(`execution_status = 'PENDING'`);
       const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
       if (act === "delete_all") {
-        const delRes = await pool.query(`
+        const delRes = await pool.query(
+          `
           DELETE FROM trades
           ${where}
           RETURNING trade_id, signal_id
-        `, params);
+        `,
+          params,
+        );
         const rows = delRes.rows || [];
         return {
           ok: true,
           updated: Number(delRes.rowCount || 0),
           action: act,
           trade_ids: rows.map((r) => String(r?.trade_id || "")).filter(Boolean),
-          signal_ids: rows.map((r) => String(r?.signal_id || "")).filter(Boolean),
+          signal_ids: rows
+            .map((r) => String(r?.signal_id || ""))
+            .filter(Boolean),
         };
       }
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         UPDATE trades
         SET execution_status = $2,
             close_reason = COALESCE(close_reason, $1),
@@ -5648,7 +7555,9 @@ async function _mt5InitBackendInternal() {
             updated_at = NOW()
         ${where}
         RETURNING trade_id, signal_id
-      `, params);
+      `,
+        params,
+      );
       const rows = res.rows || [];
       return {
         ok: true,
@@ -5659,13 +7568,26 @@ async function _mt5InitBackendInternal() {
       };
     },
     async listLogs(filters = {}, limit = 200, offset = 0) {
-      const clauses = []; const params = [];
-      if (filters.user_id) { params.push(filters.user_id); clauses.push(`user_id = $${params.length}`); }
-      if (filters.object_id) { params.push(filters.object_id); clauses.push(`object_id = $${params.length}`); }
-      if (filters.object_table) { params.push(filters.object_table); clauses.push(`object_table = $${params.length}`); }
+      const clauses = [];
+      const params = [];
+      if (filters.user_id) {
+        params.push(filters.user_id);
+        clauses.push(`user_id = $${params.length}`);
+      }
+      if (filters.object_id) {
+        params.push(filters.object_id);
+        clauses.push(`object_id = $${params.length}`);
+      }
+      if (filters.object_table) {
+        params.push(filters.object_table);
+        clauses.push(`object_table = $${params.length}`);
+      }
       const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
       params.push(limit, offset);
-      const res = await pool.query(`SELECT * FROM logs ${where} ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
+      const res = await pool.query(
+        `SELECT * FROM logs ${where} ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        params,
+      );
       return res.rows;
     },
     async deleteAllEvents() {
@@ -5682,19 +7604,23 @@ async function _mt5InitBackendInternal() {
     async getSourceByIdV2(sourceId) {
       const sid = String(sourceId || "").trim();
       if (!sid) return null;
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         SELECT source_id, name, kind, auth_mode, auth_secret_hash, is_active, metadata, created_at, updated_at
         FROM sources
         WHERE source_id = $1
         LIMIT 1
-      `, [sid]);
+      `,
+        [sid],
+      );
       return res.rows[0] || null;
     },
     async upsertSourceV2(source = {}) {
       const sourceId = String(source.source_id || "").trim();
       if (!sourceId) return null;
       const now = mt5NowIso();
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         INSERT INTO sources (
           source_id, name, kind, auth_mode, auth_secret_hash, is_active, metadata, created_at, updated_at
         )
@@ -5708,16 +7634,20 @@ async function _mt5InitBackendInternal() {
           metadata = EXCLUDED.metadata,
           updated_at = EXCLUDED.updated_at
         RETURNING source_id, name, kind, auth_mode, auth_secret_hash, is_active, metadata, created_at, updated_at
-      `, [
-        sourceId,
-        String(source.name || sourceId),
-        String(source.kind || "api"),
-        String(source.auth_mode || "token"),
-        source.auth_secret_hash ? String(source.auth_secret_hash) : null,
-        normalizeUserActive(source.is_active, true),
-        source.metadata && typeof source.metadata === "object" ? JSON.stringify(source.metadata) : "{}",
-        now,
-      ]);
+      `,
+        [
+          sourceId,
+          String(source.name || sourceId),
+          String(source.kind || "api"),
+          String(source.auth_mode || "token"),
+          source.auth_secret_hash ? String(source.auth_secret_hash) : null,
+          normalizeUserActive(source.is_active, true),
+          source.metadata && typeof source.metadata === "object"
+            ? JSON.stringify(source.metadata)
+            : "{}",
+          now,
+        ],
+      );
       return res.rows[0] || null;
     },
     async rotateSourceSecretV2(sourceId) {
@@ -5726,28 +7656,39 @@ async function _mt5InitBackendInternal() {
       const secretPlain = `src_${crypto.randomBytes(18).toString("hex")}`;
       const secretHash = hashApiKey(secretPlain);
       const secretLast4 = secretPlain.slice(-4);
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         UPDATE sources
         SET auth_secret_hash = $1,
             metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('auth_secret_last4', $2),
             updated_at = NOW()
         WHERE source_id = $3
         RETURNING source_id
-      `, [secretHash, secretLast4, sid]);
+      `,
+        [secretHash, secretLast4, sid],
+      );
       if (!res.rows[0]) return null;
-      return { source_id: sid, source_secret_plaintext: secretPlain, source_secret_last4: secretLast4 };
+      return {
+        source_id: sid,
+        source_secret_plaintext: secretPlain,
+        source_secret_last4: secretLast4,
+      };
     },
     async revokeSourceSecretV2(sourceId) {
       const sid = String(sourceId || "").trim();
       if (!sid) return { ok: false, error: "source_id is required" };
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         UPDATE sources
         SET auth_secret_hash = NULL,
             metadata = (COALESCE(metadata, '{}'::jsonb) - 'auth_secret_last4'),
             updated_at = NOW()
         WHERE source_id = $1
-      `, [sid]);
-      if ((res.rowCount || 0) === 0) return { ok: false, error: "source not found" };
+      `,
+        [sid],
+      );
+      if ((res.rowCount || 0) === 0)
+        return { ok: false, error: "source not found" };
       return { ok: true };
     },
     async createAccountV2(payload = {}) {
@@ -5757,7 +7698,8 @@ async function _mt5InitBackendInternal() {
       const plainApiKey = `acc_${crypto.randomBytes(18).toString("hex")}`;
       const apiKeyHash = hashApiKey(plainApiKey);
       const apiKeyLast4 = plainApiKey.slice(-4);
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         INSERT INTO user_accounts (
           account_id, user_id, name, balance, status, metadata,
           api_key_hash, api_key_last4, api_key_rotated_at, source_ids_cache,
@@ -5772,20 +7714,35 @@ async function _mt5InitBackendInternal() {
           metadata = EXCLUDED.metadata,
           updated_at = EXCLUDED.updated_at
         RETURNING *
-      `, [
-        accountId,
-        String(payload.user_id || CFG.mt5DefaultUserId),
-        String(payload.name || accountId),
-        payload.balance === null || payload.balance === undefined || Number.isNaN(Number(payload.balance)) ? null : Number(payload.balance),
-        String(payload.status || "ACTIVE"),
-        payload.metadata && typeof payload.metadata === "object" ? JSON.stringify(payload.metadata) : "{}",
-        apiKeyHash,
-        apiKeyLast4,
-        now,
-        payload.source_ids_cache && typeof payload.source_ids_cache === "object" ? JSON.stringify(payload.source_ids_cache) : "[]",
-        now,
-      ]);
-      return { ok: true, item: res.rows[0] || null, api_key_plaintext: plainApiKey };
+      `,
+        [
+          accountId,
+          String(payload.user_id || CFG.mt5DefaultUserId),
+          String(payload.name || accountId),
+          payload.balance === null ||
+          payload.balance === undefined ||
+          Number.isNaN(Number(payload.balance))
+            ? null
+            : Number(payload.balance),
+          String(payload.status || "ACTIVE"),
+          payload.metadata && typeof payload.metadata === "object"
+            ? JSON.stringify(payload.metadata)
+            : "{}",
+          apiKeyHash,
+          apiKeyLast4,
+          now,
+          payload.source_ids_cache &&
+          typeof payload.source_ids_cache === "object"
+            ? JSON.stringify(payload.source_ids_cache)
+            : "[]",
+          now,
+        ],
+      );
+      return {
+        ok: true,
+        item: res.rows[0] || null,
+        api_key_plaintext: plainApiKey,
+      };
     },
     async listAccountsV2(userId = null) {
       const params = [];
@@ -5794,7 +7751,10 @@ async function _mt5InitBackendInternal() {
         params.push(String(userId || ""));
         where = `WHERE user_id = $1`;
       }
-      const res = await pool.query(`SELECT * FROM user_accounts ${where} ORDER BY created_at ASC, account_id ASC`, params);
+      const res = await pool.query(
+        `SELECT * FROM user_accounts ${where} ORDER BY created_at ASC, account_id ASC`,
+        params,
+      );
       return res.rows || [];
     },
     async listExecutionProfilesV2(userId = null) {
@@ -5804,13 +7764,16 @@ async function _mt5InitBackendInternal() {
         params.push(String(userId || "").trim());
         where = `WHERE user_id = $1`;
       }
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         SELECT profile_id, user_id, profile_name, route, account_id, source_ids, ctrader_mode, ctrader_account_id,
                is_active, metadata, created_at, updated_at
         FROM execution_profiles
         ${where}
         ORDER BY is_active DESC, updated_at DESC, created_at DESC
-      `, params);
+      `,
+        params,
+      );
       return res.rows || [];
     },
     async getActiveExecutionProfileV2(userId = null) {
@@ -5820,39 +7783,65 @@ async function _mt5InitBackendInternal() {
         params.push(String(userId || "").trim());
         where += ` AND user_id = $${params.length}`;
       }
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         SELECT profile_id, user_id, profile_name, route, account_id, source_ids, ctrader_mode, ctrader_account_id,
                is_active, metadata, created_at, updated_at
         FROM execution_profiles
         ${where}
         ORDER BY updated_at DESC, created_at DESC
         LIMIT 1
-      `, params);
+      `,
+        params,
+      );
       return res.rows?.[0] || null;
     },
     async saveExecutionProfileV2(payload = {}) {
-      const profileId = String(payload.profile_id || "default").trim() || "default";
-      const userId = String(payload.user_id || CFG.mt5DefaultUserId).trim() || CFG.mt5DefaultUserId;
-      const profileName = String(payload.profile_name || profileId).trim() || profileId;
-      const routeRaw = String(payload.route || "").trim().toLowerCase();
-      const route = ["ea", "v2", "ctrader"].includes(routeRaw) ? routeRaw : "ea";
+      const profileId =
+        String(payload.profile_id || "default").trim() || "default";
+      const userId =
+        String(payload.user_id || CFG.mt5DefaultUserId).trim() ||
+        CFG.mt5DefaultUserId;
+      const profileName =
+        String(payload.profile_name || profileId).trim() || profileId;
+      const routeRaw = String(payload.route || "")
+        .trim()
+        .toLowerCase();
+      const route = ["ea", "v2", "ctrader"].includes(routeRaw)
+        ? routeRaw
+        : "ea";
       const accountId = String(payload.account_id || "").trim() || null;
-      const sourceIds = (Array.isArray(payload.source_ids) ? payload.source_ids : [])
+      const sourceIds = (
+        Array.isArray(payload.source_ids) ? payload.source_ids : []
+      )
         .map((v) => String(v || "").trim())
         .filter(Boolean);
-      const ctraderModeRaw = String(payload.ctrader_mode || "").trim().toLowerCase();
-      const ctraderMode = ["demo", "live"].includes(ctraderModeRaw) ? ctraderModeRaw : null;
-      const ctraderAccountId = String(payload.ctrader_account_id || "").trim() || null;
-      const isActive = payload.is_active === undefined ? true : Boolean(payload.is_active);
-      const metadata = payload.metadata && typeof payload.metadata === "object" ? payload.metadata : {};
+      const ctraderModeRaw = String(payload.ctrader_mode || "")
+        .trim()
+        .toLowerCase();
+      const ctraderMode = ["demo", "live"].includes(ctraderModeRaw)
+        ? ctraderModeRaw
+        : null;
+      const ctraderAccountId =
+        String(payload.ctrader_account_id || "").trim() || null;
+      const isActive =
+        payload.is_active === undefined ? true : Boolean(payload.is_active);
+      const metadata =
+        payload.metadata && typeof payload.metadata === "object"
+          ? payload.metadata
+          : {};
 
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
         if (isActive) {
-          await client.query(`UPDATE execution_profiles SET is_active = FALSE, updated_at = NOW() WHERE user_id = $1`, [userId]);
+          await client.query(
+            `UPDATE execution_profiles SET is_active = FALSE, updated_at = NOW() WHERE user_id = $1`,
+            [userId],
+          );
         }
-        const res = await client.query(`
+        const res = await client.query(
+          `
           INSERT INTO execution_profiles (
             profile_id, user_id, profile_name, route, account_id, source_ids,
             ctrader_mode, ctrader_account_id, is_active, metadata, created_at, updated_at
@@ -5871,23 +7860,28 @@ async function _mt5InitBackendInternal() {
             updated_at = NOW()
           RETURNING profile_id, user_id, profile_name, route, account_id, source_ids, ctrader_mode, ctrader_account_id,
                     is_active, metadata, created_at, updated_at
-        `, [
-          profileId,
-          userId,
-          profileName,
-          route,
-          accountId,
-          JSON.stringify(sourceIds),
-          ctraderMode,
-          ctraderAccountId,
-          isActive,
-          JSON.stringify(metadata),
-        ]);
+        `,
+          [
+            profileId,
+            userId,
+            profileName,
+            route,
+            accountId,
+            JSON.stringify(sourceIds),
+            ctraderMode,
+            ctraderAccountId,
+            isActive,
+            JSON.stringify(metadata),
+          ],
+        );
         await client.query("COMMIT");
         return { ok: true, item: res.rows?.[0] || null };
       } catch (error) {
         await client.query("ROLLBACK");
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
       } finally {
         client.release();
       }
@@ -5895,10 +7889,14 @@ async function _mt5InitBackendInternal() {
     async updateAccountV2(accountId, patch = {}) {
       const targetId = String(accountId || "").trim();
       if (!targetId) return { ok: false, error: "account_id is required" };
-      const prevRes = await pool.query(`SELECT * FROM user_accounts WHERE account_id = $1 LIMIT 1`, [targetId]);
+      const prevRes = await pool.query(
+        `SELECT * FROM user_accounts WHERE account_id = $1 LIMIT 1`,
+        [targetId],
+      );
       const prev = prevRes.rows[0];
       if (!prev) return { ok: false, error: "account not found" };
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         UPDATE user_accounts
         SET user_id = $1,
             name = $2,
@@ -5908,40 +7906,56 @@ async function _mt5InitBackendInternal() {
             updated_at = NOW()
         WHERE account_id = $6
         RETURNING *
-      `, [
-        String(patch.user_id ?? prev.user_id ?? CFG.mt5DefaultUserId),
-        String(patch.name ?? prev.name ?? targetId),
-        patch.balance === undefined
-          ? (prev.balance === null || prev.balance === undefined ? null : Number(prev.balance))
-          : (patch.balance === null || patch.balance === "" || Number.isNaN(Number(patch.balance)) ? null : Number(patch.balance)),
-        String(patch.status ?? prev.status ?? "ACTIVE"),
-        patch.metadata && typeof patch.metadata === "object"
-          ? JSON.stringify(patch.metadata)
-          : (prev.metadata && typeof prev.metadata === "object" ? JSON.stringify(prev.metadata) : "{}"),
-        targetId,
-      ]);
+      `,
+        [
+          String(patch.user_id ?? prev.user_id ?? CFG.mt5DefaultUserId),
+          String(patch.name ?? prev.name ?? targetId),
+          patch.balance === undefined
+            ? prev.balance === null || prev.balance === undefined
+              ? null
+              : Number(prev.balance)
+            : patch.balance === null ||
+                patch.balance === "" ||
+                Number.isNaN(Number(patch.balance))
+              ? null
+              : Number(patch.balance),
+          String(patch.status ?? prev.status ?? "ACTIVE"),
+          patch.metadata && typeof patch.metadata === "object"
+            ? JSON.stringify(patch.metadata)
+            : prev.metadata && typeof prev.metadata === "object"
+              ? JSON.stringify(prev.metadata)
+              : "{}",
+          targetId,
+        ],
+      );
       return { ok: true, item: res.rows[0] || null };
     },
     async archiveAccountV2(accountId) {
       const targetId = String(accountId || "").trim();
       if (!targetId) return { ok: false, error: "account_id is required" };
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         UPDATE user_accounts
         SET status = 'ARCHIVED', updated_at = NOW()
         WHERE account_id = $1
         RETURNING *
-      `, [targetId]);
+      `,
+        [targetId],
+      );
       if (!res.rows[0]) return { ok: false, error: "account not found" };
       return { ok: true, item: res.rows[0] };
     },
     async findAccountByApiKeyHash(apiKeyHash) {
       const h = String(apiKeyHash || "").trim();
       if (!h) return null;
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         SELECT * FROM user_accounts
         WHERE api_key_hash = $1 AND status = 'ACTIVE'
         LIMIT 1
-      `, [h]);
+      `,
+        [h],
+      );
       return res.rows[0] || null;
     },
     async rotateAccountApiKeyV2(accountId) {
@@ -5950,24 +7964,31 @@ async function _mt5InitBackendInternal() {
       const plainApiKey = `acc_${crypto.randomBytes(18).toString("hex")}`;
       const apiKeyHash = hashApiKey(plainApiKey);
       const apiKeyLast4 = plainApiKey.slice(-4);
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         UPDATE user_accounts
         SET api_key_hash = $1, api_key_last4 = $2, api_key_rotated_at = NOW(), updated_at = NOW()
         WHERE account_id = $3
         RETURNING account_id
-      `, [apiKeyHash, apiKeyLast4, targetId]);
+      `,
+        [apiKeyHash, apiKeyLast4, targetId],
+      );
       if (!res.rows[0]) return null;
       return { account_id: targetId, api_key_plaintext: plainApiKey };
     },
     async revokeAccountApiKeyV2(accountId) {
       const targetId = String(accountId || "").trim();
       if (!targetId) return { ok: false, error: "account_id is required" };
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         UPDATE user_accounts
         SET api_key_hash = NULL, api_key_last4 = NULL, api_key_rotated_at = NOW(), updated_at = NOW()
         WHERE account_id = $1
-      `, [targetId]);
-      if ((res.rowCount || 0) === 0) return { ok: false, error: "account not found" };
+      `,
+        [targetId],
+      );
+      if ((res.rowCount || 0) === 0)
+        return { ok: false, error: "account not found" };
       return { ok: true, account_id: targetId };
     },
     async updateAccountApiKeyV2(accountId, plainApiKey) {
@@ -5976,21 +7997,34 @@ async function _mt5InitBackendInternal() {
       if (!targetId || !plain) return null;
       const apiKeyHash = hashApiKey(plain);
       const apiKeyLast4 = plain.slice(-4);
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         UPDATE user_accounts
         SET api_key_hash = $1, api_key_last4 = $2, api_key_rotated_at = NOW(), updated_at = NOW()
         WHERE account_id = $3
         RETURNING account_id
-      `, [apiKeyHash, apiKeyLast4, targetId]);
-      return res.rowCount > 0 ? { account_id: targetId, api_key_last4: apiKeyLast4 } : null;
+      `,
+        [apiKeyHash, apiKeyLast4, targetId],
+      );
+      return res.rowCount > 0
+        ? { account_id: targetId, api_key_last4: apiKeyLast4 }
+        : null;
     },
     async getAccountSubscriptionsV2(accountId) {
       const targetId = String(accountId || "").trim();
       if (!targetId) return [];
-      const res = await pool.query(`SELECT source_ids_cache FROM user_accounts WHERE account_id = $1 LIMIT 1`, [targetId]);
+      const res = await pool.query(
+        `SELECT source_ids_cache FROM user_accounts WHERE account_id = $1 LIMIT 1`,
+        [targetId],
+      );
       const cache = res.rows?.[0]?.source_ids_cache;
       const arr = Array.isArray(cache) ? cache : [];
-      return arr.map((sourceId) => ({ source_id: String(sourceId || ""), is_active: true })).filter((x) => x.source_id);
+      return arr
+        .map((sourceId) => ({
+          source_id: String(sourceId || ""),
+          is_active: true,
+        }))
+        .filter((x) => x.source_id);
     },
     async replaceAccountSubscriptionsV2(accountId, items = []) {
       const targetId = String(accountId || "").trim();
@@ -5999,84 +8033,121 @@ async function _mt5InitBackendInternal() {
         .filter((x) => x && x.is_active !== false)
         .map((x) => String(x.source_id || "").trim())
         .filter(Boolean);
-      await pool.query(`UPDATE user_accounts SET source_ids_cache = $1::jsonb, updated_at = NOW() WHERE account_id = $2`, [JSON.stringify(sourceIds), targetId]);
+      await pool.query(
+        `UPDATE user_accounts SET source_ids_cache = $1::jsonb, updated_at = NOW() WHERE account_id = $2`,
+        [JSON.stringify(sourceIds), targetId],
+      );
       return { ok: true };
     },
     async getTableSchema(table) {
       const allowed = await this.listTables();
-      if (!allowed.includes(table)) throw new Error(`Access denied to table: ${table}`);
-      const res = await pool.query(`
+      if (!allowed.includes(table))
+        throw new Error(`Access denied to table: ${table}`);
+      const res = await pool.query(
+        `
         SELECT column_name, data_type, is_nullable, character_maximum_length, column_default
-        FROM information_schema.columns 
+        FROM information_schema.columns
         WHERE table_name = $1
         ORDER BY ordinal_position
-      `, [table]);
+      `,
+        [table],
+      );
       return res.rows;
     },
     async listTables() {
-      return ['users', 'user_accounts', 'signals', 'trades', 'logs', 'sources', 'execution_profiles', 'user_settings', 'market_data', 'user_templates'];
+      return [
+        "users",
+        "user_accounts",
+        "signals",
+        "trades",
+        "logs",
+        "sources",
+        "execution_profiles",
+        "user_settings",
+        "market_data",
+        "user_templates",
+      ];
     },
     async listTableRows(table, limit = 50, offset = 0, query = "") {
       const allowed = await this.listTables();
-      if (!allowed.includes(table)) throw new Error(`Access denied to table: ${table}`);
+      if (!allowed.includes(table))
+        throw new Error(`Access denied to table: ${table}`);
       let where = "";
       const params = [limit, offset];
       if (query) {
         params.push(`%${query}%`);
-        if (table === 'signals' || table === 'trades') {
+        if (table === "signals" || table === "trades") {
           where = `WHERE symbol ILIKE $3 OR signal_id ILIKE $3 OR trade_id ILIKE $3`;
-        } else if (table === 'users' || table === 'user_accounts') {
+        } else if (table === "users" || table === "user_accounts") {
           where = `WHERE user_id ILIKE $3 OR account_id ILIKE $3`;
-        } else if (table === 'logs') {
+        } else if (table === "logs") {
           where = `WHERE object_id ILIKE $3 OR metadata::text ILIKE $3`;
         }
       }
-      const res = await pool.query(`SELECT * FROM ${table} ${where} ORDER BY 1 DESC LIMIT $1 OFFSET $2`, params);
-      const totalRes = await pool.query(`SELECT COUNT(*) FROM ${table} ${where}`, query ? [params[2]] : []);
+      const res = await pool.query(
+        `SELECT * FROM ${table} ${where} ORDER BY 1 DESC LIMIT $1 OFFSET $2`,
+        params,
+      );
+      const totalRes = await pool.query(
+        `SELECT COUNT(*) FROM ${table} ${where}`,
+        query ? [params[2]] : [],
+      );
       return { rows: res.rows, total: parseInt(totalRes.rows[0].count) };
     },
     async getAccountByIdV2(accountId) {
-      const res = await pool.query(`SELECT * FROM user_accounts WHERE account_id = $1 LIMIT 1`, [accountId]);
+      const res = await pool.query(
+        `SELECT * FROM user_accounts WHERE account_id = $1 LIMIT 1`,
+        [accountId],
+      );
       return res.rows[0] || null;
     },
     async getUiAuthUser(email) {
-
       const target = normalizeEmail(email);
       if (!target) return null;
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         SELECT user_id, name, email, role, is_active, password_salt, password_hash, metadata, updated_at, created_at
         FROM users
         WHERE lower(email) = $1
         LIMIT 1
-      `, [target]);
+      `,
+        [target],
+      );
       return res.rows[0] || null;
     },
     async getUiAuthUserByName(name) {
       const target = String(name || "").trim();
       if (!target) return null;
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         SELECT user_id, name, email, role, is_active, password_salt, password_hash, metadata, updated_at, created_at
         FROM users
         WHERE lower(name) = lower($1)
         LIMIT 1
-      `, [target]);
+      `,
+        [target],
+      );
       return res.rows[0] || null;
     },
     async getUiAuthUserById(userId) {
       const target = String(userId || "").trim();
       if (!target) return null;
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         SELECT user_id, name, email, role, is_active, password_salt, password_hash, metadata, updated_at, created_at
         FROM users
         WHERE user_id = $1
         LIMIT 1
-      `, [target]);
+      `,
+        [target],
+      );
       return res.rows[0] || null;
     },
     async deleteUiAuthUserById(userId) {
       const target = String(userId || "").trim();
       if (!target) return { ok: false, error: "user_id is required" };
-      if (target === CFG.mt5DefaultUserId) return { ok: false, error: "Cannot delete system default user" };
+      if (target === CFG.mt5DefaultUserId)
+        return { ok: false, error: "Cannot delete system default user" };
 
       const client = await pool.connect();
       try {
@@ -6084,7 +8155,10 @@ async function _mt5InitBackendInternal() {
         // Delete logs associated with user
         await client.query("DELETE FROM logs WHERE user_id = $1", [target]);
         // Delete user (cascades to accounts, trades, signals, settings, profiles)
-        const res = await client.query("DELETE FROM users WHERE user_id = $1 RETURNING user_id", [target]);
+        const res = await client.query(
+          "DELETE FROM users WHERE user_id = $1 RETURNING user_id",
+          [target],
+        );
         await client.query("COMMIT");
         return { ok: res.rowCount > 0 };
       } catch (e) {
@@ -6106,7 +8180,8 @@ async function _mt5InitBackendInternal() {
       const target = normalizeEmail(user?.email);
       if (!target) throw new Error("email is required");
       const userId = String(user?.user_id || CFG.mt5DefaultUserId);
-      await pool.query(`
+      await pool.query(
+        `
         INSERT INTO users (user_id, name, email, role, is_active, password_salt, password_hash, updated_at, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (user_id) DO UPDATE SET
@@ -6117,33 +8192,39 @@ async function _mt5InitBackendInternal() {
           password_salt = EXCLUDED.password_salt,
           password_hash = EXCLUDED.password_hash,
           updated_at = EXCLUDED.updated_at
-      `, [
-        userId,
-        String(user?.name || fallbackNameFromEmail(target)),
-        target,
-        normalizeUserRole(user?.role || UI_ROLE_SYSTEM),
-        normalizeUserActive(user?.is_active, true),
-        String(user?.password_salt || ""),
-        String(user?.password_hash || ""),
-        normalizeIsoTimestamp(user?.updated_at, new Date().toISOString()),
-        normalizeIsoTimestamp(user?.created_at, mt5NowIso()),
-      ]);
+      `,
+        [
+          userId,
+          String(user?.name || fallbackNameFromEmail(target)),
+          target,
+          normalizeUserRole(user?.role || UI_ROLE_SYSTEM),
+          normalizeUserActive(user?.is_active, true),
+          String(user?.password_salt || ""),
+          String(user?.password_hash || ""),
+          normalizeIsoTimestamp(user?.updated_at, new Date().toISOString()),
+          normalizeIsoTimestamp(user?.created_at, mt5NowIso()),
+        ],
+      );
       return { ok: true };
     },
     async listUserAccounts(userId) {
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         SELECT account_id, user_id, name, balance, status, metadata, created_at, updated_at
         FROM user_accounts
         WHERE user_id = $1
         ORDER BY created_at ASC, account_id ASC
-      `, [String(userId || "")]);
+      `,
+        [String(userId || "")],
+      );
       return res.rows || [];
     },
     async upsertUserAccount(userId, account) {
       const targetUser = String(userId || "");
       const accountId = String(account?.account_id || "");
       const now = mt5NowIso();
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         INSERT INTO user_accounts (account_id, user_id, name, balance, status, metadata, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
         ON CONFLICT (account_id) DO UPDATE SET
@@ -6154,35 +8235,49 @@ async function _mt5InitBackendInternal() {
           metadata = EXCLUDED.metadata,
           updated_at = EXCLUDED.updated_at
         RETURNING account_id, user_id, name, balance, status, metadata, created_at, updated_at
-      `, [
-        accountId,
-        targetUser,
-        String(account?.name || ""),
-        account?.balance === null || account?.balance === undefined || Number.isNaN(Number(account.balance)) ? null : Number(account.balance),
-        String(account?.status || ""),
-        account?.metadata && typeof account.metadata === "object" ? JSON.stringify(account.metadata) : null,
-        now,
-        now,
-      ]);
+      `,
+        [
+          accountId,
+          targetUser,
+          String(account?.name || ""),
+          account?.balance === null ||
+          account?.balance === undefined ||
+          Number.isNaN(Number(account.balance))
+            ? null
+            : Number(account.balance),
+          String(account?.status || ""),
+          account?.metadata && typeof account.metadata === "object"
+            ? JSON.stringify(account.metadata)
+            : null,
+          now,
+          now,
+        ],
+      );
       return res.rows[0] || null;
     },
     async deleteUserAccount(userId, accountId) {
-      await pool.query(`DELETE FROM user_accounts WHERE user_id = $1 AND account_id = $2`, [String(userId || ""), String(accountId || "")]);
+      await pool.query(
+        `DELETE FROM user_accounts WHERE user_id = $1 AND account_id = $2`,
+        [String(userId || ""), String(accountId || "")],
+      );
     },
     async pruneOldSignals(days) {
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         WITH signals_del AS (DELETE FROM signals WHERE created_at < NOW() - $1 * INTERVAL '1 day' RETURNING signal_id),
              trades_del AS (DELETE FROM trades WHERE created_at < NOW() - $1 * INTERVAL '1 day' RETURNING trade_id),
              logs_del AS (DELETE FROM logs WHERE created_at < NOW() - $1 * INTERVAL '1 day' RETURNING object_id)
         SELECT (SELECT COUNT(*) FROM signals_del) as signals_count,
                (SELECT COUNT(*) FROM trades_del) as trades_count,
                (SELECT COUNT(*) FROM logs_del) as logs_count
-      `, [days]);
+      `,
+        [days],
+      );
       const counts = res.rows[0];
       return {
         removed: parseInt(counts.signals_count) + parseInt(counts.trades_count),
         logs_removed: parseInt(counts.logs_count),
-        remaining: 0
+        remaining: 0,
       };
     },
     async listActiveSignals() {
@@ -6207,22 +8302,39 @@ async function _mt5InitBackendInternal() {
     async bulkAckSignals(updates) {
       let count = 0;
       for (const u of updates) {
-        const rawStatus = String(u?.status || "").trim().toUpperCase();
-        const isClosed = ["CLOSED", "TP", "SL", "CANCEL", "CANCELLED", "FAIL", "EXPIRED"].includes(rawStatus);
+        const rawStatus = String(u?.status || "")
+          .trim()
+          .toUpperCase();
+        const isClosed = [
+          "CLOSED",
+          "TP",
+          "SL",
+          "CANCEL",
+          "CANCELLED",
+          "FAIL",
+          "EXPIRED",
+        ].includes(rawStatus);
         const pnlRaw = Number(u?.pnl);
         const hasPnl = Number.isFinite(pnlRaw);
         const pnlVal = hasPnl ? pnlRaw : null;
         let tradeExec = "OPEN";
-        if (["NEW", "LOCKED", "PLACED"].includes(rawStatus)) tradeExec = "PENDING";
-        else if (["TP", "SL", "CLOSED"].includes(rawStatus)) tradeExec = "CLOSED";
-        else if (["CANCEL", "CANCELLED", "EXPIRED"].includes(rawStatus)) tradeExec = "CANCELLED";
+        if (["NEW", "LOCKED", "PLACED"].includes(rawStatus))
+          tradeExec = "PENDING";
+        else if (["TP", "SL", "CLOSED"].includes(rawStatus))
+          tradeExec = "CLOSED";
+        else if (["CANCEL", "CANCELLED", "EXPIRED"].includes(rawStatus))
+          tradeExec = "CANCELLED";
         else if (rawStatus === "FAIL") tradeExec = "REJECTED";
-        const res = await pool.query(`
-          UPDATE signals 
+        const res = await pool.query(
+          `
+          UPDATE signals
           SET status = $1
           WHERE signal_id = $2
-        `, [u.status, u.signal_id]);
-        await pool.query(`
+        `,
+          [u.status, u.signal_id],
+        );
+        await pool.query(
+          `
           UPDATE trades
           SET execution_status = $1,
               broker_trade_id = COALESCE(NULLIF($2, ''), broker_trade_id),
@@ -6230,7 +8342,16 @@ async function _mt5InitBackendInternal() {
               closed_at = CASE WHEN $5 = TRUE THEN NOW() ELSE closed_at END,
               updated_at = NOW()
           WHERE signal_id = $6
-        `, [tradeExec, String(u.ticket || ""), pnlVal, hasPnl, isClosed, u.signal_id]);
+        `,
+          [
+            tradeExec,
+            String(u.ticket || ""),
+            pnlVal,
+            hasPnl,
+            isClosed,
+            u.signal_id,
+          ],
+        );
         count += res.rowCount;
       }
       return { updated: count };
@@ -6241,37 +8362,59 @@ async function _mt5InitBackendInternal() {
       const tWhere = u ? " AND user_id = $1" : "";
       const params = u ? [u] : [];
 
-      const signalCancelRes = await pool.query(`SELECT COUNT(*) as c FROM signals WHERE status IN ('CANCEL', 'ERROR', 'CANCELLED')${sWhere}`, params);
-      const tradeCancelRes = await pool.query(`SELECT COUNT(*) as c FROM trades WHERE execution_status IN ('REJECTED', 'CANCELLED')${tWhere}`, params);
+      const signalCancelRes = await pool.query(
+        `SELECT COUNT(*) as c FROM signals WHERE status IN ('CANCEL', 'ERROR', 'CANCELLED')${sWhere}`,
+        params,
+      );
+      const tradeCancelRes = await pool.query(
+        `SELECT COUNT(*) as c FROM trades WHERE execution_status IN ('REJECTED', 'CANCELLED')${tWhere}`,
+        params,
+      );
 
-      const signalTestRes = await pool.query(`SELECT COUNT(*) as c FROM signals WHERE symbol = 'TEST'${sWhere}`, params);
-      const tradeTestRes = await pool.query(`SELECT COUNT(*) as c FROM trades WHERE symbol = 'TEST'${tWhere}`, params);
+      const signalTestRes = await pool.query(
+        `SELECT COUNT(*) as c FROM signals WHERE symbol = 'TEST'${sWhere}`,
+        params,
+      );
+      const tradeTestRes = await pool.query(
+        `SELECT COUNT(*) as c FROM trades WHERE symbol = 'TEST'${tWhere}`,
+        params,
+      );
 
-      const fs = require('fs');
-      const path = require('path');
+      const fs = require("fs");
+      const path = require("path");
       let snapshotsSize = 0;
       let snapshotsCount = 0;
       if (fs.existsSync(CHART_SNAPSHOT_DIR)) {
         const userPrefix = u ? `UID_${u}_` : "";
-        const files = fs.readdirSync(CHART_SNAPSHOT_DIR).filter(f => !userPrefix || f.startsWith(userPrefix));
+        const files = fs
+          .readdirSync(CHART_SNAPSHOT_DIR)
+          .filter((f) => !userPrefix || f.startsWith(userPrefix));
         snapshotsCount = files.length;
         for (const f of files) {
           try {
             snapshotsSize += fs.statSync(path.join(CHART_SNAPSHOT_DIR, f)).size;
-          } catch (e) { }
+          } catch (e) {}
         }
       }
 
-      const logsRes = await pool.query(`SELECT COUNT(*) as c FROM logs${u ? " WHERE user_id = $1" : ""}`, params);
+      const logsRes = await pool.query(
+        `SELECT COUNT(*) as c FROM logs${u ? " WHERE user_id = $1" : ""}`,
+        params,
+      );
 
       const disk = readDiskStats("/") || {};
       const pgLogsBytes = readPathSizeBytes("/var/log/postgresql");
       const aptCacheBytes = readPathSizeBytes("/var/cache/apt");
-      const playwrightCacheBytes = readPathSizeBytes("/root/.cache/ms-playwright");
+      const playwrightCacheBytes = readPathSizeBytes(
+        "/root/.cache/ms-playwright",
+      );
       const npmCacheBytes = readPathSizeBytes("/root/.npm");
       return {
-        cancelled_error_count: parseInt(signalCancelRes.rows[0].c) + parseInt(tradeCancelRes.rows[0].c),
-        test_trades_count: parseInt(signalTestRes.rows[0].c) + parseInt(tradeTestRes.rows[0].c),
+        cancelled_error_count:
+          parseInt(signalCancelRes.rows[0].c) +
+          parseInt(tradeCancelRes.rows[0].c),
+        test_trades_count:
+          parseInt(signalTestRes.rows[0].c) + parseInt(tradeTestRes.rows[0].c),
         logs_count: parseInt(logsRes.rows[0].c),
         snapshots_count: snapshotsCount,
         snapshots_size_bytes: snapshotsSize,
@@ -6279,7 +8422,9 @@ async function _mt5InitBackendInternal() {
         disk_total_bytes: Number(disk.total_bytes || 0),
         disk_used_bytes: Number(disk.used_bytes || 0),
         disk_avail_bytes: Number(disk.avail_bytes || 0),
-        disk_use_pct: Number.isFinite(Number(disk.use_pct)) ? Number(disk.use_pct) : null,
+        disk_use_pct: Number.isFinite(Number(disk.use_pct))
+          ? Number(disk.use_pct)
+          : null,
         system_postgres_logs_size_bytes: pgLogsBytes,
         system_apt_cache_size_bytes: aptCacheBytes,
         system_playwright_cache_size_bytes: playwrightCacheBytes,
@@ -6292,61 +8437,99 @@ async function _mt5InitBackendInternal() {
         const report = cleanupSystemStorageArtifacts();
         return { ok: true, target, ...report };
       }
-      if (target === 'snapshots') {
-        const fs = require('fs');
-        const path = require('path');
+      if (target === "snapshots") {
+        const fs = require("fs");
+        const path = require("path");
         let deletedFiles = 0;
         if (fs.existsSync(CHART_SNAPSHOT_DIR)) {
           const userPrefix = u ? `UID_${u}_` : "";
-          const files = fs.readdirSync(CHART_SNAPSHOT_DIR).filter(f => !userPrefix || f.startsWith(userPrefix));
+          const files = fs
+            .readdirSync(CHART_SNAPSHOT_DIR)
+            .filter((f) => !userPrefix || f.startsWith(userPrefix));
           for (const f of files) {
             try {
               fs.unlinkSync(path.join(CHART_SNAPSHOT_DIR, f));
               deletedFiles++;
-            } catch (e) { }
+            } catch (e) {}
           }
         }
         return { ok: true, target, deleted_files: deletedFiles };
-      } else if (target === 'reset_user_data') {
+      } else if (target === "reset_user_data") {
         if (!u) throw new Error("userId is required for reset_user_data");
-        const tDel = await pool.query(`DELETE FROM trades WHERE user_id = $1`, [u]);
-        const sDel = await pool.query(`DELETE FROM signals WHERE user_id = $1`, [u]);
-        const lDel = await pool.query(`DELETE FROM logs WHERE user_id = $1`, [u]);
-        return { ok: true, target, trades_deleted: tDel.rowCount, signals_deleted: sDel.rowCount, logs_deleted: lDel.rowCount };
-      } else if (target === 'cancelled_error' || target === 'test_trades') {
+        const tDel = await pool.query(`DELETE FROM trades WHERE user_id = $1`, [
+          u,
+        ]);
+        const sDel = await pool.query(
+          `DELETE FROM signals WHERE user_id = $1`,
+          [u],
+        );
+        const lDel = await pool.query(`DELETE FROM logs WHERE user_id = $1`, [
+          u,
+        ]);
+        return {
+          ok: true,
+          target,
+          trades_deleted: tDel.rowCount,
+          signals_deleted: sDel.rowCount,
+          logs_deleted: lDel.rowCount,
+        };
+      } else if (target === "cancelled_error" || target === "test_trades") {
         const sWhereUser = u ? " AND user_id = $1" : "";
         const tWhereUser = u ? " AND user_id = $1" : "";
         const params = u ? [u] : [];
 
-        const signalWhere = target === 'cancelled_error' ? `status IN ('CANCEL', 'ERROR', 'CANCELLED')${sWhereUser}` : `symbol = 'TEST'${sWhereUser}`;
-        const tradeWhere = target === 'cancelled_error' ? `execution_status IN ('REJECTED', 'CANCELLED')${tWhereUser}` : `symbol = 'TEST'${tWhereUser}`;
+        const signalWhere =
+          target === "cancelled_error"
+            ? `status IN ('CANCEL', 'ERROR', 'CANCELLED')${sWhereUser}`
+            : `symbol = 'TEST'${sWhereUser}`;
+        const tradeWhere =
+          target === "cancelled_error"
+            ? `execution_status IN ('REJECTED', 'CANCELLED')${tWhereUser}`
+            : `symbol = 'TEST'${tWhereUser}`;
 
         // 1. Collect signals and their IDs
-        const sQ = await pool.query(`SELECT * FROM signals WHERE ${signalWhere}`, params);
+        const sQ = await pool.query(
+          `SELECT * FROM signals WHERE ${signalWhere}`,
+          params,
+        );
         const sRows = sQ.rows;
-        const sIds = sRows.map(r => String(r.signal_id));
+        const sIds = sRows.map((r) => String(r.signal_id));
 
         // 2. Collect trades and their IDs
-        const tQ = await pool.query(`SELECT * FROM trades WHERE ${tradeWhere}`, params);
+        const tQ = await pool.query(
+          `SELECT * FROM trades WHERE ${tradeWhere}`,
+          params,
+        );
         const tRows = tQ.rows;
-        const tIds = tRows.map(r => String(r.trade_id));
+        const tIds = tRows.map((r) => String(r.trade_id));
 
         // 3. Delete from trades first
         let tradesDeleted = 0;
         if (tIds.length > 0) {
-          const tDel = await pool.query(`DELETE FROM trades WHERE trade_id = ANY($1)`, [tIds]);
+          const tDel = await pool.query(
+            `DELETE FROM trades WHERE trade_id = ANY($1)`,
+            [tIds],
+          );
           tradesDeleted = tDel.rowCount;
         }
 
         // 4. Delete from signals
         let signalsDeleted = 0;
         if (sIds.length > 0) {
-          const sDel = await pool.query(`DELETE FROM signals WHERE signal_id = ANY($1)`, [sIds]);
+          const sDel = await pool.query(
+            `DELETE FROM signals WHERE signal_id = ANY($1)`,
+            [sIds],
+          );
           signalsDeleted = sDel.rowCount;
         }
 
         // 5. Cleanup artifacts
-        const cleanup = await mt5CleanupSignalTradeArtifacts({ signalRows: sRows, signalIds: sIds, tradeRows: tRows, tradeIds: tIds });
+        const cleanup = await mt5CleanupSignalTradeArtifacts({
+          signalRows: sRows,
+          signalIds: sIds,
+          tradeRows: tRows,
+          tradeIds: tIds,
+        });
 
         return {
           ok: true,
@@ -6354,18 +8537,21 @@ async function _mt5InitBackendInternal() {
           deleted_signals: signalsDeleted,
           deleted_trades: tradesDeleted,
           logs_deleted: cleanup.logs_deleted,
-          files_deleted: cleanup.files_deleted
+          files_deleted: cleanup.files_deleted,
         };
-      } else if (target === 'logs') {
+      } else if (target === "logs") {
         const whereUser = u ? " WHERE user_id = $1" : "";
-        const lDel = await pool.query(`DELETE FROM logs${whereUser}`, u ? [u] : []);
+        const lDel = await pool.query(
+          `DELETE FROM logs${whereUser}`,
+          u ? [u] : [],
+        );
         return { ok: true, target, logs_deleted: lDel.rowCount };
-      } else if (target === 'cache') {
+      } else if (target === "cache") {
         const results = { redis: false, db_market_data: false };
         if (CFG.redisEnabled) {
           const client = await getRedisClient();
           if (client) {
-            await client.flushAll().catch(() => { });
+            await client.flushAll().catch(() => {});
             results.redis = true;
           }
         }
@@ -6382,12 +8568,26 @@ async function _mt5InitBackendInternal() {
       for (const [key, val] of MARKET_DATA_MEMORY_CACHE.entries()) {
         const root = val?.data;
         if (!root) continue;
-        const tfSummary = Array.isArray(root.data) ? root.data.map(d => d.tf).join(', ') : (root.tf || 'n/a');
-        const barTotal = Array.isArray(root.data) ? root.data.reduce((sum, d) => sum + (d.bars?.length || 0), 0) : (root.bars?.length || 0);
+        const tfSummary = Array.isArray(root.data)
+          ? root.data.map((d) => d.tf).join(", ")
+          : root.tf || "n/a";
+        const barTotal = Array.isArray(root.data)
+          ? root.data.reduce((sum, d) => sum + (d.bars?.length || 0), 0)
+          : root.bars?.length || 0;
         items.push({
-          key, source: 'memory',
-          data: { symbol: root.symbol || key, tf: tfSummary, bars: barTotal, updated_at: root.updated_time ? new Date(root.updated_time * 1000).toISOString() : null },
-          expires_at: val.expires_at_ms ? new Date(val.expires_at_ms).toISOString() : null
+          key,
+          source: "memory",
+          data: {
+            symbol: root.symbol || key,
+            tf: tfSummary,
+            bars: barTotal,
+            updated_at: root.updated_time
+              ? new Date(root.updated_time * 1000).toISOString()
+              : null,
+          },
+          expires_at: val.expires_at_ms
+            ? new Date(val.expires_at_ms).toISOString()
+            : null,
         });
       }
 
@@ -6395,9 +8595,15 @@ async function _mt5InitBackendInternal() {
       const calendar = MARKET_DATA_MEMORY_CACHE.get("economic_calendar:today");
       if (calendar) {
         items.push({
-          key: "economic_calendar:today", source: 'memory',
-          data: { label: "Economic News Today", events: calendar.data?.length || 0 },
-          expires_at: calendar.expires_at_ms ? new Date(calendar.expires_at_ms).toISOString() : null
+          key: "economic_calendar:today",
+          source: "memory",
+          data: {
+            label: "Economic News Today",
+            events: calendar.data?.length || 0,
+          },
+          expires_at: calendar.expires_at_ms
+            ? new Date(calendar.expires_at_ms).toISOString()
+            : null,
         });
       }
 
@@ -6405,19 +8611,34 @@ async function _mt5InitBackendInternal() {
       if (CFG.redisEnabled) {
         const client = await getRedisClient();
         if (client) {
-          const allKeys = await client.keys('*');
+          const allKeys = await client.keys("*");
           for (const k of allKeys) {
             // Market Data
-            if (k.startsWith('market_data:')) {
-              items.push({ key: k, source: 'redis', data: { type: 'market_data' } });
+            if (k.startsWith("market_data:")) {
+              items.push({
+                key: k,
+                source: "redis",
+                data: { type: "market_data" },
+              });
             }
             // Settings / User Accounts
-            else if (k.startsWith('SYSTEM:SETTINGS') || k.startsWith('USER_ACCOUNTS:')) {
-              items.push({ key: k, source: 'redis', data: { type: 'configuration' } });
+            else if (
+              k.startsWith("SYSTEM:SETTINGS") ||
+              k.startsWith("USER_ACCOUNTS:")
+            ) {
+              items.push({
+                key: k,
+                source: "redis",
+                data: { type: "configuration" },
+              });
             }
             // Calendar
-            else if (k === 'economic_calendar:today') {
-              items.push({ key: k, source: 'redis', data: { type: 'calendar' } });
+            else if (k === "economic_calendar:today") {
+              items.push({
+                key: k,
+                source: "redis",
+                data: { type: "calendar" },
+              });
             }
           }
         }
@@ -6425,11 +8646,11 @@ async function _mt5InitBackendInternal() {
       return items;
     },
     async uiGetCacheDetail(key, source) {
-      if (source === 'memory') {
+      if (source === "memory") {
         const val = MARKET_DATA_MEMORY_CACHE.get(key);
         return { ok: true, data: val };
       }
-      if (source === 'redis' && CFG.redisEnabled) {
+      if (source === "redis" && CFG.redisEnabled) {
         const client = await getRedisClient();
         if (client) {
           const val = await client.get(key).catch(() => null);
@@ -6443,92 +8664,142 @@ async function _mt5InitBackendInternal() {
       return { ok: false, error: "source not found or disabled" };
     },
     async uiDeleteCacheKey(key, source) {
-      if (source === 'memory') {
+      if (source === "memory") {
         MARKET_DATA_MEMORY_CACHE.delete(key);
         return { ok: true };
       }
-      if (source === 'redis' && CFG.redisEnabled) {
+      if (source === "redis" && CFG.redisEnabled) {
         const client = await getRedisClient();
         if (client) {
-          await client.del(key).catch(() => { });
+          await client.del(key).catch(() => {});
           return { ok: true };
         }
       }
       return { ok: false, error: "source not found or disabled" };
     },
     async deleteSignalsByIds(ids) {
-      const refs = Array.isArray(ids) ? ids.map((v) => String(v || "").trim()).filter(Boolean) : [];
+      const refs = Array.isArray(ids)
+        ? ids.map((v) => String(v || "").trim()).filter(Boolean)
+        : [];
       if (!refs.length) return { deleted: 0 };
-      const numericIds = refs.map((v) => mt5ParseNumericId(v)).filter((v) => v != null);
+      const numericIds = refs
+        .map((v) => mt5ParseNumericId(v))
+        .filter((v) => v != null);
 
       // Delete trades first (due to foreign key or just clean association)
-      await pool.query(`
+      await pool.query(
+        `
         DELETE FROM trades
         WHERE signal_id = ANY($1::text[])
-      `, [refs]);
+      `,
+        [refs],
+      );
 
-      const res = await pool.query(`
+      const res = await pool.query(
+        `
         DELETE FROM signals
         WHERE signal_id = ANY($1::text[])
            OR sid = ANY($1::text[])
            OR id = ANY($2::bigint[])
-      `, [refs, numericIds]);
+      `,
+        [refs, numericIds],
+      );
       return { deleted: res.rowCount };
     },
     async cancelSignalsByIds(ids) {
-      const refs = Array.isArray(ids) ? ids.map((v) => String(v || "").trim()).filter(Boolean) : [];
+      const refs = Array.isArray(ids)
+        ? ids.map((v) => String(v || "").trim()).filter(Boolean)
+        : [];
       if (!refs.length) return { updated: 0, updated_ids: [] };
-      const numericIds = refs.map((v) => mt5ParseNumericId(v)).filter((v) => v != null);
-      const res = await pool.query(`
+      const numericIds = refs
+        .map((v) => mt5ParseNumericId(v))
+        .filter((v) => v != null);
+      const res = await pool.query(
+        `
         UPDATE signals
         SET status = 'CANCEL', updated_at = NOW()
         WHERE signal_id = ANY($1::text[])
            OR sid = ANY($1::text[])
            OR id = ANY($2::bigint[])
         RETURNING signal_id
-      `, [refs, numericIds]);
-      return { updated: res.rowCount, updated_ids: res.rows.map(r => r.signal_id) };
+      `,
+        [refs, numericIds],
+      );
+      return {
+        updated: res.rowCount,
+        updated_ids: res.rows.map((r) => r.signal_id),
+      };
     },
     async renewSignalsByIds(signalIds) {
-      const ids = Array.isArray(signalIds) ? signalIds.map(s => String(s || "")).filter(Boolean) : [];
+      const ids = Array.isArray(signalIds)
+        ? signalIds.map((s) => String(s || "")).filter(Boolean)
+        : [];
       if (!ids.length) return { updated: 0, updated_ids: [] };
-      const numericIds = ids.map((v) => mt5ParseNumericId(v)).filter((v) => v != null);
+      const numericIds = ids
+        .map((v) => mt5ParseNumericId(v))
+        .filter((v) => v != null);
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const selected = await client.query(`
+        const selected = await client.query(
+          `
           SELECT *
           FROM signals
           WHERE signal_id = ANY($1::text[])
              OR sid = ANY($1::text[])
              OR id = ANY($2::bigint[])
           FOR UPDATE
-        `, [ids, numericIds]);
+        `,
+          [ids, numericIds],
+        );
         const updatedIds = [];
-        for (const row of (selected.rows || [])) {
+        for (const row of selected.rows || []) {
           const oldId = String(row.signal_id || "");
           const cur = mt5CanonicalStoredStatus(row.status);
           if (cur === "NEW" || cur === "LOCKED") continue;
 
           const base = mt5RenewSignalIdBase(oldId);
-          const existingRows = await client.query(`SELECT signal_id FROM signals WHERE signal_id = $1 OR signal_id LIKE $2`, [base, `${base}.%`]);
-          const renewedId = mt5RenewSignalIdFromExisting(base, (existingRows.rows || []).map(r => String(r.signal_id || "")));
+          const existingRows = await client.query(
+            `SELECT signal_id FROM signals WHERE signal_id = $1 OR signal_id LIKE $2`,
+            [base, `${base}.%`],
+          );
+          const renewedId = mt5RenewSignalIdFromExisting(
+            base,
+            (existingRows.rows || []).map((r) => String(r.signal_id || "")),
+          );
 
-          const ins = await client.query(`
+          const ins = await client.query(
+            `
             INSERT INTO signals (
               signal_id, created_at, user_id, source, source_id, side, symbol, entry, entry_model, sl, tp,
               signal_tf, chart_tf, rr_planned, note, raw_json, status
             )
             VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'NEW')
             ON CONFLICT DO NOTHING
-          `, [
-            renewedId, row.user_id, row.source, row.source_id, row.side || row.action, row.symbol,
-            row.entry, row.entry_model || row.raw_json?.entry_model || null,
-            row.sl, row.tp, row.signal_tf, row.chart_tf, row.rr_planned, row.note, row.raw_json
-          ]);
+          `,
+            [
+              renewedId,
+              row.user_id,
+              row.source,
+              row.source_id,
+              row.side || row.action,
+              row.symbol,
+              row.entry,
+              row.entry_model || row.raw_json?.entry_model || null,
+              row.sl,
+              row.tp,
+              row.signal_tf,
+              row.chart_tf,
+              row.rr_planned,
+              row.note,
+              row.raw_json,
+            ],
+          );
 
           if ((ins.rowCount || 0) > 0) {
-            await client.query(`DELETE FROM signals WHERE signal_id = $1`, [oldId]);
+            await client.query(`DELETE FROM signals WHERE signal_id = $1`, [
+              oldId,
+            ]);
             updatedIds.push(renewedId);
           }
         }
@@ -6540,7 +8811,7 @@ async function _mt5InitBackendInternal() {
       } finally {
         client.release();
       }
-    }
+    },
   };
   return MT5_BACKEND;
 }
@@ -6550,7 +8821,9 @@ async function mt5Backend() {
 }
 
 function mt5NormalizeAction(payload) {
-  const raw = String(payload.action || payload.side || "").trim().toUpperCase();
+  const raw = String(payload.action || payload.side || "")
+    .trim()
+    .toUpperCase();
   if (!["BUY", "SELL", "CLOSE"].includes(raw)) {
     throw new Error(`Unsupported action/side: ${raw}`);
   }
@@ -6558,8 +8831,12 @@ function mt5NormalizeAction(payload) {
 }
 
 function mt5NormalizeSymbol(payload) {
-  const raw = String(payload.symbol || "").trim().toUpperCase();
-  const symbol = raw.includes(":") ? raw.split(":").slice(1).join(":").trim().toUpperCase() : raw;
+  const raw = String(payload.symbol || "")
+    .trim()
+    .toUpperCase();
+  const symbol = raw.includes(":")
+    ? raw.split(":").slice(1).join(":").trim().toUpperCase()
+    : raw;
   if (!symbol) {
     throw new Error("symbol is required");
   }
@@ -6579,7 +8856,9 @@ function mt5NormalizeVolume(payload) {
 }
 
 function mt5NormalizeOrderType(payload) {
-  const raw = String(payload.order_type ?? payload.orderType ?? "").trim().toLowerCase();
+  const raw = String(payload.order_type ?? payload.orderType ?? "")
+    .trim()
+    .toLowerCase();
   if (!raw) return "limit";
   if (raw === "limit" || raw === "stop" || raw === "market") return raw;
   throw new Error("order_type must be one of: limit, stop, market");
@@ -6594,7 +8873,12 @@ function mt5BuildSignalId(payload, fallbackPrefix = "tv") {
 }
 
 function mt5BuildNote(payload) {
-  const noteParts = [payload.source, payload.signal_tf, payload.reason, payload.note].filter(Boolean);
+  const noteParts = [
+    payload.source,
+    payload.signal_tf,
+    payload.reason,
+    payload.note,
+  ].filter(Boolean);
   return noteParts.join(" | ");
 }
 
@@ -6608,7 +8892,9 @@ function mt5SlugId(input, fallback = "default") {
 }
 
 function mt5MapActionToSide(action) {
-  const a = String(action || "").trim().toUpperCase();
+  const a = String(action || "")
+    .trim()
+    .toUpperCase();
   if (a === "BUY" || a === "LONG") return "BUY";
   if (a === "SELL" || a === "SHORT") return "SELL";
   return a || "BUY";
@@ -6635,9 +8921,19 @@ function mt5NormalizeBrokerTicket(item = {}) {
 }
 
 function mt5NormalizeExecutionStatusV2(value) {
-  const s = String(value || "").trim().toUpperCase();
-  if (s === "CANCEL" || s === "CANCELED" || s === "CANCELLED") return "CANCELLED";
-  if (s === "PENDING" || s === "OPEN" || s === "CLOSED" || s === "REJECTED" || s === "CANCELLED") return s;
+  const s = String(value || "")
+    .trim()
+    .toUpperCase();
+  if (s === "CANCEL" || s === "CANCELED" || s === "CANCELLED")
+    return "CANCELLED";
+  if (
+    s === "PENDING" ||
+    s === "OPEN" ||
+    s === "CLOSED" ||
+    s === "REJECTED" ||
+    s === "CANCELLED"
+  )
+    return s;
   return "OPEN";
 }
 
@@ -6656,17 +8952,18 @@ function mt5TfToMinutes(tf) {
   if (s === "240" || s === "4h") return "240";
   if (s === "1440" || s === "1d" || s === "d") return "1440";
   if (s === "10080" || s === "1w" || s === "w") return "10080";
-  if (s === "43200" || s === "1m" || s === "1mn" || s === "mn" || s === "1mo") return "43200";
+  if (s === "43200" || s === "1m" || s === "1mn" || s === "mn" || s === "1mo")
+    return "43200";
 
   const m = s.match(/^(\d+)([mhdwm])$/);
   if (m) {
     const val = parseInt(m[1]);
     const unit = m[2];
-    if (unit === 'm') return String(val);
-    if (unit === 'h') return String(val * 60);
-    if (unit === 'd') return String(val * 1440);
-    if (unit === 'w') return String(val * 10080);
-    if (unit === 'm') return String(val * 43200);
+    if (unit === "m") return String(val);
+    if (unit === "h") return String(val * 60);
+    if (unit === "d") return String(val * 1440);
+    if (unit === "w") return String(val * 10080);
+    if (unit === "m") return String(val * 43200);
   }
   const n = parseInt(s);
   return isNaN(n) ? s : String(n);
@@ -6674,55 +8971,59 @@ function mt5TfToMinutes(tf) {
 
 const TWELVE_SYMBOL_MAP = {
   // Indices
-  "UK100": "UK100",
+  UK100: "UK100",
   "UK 100": "UK100",
-  "FTSE": "UK100",
-  "FTSE100": "UK100",
-  "US30": "DJI",
-  "DOW": "DJI",
-  "DJI": "DJI",
-  "NAS100": "NDX",
-  "USTEC": "NDX",
-  "US100": "NDX",
-  "NASDAQ": "NDX",
-  "SPX500": "SPX",
-  "US500": "SPX",
-  "SPX": "SPX",
-  "DE40": "GER40",
-  "GER40": "GER40",
-  "GER30": "DAX",
-  "DAX": "DAX",
-  "DAX40": "GER40",
-  "HK33": "HSI",
-  "HSI": "HSI",
-  "HKG33": "HSI",
-  "HK50": "HSI",
-  "JPN225": "NI225",
-  "JP225": "NI225",
-  "NI225": "NI225",
-  "N225": "NI225",
-  "FRA40": "FRA40",
-  "CAC40": "FRA40",
-  "EUSTX50": "STX50",
-  "XAUUSD": "XAU/USD",
-  "GOLD": "XAU/USD",
-  "XAGUSD": "XAG/USD",
-  "SILVER": "XAG/USD",
-  "XPDUSD": "XPD/USD",
-  "XPTUSD": "XPT/USD",
-  "WTI": "WTI/USD",
-  "BRENT": "BRENT/USD",
-  "USOIL": "WTI/USD",
-  "UKOIL": "BRENT/USD",
+  FTSE: "UK100",
+  FTSE100: "UK100",
+  US30: "DJI",
+  DOW: "DJI",
+  DJI: "DJI",
+  NAS100: "NDX",
+  USTEC: "NDX",
+  US100: "NDX",
+  NASDAQ: "NDX",
+  SPX500: "SPX",
+  US500: "SPX",
+  SPX: "SPX",
+  DE40: "GER40",
+  GER40: "GER40",
+  GER30: "DAX",
+  DAX: "DAX",
+  DAX40: "GER40",
+  HK33: "HSI",
+  HSI: "HSI",
+  HKG33: "HSI",
+  HK50: "HSI",
+  JPN225: "NI225",
+  JP225: "NI225",
+  NI225: "NI225",
+  N225: "NI225",
+  FRA40: "FRA40",
+  CAC40: "FRA40",
+  EUSTX50: "STX50",
+  XAUUSD: "XAU/USD",
+  GOLD: "XAU/USD",
+  XAGUSD: "XAG/USD",
+  SILVER: "XAG/USD",
+  XPDUSD: "XPD/USD",
+  XPTUSD: "XPT/USD",
+  WTI: "WTI/USD",
+  BRENT: "BRENT/USD",
+  USOIL: "WTI/USD",
+  UKOIL: "BRENT/USD",
   // Crypto Fallbacks (if regex fails)
-  "BTCUSD": "BTC/USD",
-  "ETHUSD": "ETH/USD",
+  BTCUSD: "BTC/USD",
+  ETHUSD: "ETH/USD",
 };
 
 function normalizeSymbolForTwelve(rawSymbol) {
-  const base = String(rawSymbol || "").trim().toUpperCase();
+  const base = String(rawSymbol || "")
+    .trim()
+    .toUpperCase();
   if (!base) return "";
-  const noProvider = base.includes(":") ? base.split(":").slice(1).join(":") : base;
+  const noProvider = base.includes(":")
+    ? base.split(":").slice(1).join(":")
+    : base;
   const compact = noProvider.replace(/[^A-Z0-9]/g, "");
   if (!compact) return "";
 
@@ -6742,20 +9043,27 @@ function normalizeSymbolForTwelve(rawSymbol) {
 }
 
 async function resolveTwelveSymbol(rawSymbol, apiKey = "") {
-  const base = String(rawSymbol || "").trim().toUpperCase();
+  const base = String(rawSymbol || "")
+    .trim()
+    .toUpperCase();
   if (!base) return [];
-  const noProvider = base.includes(":") ? base.split(":").slice(1).join(":").trim().toUpperCase() : base;
+  const noProvider = base.includes(":")
+    ? base.split(":").slice(1).join(":").trim().toUpperCase()
+    : base;
   const normalized = normalizeSymbolForTwelve(noProvider);
   const compact = noProvider.replace(/[^A-Z0-9]/g, "");
   const candidates = [];
   const add = (v) => {
-    const s = String(v || "").trim().toUpperCase();
+    const s = String(v || "")
+      .trim()
+      .toUpperCase();
     if (!s) return;
     if (!candidates.includes(s)) candidates.push(s);
   };
   add(normalized);
   add(compact);
-  if (/^[A-Z]{6}$/.test(compact)) add(`${compact.slice(0, 3)}/${compact.slice(3)}`);
+  if (/^[A-Z]{6}$/.test(compact))
+    add(`${compact.slice(0, 3)}/${compact.slice(3)}`);
   if (/^[A-Z]{3,5}USD$/.test(compact)) add(`${compact.slice(0, -3)}/USD`);
 
   // Try Twelve symbol search to pick a provider-accepted symbol variant.
@@ -6781,7 +9089,9 @@ async function resolveTwelveSymbol(rawSymbol, apiKey = "") {
 }
 
 function timeframeToTwelve(tfRaw) {
-  const s = String(tfRaw || "").trim().toLowerCase();
+  const s = String(tfRaw || "")
+    .trim()
+    .toLowerCase();
   if (!s || s === "manual") return "15min";
   if (s === "d") return "1day";
   if (s === "w") return "1week";
@@ -6811,7 +9121,11 @@ function timeframeToTwelve(tfRaw) {
 function parseSnapshotPdArrays(payload = {}) {
   const fromTradePlan = payload?.market_analysis?.pd_arrays;
   const direct = payload?.pd_arrays || payload?.pdArrays;
-  const arr = Array.isArray(fromTradePlan) ? fromTradePlan : (Array.isArray(direct) ? direct : []);
+  const arr = Array.isArray(fromTradePlan)
+    ? fromTradePlan
+    : Array.isArray(direct)
+      ? direct
+      : [];
   return arr
     .map((x) => (x && typeof x === "object" ? x : null))
     .filter(Boolean)
@@ -6824,7 +9138,9 @@ function parseSnapshotPdArrays(payload = {}) {
       zone: x.zone,
       low: x.low ?? x.bottom ?? x.price_bottom ?? null,
       high: x.high ?? x.top ?? x.price_top ?? null,
-      bar_start: Number.isFinite(Number(x.bar_start_unix ?? x.bar_start)) ? Number(x.bar_start_unix ?? x.bar_start) : null,
+      bar_start: Number.isFinite(Number(x.bar_start_unix ?? x.bar_start))
+        ? Number(x.bar_start_unix ?? x.bar_start)
+        : null,
       status: String(x.status || "").trim(),
       touched: Number.isFinite(Number(x.touched)) ? Number(x.touched) : null,
       mitigation_type: String(x.mitigation_type || "").trim(),
@@ -6837,41 +9153,54 @@ function parseSnapshotKeyLevels(payload = {}) {
   const pushLevel = (item) => {
     if (!item) return;
     if (typeof item === "number") {
-      if (Number.isFinite(item)) out.push({ name: "Key Level", price: item, kind: "generic" });
+      if (Number.isFinite(item))
+        out.push({ name: "Key Level", price: item, kind: "generic" });
       return;
     }
     if (typeof item === "string") {
       const nums = item.match(/-?\d+(?:\.\d+)?/g);
       if (nums && nums[0] && Number.isFinite(Number(nums[0]))) {
-        out.push({ name: item.slice(0, 30), price: Number(nums[0]), kind: "generic" });
+        out.push({
+          name: item.slice(0, 30),
+          price: Number(nums[0]),
+          kind: "generic",
+        });
       }
       return;
     }
     if (typeof item === "object") {
-      const name = String(item.name || item.label || item.type || "Key Level").slice(0, 40);
+      const name = String(
+        item.name || item.label || item.type || "Key Level",
+      ).slice(0, 40);
       const p = Number(item.price ?? item.level ?? item.value);
       const barStart = Number(item.bar_start_unix ?? item.bar_start);
-      if (Number.isFinite(p)) out.push({
-        name,
-        price: p,
-        kind: String(item.kind || item.type || "generic"),
-        type: String(item.type || "").trim(),
-        zone_type: String(item.zone_type || "").trim(),
-        swept: Boolean(item.swept),
-        bar_start: Number.isFinite(barStart) ? barStart : null
-      });
+      if (Number.isFinite(p))
+        out.push({
+          name,
+          price: p,
+          kind: String(item.kind || item.type || "generic"),
+          type: String(item.type || "").trim(),
+          zone_type: String(item.zone_type || "").trim(),
+          swept: Boolean(item.swept),
+          bar_start: Number.isFinite(barStart) ? barStart : null,
+        });
     }
   };
-  const keyLevels = Array.isArray(payload?.market_analysis?.key_levels) ? payload.market_analysis.key_levels : (payload?.key_levels || payload?.keyLevels);
+  const keyLevels = Array.isArray(payload?.market_analysis?.key_levels)
+    ? payload.market_analysis.key_levels
+    : payload?.key_levels || payload?.keyLevels;
   if (Array.isArray(keyLevels)) keyLevels.forEach(pushLevel);
   if (payload?.key_level) pushLevel(payload.key_level);
-  if (Array.isArray(payload?.risk_management?.key_levels)) payload.risk_management.key_levels.forEach(pushLevel);
+  if (Array.isArray(payload?.risk_management?.key_levels))
+    payload.risk_management.key_levels.forEach(pushLevel);
   const pd = parseSnapshotPdArrays(payload);
   pd.forEach((x) => {
     const low = Number(x.low);
     const high = Number(x.high);
-    if (Number.isFinite(low)) out.push({ name: `${x.type || "PD"} low`, price: low, kind: "pd" });
-    if (Number.isFinite(high)) out.push({ name: `${x.type || "PD"} high`, price: high, kind: "pd" });
+    if (Number.isFinite(low))
+      out.push({ name: `${x.type || "PD"} low`, price: low, kind: "pd" });
+    if (Number.isFinite(high))
+      out.push({ name: `${x.type || "PD"} high`, price: high, kind: "pd" });
   });
   const dedup = new Map();
   out.forEach((x) => {
@@ -6883,15 +9212,27 @@ function parseSnapshotKeyLevels(payload = {}) {
 }
 
 function parseSnapshotChecklist(payload = {}) {
-  const raw = payload?.market_analysis?.confluence_checklist ?? payload?.confluence_checklist ?? payload?.market_analysis?.checklist ?? payload?.checklist;
+  const raw =
+    payload?.market_analysis?.confluence_checklist ??
+    payload?.confluence_checklist ??
+    payload?.market_analysis?.checklist ??
+    payload?.checklist;
   const arr = Array.isArray(raw)
     ? raw
     : [
-      ...(Array.isArray(raw?.buy) ? raw.buy.map((x) => ({ side: "buy", ...x })) : []),
-      ...(Array.isArray(raw?.buy?.items) ? raw.buy.items.map((x) => ({ side: "buy", ...x })) : []),
-      ...(Array.isArray(raw?.sell) ? raw.sell.map((x) => ({ side: "sell", ...x })) : []),
-      ...(Array.isArray(raw?.sell?.items) ? raw.sell.items.map((x) => ({ side: "sell", ...x })) : []),
-    ];
+        ...(Array.isArray(raw?.buy)
+          ? raw.buy.map((x) => ({ side: "buy", ...x }))
+          : []),
+        ...(Array.isArray(raw?.buy?.items)
+          ? raw.buy.items.map((x) => ({ side: "buy", ...x }))
+          : []),
+        ...(Array.isArray(raw?.sell)
+          ? raw.sell.map((x) => ({ side: "sell", ...x }))
+          : []),
+        ...(Array.isArray(raw?.sell?.items)
+          ? raw.sell.items.map((x) => ({ side: "sell", ...x }))
+          : []),
+      ];
   return arr
     .map((x) => ({
       side: String(x?.side || "").trim(),
@@ -6899,7 +9240,9 @@ function parseSnapshotChecklist(payload = {}) {
       condition: String(x?.condition || x?.item || "").trim(),
       weight: String(x?.weight || "").trim(),
       checked: Boolean(x?.checked ?? x?.passed),
-      pd_array_ref: Number.isFinite(Number(x?.pd_array_ref ?? x?.pdRef)) ? Number(x.pd_array_ref ?? x.pdRef) : null,
+      pd_array_ref: Number.isFinite(Number(x?.pd_array_ref ?? x?.pdRef))
+        ? Number(x.pd_array_ref ?? x.pdRef)
+        : null,
       note: String(x?.note || "").trim(),
     }))
     .filter((x) => x.strategy || x.condition || x.note);
@@ -6909,39 +9252,66 @@ function normalizeAiAnalysisContract(input = {}) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return input;
   const out = { ...input };
 
-  if (!out.market_analysis && (Array.isArray(out.timeframes) || Array.isArray(out.pdArrays) || Array.isArray(out.keyLevels) || out.checklist || out.dol)) {
+  if (
+    !out.market_analysis &&
+    (Array.isArray(out.timeframes) ||
+      Array.isArray(out.pdArrays) ||
+      Array.isArray(out.keyLevels) ||
+      out.checklist ||
+      out.dol)
+  ) {
     out.market_analysis = {
-      timeframes: (Array.isArray(out.timeframes) ? out.timeframes : []).map((x) => ({
-        tf: x?.tf ?? "",
-        trend: x?.trend ?? "",
-        structure: x?.structure ?? "",
-        market_phase: x?.phase ?? x?.market_phase ?? "",
-        bias: x?.bias ?? "",
-        poi_alignment: Boolean(x?.poiAlign ?? x?.poi_alignment),
-        price_action_summary: {
-          recent_move: String(x?.did ?? x?.price_action_summary?.recent_move ?? ""),
-          key_breaks: (Array.isArray(x?.keyBreaks) ? x.keyBreaks : x?.price_action_summary?.key_breaks || []).map((b) => ({
-            event: b?.event ?? "",
-            price_level: b?.price ?? b?.price_level ?? null,
-            direction: b?.direction === "Bull" ? "Bullish" : (b?.direction === "Bear" ? "Bearish" : b?.direction ?? ""),
-            bar_ref: b?.bar_ref ?? null
-          }))
-        },
-        price_prediction: {
-          narrative: String(x?.next ?? x?.price_prediction?.narrative ?? ""),
-          expected_path: (Array.isArray(x?.path) ? x.path : x?.price_prediction?.expected_path || []).map((p) => ({
-            step: p?.step ?? null,
-            action: p?.action ?? "",
-            target_price: p?.target ?? p?.target_price ?? null,
-            condition: p?.condition ?? ""
-          }))
-        },
-        note: x?.note ?? ""
-      })),
+      timeframes: (Array.isArray(out.timeframes) ? out.timeframes : []).map(
+        (x) => ({
+          tf: x?.tf ?? "",
+          trend: x?.trend ?? "",
+          structure: x?.structure ?? "",
+          market_phase: x?.phase ?? x?.market_phase ?? "",
+          bias: x?.bias ?? "",
+          poi_alignment: Boolean(x?.poiAlign ?? x?.poi_alignment),
+          price_action_summary: {
+            recent_move: String(
+              x?.did ?? x?.price_action_summary?.recent_move ?? "",
+            ),
+            key_breaks: (Array.isArray(x?.keyBreaks)
+              ? x.keyBreaks
+              : x?.price_action_summary?.key_breaks || []
+            ).map((b) => ({
+              event: b?.event ?? "",
+              price_level: b?.price ?? b?.price_level ?? null,
+              direction:
+                b?.direction === "Bull"
+                  ? "Bullish"
+                  : b?.direction === "Bear"
+                    ? "Bearish"
+                    : (b?.direction ?? ""),
+              bar_ref: b?.bar_ref ?? null,
+            })),
+          },
+          price_prediction: {
+            narrative: String(x?.next ?? x?.price_prediction?.narrative ?? ""),
+            expected_path: (Array.isArray(x?.path)
+              ? x.path
+              : x?.price_prediction?.expected_path || []
+            ).map((p) => ({
+              step: p?.step ?? null,
+              action: p?.action ?? "",
+              target_price: p?.target ?? p?.target_price ?? null,
+              condition: p?.condition ?? "",
+            })),
+          },
+          note: x?.note ?? "",
+        }),
+      ),
       pd_arrays: (Array.isArray(out.pdArrays) ? out.pdArrays : []).map((x) => ({
         id: x?.id ?? null,
         type: x?.type ?? "",
-        direction: x?.dir === "Bull" ? "Bullish" : (x?.dir === "Bear" ? "Bearish" : x?.direction ?? ""),
+        direction:
+          x?.dir === "Bull"
+            ? "Bullish"
+            : x?.dir === "Bear"
+              ? "Bearish"
+              : (x?.direction ?? ""),
         strength: x?.strength ?? "",
         bar_start: x?.bar_start ?? null,
         price_top: x?.top ?? x?.price_top ?? null,
@@ -6950,54 +9320,62 @@ function normalizeAiAnalysisContract(input = {}) {
         touched: x?.touched ?? 0,
         mitigation_type: x?.mitigation_type ?? "",
         timeframe: x?.tf ?? x?.timeframe ?? "",
-        note: x?.note ?? ""
+        note: x?.note ?? "",
       })),
-      key_levels: (Array.isArray(out.keyLevels) ? out.keyLevels : []).map((x) => ({
-        name: x?.name ?? "",
-        price: x?.price ?? null,
-        type: x?.type ?? "",
-        zone_type: x?.zone_type ?? "",
-        swept: Boolean(x?.swept),
-        bar_start: x?.bar_start ?? null
-      })),
+      key_levels: (Array.isArray(out.keyLevels) ? out.keyLevels : []).map(
+        (x) => ({
+          name: x?.name ?? "",
+          price: x?.price ?? null,
+          type: x?.type ?? "",
+          zone_type: x?.zone_type ?? "",
+          swept: Boolean(x?.swept),
+          bar_start: x?.bar_start ?? null,
+        }),
+      ),
       institutional_filters: {
         draw_on_liquidity: {
           target: out.dol?.target ?? "",
           price: out.dol?.price ?? null,
           type: out.dol?.type ?? "",
-          timeframe: out.dol?.tf ?? ""
-        }
+          timeframe: out.dol?.tf ?? "",
+        },
       },
       confluence_checklist: {
-        buy: (Array.isArray(out.checklist?.buy?.items) ? out.checklist.buy.items : []).map((x) => ({
+        buy: (Array.isArray(out.checklist?.buy?.items)
+          ? out.checklist.buy.items
+          : []
+        ).map((x) => ({
           category: x?.category ?? "",
           item: x?.item ?? "",
           weight: x?.weight ?? "",
           checked: Boolean(x?.passed ?? x?.checked),
           pd_array_ref: x?.pdRef ?? x?.pd_array_ref ?? null,
-          note: x?.note ?? ""
+          note: x?.note ?? "",
         })),
-        sell: (Array.isArray(out.checklist?.sell?.items) ? out.checklist.sell.items : []).map((x) => ({
+        sell: (Array.isArray(out.checklist?.sell?.items)
+          ? out.checklist.sell.items
+          : []
+        ).map((x) => ({
           category: x?.category ?? "",
           item: x?.item ?? "",
           weight: x?.weight ?? "",
           checked: Boolean(x?.passed ?? x?.checked),
           pd_array_ref: x?.pdRef ?? x?.pd_array_ref ?? null,
-          note: x?.note ?? ""
+          note: x?.note ?? "",
         })),
         buy_score: {
           checked: out.checklist?.buy?.score ?? 0,
           total: 100,
           high_weight_passed: out.checklist?.buy?.highPassed ?? 0,
-          high_weight_total: out.checklist?.buy?.highTotal ?? 0
+          high_weight_total: out.checklist?.buy?.highTotal ?? 0,
         },
         sell_score: {
           checked: out.checklist?.sell?.score ?? 0,
           total: 100,
           high_weight_passed: out.checklist?.sell?.highPassed ?? 0,
-          high_weight_total: out.checklist?.sell?.highTotal ?? 0
-        }
-      }
+          high_weight_total: out.checklist?.sell?.highTotal ?? 0,
+        },
+      },
     };
   }
 
@@ -7011,15 +9389,21 @@ function normalizeAiAnalysisContract(input = {}) {
       entry: x?.entry ?? null,
       sl: x?.sl ?? null,
       be_trigger: x?.be ?? null,
-      tp: Array.isArray(x?.tps) && x.tps[0] ? x.tps[0].price ?? null : null,
+      tp: Array.isArray(x?.tps) && x.tps[0] ? (x.tps[0].price ?? null) : null,
       risk_pct: x?.riskPct ?? null,
       rr: x?.rr ?? null,
-      partial_tps: (Array.isArray(x?.tps) ? x.tps : []).map((t) => ({ price: t?.price ?? null, size_pct: t?.pct ?? null, rr: t?.rr ?? null })),
-      reasons_to_skip: (Array.isArray(x?.skipReasons) ? x.skipReasons : []).map((r) => ({ reason: r?.reason ?? "", severity: r?.severity ?? "" })),
+      partial_tps: (Array.isArray(x?.tps) ? x.tps : []).map((t) => ({
+        price: t?.price ?? null,
+        size_pct: t?.pct ?? null,
+        rr: t?.rr ?? null,
+      })),
+      reasons_to_skip: (Array.isArray(x?.skipReasons) ? x.skipReasons : []).map(
+        (r) => ({ reason: r?.reason ?? "", severity: r?.severity ?? "" }),
+      ),
       skip_recommendation: x?.skip ?? "",
       invalidation: x?.invalidation ?? out.verdict?.invalidation ?? "",
       confidence_pct: x?.confidence ?? null,
-      note: x?.note ?? ""
+      note: x?.note ?? "",
     }));
   }
 
@@ -7032,16 +9416,18 @@ function normalizeAiAnalysisContract(input = {}) {
       next_poi: {
         price: out.verdict.nextPoi?.price ?? null,
         timeframe: out.verdict.nextPoi?.tf ?? "",
-        type: out.verdict.nextPoi?.type ?? ""
+        type: out.verdict.nextPoi?.type ?? "",
       },
-      note: out.verdict.note ?? ""
+      note: out.verdict.note ?? "",
     };
   }
   return out;
 }
 
 function parseSnapshotBarsLimit(payload = {}) {
-  const n = Number(payload.lookbackBars ?? payload.lookback_bars ?? payload.bars ?? 300);
+  const n = Number(
+    payload.lookbackBars ?? payload.lookback_bars ?? payload.bars ?? 300,
+  );
   if (!Number.isFinite(n)) return 300;
   return Math.max(50, Math.min(1000, Math.round(n)));
 }
@@ -7060,10 +9446,15 @@ function parseTimeToUnixSec(raw) {
 async function loadUserApiKeysMap(userId) {
   const db = await mt5InitBackend();
   const out = {};
-  const configRes = await db.query("SELECT name, data FROM user_settings WHERE user_id = $1 AND type = 'api_key'", [userId]);
+  const configRes = await db.query(
+    "SELECT name, data FROM user_settings WHERE user_id = $1 AND type = 'api_key'",
+    [userId],
+  );
   for (const row of configRes.rows || []) {
     const name = normalizeAiApiKeyName(row?.name);
-    const dec = decryptObject(row?.data && typeof row.data === "object" ? row.data : {});
+    const dec = decryptObject(
+      row?.data && typeof row.data === "object" ? row.data : {},
+    );
     if (ALLOWED_AI_API_KEY_NAMES.has(name) && dec?.value) {
       out[name] = String(dec.value || "");
     }
@@ -7074,20 +9465,35 @@ async function loadUserApiKeysMap(userId) {
   return out;
 }
 
-async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, timeframe }) {
+async function buildAnalysisSnapshotFromTwelve({
+  userId,
+  payload = {},
+  symbol,
+  timeframe,
+}) {
   const outputsize = parseSnapshotBarsLimit(payload);
-  const forceRefresh = asBool(payload?.force_refresh ?? payload?.forceRefresh ?? false, false);
+  const forceRefresh = asBool(
+    payload?.force_refresh ?? payload?.forceRefresh ?? false,
+    false,
+  );
   const symbolNorm = normalizeMarketDataSymbol(symbol);
   const tfNorm = normalizeMarketDataTf(timeframe);
   const reqRange = estimateRequestedBarsRange({ tfNorm, bars: outputsize });
 
-  if (!symbolNorm) return { provider: "twelvedata", status: "skipped", reason: "invalid symbol" };
+  if (!symbolNorm)
+    return {
+      provider: "twelvedata",
+      status: "skipped",
+      reason: "invalid symbol",
+    };
 
   if (!forceRefresh) {
     // Attempt Unified Cache First
     const unified = await StateRepo.get("MARKET_DATA_UNIFIED", symbolNorm);
     if (unified && Array.isArray(unified.data)) {
-      const entry = unified.data.find(d => normalizeMarketDataTf(d.tf) === tfNorm);
+      const entry = unified.data.find(
+        (d) => normalizeMarketDataTf(d.tf) === tfNorm,
+      );
       if (entry && entry.bars && entry.bars.length) {
         const s = Number(entry.bars[0].time);
         const e = Number(entry.bars[entry.bars.length - 1].time);
@@ -7103,68 +9509,137 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
             status: "ok",
             cache_source: "unified_cache",
             updated_time: unified.updated_time,
-            utc_time_range: unified.utc_time_range
+            utc_time_range: unified.utc_time_range,
           };
         }
       }
     }
 
     // Legacy Fallbacks (keeping for safety during transition)
-    const memHit = marketDataMemoryRead(symbolNorm, tfNorm, reqRange.start, reqRange.end);
+    const memHit = marketDataMemoryRead(
+      symbolNorm,
+      tfNorm,
+      reqRange.start,
+      reqRange.end,
+    );
     if (memHit) {
-      return { ...memHit, cache_source: "memory", symbol_norm: symbolNorm, tf_norm: tfNorm };
+      return {
+        ...memHit,
+        cache_source: "memory",
+        symbol_norm: symbolNorm,
+        tf_norm: tfNorm,
+      };
     }
-    const redisHit = await marketDataRedisRead(symbolNorm, tfNorm, reqRange.start, reqRange.end).catch(() => null);
+    const redisHit = await marketDataRedisRead(
+      symbolNorm,
+      tfNorm,
+      reqRange.start,
+      reqRange.end,
+    ).catch(() => null);
     if (redisHit) {
       marketDataMemoryWrite(symbolNorm, tfNorm, redisHit);
-      return { ...redisHit, cache_source: "redis", symbol_norm: symbolNorm, tf_norm: tfNorm };
+      return {
+        ...redisHit,
+        cache_source: "redis",
+        symbol_norm: symbolNorm,
+        tf_norm: tfNorm,
+      };
     }
-    const dbHit = await marketDataDbRead(symbolNorm, tfNorm, reqRange.start, reqRange.end).catch(() => null);
-    if (dbHit && typeof dbHit === "object" && Array.isArray(dbHit.bars) && dbHit.bars.length) {
+    const dbHit = await marketDataDbRead(
+      symbolNorm,
+      tfNorm,
+      reqRange.start,
+      reqRange.end,
+    ).catch(() => null);
+    if (
+      dbHit &&
+      typeof dbHit === "object" &&
+      Array.isArray(dbHit.bars) &&
+      dbHit.bars.length
+    ) {
       marketDataMemoryWrite(symbolNorm, tfNorm, dbHit);
-      await marketDataRedisWrite(symbolNorm, tfNorm, dbHit).catch(() => { });
-      return { ...dbHit, cache_source: "db", symbol_norm: symbolNorm, tf_norm: tfNorm };
+      await marketDataRedisWrite(symbolNorm, tfNorm, dbHit).catch(() => {});
+      return {
+        ...dbHit,
+        cache_source: "db",
+        symbol_norm: symbolNorm,
+        tf_norm: tfNorm,
+      };
     }
   }
 
   const keys = await loadUserApiKeysMap(userId).catch(() => ({}));
-  const twelveKey = String(keys.TWELVE_DATA_API_KEY || CFG.twelveDataApiKey || "").trim();
-  if (!twelveKey) return { provider: "twelvedata", status: "skipped", reason: "TWELVE_DATA_API_KEY missing" };
+  const twelveKey = String(
+    keys.TWELVE_DATA_API_KEY || CFG.twelveDataApiKey || "",
+  ).trim();
+  if (!twelveKey)
+    return {
+      provider: "twelvedata",
+      status: "skipped",
+      reason: "TWELVE_DATA_API_KEY missing",
+    };
 
   const tvCandidates = await resolveTwelveSymbol(symbol, twelveKey);
-  if (!tvCandidates || !tvCandidates.length) return { provider: "twelvedata", status: "skipped", reason: "invalid symbol" };
+  if (!tvCandidates || !tvCandidates.length)
+    return {
+      provider: "twelvedata",
+      status: "skipped",
+      reason: "invalid symbol",
+    };
   const interval = timeframeToTwelve(timeframe);
   const primaryCandidates = [...tvCandidates];
-  const rawNoProvider = String(symbol || "").trim().toUpperCase().includes(":")
-    ? String(symbol || "").trim().toUpperCase().split(":").slice(1).join(":").trim().toUpperCase()
-    : String(symbol || "").trim().toUpperCase();
+  const rawNoProvider = String(symbol || "")
+    .trim()
+    .toUpperCase()
+    .includes(":")
+    ? String(symbol || "")
+        .trim()
+        .toUpperCase()
+        .split(":")
+        .slice(1)
+        .join(":")
+        .trim()
+        .toUpperCase()
+    : String(symbol || "")
+        .trim()
+        .toUpperCase();
   const normalizedFallback = normalizeSymbolForTwelve(rawNoProvider);
-  if (normalizedFallback && !primaryCandidates.includes(normalizedFallback)) primaryCandidates.push(normalizedFallback);
+  if (normalizedFallback && !primaryCandidates.includes(normalizedFallback))
+    primaryCandidates.push(normalizedFallback);
   const compactFallback = rawNoProvider.replace(/[^A-Z0-9]/g, "");
-  if (compactFallback && !primaryCandidates.includes(compactFallback)) primaryCandidates.push(compactFallback);
+  if (compactFallback && !primaryCandidates.includes(compactFallback))
+    primaryCandidates.push(compactFallback);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 14000);
   try {
     let data = {};
     let usedSymbol = symbol;
     let lastError = "";
-    console.log(`[twelve-fetch] symbol=${symbol} candidates=${primaryCandidates.join(',')} interval=${interval} bars=${outputsize}`);
+    console.log(
+      `[twelve-fetch] symbol=${symbol} candidates=${primaryCandidates.join(",")} interval=${interval} bars=${outputsize}`,
+    );
 
     for (const candidate of primaryCandidates) {
       const endpoint = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(candidate)}&interval=${encodeURIComponent(interval)}&outputsize=${outputsize}&timezone=UTC&order=ASC&apikey=${encodeURIComponent(twelveKey)}`;
       const res = await fetch(endpoint, { signal: ctrl.signal });
       const txt = await res.text();
       let parsed = {};
-      try { parsed = JSON.parse(txt); } catch { }
+      try {
+        parsed = JSON.parse(txt);
+      } catch {}
 
       if (!res.ok) {
         lastError = `http_${res.status}: ${txt.slice(0, 100)}`;
-        console.warn(`[twelve-candidate-fail] candidate=${candidate} error=${lastError}`);
+        console.warn(
+          `[twelve-candidate-fail] candidate=${candidate} error=${lastError}`,
+        );
         continue;
       }
       if (String(parsed?.status || "").toLowerCase() === "error") {
         lastError = String(parsed?.message || "provider error");
-        console.warn(`[twelve-candidate-error] candidate=${candidate} msg=${lastError}`);
+        console.warn(
+          `[twelve-candidate-error] candidate=${candidate} msg=${lastError}`,
+        );
         continue;
       }
       const vals = Array.isArray(parsed?.values) ? parsed.values : [];
@@ -7180,7 +9655,12 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
       break;
     }
     if (!data || !Array.isArray(data?.values) || !data.values.length) {
-      return { provider: "twelvedata", status: "error", reason: lastError || "provider error", tried_candidates: primaryCandidates };
+      return {
+        provider: "twelvedata",
+        status: "error",
+        reason: lastError || "provider error",
+        tried_candidates: primaryCandidates,
+      };
     }
     const values = Array.isArray(data?.values) ? data.values : [];
     const dedup = new Map();
@@ -7192,8 +9672,15 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
         const l = Number(v?.low);
         const c = Number(v?.close);
         const volume = Number(v?.volume);
-        if (!Number.isFinite(t) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return null;
-        if (t > (reqRange.end + (reqRange.sec * 2))) return null;
+        if (
+          !Number.isFinite(t) ||
+          !Number.isFinite(o) ||
+          !Number.isFinite(h) ||
+          !Number.isFinite(l) ||
+          !Number.isFinite(c)
+        )
+          return null;
+        if (t > reqRange.end + reqRange.sec * 2) return null;
         const bar = { time: t, open: o, high: h, low: l, close: c };
         if (Number.isFinite(volume)) bar.volume = volume;
         return bar;
@@ -7204,14 +9691,20 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
       });
     const bars = [...dedup.values()].sort((a, b) => a.time - b.time);
     const barStart = bars.length ? bars[0].time : null;
-    const barEnd = bars.length ? bars[bars.length - 1].time + reqRange.sec : null;
+    const barEnd = bars.length
+      ? bars[bars.length - 1].time + reqRange.sec
+      : null;
     const snapshot = {
       provider: "twelvedata",
       status: "ok",
       timezone: "UTC",
-      display_timezone: normalizeMarketDataTimezone(payload?.timezone || payload?.display_timezone),
+      display_timezone: normalizeMarketDataTimezone(
+        payload?.timezone || payload?.display_timezone,
+      ),
       user_id: userId,
-      setting_name: String(payload?.setting_name || payload?.settingName || "default"),
+      setting_name: String(
+        payload?.setting_name || payload?.settingName || "default",
+      ),
       symbol: String(symbol || "").toUpperCase(),
       symbol_norm: symbolNorm,
       normalized_symbol: usedSymbol,
@@ -7219,13 +9712,17 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
       tf_norm: tfNorm,
       interval,
       fetched_at: new Date().toISOString(),
-	      bar_start: barStart,
-	      bar_end: barEnd,
-	      last_price: bars.length ? bars[bars.length - 1].close : null,
-	      last_price_at: bars.length ? new Date(Number(bars[bars.length - 1].time) * 1000).toISOString() : null,
-	      bars,
+      bar_start: barStart,
+      bar_end: barEnd,
+      last_price: bars.length ? bars[bars.length - 1].close : null,
+      last_price_at: bars.length
+        ? new Date(Number(bars[bars.length - 1].time) * 1000).toISOString()
+        : null,
+      bars,
       gap_candidates: detectMarketDataGapCandidates(bars, tfNorm).slice(0, 20),
-      entry: Number.isFinite(Number(payload?.entry ?? payload?.price)) ? Number(payload?.entry ?? payload?.price) : null,
+      entry: Number.isFinite(Number(payload?.entry ?? payload?.price))
+        ? Number(payload?.entry ?? payload?.price)
+        : null,
       sl: Number.isFinite(Number(payload?.sl)) ? Number(payload?.sl) : null,
       tp: Number.isFinite(Number(payload?.tp)) ? Number(payload?.tp) : null,
       pd_arrays: parseSnapshotPdArrays(payload),
@@ -7234,23 +9731,28 @@ async function buildAnalysisSnapshotFromTwelve({ userId, payload = {}, symbol, t
         profile: String(payload?.profile || "").trim(),
         bias: String(payload?.market_analysis?.bias || "").trim(),
         trend: String(payload?.market_analysis?.trend || "").trim(),
-        confidence_pct: Number.isFinite(Number(payload?.confidence_pct)) ? Number(payload.confidence_pct) : null,
+        confidence_pct: Number.isFinite(Number(payload?.confidence_pct))
+          ? Number(payload.confidence_pct)
+          : null,
         invalidation: String(payload?.invalidation || "").trim(),
         note: String(payload?.trade_plan?.note || payload?.note || "").trim(),
       },
       checklist: parseSnapshotChecklist(payload),
     };
-    
+
     // Update Unified Cache
     await repoUpsertUnifiedMarketData(symbolNorm, tfNorm, snapshot);
-    
+
     // Legacy support writes
     marketDataMemoryWrite(symbolNorm, tfNorm, snapshot);
-    await marketDataRedisWrite(symbolNorm, tfNorm, snapshot).catch(() => { });
-    await marketDataDbUpsert(symbolNorm, tfNorm, snapshot).catch(() => { });
+    await marketDataRedisWrite(symbolNorm, tfNorm, snapshot).catch(() => {});
+    await marketDataDbUpsert(symbolNorm, tfNorm, snapshot).catch(() => {});
     return snapshot;
   } catch (error) {
-    const reason = error?.name === "AbortError" ? "timeout" : String(error?.message || error || "fetch_failed");
+    const reason =
+      error?.name === "AbortError"
+        ? "timeout"
+        : String(error?.message || error || "fetch_failed");
     return { provider: "twelvedata", status: "error", reason };
   } finally {
     clearTimeout(timer);
@@ -7267,15 +9769,39 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   const volume = mt5NormalizeVolume(payload);
   const orderType = mt5NormalizeOrderType(payload);
   const signalId = mt5GenerateId("SIG");
-  const userId = envStr(payload.user_id ?? payload.userId ?? payload.user ?? CFG.mt5DefaultUserId, CFG.mt5DefaultUserId);
+  const userId = envStr(
+    payload.user_id ?? payload.userId ?? payload.user ?? CFG.mt5DefaultUserId,
+    CFG.mt5DefaultUserId,
+  );
   const rrPlanned = asNum(payload.rr ?? payload.risk_reward, NaN);
-  const riskMoneyPlanned = asNum(payload.risk_money ?? payload.money_risk ?? payload.riskMoney, NaN);
-  const signalTf = mt5TfToMinutes(payload.signal_tf ?? payload.signalTf ?? payload.sourceTf ?? payload.timeframe ?? payload.tf);
-  const chartTf = mt5TfToMinutes(payload.chart_tf ?? payload.chartTf ?? payload.chartTimeframe ?? payload.chart_tf_period);
-  const derived = mt5DeriveEntryModelAndNote(payload, { fallbackModel: payload.strategy || source || "MANUAL" });
+  const riskMoneyPlanned = asNum(
+    payload.risk_money ?? payload.money_risk ?? payload.riskMoney,
+    NaN,
+  );
+  const signalTf = mt5TfToMinutes(
+    payload.signal_tf ??
+      payload.signalTf ??
+      payload.sourceTf ??
+      payload.timeframe ??
+      payload.tf,
+  );
+  const chartTf = mt5TfToMinutes(
+    payload.chart_tf ??
+      payload.chartTf ??
+      payload.chartTimeframe ??
+      payload.chart_tf_period,
+  );
+  const derived = mt5DeriveEntryModelAndNote(payload, {
+    fallbackModel: payload.strategy || source || "MANUAL",
+  });
   const entryModel = derived.entryModel;
   const note = derived.note;
-  const onlySignal = Boolean(payload.only_signal ?? payload.onlySignal ?? payload.raw_json?.only_signal ?? payload.raw_json?.onlySignal);
+  const onlySignal = Boolean(
+    payload.only_signal ??
+    payload.onlySignal ??
+    payload.raw_json?.only_signal ??
+    payload.raw_json?.onlySignal,
+  );
 
   const plannedEntry = asNum(payload.entry ?? payload.price, NaN);
   const plannedSl = asNum(payload.sl, NaN);
@@ -7291,20 +9817,46 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
     throw new Error("Already added");
   }
   const rawJson = payload.raw_json || payload;
-  const sessionPrefix = sanitizeSessionPrefix(payload.session_prefix || payload.sessionPrefix || rawJson?.session_prefix || rawJson?.sessionPrefix || "");
-  const sidBaseFromPayload = String(payload.sid || payload.signal_sid || rawJson?.sid || rawJson?.signal_sid || "").trim();
+  const sessionPrefix = sanitizeSessionPrefix(
+    payload.session_prefix ||
+      payload.sessionPrefix ||
+      rawJson?.session_prefix ||
+      rawJson?.sessionPrefix ||
+      "",
+  );
+  const sidBaseFromPayload = String(
+    payload.sid ||
+      payload.signal_sid ||
+      rawJson?.sid ||
+      rawJson?.signal_sid ||
+      "",
+  ).trim();
   const signalSid = sidBaseFromPayload
     ? normalizePublicSidBase(sidBaseFromPayload, "SIG")
-    : normalizePublicSidBase(sessionPrefix ? `${symbol}_${sessionPrefix}` : signalId, "SIG");
+    : normalizePublicSidBase(
+        sessionPrefix ? `${symbol}_${sessionPrefix}` : signalId,
+        "SIG",
+      );
   let rawJsonNormalized = {
     ...rawJson,
     session_prefix: sessionPrefix || undefined,
     order_type: orderType,
-    entry_model: entryModel || mt5NormalizeEntryModel(rawJson.entry_model ?? rawJson.entryModel ?? "", { fallback: source }),
-    entry_model_raw: derived.entryModelRaw || mt5CollapseWhitespace(rawJson.entry_model ?? rawJson.entryModel ?? "") || null,
+    entry_model:
+      entryModel ||
+      mt5NormalizeEntryModel(rawJson.entry_model ?? rawJson.entryModel ?? "", {
+        fallback: source,
+      }),
+    entry_model_raw:
+      derived.entryModelRaw ||
+      mt5CollapseWhitespace(rawJson.entry_model ?? rawJson.entryModel ?? "") ||
+      null,
   };
 
-  const hasRisk = rawJsonNormalized.riskPct != null || rawJsonNormalized.risk_pct != null || rawJsonNormalized.volumePct != null || rawJsonNormalized.volume_pct != null;
+  const hasRisk =
+    rawJsonNormalized.riskPct != null ||
+    rawJsonNormalized.risk_pct != null ||
+    rawJsonNormalized.volumePct != null ||
+    rawJsonNormalized.volume_pct != null;
   if (!hasRisk) {
     rawJsonNormalized.riskPct = 1.0;
   }
@@ -7342,8 +9894,12 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
     delete sanitizedPayload.api_key;
     delete sanitizedPayload.password;
     delete sanitizedPayload.token;
-    await mt5Log(signalId, "signals", { event_type: eventType, data: sanitizedPayload }, userId);
-
+    await mt5Log(
+      signalId,
+      "signals",
+      { event_type: eventType, data: sanitizedPayload },
+      userId,
+    );
 
     if (CFG.mt5V2DualWriteEnabled && !onlySignal) {
       const sourceId = mt5SlugId(source, "tradingview");
@@ -7368,7 +9924,10 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
           chart_tf: chartTf || null,
           symbol,
           action: mt5MapActionToSide(action),
-          entry: Number.isFinite(plannedEntry) && plannedEntry > 0 ? plannedEntry : null,
+          entry:
+            Number.isFinite(plannedEntry) && plannedEntry > 0
+              ? plannedEntry
+              : null,
           sl: payload.sl ?? null,
           tp: payload.tp ?? null,
           volume: volume ?? null,
@@ -7383,45 +9942,77 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
             provider: payload.provider || null,
             entry_model_raw: derived.entryModelRaw || null,
             session_prefix: sessionPrefix || null,
-            analysis_snapshot: rawJsonNormalized?.analysis_snapshot && typeof rawJsonNormalized.analysis_snapshot === "object"
-              ? rawJsonNormalized.analysis_snapshot
-              : null,
+            analysis_snapshot:
+              rawJsonNormalized?.analysis_snapshot &&
+              typeof rawJsonNormalized.analysis_snapshot === "object"
+                ? rawJsonNormalized.analysis_snapshot
+                : null,
             raw_json: rawJsonNormalized,
           },
         });
-        await mt5Log(signalId, "signals", {
-          event: "FANOUT_COMPLETED",
-          trades_created: fanout?.created || 0,
-          account_ids: fanout?.account_ids || []
-        }, userId);
+        await mt5Log(
+          signalId,
+          "signals",
+          {
+            event: "FANOUT_COMPLETED",
+            trades_created: fanout?.created || 0,
+            account_ids: fanout?.account_ids || [],
+          },
+          userId,
+        );
       } catch (error) {
-        await mt5Log(signalId, "signals", {
-          event: "FANOUT_FAILED",
-          error: error instanceof Error ? error.message : String(error)
-        }, userId);
+        await mt5Log(
+          signalId,
+          "signals",
+          {
+            event: "FANOUT_FAILED",
+            error: error instanceof Error ? error.message : String(error),
+          },
+          userId,
+        );
       }
     } else if (onlySignal) {
-      await mt5Log(signalId, "signals", { event: "FANOUT_SKIPPED_ONLY_SIGNAL" }, userId);
+      await mt5Log(
+        signalId,
+        "signals",
+        { event: "FANOUT_SKIPPED_ONLY_SIGNAL" },
+        userId,
+      );
     }
 
     await StateRepo.del("SIGNALS_PENDING", "all");
     if (userId) await StateRepo.del("SIGNALS_PENDING", userId);
   }
 
-  return { signal_id: signalId, action, symbol, status: upsertResult?.inserted ? "NEW" : "DUPLICATE" };
+  return {
+    signal_id: signalId,
+    action,
+    symbol,
+    status: upsertResult?.inserted ? "NEW" : "DUPLICATE",
+  };
 }
 
 function mt5NormalizeUiSource(rawSource, fallback = "ui_manual") {
-  const input = String(rawSource || "").trim().toLowerCase();
+  const input = String(rawSource || "")
+    .trim()
+    .toLowerCase();
   if (!input) return fallback;
   if (input === "ai") return "ai_claude";
   if (input.startsWith("ai_")) return input;
-  if (input === "ui" || input === "manual" || input === "ui_manual") return "ui_manual";
-  return input.replace(/[^a-z0-9_/-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "") || fallback;
+  if (input === "ui" || input === "manual" || input === "ui_manual")
+    return "ui_manual";
+  return (
+    input
+      .replace(/[^a-z0-9_/-]+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "") || fallback
+  );
 }
 
 function mt5NormalizeAckStatus(value) {
-  const s = String(value || "").trim().toUpperCase();
+  const s = String(value || "")
+    .trim()
+    .toUpperCase();
   if (!s) throw new Error("status is required");
   const legacyToCurrent = {
     DONE: "PLACED",
@@ -7438,7 +10029,9 @@ function mt5NormalizeAckStatus(value) {
   const normalized = legacyToCurrent[s] || s;
   const allowed = ["FAIL", "START", "TP", "SL", "CANCEL", "EXPIRED", "PLACED"];
   if (!allowed.includes(normalized)) {
-    throw new Error("status must be one of: FAIL, START, TP, SL, CANCEL, EXPIRED, PLACED");
+    throw new Error(
+      "status must be one of: FAIL, START, TP, SL, CANCEL, EXPIRED, PLACED",
+    );
   }
   return normalized;
 }
@@ -7448,7 +10041,9 @@ function mt5StatusToInternal(status) {
 }
 
 function mt5CanonicalStoredStatus(value) {
-  const s = String(value || "").trim().toUpperCase();
+  const s = String(value || "")
+    .trim()
+    .toUpperCase();
   if (!s) return "";
   const legacyToCurrent = {
     DONE: "PLACED",
@@ -7458,7 +10053,7 @@ function mt5CanonicalStoredStatus(value) {
     CLOSED_TP: "TP",
     CLOSED_SL: "SL",
     CLOSED_MANUAL: "CANCEL",
-    OK: "PLACED"
+    OK: "PLACED",
   };
   return legacyToCurrent[s] || s;
 }
@@ -7485,10 +10080,33 @@ function mt5TicketCandidates(raw = {}) {
 }
 
 function mt5CloseReasonFromSync(raw = {}) {
-  const s = String(raw.status || raw.execution_status || raw.reason || raw.close_reason || "").trim().toUpperCase();
+  const s = String(
+    raw.status || raw.execution_status || raw.reason || raw.close_reason || "",
+  )
+    .trim()
+    .toUpperCase();
   if (s === "TP" || s === "DEAL_REASON_TP") return "TP";
-  if (s === "SL" || s === "SO" || s === "DEAL_REASON_SL" || s === "DEAL_REASON_SO") return "SL";
-  if (["CANCEL", "CANCELLED", "CLIENT", "MOBILE", "EXPERT", "MANUAL", "DEAL_REASON_CLIENT", "DEAL_REASON_MOBILE", "DEAL_REASON_EXPERT"].includes(s)) return "MANUAL";
+  if (
+    s === "SL" ||
+    s === "SO" ||
+    s === "DEAL_REASON_SL" ||
+    s === "DEAL_REASON_SO"
+  )
+    return "SL";
+  if (
+    [
+      "CANCEL",
+      "CANCELLED",
+      "CLIENT",
+      "MOBILE",
+      "EXPERT",
+      "MANUAL",
+      "DEAL_REASON_CLIENT",
+      "DEAL_REASON_MOBILE",
+      "DEAL_REASON_EXPERT",
+    ].includes(s)
+  )
+    return "MANUAL";
   if (s === "EXPIRED") return "EXPIRED";
   if (s === "FAIL" || s === "FAILED") return "FAIL";
   return null;
@@ -7496,7 +10114,8 @@ function mt5CloseReasonFromSync(raw = {}) {
 
 function mt5SyncTime(value) {
   if (value === null || value === undefined || value === "") return null;
-  if (typeof value === "number" && Number.isFinite(value)) return new Date(value * 1000).toISOString();
+  if (typeof value === "number" && Number.isFinite(value))
+    return new Date(value * 1000).toISOString();
   const s = String(value).trim();
   if (/^\d+$/.test(s)) return new Date(Number(s) * 1000).toISOString();
   const t = Date.parse(s);
@@ -7507,15 +10126,19 @@ function mt5IsRetryableConnectivityFail(status, errorText) {
   const st = mt5CanonicalStoredStatus(status);
   if (st !== "FAIL") return false;
   const msg = String(errorText || "").toLowerCase();
-  return msg.includes("retcode=10031")
-    || msg.includes("no connection")
-    || msg.includes("trade server")
-    || msg.includes("off quotes");
+  return (
+    msg.includes("retcode=10031") ||
+    msg.includes("no connection") ||
+    msg.includes("trade server") ||
+    msg.includes("off quotes")
+  );
 }
 
 function mt5PublicState(row) {
   const status = mt5CanonicalStoredStatus(row.status);
-  const ackStatus = row.ack_status ? mt5CanonicalStoredStatus(row.ack_status) : null;
+  const ackStatus = row.ack_status
+    ? mt5CanonicalStoredStatus(row.ack_status)
+    : null;
   const updatedAt = [
     row.closed_at,
     row.opened_at,
@@ -7544,9 +10167,15 @@ function mt5PublicState(row) {
     ...row,
     status,
     ack_status: ackStatus,
-    updated_at: Number.isFinite(updatedAt) ? new Date(updatedAt).toISOString() : null,
+    updated_at: Number.isFinite(updatedAt)
+      ? new Date(updatedAt).toISOString()
+      : null,
     stage,
-    is_open_candidate: status === "NEW" || status === "LOCKED" || status === "START" || status === "PLACED",
+    is_open_candidate:
+      status === "NEW" ||
+      status === "LOCKED" ||
+      status === "START" ||
+      status === "PLACED",
     dedupe_safe: status !== "NEW",
   };
 }
@@ -7577,14 +10206,24 @@ async function mt5FindSignalById(signalId) {
 
 async function mt5FindDuplicateSignal(payload = {}) {
   const userId = String(payload.user_id || "").trim();
-  const symbol = String(payload.symbol || "").trim().toUpperCase();
+  const symbol = String(payload.symbol || "")
+    .trim()
+    .toUpperCase();
   const entry = Number(payload.entry);
   const sl = Number(payload.sl);
   const tp = Number(payload.tp);
-  if (!userId || !symbol || !Number.isFinite(entry) || !Number.isFinite(sl) || !Number.isFinite(tp)) return null;
+  if (
+    !userId ||
+    !symbol ||
+    !Number.isFinite(entry) ||
+    !Number.isFinite(sl) ||
+    !Number.isFinite(tp)
+  )
+    return null;
   const b = await mt5Backend();
   if (!b?.query) return null;
-  const rows = await b.query(`
+  const rows = await b.query(
+    `
     SELECT
       signal_id,
       raw_json->>'entry' AS entry_raw,
@@ -7599,11 +10238,16 @@ async function mt5FindDuplicateSignal(payload = {}) {
       AND ABS(tp - $4) <= 1e-8
     ORDER BY created_at DESC
     LIMIT 500
-  `, [userId, symbol, sl, tp]);
+  `,
+    [userId, symbol, sl, tp],
+  );
   const EPS = 1e-8;
   for (const row of rows.rows || []) {
-    const rowEntry = Number(row.entry_raw ?? row.price_raw ?? row.entry_price_raw);
-    if (Number.isFinite(rowEntry) && Math.abs(rowEntry - entry) <= EPS) return row;
+    const rowEntry = Number(
+      row.entry_raw ?? row.price_raw ?? row.entry_price_raw,
+    );
+    if (Number.isFinite(rowEntry) && Math.abs(rowEntry - entry) <= EPS)
+      return row;
   }
   return null;
 }
@@ -7623,9 +10267,22 @@ async function mt5ListSignals(limit, statusFilter) {
   return b.listSignals(limit, statusFilter);
 }
 
-async function mt5CleanupSignalTradeArtifacts({ signalRows = [], tradeRows = [], signalIds = [], tradeIds = [] } = {}) {
-  const sigIdSet = new Set((Array.isArray(signalIds) ? signalIds : []).map((x) => String(x || "").trim()).filter(Boolean));
-  const trdIdSet = new Set((Array.isArray(tradeIds) ? tradeIds : []).map((x) => String(x || "").trim()).filter(Boolean));
+async function mt5CleanupSignalTradeArtifacts({
+  signalRows = [],
+  tradeRows = [],
+  signalIds = [],
+  tradeIds = [],
+} = {}) {
+  const sigIdSet = new Set(
+    (Array.isArray(signalIds) ? signalIds : [])
+      .map((x) => String(x || "").trim())
+      .filter(Boolean),
+  );
+  const trdIdSet = new Set(
+    (Array.isArray(tradeIds) ? tradeIds : [])
+      .map((x) => String(x || "").trim())
+      .filter(Boolean),
+  );
   const signalRowsArr = Array.isArray(signalRows) ? signalRows : [];
   const tradeRowsArr = Array.isArray(tradeRows) ? tradeRows : [];
 
@@ -7656,13 +10313,20 @@ async function mt5CleanupSignalTradeArtifacts({ signalRows = [], tradeRows = [],
 
   if (signalIdList.length > 0) {
     try {
-      const res = await b.query(`SELECT raw_json FROM signals WHERE signal_id = ANY($1::text[])`, [signalIdList]);
-      for (const row of res.rows || []) collectSnapshotFilesFromValue(row?.raw_json, fileSet);
+      const res = await b.query(
+        `SELECT raw_json FROM signals WHERE signal_id = ANY($1::text[])`,
+        [signalIdList],
+      );
+      for (const row of res.rows || [])
+        collectSnapshotFilesFromValue(row?.raw_json, fileSet);
     } catch {
       // ignore fetch failure; continue best effort
     }
     try {
-      const res = await b.query(`SELECT trade_id FROM trades WHERE signal_id = ANY($1::text[])`, [signalIdList]);
+      const res = await b.query(
+        `SELECT trade_id FROM trades WHERE signal_id = ANY($1::text[])`,
+        [signalIdList],
+      );
       for (const row of res.rows || []) {
         const tid = String(row?.trade_id || "").trim();
         if (tid) trdIdSet.add(tid);
@@ -7675,8 +10339,12 @@ async function mt5CleanupSignalTradeArtifacts({ signalRows = [], tradeRows = [],
   const allTradeIds = [...trdIdSet];
   if (allTradeIds.length > 0) {
     try {
-      const res = await b.query(`SELECT metadata FROM trades WHERE trade_id = ANY($1::text[])`, [allTradeIds]);
-      for (const row of res.rows || []) collectSnapshotFilesFromValue(row?.metadata, fileSet);
+      const res = await b.query(
+        `SELECT metadata FROM trades WHERE trade_id = ANY($1::text[])`,
+        [allTradeIds],
+      );
+      for (const row of res.rows || [])
+        collectSnapshotFilesFromValue(row?.metadata, fileSet);
     } catch {
       // ignore fetch failure
     }
@@ -7701,7 +10369,10 @@ async function mt5CleanupSignalTradeArtifacts({ signalRows = [], tradeRows = [],
 
   let logsDeleted = 0;
   if (where.length > 0) {
-    const del = await b.query(`DELETE FROM logs WHERE ${where.join(" OR ")}`, params);
+    const del = await b.query(
+      `DELETE FROM logs WHERE ${where.join(" OR ")}`,
+      params,
+    );
     logsDeleted = Number(del?.rowCount || 0);
   }
 
@@ -7711,8 +10382,14 @@ async function mt5CleanupSignalTradeArtifacts({ signalRows = [], tradeRows = [],
 async function mt5AppendSignalEvent(signalId, eventType, payload = {}) {
   try {
     const b = await mt5Backend();
-    const userId = payload.user_id || payload.created_by || CFG.mt5DefaultUserId;
-    await b.log(signalId, 'signals', { ...payload, event_type: eventType }, userId);
+    const userId =
+      payload.user_id || payload.created_by || CFG.mt5DefaultUserId;
+    await b.log(
+      signalId,
+      "signals",
+      { ...payload, event_type: eventType },
+      userId,
+    );
   } catch (err) {
     console.error(`[SIG_EVENT_FAIL] ${signalId} ${eventType}:`, err.message);
   }
@@ -7736,7 +10413,11 @@ async function mt5FindAccountByApiKeyHash(apiKeyHash) {
   return b.findAccountByApiKeyHash(apiKeyHash);
 }
 
-async function mt5PullLeasedTradesV2(accountId, maxItems = 1, leaseSeconds = 30) {
+async function mt5PullLeasedTradesV2(
+  accountId,
+  maxItems = 1,
+  leaseSeconds = 30,
+) {
   const b = await mt5Backend();
   if (!b.pullLeasedTradesV2) return [];
   return b.pullLeasedTradesV2(accountId, maxItems, leaseSeconds);
@@ -7818,7 +10499,13 @@ async function mt5ListSourceEventsV2(sourceId, limit = 100) {
 
 async function mt5ListTradesV2(filters = {}, page = 1, pageSize = 50) {
   const b = await mt5Backend();
-  if (!b.listTradesV2) return { items: [], total: 0, page: 1, page_size: Math.max(1, Number(pageSize) || 50) };
+  if (!b.listTradesV2)
+    return {
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: Math.max(1, Number(pageSize) || 50),
+    };
   return b.listTradesV2(filters, page, pageSize);
 }
 
@@ -7851,7 +10538,8 @@ async function mt5ResolveTradeRefV2(tradeRef, userId = null) {
     params.push(String(userId));
     whereUser = ` AND user_id = $${params.length}`;
   }
-  const res = await b.query(`
+  const res = await b.query(
+    `
     SELECT id, sid, trade_id, user_id
     FROM trades
     WHERE (
@@ -7862,7 +10550,9 @@ async function mt5ResolveTradeRefV2(tradeRef, userId = null) {
     ${whereUser}
     ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
     LIMIT 1
-  `, params);
+  `,
+    params,
+  );
   return res.rows?.[0] || null;
 }
 
@@ -7878,7 +10568,8 @@ async function mt5ResolveSignalRefV2(signalRef, userId = null) {
     params.push(String(userId));
     whereUser = ` AND user_id = $${params.length}`;
   }
-  const res = await b.query(`
+  const res = await b.query(
+    `
     SELECT id, sid, signal_id, user_id
     FROM signals
     WHERE (
@@ -7889,7 +10580,9 @@ async function mt5ResolveSignalRefV2(signalRef, userId = null) {
     ${whereUser}
     ORDER BY created_at DESC
     LIMIT 1
-  `, params);
+  `,
+    params,
+  );
   return res.rows?.[0] || null;
 }
 
@@ -7937,7 +10630,8 @@ async function mt5GetAccountSubscriptionsV2(accountId) {
 
 async function mt5ReplaceAccountSubscriptionsV2(accountId, items = []) {
   const b = await mt5Backend();
-  if (!b.replaceAccountSubscriptionsV2) return { ok: false, error: "not supported" };
+  if (!b.replaceAccountSubscriptionsV2)
+    return { ok: false, error: "not supported" };
   return b.replaceAccountSubscriptionsV2(accountId, items);
 }
 
@@ -7971,7 +10665,10 @@ async function mt5DeleteAllEvents() {
 }
 
 async function mt5PruneSignals(days) {
-  const safeDays = Math.max(1, Math.min(3650, Number.isFinite(days) ? days : 14));
+  const safeDays = Math.max(
+    1,
+    Math.min(3650, Number.isFinite(days) ? days : 14),
+  );
   const b = await mt5Backend();
   return b.pruneOldSignals(safeDays);
 }
@@ -8030,16 +10727,18 @@ function mt5SignalsToBacktestCsv(rows, includeHeader = true) {
     lines.push("timestamp;signal_id;action;symbol;volume;sl;tp;note");
   }
   for (const r of rows) {
-    lines.push([
-      csvField(mt5CsvTimestamp(r.created_at)),
-      csvField(r.signal_id || ""),
-      csvField(r.action || ""),
-      csvField(r.symbol || ""),
-      csvField(r.volume ?? ""),
-      csvField(r.sl ?? ""),
-      csvField(r.tp ?? ""),
-      csvField(r.note || ""),
-    ].join(";"));
+    lines.push(
+      [
+        csvField(mt5CsvTimestamp(r.created_at)),
+        csvField(r.signal_id || ""),
+        csvField(r.action || ""),
+        csvField(r.symbol || ""),
+        csvField(r.volume ?? ""),
+        csvField(r.sl ?? ""),
+        csvField(r.tp ?? ""),
+        csvField(r.note || ""),
+      ].join(";"),
+    );
   }
   return lines.join("\n");
 }
@@ -8052,32 +10751,62 @@ function mt5PeriodRange(period) {
     return { start: null, end: null };
   }
   if (period === "today") {
-    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+    const start = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    ).toISOString();
     return { start, end };
   }
   if (period === "yesterday") {
-    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1)).toISOString();
-    const endY = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+    const start = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1),
+    ).toISOString();
+    const endY = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    ).toISOString();
     return { start, end: endY };
   }
   if (period === "week") {
     const day = now.getUTCDay() || 7; // Monday=1 ... Sunday=7
-    const startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (day - 1)));
+    const startDate = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() - (day - 1),
+      ),
+    );
     return { start: startDate.toISOString(), end };
   }
   if (period === "last_week") {
     const day = now.getUTCDay() || 7;
-    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (day - 1) - 7)).toISOString();
-    const endLW = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (day - 1))).toISOString();
+    const start = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() - (day - 1) - 7,
+      ),
+    ).toISOString();
+    const endLW = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() - (day - 1),
+      ),
+    ).toISOString();
     return { start, end: endLW };
   }
   if (period === "month") {
-    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+    const start = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    ).toISOString();
     return { start, end };
   }
   if (period === "last_month") {
-    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString();
-    const endLM = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+    const start = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1),
+    ).toISOString();
+    const endLM = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    ).toISOString();
     return { start, end: endLM };
   }
   if (period === "year") {
@@ -8110,21 +10839,42 @@ function mt5FilterRows(rows, opts = {}) {
     if (symbol && String(r.symbol || "").toUpperCase() !== symbol) return false;
     if (source && mt5StrategyFromRow(r) !== source) return false;
     if (entryModel && mt5EntryModelFromRow(r) !== entryModel) return false;
-    if (chartTf && String(r.chart_tf || r.raw_json?.chart_tf || r.raw_json?.chartTf || "") !== chartTf) return false;
-    if (signalTf && String(r.signal_tf || r.raw_json?.signal_tf || r.raw_json?.sourceTf || r.raw_json?.timeframe || "") !== signalTf) return false;
+    if (
+      chartTf &&
+      String(
+        r.chart_tf || r.raw_json?.chart_tf || r.raw_json?.chartTf || "",
+      ) !== chartTf
+    )
+      return false;
+    if (
+      signalTf &&
+      String(
+        r.signal_tf ||
+          r.raw_json?.signal_tf ||
+          r.raw_json?.sourceTf ||
+          r.raw_json?.timeframe ||
+          "",
+      ) !== signalTf
+    )
+      return false;
     if (statuses.length > 0 && !statuses.includes(rs)) return false;
     // Prefer closed_at for trades PnL accuracy, fallback to created_at
     const tRaw = r.closed_at || r.ack_at || r.created_at;
     const t = mt5ToMs(tRaw);
-    if (Number.isFinite(fromMs) && (!Number.isFinite(t) || t < fromMs)) return false;
-    if (Number.isFinite(toMs) && (!Number.isFinite(t) || t > toMs)) return false;
+    if (Number.isFinite(fromMs) && (!Number.isFinite(t) || t < fromMs))
+      return false;
+    if (Number.isFinite(toMs) && (!Number.isFinite(t) || t > toMs))
+      return false;
     return true;
   });
 }
 
 function mt5ResolveTradeFilters(url, payload = null) {
   const pick = (key, fallback = "") => {
-    const fromPayload = payload && payload[key] !== undefined && payload[key] !== null ? payload[key] : "";
+    const fromPayload =
+      payload && payload[key] !== undefined && payload[key] !== null
+        ? payload[key]
+        : "";
     const fromUrl = url.searchParams.get(key);
     return envStr(fromPayload || fromUrl || fallback);
   };
@@ -8150,23 +10900,39 @@ function mt5ResolveTradeFilters(url, payload = null) {
 }
 
 function mt5ResolveSignalIds(url, payload = null) {
-  const fromPayload = payload && payload.signal_ids !== undefined && payload.signal_ids !== null
-    ? payload.signal_ids
-    : (payload && payload.ids !== undefined && payload.ids !== null ? payload.ids : null);
-  const fromQuery = url.searchParams.get("signal_ids") || url.searchParams.get("ids") || "";
+  const fromPayload =
+    payload && payload.signal_ids !== undefined && payload.signal_ids !== null
+      ? payload.signal_ids
+      : payload && payload.ids !== undefined && payload.ids !== null
+        ? payload.ids
+        : null;
+  const fromQuery =
+    url.searchParams.get("signal_ids") || url.searchParams.get("ids") || "";
   const raw = fromPayload !== null ? fromPayload : fromQuery;
   if (Array.isArray(raw)) {
     return [...new Set(raw.map((s) => String(s || "").trim()).filter(Boolean))];
   }
   if (typeof raw === "string") {
-    return [...new Set(raw.split(",").map((s) => s.trim()).filter(Boolean))];
+    return [
+      ...new Set(
+        raw
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      ),
+    ];
   }
   return [];
 }
 
 async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
-  const limitRaw = Number((payload && payload.limit) ?? url.searchParams.get("limit") ?? limitDefault);
-  const limit = Math.max(100, Math.min(200000, Number.isFinite(limitRaw) ? limitRaw : limitDefault));
+  const limitRaw = Number(
+    (payload && payload.limit) ?? url.searchParams.get("limit") ?? limitDefault,
+  );
+  const limit = Math.max(
+    100,
+    Math.min(200000, Number.isFinite(limitRaw) ? limitRaw : limitDefault),
+  );
   const filters = mt5ResolveTradeFilters(url, payload);
   let rows = mt5FilterRows(await mt5ListSignals(limit, ""), {
     userId: filters.userId,
@@ -8181,29 +10947,57 @@ async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
   });
   if (filters.q) {
     const q = String(filters.q).toLowerCase();
-    rows = rows.filter((r) =>
-      String(r.signal_id || "").toLowerCase().includes(q)
-      || String(r.id || "").toLowerCase().includes(q)
-      || String(r.sid || "").toLowerCase().includes(q)
-      || String(r.raw_json?.id || "").toLowerCase().includes(q)
-      || String(r.raw_json?.trade_id || "").toLowerCase().includes(q)
-      || String(r.note || "").toLowerCase().includes(q)
-      || String(r.symbol || "").toLowerCase().includes(q)
-      || String(r.ack_ticket || "").toLowerCase().includes(q)
-      || String(r.entry_model || "").toLowerCase().includes(q)
-      || String(r.source || "").toLowerCase().includes(q)
-      || String(r.source_id || "").toLowerCase().includes(q)
-      || String(r.account_id || "").toLowerCase().includes(q)
-      || String(r.action || r.side || "").toLowerCase().includes(q),
+    rows = rows.filter(
+      (r) =>
+        String(r.signal_id || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(r.id || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(r.sid || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(r.raw_json?.id || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(r.raw_json?.trade_id || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(r.note || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(r.symbol || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(r.ack_ticket || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(r.entry_model || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(r.source || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(r.source_id || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(r.account_id || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(r.action || r.side || "")
+          .toLowerCase()
+          .includes(q),
     );
   }
   const signalIds = mt5ResolveSignalIds(url, payload);
   if (signalIds.length > 0) {
     const idSet = new Set(signalIds);
-    rows = rows.filter((r) =>
-      idSet.has(String(r.signal_id || ""))
-      || idSet.has(String(r.sid || ""))
-      || idSet.has(String(r.id || "")),
+    rows = rows.filter(
+      (r) =>
+        idSet.has(String(r.signal_id || "")) ||
+        idSet.has(String(r.sid || "")) ||
+        idSet.has(String(r.id || "")),
     );
   }
   filters.signal_ids = signalIds;
@@ -8212,7 +11006,9 @@ async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
 
 function mt5ComputeMetrics(rows) {
   const closed = rows.filter((r) => {
-    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    const s = mt5CanonicalStoredStatus(
+      r.execution_status || r.status || r.close_reason,
+    );
     return s === "CLOSED" || s === "TP" || s === "SL";
   });
   const wins = closed.filter((r) => {
@@ -8274,21 +11070,30 @@ function mt5ComputeRMultiple(row) {
   if (pnl < 0) return -1;
 
   // For wins: Use planned RR if available, otherwise default to 1R
-  const planned = Number(row?.rr_planned || row?.metadata?.rr_planned || row?.metadata?.rrPlanned);
+  const planned = Number(
+    row?.rr_planned || row?.metadata?.rr_planned || row?.metadata?.rrPlanned,
+  );
   if (Number.isFinite(planned) && planned > 0) return planned;
 
   return 1;
 }
 
-function mt5ComputeTopWinrateRows(rows, keyPicker, { limit = 10, includeDirection = false } = {}) {
+function mt5ComputeTopWinrateRows(
+  rows,
+  keyPicker,
+  { limit = 10, includeDirection = false } = {},
+) {
   const map = new Map();
   for (const row of rows || []) {
     const baseKey = String(keyPicker(row) || "").trim();
     if (!baseKey) continue;
     const direction = String(row?.action || "").toUpperCase();
-    const directionSafe = direction === "BUY" || direction === "SELL" ? direction : "-";
+    const directionSafe =
+      direction === "BUY" || direction === "SELL" ? direction : "-";
     const key = includeDirection ? `${baseKey} | ${directionSafe}` : baseKey;
-    const status = mt5CanonicalStoredStatus(row.execution_status || row.status || row.close_reason);
+    const status = mt5CanonicalStoredStatus(
+      row.execution_status || row.status || row.close_reason,
+    );
     const rr = mt5ComputeRMultiple(row);
     const pnl = Number(row?.pnl_realized ?? row?.pnl_money_realized);
     const closeReason = String(row?.close_reason || "").toUpperCase();
@@ -8308,7 +11113,13 @@ function mt5ComputeTopWinrateRows(rows, keyPicker, { limit = 10, includeDirectio
     }
     const st = map.get(key);
     // DASHBOARD FILTER: Only count CLOSED/TP/SL for stats
-    if (status === "CLOSED" || status === "TP" || status === "SL" || closeReason === "TP" || closeReason === "SL") {
+    if (
+      status === "CLOSED" ||
+      status === "TP" ||
+      status === "SL" ||
+      closeReason === "TP" ||
+      closeReason === "SL"
+    ) {
       st.trades++;
       if (status === "TP" || closeReason === "TP") st.wins++;
       else if (status === "SL" || closeReason === "SL") st.losses++;
@@ -8329,9 +11140,20 @@ function mt5ComputeTopWinrateRows(rows, keyPicker, { limit = 10, includeDirectio
   }
 
   // DASHBOARD FILTER: Do not display items with PnL=0 & WR = 0 & W=0 & L=0
-  entries = entries.filter(st => Math.abs(st.pnl_total) > 0.001 || st.win_rate > 0 || st.wins > 0 || st.losses > 0);
+  entries = entries.filter(
+    (st) =>
+      Math.abs(st.pnl_total) > 0.001 ||
+      st.win_rate > 0 ||
+      st.wins > 0 ||
+      st.losses > 0,
+  );
 
-  entries.sort((a, b) => b.win_rate - a.win_rate || b.trades - a.trades || (a.key < b.key ? -1 : 1));
+  entries.sort(
+    (a, b) =>
+      b.win_rate - a.win_rate ||
+      b.trades - a.trades ||
+      (a.key < b.key ? -1 : 1),
+  );
   if (limit > 0) entries = entries.slice(0, limit);
   return entries;
 }
@@ -8342,14 +11164,29 @@ function mt5EntryModelFromRow(row) {
   });
   if (direct) return direct;
   const raw = row?.raw_json || {};
-  return mt5NormalizeEntryModel(raw.entry_model || raw.entryModel || raw.model || raw.strategy || row?.source_id || row?.source || "manual");
+  return mt5NormalizeEntryModel(
+    raw.entry_model ||
+      raw.entryModel ||
+      raw.model ||
+      raw.strategy ||
+      row?.source_id ||
+      row?.source ||
+      "manual",
+  );
 }
 
 function mt5StrategyFromRow(row) {
   const sourceId = envStr(row?.source_id || row?.source);
   if (sourceId) return sourceId;
   const raw = row?.raw_json || {};
-  return envStr(raw.source || raw.source_id || raw.strategy || raw.model || raw.entry_model || raw.entryModel);
+  return envStr(
+    raw.source ||
+      raw.source_id ||
+      raw.strategy ||
+      raw.model ||
+      raw.entry_model ||
+      raw.entryModel,
+  );
 }
 
 function mt5ComputeTradeMetrics(rows) {
@@ -8358,28 +11195,38 @@ function mt5ComputeTradeMetrics(rows) {
   // Count by status tiers using all rows
   // trades table uses: PENDING, OPEN, CLOSED, CANCELLED
   const countPending = all.filter((r) => {
-    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    const s = mt5CanonicalStoredStatus(
+      r.execution_status || r.status || r.close_reason,
+    );
     return ["PENDING", "NEW", "LOCKED", "START"].includes(s);
   }).length;
 
   const countFilled = all.filter((r) => {
-    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    const s = mt5CanonicalStoredStatus(
+      r.execution_status || r.status || r.close_reason,
+    );
     return ["OPEN", "PLACED", "FILLED"].includes(s);
   }).length;
 
   const countClosed = all.filter((r) => {
-    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    const s = mt5CanonicalStoredStatus(
+      r.execution_status || r.status || r.close_reason,
+    );
     return ["CLOSED", "TP", "SL", "CANCEL", "CANCELLED"].includes(s);
   }).length;
 
   // DASHBOARD FILTER: Only calculate PnL/WR/RR by Closed trades
   const trades = all.filter((r) => {
-    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    const s = mt5CanonicalStoredStatus(
+      r.execution_status || r.status || r.close_reason,
+    );
     return ["CLOSED", "TP", "SL"].includes(s);
   });
 
   const wins = trades.filter((r) => {
-    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    const s = mt5CanonicalStoredStatus(
+      r.execution_status || r.status || r.close_reason,
+    );
     const res = String(r.close_reason || "").toUpperCase();
     if (s === "TP" || res === "TP") return true;
     const pnl = Number(r?.pnl_realized ?? r?.pnl_money_realized);
@@ -8387,7 +11234,9 @@ function mt5ComputeTradeMetrics(rows) {
   }).length;
 
   const losses = trades.filter((r) => {
-    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    const s = mt5CanonicalStoredStatus(
+      r.execution_status || r.status || r.close_reason,
+    );
     const res = String(r.close_reason || "").toUpperCase();
     if (s === "SL" || res === "SL") return true;
     const pnl = Number(r?.pnl_realized ?? r?.pnl_money_realized);
@@ -8395,7 +11244,9 @@ function mt5ComputeTradeMetrics(rows) {
   }).length;
 
   const rrRows = trades.filter((r) => {
-    const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+    const s = mt5CanonicalStoredStatus(
+      r.execution_status || r.status || r.close_reason,
+    );
     const res = String(r.close_reason || "").toUpperCase();
     return s === "TP" || s === "SL" || res === "TP" || res === "SL";
   });
@@ -8422,7 +11273,7 @@ function mt5ComputeTradeMetrics(rows) {
       price: r.entry ?? r.intent_entry ?? r.price,
       sl: r.sl ?? r.intent_sl ?? null,
       tp: r.tp ?? r.intent_tp ?? null,
-      pnl_money_realized: r.pnl_realized ?? r.pnl_money_realized
+      pnl_money_realized: r.pnl_realized ?? r.pnl_money_realized,
     };
     const rr = mt5ComputeRMultiple(mapped);
     return Number.isFinite(rr) ? acc + rr : acc;
@@ -8447,7 +11298,11 @@ function mt5ComputeTradeMetrics(rows) {
 }
 
 function getHeaderApiKey(req) {
-  return String(req.headers["x-api-key"] || req.headers.authorization?.replace(/^Bearer\s+/i, "") || "");
+  return String(
+    req.headers["x-api-key"] ||
+      req.headers.authorization?.replace(/^Bearer\s+/i, "") ||
+      "",
+  );
 }
 
 function getPayloadApiKey(payload = null) {
@@ -8457,7 +11312,11 @@ function getPayloadApiKey(payload = null) {
 
 function getQueryApiKey(urlObj = null) {
   if (!urlObj) return "";
-  return String(urlObj.searchParams.get("apiKey") || urlObj.searchParams.get("api_key") || "");
+  return String(
+    urlObj.searchParams.get("apiKey") ||
+      urlObj.searchParams.get("api_key") ||
+      "",
+  );
 }
 
 function getApiKeyFromReq(req, payload = null, urlObj = null) {
@@ -8511,7 +11370,10 @@ async function requireV2BrokerAccount(req, res, urlObj, payload = null) {
   if (account === null) {
     const b = await mt5Backend();
     if (!b.findAccountByApiKeyHash) {
-      json(res, 400, { ok: false, error: "v2 broker auth not supported by backend" });
+      json(res, 400, {
+        ok: false,
+        error: "v2 broker auth not supported by backend",
+      });
       return null;
     }
   }
@@ -8534,11 +11396,20 @@ function getTvTokenFromPath(pathname = "") {
 
 function isTvWebhookPath(pathname = "") {
   const p = String(pathname || "");
-  return p === "/signal" || p === "/mt5/tv/webhook" || /^\/signal\/[^/]+$/.test(p) || /^\/mt5\/tv\/webhook\/[^/]+$/.test(p);
+  return (
+    p === "/signal" ||
+    p === "/mt5/tv/webhook" ||
+    /^\/signal\/[^/]+$/.test(p) ||
+    /^\/mt5\/tv\/webhook\/[^/]+$/.test(p)
+  );
 }
 
 function requireTvAuth(req, res, urlObj, payload = null) {
-  const hasAuthConfig = Boolean(CFG.signalApiKey || CFG.mt5TvAlertApiKeys.size > 0 || CFG.mt5TvWebhookTokens.size > 0);
+  const hasAuthConfig = Boolean(
+    CFG.signalApiKey ||
+    CFG.mt5TvAlertApiKeys.size > 0 ||
+    CFG.mt5TvWebhookTokens.size > 0,
+  );
   if (!hasAuthConfig) return true;
 
   const tokenFromPath = getTvTokenFromPath(urlObj?.pathname || "");
@@ -8549,14 +11420,24 @@ function requireTvAuth(req, res, urlObj, payload = null) {
   }
 
   const headerKey = getHeaderApiKey(req);
-  if (headerKey && ((CFG.signalApiKey && headerKey === CFG.signalApiKey) || CFG.mt5TvAlertApiKeys.has(headerKey))) {
+  if (
+    headerKey &&
+    ((CFG.signalApiKey && headerKey === CFG.signalApiKey) ||
+      CFG.mt5TvAlertApiKeys.has(headerKey))
+  ) {
     return true;
   }
 
   if (CFG.mt5AuthAllowLegacyPayloadKey) {
     const payloadKey = getPayloadApiKey(payload);
-    if (payloadKey && ((CFG.signalApiKey && payloadKey === CFG.signalApiKey) || CFG.mt5TvAlertApiKeys.has(payloadKey))) {
-      console.warn(`[Auth] Legacy TV auth key source="payload" path="${urlObj?.pathname || ""}"`);
+    if (
+      payloadKey &&
+      ((CFG.signalApiKey && payloadKey === CFG.signalApiKey) ||
+        CFG.mt5TvAlertApiKeys.has(payloadKey))
+    ) {
+      console.warn(
+        `[Auth] Legacy TV auth key source="payload" path="${urlObj?.pathname || ""}"`,
+      );
       return true;
     }
   }
@@ -8585,7 +11466,12 @@ function uiEffectiveUserId(req, urlObj = null, payload = null) {
   if (!sess.ok) return null;
   if (isSystemRole(sess.role)) {
     // Admins can see specific users if requested via header, payload, or query
-    const target = (req.headers["x-active-user-id"] ?? payload?.user_id ?? urlObj?.searchParams?.get("user_id") ?? "").trim();
+    const target = (
+      req.headers["x-active-user-id"] ??
+      payload?.user_id ??
+      urlObj?.searchParams?.get("user_id") ??
+      ""
+    ).trim();
     // Use target, or default to their own user_id if they want to act as themselves
     return target || sess.user_id;
   }
@@ -8717,34 +11603,58 @@ async function executeMt5(signal) {
     return { broker: "mt5", status: "skipped", reason: "MT5_ENABLED=false" };
   }
   if (CFG.mt5EaApiKeys.size === 0) {
-    return { broker: "mt5", status: "skipped", reason: "Missing MT5_EA_API_KEYS (or SIGNAL_API_KEY fallback)" };
+    return {
+      broker: "mt5",
+      status: "skipped",
+      reason: "Missing MT5_EA_API_KEYS (or SIGNAL_API_KEY fallback)",
+    };
   }
 
-  const enqueue = await mt5EnqueueSignalFromPayload({
-    id: signal.raw?.id || "",
-    action: signal.side,
-    symbol: signal.symbol,
-    volume: signal.quantity && signal.quantity > 0 ? signal.quantity : CFG.mt5DefaultLot,
-    sl: signal.sl ?? null,
-    tp: signal.tp ?? null,
-    rr: signal.rr_planned ?? null,
-    risk_money: signal.risk_money_planned ?? null,
-    price: signal.price ?? null,
-    strategy: signal.strategy || null,
-    entry_model: signal.entry_model || signal.raw?.entry_model || signal.raw?.entryModel || signal.strategy || null,
-    timeframe: signal.timeframe || null,
-    sourceTf: signal.raw?.sourceTf ?? signal.raw?.signal_tf ?? signal.timeframe ?? null,
-    chartTf: signal.raw?.chartTf ?? signal.raw?.chart_tf ?? signal.raw?.chartTimeframe ?? signal.raw?.chart_tf_period ?? null,
-    note: signal.note || "",
-    user_id: signal.user_id || CFG.mt5DefaultUserId,
-    order_type: signal.raw?.order_type ?? signal.raw?.orderType ?? "limit",
-    provider: "signal",
-    raw_json: signal.raw || {},
-  }, {
-    source: "signal",
-    eventType: "QUEUED_FROM_SIGNAL",
-    fallbackIdPrefix: "sig",
-  });
+  const enqueue = await mt5EnqueueSignalFromPayload(
+    {
+      id: signal.raw?.id || "",
+      action: signal.side,
+      symbol: signal.symbol,
+      volume:
+        signal.quantity && signal.quantity > 0
+          ? signal.quantity
+          : CFG.mt5DefaultLot,
+      sl: signal.sl ?? null,
+      tp: signal.tp ?? null,
+      rr: signal.rr_planned ?? null,
+      risk_money: signal.risk_money_planned ?? null,
+      price: signal.price ?? null,
+      strategy: signal.strategy || null,
+      entry_model:
+        signal.entry_model ||
+        signal.raw?.entry_model ||
+        signal.raw?.entryModel ||
+        signal.strategy ||
+        null,
+      timeframe: signal.timeframe || null,
+      sourceTf:
+        signal.raw?.sourceTf ??
+        signal.raw?.signal_tf ??
+        signal.timeframe ??
+        null,
+      chartTf:
+        signal.raw?.chartTf ??
+        signal.raw?.chart_tf ??
+        signal.raw?.chartTimeframe ??
+        signal.raw?.chart_tf_period ??
+        null,
+      note: signal.note || "",
+      user_id: signal.user_id || CFG.mt5DefaultUserId,
+      order_type: signal.raw?.order_type ?? signal.raw?.orderType ?? "limit",
+      provider: "signal",
+      raw_json: signal.raw || {},
+    },
+    {
+      source: "signal",
+      eventType: "QUEUED_FROM_SIGNAL",
+      fallbackIdPrefix: "sig",
+    },
+  );
 
   return {
     broker: "mt5",
@@ -8757,8 +11667,14 @@ const appHandler = async (req, res) => {
   const origin = req.headers.origin;
   if (origin) {
     res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key, x-active-user-id, Cache-Control, Pragma");
+    res.setHeader(
+      "Access-Control-Allow-Methods",
+      "GET, POST, PUT, DELETE, OPTIONS",
+    );
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, x-api-key, x-active-user-id, Cache-Control, Pragma",
+    );
     res.setHeader("Access-Control-Allow-Credentials", "true");
   }
 
@@ -8769,7 +11685,10 @@ const appHandler = async (req, res) => {
   }
 
   const proto = req?.socket?.encrypted ? "https" : "http";
-  const incomingUrl = new URL(req.url, `${proto}://${req.headers.host || "localhost"}`);
+  const incomingUrl = new URL(
+    req.url,
+    `${proto}://${req.headers.host || "localhost"}`,
+  );
 
   // NORMALIZE PATH: Support both /webhook/path and /path for routing
   if (incomingUrl.pathname.startsWith("/webhook/")) {
@@ -8779,41 +11698,63 @@ const appHandler = async (req, res) => {
   }
   const url = incomingUrl;
   const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
-  console.log(`[REQUEST] ${req.method} ${req.url} -> ${url.pathname} (IP: ${ip})`);
+  console.log(
+    `[REQUEST] ${req.method} ${req.url} -> ${url.pathname} (IP: ${ip})`,
+  );
 
   if (req.method === "GET" && url.pathname === "/api/proxy/binance") {
-    const target = "https://api.binance.com/api/v3/klines?" + incomingUrl.searchParams.toString();
-    https.get(target, (proxyRes) => {
-      res.writeHead(proxyRes.statusCode || 200, {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
+    const target =
+      "https://api.binance.com/api/v3/klines?" +
+      incomingUrl.searchParams.toString();
+    https
+      .get(target, (proxyRes) => {
+        res.writeHead(proxyRes.statusCode || 200, {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        });
+        proxyRes.pipe(res);
+      })
+      .on("error", (err) => {
+        json(res, 500, { error: err.message });
       });
-      proxyRes.pipe(res);
-    }).on("error", (err) => {
-      json(res, 500, { error: err.message });
-    });
     return;
   }
 
   const hostname = normalizeHostHeader(req.headers.host);
 
-  if (req.method === "POST" && /^\/v2\/broker\/accounts\/[^/]+\/apiKey$/.test(incomingUrl.pathname)) {
+  if (
+    req.method === "POST" &&
+    /^\/v2\/broker\/accounts\/[^/]+\/apiKey$/.test(incomingUrl.pathname)
+  ) {
     try {
       const accountId = decodeURIComponent(incomingUrl.pathname.split("/")[4]);
       const body = await readJson(req);
-      const out = await (await mt5Backend()).updateAccountApiKeyV2(accountId, body.api_key_plaintext);
-      if (!out) return json(res, 404, { ok: false, error: "Account not found" });
+      const out = await (
+        await mt5Backend()
+      ).updateAccountApiKeyV2(accountId, body.api_key_plaintext);
+      if (!out)
+        return json(res, 404, { ok: false, error: "Account not found" });
       return json(res, 200, { ok: true, ...out });
-    } catch (e) { return json(res, 400, { ok: false, error: e.message }); }
+    } catch (e) {
+      return json(res, 400, { ok: false, error: e.message });
+    }
   }
 
-  if (req.method === "DELETE" && /^\/v2\/broker\/accounts\/[^/]+\/apiKey$/.test(incomingUrl.pathname)) {
+  if (
+    req.method === "DELETE" &&
+    /^\/v2\/broker\/accounts\/[^/]+\/apiKey$/.test(incomingUrl.pathname)
+  ) {
     try {
       const accountId = decodeURIComponent(incomingUrl.pathname.split("/")[4]);
-      const out = await (await mt5Backend()).updateAccountApiKeyV2(accountId, null);
-      if (!out) return json(res, 404, { ok: false, error: "Account not found" });
+      const out = await (
+        await mt5Backend()
+      ).updateAccountApiKeyV2(accountId, null);
+      if (!out)
+        return json(res, 404, { ok: false, error: "Account not found" });
       return json(res, 200, { ok: true, ...out });
-    } catch (e) { return json(res, 400, { ok: false, error: e.message }); }
+    } catch (e) {
+      return json(res, 400, { ok: false, error: e.message });
+    }
   }
 
   if (tryServeLanding(incomingUrl, req, res, hostname)) {
@@ -8824,18 +11765,30 @@ const appHandler = async (req, res) => {
     return;
   }
 
-
   if (req.method === "GET" && url.pathname === "/auth/me") {
     try {
       const sess = getUiSessionFromReq(req);
-      if (!sess.ok) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+      if (!sess.ok)
+        return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
 
       // Eager Load common data for the SPA - catch individual errors to remain resilient
       const [sysCfg, accounts, watchlist, pendingSignals] = await Promise.all([
-        repoGetSystemSettings().catch(e => { console.error("[authMe] system settings fail:", e); return {}; }),
-        repoGetUserAccounts(sess.user_id).catch(e => { console.error("[authMe] accounts fail:", e); return []; }),
-        repoGetUserWatchlist(sess.user_id).catch(e => { console.error("[authMe] watchlist fail:", e); return []; }),
-        repoGetPendingSignals("all").catch(e => { console.error("[authMe] signals fail:", e); return []; })
+        repoGetSystemSettings().catch((e) => {
+          console.error("[authMe] system settings fail:", e);
+          return {};
+        }),
+        repoGetUserAccounts(sess.user_id).catch((e) => {
+          console.error("[authMe] accounts fail:", e);
+          return [];
+        }),
+        repoGetUserWatchlist(sess.user_id).catch((e) => {
+          console.error("[authMe] watchlist fail:", e);
+          return [];
+        }),
+        repoGetPendingSignals("all").catch((e) => {
+          console.error("[authMe] signals fail:", e);
+          return [];
+        }),
       ]);
 
       return json(res, 200, {
@@ -8848,27 +11801,32 @@ const appHandler = async (req, res) => {
           is_active: normalizeUserActive(sess.is_active, true),
           metadata: {
             ...(sess.metadata || {}),
-            watchlist: watchlist || (sess.metadata?.watchlist || [])
+            watchlist: watchlist || sess.metadata?.watchlist || [],
           },
         },
         eager_data: {
           system_settings: sysCfg || {},
           user_accounts: accounts || [],
-          pending_signals: pendingSignals || []
-        }
+          pending_signals: pendingSignals || [],
+        },
       });
     } catch (err) {
       console.error("[authMe] fatal error:", err);
-      return json(res, 500, { ok: false, error: "Internal Server Error during hydration" });
+      return json(res, 500, {
+        ok: false,
+        error: "Internal Server Error during hydration",
+      });
     }
   }
-
 
   if (req.method === "GET" && url.pathname === "/auth/profile") {
     const sess = getUiSessionFromReq(req);
     if (!sess.ok) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
-    const state = await uiReadAuthStateByUserId(sess.user_id) || await uiReadAuthStateByEmail(sess.email);
-    if (!state) return json(res, 404, { ok: false, error: "Profile not found" });
+    const state =
+      (await uiReadAuthStateByUserId(sess.user_id)) ||
+      (await uiReadAuthStateByEmail(sess.email));
+    if (!state)
+      return json(res, 404, { ok: false, error: "Profile not found" });
     return json(res, 200, {
       ok: true,
       user: {
@@ -8888,7 +11846,11 @@ const appHandler = async (req, res) => {
     try {
       const payload = await readJson(req);
       const out = await uiAuthUpdateProfile(sess, payload || {});
-      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to update profile" });
+      if (!out.ok)
+        return json(res, 400, {
+          ok: false,
+          error: out.error || "Failed to update profile",
+        });
       if (sess.token && UI_SESSIONS.has(sess.token)) {
         const cur = UI_SESSIONS.get(sess.token) || {};
         UI_SESSIONS.set(sess.token, {
@@ -8915,11 +11877,17 @@ const appHandler = async (req, res) => {
       const db = await mt5InitBackend();
       const userId = sess.user_id;
 
-      const currentRes = await db.query("SELECT metadata FROM users WHERE user_id = $1", [userId]);
+      const currentRes = await db.query(
+        "SELECT metadata FROM users WHERE user_id = $1",
+        [userId],
+      );
       const current = currentRes.rows[0]?.metadata || {};
       const next = { ...current, ...payload };
 
-      await db.query("UPDATE users SET metadata = $1, updated_at = NOW() WHERE user_id = $2", [JSON.stringify(next), userId]);
+      await db.query(
+        "UPDATE users SET metadata = $1, updated_at = NOW() WHERE user_id = $2",
+        [JSON.stringify(next), userId],
+      );
 
       // Update session cache
       const token = sess.token;
@@ -8933,7 +11901,9 @@ const appHandler = async (req, res) => {
       await StateRepo.del("USER_WATCHLIST", userId);
 
       return json(res, 200, { ok: true, metadata: next });
-    } catch (e) { return json(res, 400, { ok: false, error: e.message }); }
+    } catch (e) {
+      return json(res, 400, { ok: false, error: e.message });
+    }
   }
 
   if (req.method === "GET" && url.pathname === "/api/charts/multi") {
@@ -8942,7 +11912,8 @@ const appHandler = async (req, res) => {
     const symbol = url.searchParams.get("symbol");
     const tfsRaw = url.searchParams.get("tfs") || "";
     const tfs = tfsRaw.split(",").filter(Boolean);
-    if (!symbol || !tfs.length) return json(res, 400, { ok: false, error: "Missing symbol or tfs" });
+    if (!symbol || !tfs.length)
+      return json(res, 400, { ok: false, error: "Missing symbol or tfs" });
     const results = {};
     const tasks = tfs.map(async (tf) => {
       try {
@@ -8950,7 +11921,7 @@ const appHandler = async (req, res) => {
           userId: sess.user_id,
           symbol,
           timeframe: tf,
-          payload: Object.fromEntries(url.searchParams)
+          payload: Object.fromEntries(url.searchParams),
         });
         results[tf] = data;
       } catch (e) {
@@ -8977,7 +11948,11 @@ const appHandler = async (req, res) => {
     try {
       const payload = await readJson(req);
       const out = await uiCreateUser(payload || {});
-      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to create user" });
+      if (!out.ok)
+        return json(res, 400, {
+          ok: false,
+          error: out.error || "Failed to create user",
+        });
       return json(res, 200, { ok: true, user: out.user });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -8985,12 +11960,21 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "GET" && /^\/auth\/users\/[^/]+\/detail$/.test(url.pathname)) {
+  if (
+    req.method === "GET" &&
+    /^\/auth\/users\/[^/]+\/detail$/.test(url.pathname)
+  ) {
     if (!requireSystemRoleForUi(req, res)) return;
     try {
-      const userId = decodeURIComponent(url.pathname.slice("/auth/users/".length, -"/detail".length));
+      const userId = decodeURIComponent(
+        url.pathname.slice("/auth/users/".length, -"/detail".length),
+      );
       const out = await uiGetUserDetail(userId);
-      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to load user detail" });
+      if (!out.ok)
+        return json(res, 400, {
+          ok: false,
+          error: out.error || "Failed to load user detail",
+        });
       return json(res, 200, out);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -8998,13 +11982,22 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "POST" && /^\/auth\/users\/[^/]+\/accounts$/.test(url.pathname)) {
+  if (
+    req.method === "POST" &&
+    /^\/auth\/users\/[^/]+\/accounts$/.test(url.pathname)
+  ) {
     if (!requireSystemRoleForUi(req, res)) return;
     try {
-      const userId = decodeURIComponent(url.pathname.slice("/auth/users/".length, -"/accounts".length));
+      const userId = decodeURIComponent(
+        url.pathname.slice("/auth/users/".length, -"/accounts".length),
+      );
       const payload = await readJson(req);
       const out = await uiUpsertUserAccount(userId, payload || {});
-      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to save account" });
+      if (!out.ok)
+        return json(res, 400, {
+          ok: false,
+          error: out.error || "Failed to save account",
+        });
       return json(res, 200, out);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -9012,15 +12005,25 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "PUT" && /^\/auth\/users\/[^/]+\/accounts\/[^/]+$/.test(url.pathname)) {
+  if (
+    req.method === "PUT" &&
+    /^\/auth\/users\/[^/]+\/accounts\/[^/]+$/.test(url.pathname)
+  ) {
     if (!requireSystemRoleForUi(req, res)) return;
     try {
       const parts = url.pathname.split("/").filter(Boolean);
       const userId = decodeURIComponent(parts[2] || "");
       const accountId = decodeURIComponent(parts[4] || "");
       const payload = await readJson(req);
-      const out = await uiUpsertUserAccount(userId, { ...(payload || {}), account_id: accountId });
-      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to update account" });
+      const out = await uiUpsertUserAccount(userId, {
+        ...(payload || {}),
+        account_id: accountId,
+      });
+      if (!out.ok)
+        return json(res, 400, {
+          ok: false,
+          error: out.error || "Failed to update account",
+        });
       return json(res, 200, out);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -9028,14 +12031,21 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "DELETE" && /^\/auth\/users\/[^/]+\/accounts\/[^/]+$/.test(url.pathname)) {
+  if (
+    req.method === "DELETE" &&
+    /^\/auth\/users\/[^/]+\/accounts\/[^/]+$/.test(url.pathname)
+  ) {
     if (!requireSystemRoleForUi(req, res)) return;
     try {
       const parts = url.pathname.split("/").filter(Boolean);
       const userId = decodeURIComponent(parts[2] || "");
       const accountId = decodeURIComponent(parts[4] || "");
       const out = await uiDeleteUserAccount(userId, accountId);
-      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to delete account" });
+      if (!out.ok)
+        return json(res, 400, {
+          ok: false,
+          error: out.error || "Failed to delete account",
+        });
       return json(res, 200, out);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -9043,26 +12053,54 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "POST" && /^\/auth\/users\/[^/]+\/api-keys$/.test(url.pathname)) {
-    return json(res, 410, { ok: false, error: "User API key endpoints are removed. Use account API key rotation." });
+  if (
+    req.method === "POST" &&
+    /^\/auth\/users\/[^/]+\/api-keys$/.test(url.pathname)
+  ) {
+    return json(res, 410, {
+      ok: false,
+      error:
+        "User API key endpoints are removed. Use account API key rotation.",
+    });
   }
 
-  if (req.method === "PUT" && /^\/auth\/users\/[^/]+\/api-keys\/[^/]+$/.test(url.pathname)) {
-    return json(res, 410, { ok: false, error: "User API key endpoints are removed. Use account API key rotation." });
+  if (
+    req.method === "PUT" &&
+    /^\/auth\/users\/[^/]+\/api-keys\/[^/]+$/.test(url.pathname)
+  ) {
+    return json(res, 410, {
+      ok: false,
+      error:
+        "User API key endpoints are removed. Use account API key rotation.",
+    });
   }
 
-  if (req.method === "DELETE" && /^\/auth\/users\/[^/]+\/api-keys\/[^/]+$/.test(url.pathname)) {
-    return json(res, 410, { ok: false, error: "User API key endpoints are removed. Use account API key rotation." });
+  if (
+    req.method === "DELETE" &&
+    /^\/auth\/users\/[^/]+\/api-keys\/[^/]+$/.test(url.pathname)
+  ) {
+    return json(res, 410, {
+      ok: false,
+      error:
+        "User API key endpoints are removed. Use account API key rotation.",
+    });
   }
 
   if (req.method === "PUT" && /^\/auth\/users\/[^/]+$/.test(url.pathname)) {
     if (!requireSystemRoleForUi(req, res)) return;
     try {
-      const userId = decodeURIComponent(url.pathname.slice("/auth/users/".length));
-      if (!userId) return json(res, 400, { ok: false, error: "user_id is required" });
+      const userId = decodeURIComponent(
+        url.pathname.slice("/auth/users/".length),
+      );
+      if (!userId)
+        return json(res, 400, { ok: false, error: "user_id is required" });
       const payload = await readJson(req);
       const out = await uiUpdateUserById(userId, payload || {});
-      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to update user" });
+      if (!out.ok)
+        return json(res, 400, {
+          ok: false,
+          error: out.error || "Failed to update user",
+        });
       for (const [token, session] of UI_SESSIONS.entries()) {
         if (String(session?.user_id || "") !== String(userId)) continue;
         if (!normalizeUserActive(out.user?.is_active, true)) {
@@ -9087,10 +12125,17 @@ const appHandler = async (req, res) => {
   if (req.method === "DELETE" && /^\/auth\/users\/[^/]+$/.test(url.pathname)) {
     if (!requireSystemRoleForUi(req, res)) return;
     try {
-      const userId = decodeURIComponent(url.pathname.slice("/auth/users/".length));
-      if (!userId) return json(res, 400, { ok: false, error: "user_id is required" });
+      const userId = decodeURIComponent(
+        url.pathname.slice("/auth/users/".length),
+      );
+      if (!userId)
+        return json(res, 400, { ok: false, error: "user_id is required" });
       const out = await uiDeleteUserById(userId);
-      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to delete user" });
+      if (!out.ok)
+        return json(res, 400, {
+          ok: false,
+          error: out.error || "Failed to delete user",
+        });
 
       // Logout active sessions for this user
       for (const [token, session] of UI_SESSIONS.entries()) {
@@ -9105,16 +12150,31 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "POST" && /^\/auth\/users\/[^/]+\/deactivate$/.test(url.pathname)) {
+  if (
+    req.method === "POST" &&
+    /^\/auth\/users\/[^/]+\/deactivate$/.test(url.pathname)
+  ) {
     if (!requireSystemRoleForUi(req, res)) return;
     try {
-      const base = url.pathname.slice("/auth/users/".length, -"/deactivate".length);
+      const base = url.pathname.slice(
+        "/auth/users/".length,
+        -"/deactivate".length,
+      );
       const userId = decodeURIComponent(base.replace(/\/+$/, ""));
-      if (!userId) return json(res, 400, { ok: false, error: "user_id is required" });
-      const out = await uiUpdateUserById(userId, { is_active: false, role: "Guest" });
-      if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to deactivate user" });
+      if (!userId)
+        return json(res, 400, { ok: false, error: "user_id is required" });
+      const out = await uiUpdateUserById(userId, {
+        is_active: false,
+        role: "Guest",
+      });
+      if (!out.ok)
+        return json(res, 400, {
+          ok: false,
+          error: out.error || "Failed to deactivate user",
+        });
       for (const [token, session] of UI_SESSIONS.entries()) {
-        if (String(session?.user_id || "") === String(userId)) UI_SESSIONS.delete(token);
+        if (String(session?.user_id || "") === String(userId))
+          UI_SESSIONS.delete(token);
       }
       return json(res, 200, { ok: true, user: out.user });
     } catch (error) {
@@ -9128,9 +12188,17 @@ const appHandler = async (req, res) => {
       const payload = await readJson(req);
       const email = normalizeEmail(payload.email);
       const password = String(payload.password || "");
-      if (!email || !password) return json(res, 400, { ok: false, error: "Email and password are required" });
+      if (!email || !password)
+        return json(res, 400, {
+          ok: false,
+          error: "Email and password are required",
+        });
       const authUser = await uiAuthGetVerifiedUser(email, password);
-      if (!authUser) return json(res, 401, { ok: false, error: "Invalid email or password" });
+      if (!authUser)
+        return json(res, 401, {
+          ok: false,
+          error: "Invalid email or password",
+        });
       const token = createUiSession(authUser);
       setUiSessionCookie(res, token);
       return json(res, 200, { ok: true, user: authUser });
@@ -9154,8 +12222,16 @@ const appHandler = async (req, res) => {
       const payload = await readJson(req);
       const currentPassword = String(payload.currentPassword || "");
       const newPassword = String(payload.newPassword || "");
-      const changed = await uiAuthChangePassword(sess.email, currentPassword, newPassword);
-      if (!changed.ok) return json(res, 400, { ok: false, error: changed.error || "Failed to update password" });
+      const changed = await uiAuthChangePassword(
+        sess.email,
+        currentPassword,
+        newPassword,
+      );
+      if (!changed.ok)
+        return json(res, 400, {
+          ok: false,
+          error: changed.error || "Failed to update password",
+        });
       return json(res, 200, { ok: true, message: "Password updated" });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -9223,11 +12299,15 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/mt5/dashboard/summary") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
       const limitRaw = Number(url.searchParams.get("limit") || 5000);
-      const limit = Math.max(100, Math.min(50000, Number.isFinite(limitRaw) ? limitRaw : 5000));
+      const limit = Math.max(
+        100,
+        Math.min(50000, Number.isFinite(limitRaw) ? limitRaw : 5000),
+      );
       const userId = uiEffectiveUserId(req, url);
       const rows = await mt5ListSignals(limit, "", userId);
 
@@ -9238,15 +12318,34 @@ const appHandler = async (req, res) => {
         user_id: userId || null,
         metrics,
         benefit: {
-          today: mt5ComputeMetrics(mt5FilterRows(rows, { from: mt5PeriodRange("today").start })).pnl_money_realized,
-          week: mt5ComputeMetrics(mt5FilterRows(rows, { from: mt5PeriodRange("week").start })).pnl_money_realized,
-          month: mt5ComputeMetrics(mt5FilterRows(rows, { from: mt5PeriodRange("month").start })).pnl_money_realized,
+          today: mt5ComputeMetrics(
+            mt5FilterRows(rows, { from: mt5PeriodRange("today").start }),
+          ).pnl_money_realized,
+          week: mt5ComputeMetrics(
+            mt5FilterRows(rows, { from: mt5PeriodRange("week").start }),
+          ).pnl_money_realized,
+          month: mt5ComputeMetrics(
+            mt5FilterRows(rows, { from: mt5PeriodRange("month").start }),
+          ).pnl_money_realized,
         },
-        status_counts: mt5CountBy(rows, (r) => mt5CanonicalStoredStatus(r.status)),
-        action_counts: mt5CountBy(rows, (r) => String(r.action || "").toUpperCase()),
-        order_type_counts: mt5CountBy(rows, (r) => String(r.raw_json?.order_type || "limit").toUpperCase()),
-        top_symbols: mt5CountBy(rows, (r) => String(r.symbol || "").toUpperCase(), { limit: 10 }),
-        latest_unprocessed: rows.filter(r => ["NEW", "LOCKED"].includes(r.status)).slice(0, 20).map(mt5PublicState),
+        status_counts: mt5CountBy(rows, (r) =>
+          mt5CanonicalStoredStatus(r.status),
+        ),
+        action_counts: mt5CountBy(rows, (r) =>
+          String(r.action || "").toUpperCase(),
+        ),
+        order_type_counts: mt5CountBy(rows, (r) =>
+          String(r.raw_json?.order_type || "limit").toUpperCase(),
+        ),
+        top_symbols: mt5CountBy(
+          rows,
+          (r) => String(r.symbol || "").toUpperCase(),
+          { limit: 10 },
+        ),
+        latest_unprocessed: rows
+          .filter((r) => ["NEW", "LOCKED"].includes(r.status))
+          .slice(0, 20)
+          .map(mt5PublicState),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -9255,29 +12354,48 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/mt5/dashboard/advanced") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
       const limitRaw = Number(url.searchParams.get("limit") || 100000);
-      const limit = Math.max(500, Math.min(200000, Number.isFinite(limitRaw) ? limitRaw : 100000));
+      const limit = Math.max(
+        500,
+        Math.min(200000, Number.isFinite(limitRaw) ? limitRaw : 100000),
+      );
       const userId = uiEffectiveUserId(req, url);
       const accountId = envStr(url.searchParams.get("account_id"));
       const symbol = envStr(url.searchParams.get("symbol")).toUpperCase();
-      const sourceId = envStr(url.searchParams.get("source_id") || url.searchParams.get("source") || url.searchParams.get("strategy"));
-      const model = envStr(url.searchParams.get("entry_model") || url.searchParams.get("model"));
-      const chartTf = envStr(url.searchParams.get("chart_tf") || url.searchParams.get("chartTf"));
-      const signalTf = envStr(url.searchParams.get("signal_tf") || url.searchParams.get("timeframe"));
+      const sourceId = envStr(
+        url.searchParams.get("source_id") ||
+          url.searchParams.get("source") ||
+          url.searchParams.get("strategy"),
+      );
+      const model = envStr(
+        url.searchParams.get("entry_model") || url.searchParams.get("model"),
+      );
+      const chartTf = envStr(
+        url.searchParams.get("chart_tf") || url.searchParams.get("chartTf"),
+      );
+      const signalTf = envStr(
+        url.searchParams.get("signal_tf") || url.searchParams.get("timeframe"),
+      );
       const direction = envStr(url.searchParams.get("direction")).toUpperCase();
       const range = envStr(url.searchParams.get("range"), "all").toLowerCase();
 
       // Use V2 trades ledger for authoritative dashboard stats
-      const tradesRes = await mt5ListTradesV2({
-        user_id: userId,
-        account_id: accountId,
-        symbol: symbol,
-        source_id: sourceId,
-        side: direction === "BUY" ? "BUY" : (direction === "SELL" ? "SELL" : "")
-      }, 1, limit);
+      const tradesRes = await mt5ListTradesV2(
+        {
+          user_id: userId,
+          account_id: accountId,
+          symbol: symbol,
+          source_id: sourceId,
+          side:
+            direction === "BUY" ? "BUY" : direction === "SELL" ? "SELL" : "",
+        },
+        1,
+        limit,
+      );
 
       const allRows = tradesRes.items || [];
       const rowsByDimension = allRows.filter((r) => {
@@ -9292,13 +12410,28 @@ const appHandler = async (req, res) => {
       });
 
       const period = mt5PeriodRange(range);
-      const selectedRows = mt5FilterRows(rowsByDimension, { from: period.start, to: period.end });
+      const selectedRows = mt5FilterRows(rowsByDimension, {
+        from: period.start,
+        to: period.end,
+      });
 
-      const periods = ["all", "today", "yesterday", "last_week", "last_month", "week", "month", "year"];
+      const periods = [
+        "all",
+        "today",
+        "yesterday",
+        "last_week",
+        "last_month",
+        "week",
+        "month",
+        "year",
+      ];
       const periodTotals = {};
       for (const p of periods) {
         const pr = mt5PeriodRange(p);
-        const scopedRows = mt5FilterRows(rowsByDimension, { from: pr.start, to: pr.end });
+        const scopedRows = mt5FilterRows(rowsByDimension, {
+          from: pr.start,
+          to: pr.end,
+        });
         const metrics = mt5ComputeTradeMetrics(scopedRows);
         periodTotals[p] = {
           total_pnl: metrics.total_pnl,
@@ -9314,24 +12447,35 @@ const appHandler = async (req, res) => {
       const seriesBucket = range === "today" ? "hour" : "day";
       const seriesMap = new Map();
       for (const r of selectedRows) {
-        const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+        const s = mt5CanonicalStoredStatus(
+          r.execution_status || r.status || r.close_reason,
+        );
         if (!["CLOSED", "TP", "SL"].includes(s)) continue;
         // Use unified PnL field (pnl_realized for trades, pnl_money_realized for signals)
         const pnl = Number(r.pnl_realized ?? r.pnl_money_realized);
         if (!Number.isFinite(pnl)) continue;
         const d = new Date(r.closed_at || r.ack_at || r.created_at);
         if (!Number.isFinite(d.getTime())) continue;
-        const key = seriesBucket === "hour"
-          ? `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")} ${String(d.getUTCHours()).padStart(2, "0")}:00`
-          : `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+        const key =
+          seriesBucket === "hour"
+            ? `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")} ${String(d.getUTCHours()).padStart(2, "0")}:00`
+            : `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
         seriesMap.set(key, (seriesMap.get(key) || 0) + pnl);
       }
       const pnlSeries = [...seriesMap.entries()]
         .sort((a, b) => (a[0] < b[0] ? -1 : 1))
         .map(([x, y]) => ({ x, y }));
 
-      const symbols = [...new Set(rowsByDimension.map((r) => String(r.symbol || "").toUpperCase()).filter(Boolean))].sort();
-      const accounts = [...new Set(allRows.map((r) => envStr(r.account_id)).filter(Boolean))].sort();
+      const symbols = [
+        ...new Set(
+          rowsByDimension
+            .map((r) => String(r.symbol || "").toUpperCase())
+            .filter(Boolean),
+        ),
+      ].sort();
+      const accounts = [
+        ...new Set(allRows.map((r) => envStr(r.account_id)).filter(Boolean)),
+      ].sort();
 
       const accountsSummary = await mt5ListAccountsV2(userId);
 
@@ -9350,24 +12494,87 @@ const appHandler = async (req, res) => {
           range,
           accounts,
           symbols,
-          sources: [...new Set(allRows.map(r => mt5StrategyFromRow(r)).filter(Boolean))].sort(),
-          entry_models: [...new Set(allRows.map(r => mt5EntryModelFromRow(r)).filter(Boolean))].sort(),
-          chart_tfs: [...new Set(allRows.map(r => String(r.chart_tf || r.raw_json?.chart_tf || r.raw_json?.chartTf || r.raw_json?.chartTimeframe || r.signal_tf || r.raw_json?.signal_tf || r.raw_json?.sourceTf || r.raw_json?.timeframe || "")).filter(Boolean))].sort(),
-          signal_tfs: [...new Set(allRows.map(r => String(r.signal_tf || r.raw_json?.signal_tf || r.raw_json?.sourceTf || r.raw_json?.timeframe || "")).filter(Boolean))].sort(),
+          sources: [
+            ...new Set(
+              allRows.map((r) => mt5StrategyFromRow(r)).filter(Boolean),
+            ),
+          ].sort(),
+          entry_models: [
+            ...new Set(
+              allRows.map((r) => mt5EntryModelFromRow(r)).filter(Boolean),
+            ),
+          ].sort(),
+          chart_tfs: [
+            ...new Set(
+              allRows
+                .map((r) =>
+                  String(
+                    r.chart_tf ||
+                      r.raw_json?.chart_tf ||
+                      r.raw_json?.chartTf ||
+                      r.raw_json?.chartTimeframe ||
+                      r.signal_tf ||
+                      r.raw_json?.signal_tf ||
+                      r.raw_json?.sourceTf ||
+                      r.raw_json?.timeframe ||
+                      "",
+                  ),
+                )
+                .filter(Boolean),
+            ),
+          ].sort(),
+          signal_tfs: [
+            ...new Set(
+              allRows
+                .map((r) =>
+                  String(
+                    r.signal_tf ||
+                      r.raw_json?.signal_tf ||
+                      r.raw_json?.sourceTf ||
+                      r.raw_json?.timeframe ||
+                      "",
+                  ),
+                )
+                .filter(Boolean),
+            ),
+          ].sort(),
         },
         metrics: mt5ComputeTradeMetrics(selectedRows),
         period_totals: periodTotals,
         top_winrate: {
-          symbols: mt5ComputeTopWinrateRows(selectedRows, (r) => String(r.symbol || "").toUpperCase(), { limit: 100, includeDirection: false }),
-          entry_models: mt5ComputeTopWinrateRows(selectedRows, (r) => mt5EntryModelFromRow(r), { limit: 100, includeDirection: false }),
-          accounts: mt5ComputeTopWinrateRows(selectedRows, (r) => envStr(r.account_id), { limit: 100, includeDirection: false }),
-          sources: mt5ComputeTopWinrateRows(selectedRows, (r) => mt5StrategyFromRow(r), { limit: 100, includeDirection: false }),
-          directional: mt5ComputeTopWinrateRows(selectedRows, (r) => {
-            const dir = String(r.action || r.side || "BUY").toLowerCase();
-            const typeRaw = String(r.metadata?.type || r.raw_json?.type || r.order_type || "LIMIT").toLowerCase();
-            const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-            return `${capitalize(dir)} ${capitalize(typeRaw)}`;
-          }, { limit: 100, includeDirection: false }),
+          symbols: mt5ComputeTopWinrateRows(
+            selectedRows,
+            (r) => String(r.symbol || "").toUpperCase(),
+            { limit: 100, includeDirection: false },
+          ),
+          entry_models: mt5ComputeTopWinrateRows(
+            selectedRows,
+            (r) => mt5EntryModelFromRow(r),
+            { limit: 100, includeDirection: false },
+          ),
+          accounts: mt5ComputeTopWinrateRows(
+            selectedRows,
+            (r) => envStr(r.account_id),
+            { limit: 100, includeDirection: false },
+          ),
+          sources: mt5ComputeTopWinrateRows(
+            selectedRows,
+            (r) => mt5StrategyFromRow(r),
+            { limit: 100, includeDirection: false },
+          ),
+          directional: mt5ComputeTopWinrateRows(
+            selectedRows,
+            (r) => {
+              const dir = String(r.action || r.side || "BUY").toLowerCase();
+              const typeRaw = String(
+                r.metadata?.type || r.raw_json?.type || r.order_type || "LIMIT",
+              ).toLowerCase();
+              const capitalize = (s) =>
+                s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+              return `${capitalize(dir)} ${capitalize(typeRaw)}`;
+            },
+            { limit: 100, includeDirection: false },
+          ),
         },
         pnl_series: pnlSeries,
       });
@@ -9378,31 +12585,46 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/mt5/dashboard/pnl-series") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
       const limitRaw = Number(url.searchParams.get("limit") || 5000);
-      const limit = Math.max(100, Math.min(50000, Number.isFinite(limitRaw) ? limitRaw : 5000));
-      const period = envStr(url.searchParams.get("period"), "month").toLowerCase();
+      const limit = Math.max(
+        100,
+        Math.min(50000, Number.isFinite(limitRaw) ? limitRaw : 5000),
+      );
+      const period = envStr(
+        url.searchParams.get("period"),
+        "month",
+      ).toLowerCase();
       const userId = uiEffectiveUserId(req, url);
       const range = mt5PeriodRange(period);
       const rows = await mt5ListSignals(limit, "", userId);
-      const filtered = mt5FilterRows(rows, { from: range.start, to: range.end });
+      const filtered = mt5FilterRows(rows, {
+        from: range.start,
+        to: range.end,
+      });
       const bucket = period === "today" ? "hour" : "day";
       const map = new Map();
       for (const r of filtered) {
-        const s = mt5CanonicalStoredStatus(r.execution_status || r.status || r.close_reason);
+        const s = mt5CanonicalStoredStatus(
+          r.execution_status || r.status || r.close_reason,
+        );
         if (!["CLOSED", "TP", "SL"].includes(s)) continue;
         const pnl = Number(r.pnl_money_realized);
         if (!Number.isFinite(pnl)) continue;
         const d = new Date(r.closed_at || r.ack_at || r.created_at);
         if (!Number.isFinite(d.getTime())) continue;
-        const key = bucket === "hour"
-          ? `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")} ${String(d.getUTCHours()).padStart(2, "0")}:00`
-          : `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+        const key =
+          bucket === "hour"
+            ? `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")} ${String(d.getUTCHours()).padStart(2, "0")}:00`
+            : `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
         map.set(key, (map.get(key) || 0) + pnl);
       }
-      const points = [...map.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([x, y]) => ({ x, y }));
+      const points = [...map.entries()]
+        .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+        .map(([x, y]) => ({ x, y }));
       return json(res, 200, { ok: true, period, points });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -9411,33 +12633,92 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/mt5/filters/advanced") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
       const userId = uiEffectiveUserId(req, url);
       const limitRaw = Number(url.searchParams.get("limit") || 20000);
-      const limit = Math.max(1000, Math.min(100000, Number.isFinite(limitRaw) ? limitRaw : 20000));
+      const limit = Math.max(
+        1000,
+        Math.min(100000, Number.isFinite(limitRaw) ? limitRaw : 20000),
+      );
       const rows = await mt5ListSignals(limit, "", userId);
-      const symbols = [...new Set(rows.map((r) => String(r.symbol || "").toUpperCase()))].filter(Boolean).sort();
-      const sources = [...new Set(rows.map((r) => mt5StrategyFromRow(r)))].filter(Boolean).sort();
-      const models = [...new Set(rows.map((r) => mt5EntryModelFromRow(r)))].filter(Boolean).sort();
-      const chartTfs = [...new Set(rows.map((r) => String(r.chart_tf || r.raw_json?.chart_tf || r.raw_json?.chartTf || r.raw_json?.chartTimeframe || r.signal_tf || r.raw_json?.signal_tf || r.raw_json?.sourceTf || r.raw_json?.timeframe || "")))].filter(Boolean).sort();
-      const signalTfs = [...new Set(rows.map((r) => String(r.signal_tf || r.raw_json?.signal_tf || r.raw_json?.sourceTf || r.raw_json?.timeframe || "")))].filter(Boolean).sort();
-      return json(res, 200, { ok: true, symbols, sources, entry_models: models, chart_tfs: chartTfs, signal_tfs: signalTfs });
+      const symbols = [
+        ...new Set(rows.map((r) => String(r.symbol || "").toUpperCase())),
+      ]
+        .filter(Boolean)
+        .sort();
+      const sources = [...new Set(rows.map((r) => mt5StrategyFromRow(r)))]
+        .filter(Boolean)
+        .sort();
+      const models = [...new Set(rows.map((r) => mt5EntryModelFromRow(r)))]
+        .filter(Boolean)
+        .sort();
+      const chartTfs = [
+        ...new Set(
+          rows.map((r) =>
+            String(
+              r.chart_tf ||
+                r.raw_json?.chart_tf ||
+                r.raw_json?.chartTf ||
+                r.raw_json?.chartTimeframe ||
+                r.signal_tf ||
+                r.raw_json?.signal_tf ||
+                r.raw_json?.sourceTf ||
+                r.raw_json?.timeframe ||
+                "",
+            ),
+          ),
+        ),
+      ]
+        .filter(Boolean)
+        .sort();
+      const signalTfs = [
+        ...new Set(
+          rows.map((r) =>
+            String(
+              r.signal_tf ||
+                r.raw_json?.signal_tf ||
+                r.raw_json?.sourceTf ||
+                r.raw_json?.timeframe ||
+                "",
+            ),
+          ),
+        ),
+      ]
+        .filter(Boolean)
+        .sort();
+      return json(res, 200, {
+        ok: true,
+        symbols,
+        sources,
+        entry_models: models,
+        chart_tfs: chartTfs,
+        signal_tfs: signalTfs,
+      });
     } catch (error) {
       return json(res, 400, { ok: false, error: error.message });
     }
   }
 
   if (req.method === "GET" && url.pathname === "/mt5/filters/symbols") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
       const limitRaw = Number(url.searchParams.get("limit") || 10000);
-      const limit = Math.max(100, Math.min(50000, Number.isFinite(limitRaw) ? limitRaw : 10000));
+      const limit = Math.max(
+        100,
+        Math.min(50000, Number.isFinite(limitRaw) ? limitRaw : 10000),
+      );
       const userId = uiEffectiveUserId(req, url);
       const rows = await mt5ListSignals(limit, "", userId);
-      const symbols = [...new Set(rows.map((r) => String(r.symbol || "").toUpperCase()).filter(Boolean))].sort();
+      const symbols = [
+        ...new Set(
+          rows.map((r) => String(r.symbol || "").toUpperCase()).filter(Boolean),
+        ),
+      ].sort();
       return json(res, 200, { ok: true, symbols });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -9445,20 +12726,34 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "GET" && (url.pathname === "/v2/signals" || url.pathname === "/mt5/trades/search")) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "GET" &&
+    (url.pathname === "/v2/signals" || url.pathname === "/mt5/trades/search")
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
       const pageRaw = Number(url.searchParams.get("page") || 1);
       const pageSizeRaw = Number(url.searchParams.get("pageSize") || 20);
       const page = Math.max(1, Number.isFinite(pageRaw) ? pageRaw : 1);
-      const pageSize = Math.max(5, Math.min(200, Number.isFinite(pageSizeRaw) ? pageSizeRaw : 20));
+      const pageSize = Math.max(
+        5,
+        Math.min(200, Number.isFinite(pageSizeRaw) ? pageSizeRaw : 20),
+      );
       const { rows } = await mt5GetFilteredTrades(url, null, 10000);
 
       const total = rows.length;
       const start = (page - 1) * pageSize;
       const data = rows.slice(start, start + pageSize).map(mt5PublicState);
-      return json(res, 200, { ok: true, page, pageSize, total, pages: Math.max(1, Math.ceil(total / pageSize)), trades: data });
+      return json(res, 200, {
+        ok: true,
+        page,
+        pageSize,
+        total,
+        pages: Math.max(1, Math.ceil(total / pageSize)),
+        trades: data,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });
@@ -9466,7 +12761,8 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/v2/signals/create") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     const sess = getUiSessionFromReq(req);
     if (!requireAdminKey(req, res, url)) return;
 
@@ -9474,13 +12770,26 @@ const appHandler = async (req, res) => {
       const payload = await readJson(req);
       const source = mt5NormalizeUiSource(payload.source, "ui_manual");
       const timeframe = String(payload.timeframe || payload.tf || "").trim();
-      const strategy = String(payload.strategy || (source.startsWith("ai_") ? source : "Manual")).trim();
-      const effectiveUserId = uiEffectiveUserId(req, url, payload) || sess.user_id || CFG.mt5DefaultUserId;
-      const rawPayload = payload && typeof payload === "object" ? { ...payload } : {};
-      const existingSnapshot = rawPayload.analysis_snapshot && typeof rawPayload.analysis_snapshot === "object"
-        ? rawPayload.analysis_snapshot
-        : null;
-      if (existingSnapshot && String(existingSnapshot?.status || "").toLowerCase() === "ok" && Array.isArray(existingSnapshot?.bars) && existingSnapshot.bars.length) {
+      const strategy = String(
+        payload.strategy || (source.startsWith("ai_") ? source : "Manual"),
+      ).trim();
+      const effectiveUserId =
+        uiEffectiveUserId(req, url, payload) ||
+        sess.user_id ||
+        CFG.mt5DefaultUserId;
+      const rawPayload =
+        payload && typeof payload === "object" ? { ...payload } : {};
+      const existingSnapshot =
+        rawPayload.analysis_snapshot &&
+        typeof rawPayload.analysis_snapshot === "object"
+          ? rawPayload.analysis_snapshot
+          : null;
+      if (
+        existingSnapshot &&
+        String(existingSnapshot?.status || "").toLowerCase() === "ok" &&
+        Array.isArray(existingSnapshot?.bars) &&
+        existingSnapshot.bars.length
+      ) {
         rawPayload.analysis_snapshot = existingSnapshot;
       } else {
         const analysisSnapshot = await buildAnalysisSnapshotFromTwelve({
@@ -9493,30 +12802,37 @@ const appHandler = async (req, res) => {
           rawPayload.analysis_snapshot = analysisSnapshot;
         }
       }
-      const enqueue = await mt5EnqueueSignalFromPayload({
-        id: payload.signal_id || payload.id || "",
-        action: payload.action,
-        symbol: payload.symbol,
-        volume: payload.volume ?? payload.lots,
-        sl: payload.sl ?? null,
-        tp: payload.tp ?? null,
-        rr: payload.rr ?? payload.risk_reward ?? null,
-        risk_money: payload.risk_money ?? payload.money_risk ?? null,
-        price: payload.price ?? payload.entry ?? null,
-        strategy,
-        entry_model: payload.entry_model ?? payload.model ?? payload.strategy ?? null,
-        timeframe: timeframe || "manual",
-        note: payload.note || "",
-        user_id: effectiveUserId,
-        order_type: payload.order_type || "limit",
-        provider: source.startsWith("ai_") ? source : "ui",
-        only_signal: Boolean(payload.only_signal ?? payload.onlySignal),
-        raw_json: (rawPayload.raw_json && typeof rawPayload.raw_json === "object") ? rawPayload.raw_json : rawPayload,
-      }, {
-        source,
-        eventType: "UI_CREATE_TRADE",
-        fallbackIdPrefix: "ui",
-      });
+      const enqueue = await mt5EnqueueSignalFromPayload(
+        {
+          id: payload.signal_id || payload.id || "",
+          action: payload.action,
+          symbol: payload.symbol,
+          volume: payload.volume ?? payload.lots,
+          sl: payload.sl ?? null,
+          tp: payload.tp ?? null,
+          rr: payload.rr ?? payload.risk_reward ?? null,
+          risk_money: payload.risk_money ?? payload.money_risk ?? null,
+          price: payload.price ?? payload.entry ?? null,
+          strategy,
+          entry_model:
+            payload.entry_model ?? payload.model ?? payload.strategy ?? null,
+          timeframe: timeframe || "manual",
+          note: payload.note || "",
+          user_id: effectiveUserId,
+          order_type: payload.order_type || "limit",
+          provider: source.startsWith("ai_") ? source : "ui",
+          only_signal: Boolean(payload.only_signal ?? payload.onlySignal),
+          raw_json:
+            rawPayload.raw_json && typeof rawPayload.raw_json === "object"
+              ? rawPayload.raw_json
+              : rawPayload,
+        },
+        {
+          source,
+          eventType: "UI_CREATE_TRADE",
+          fallbackIdPrefix: "ui",
+        },
+      );
       return json(res, 200, { ok: true, trade: enqueue, signal: enqueue });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -9525,34 +12841,77 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/v2/trades/create") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     const sess = getUiSessionFromReq(req);
     if (!requireAdminKey(req, res, url)) return;
     try {
       const payload = await readJson(req);
       const source = mt5NormalizeUiSource(payload.source, "ui_manual");
       const sourceId = mt5SlugId(source, "tradingview");
-      const effectiveUserId = uiEffectiveUserId(req, url, payload) || sess.user_id || CFG.mt5DefaultUserId;
+      const effectiveUserId =
+        uiEffectiveUserId(req, url, payload) ||
+        sess.user_id ||
+        CFG.mt5DefaultUserId;
       const action = mt5NormalizeAction(payload);
       const symbol = mt5NormalizeSymbol(payload);
       const volume = mt5NormalizeVolume(payload);
-      const derived = mt5DeriveEntryModelAndNote(payload, { fallbackModel: payload.strategy || source || "MANUAL" });
+      const derived = mt5DeriveEntryModelAndNote(payload, {
+        fallbackModel: payload.strategy || source || "MANUAL",
+      });
       const entryModel = derived.entryModel || null;
-      const signalTf = mt5TfToMinutes(payload.signal_tf ?? payload.signalTf ?? payload.sourceTf ?? payload.timeframe ?? payload.tf) || null;
-      const chartTf = mt5TfToMinutes(payload.chart_tf ?? payload.chartTf ?? payload.chartTimeframe ?? payload.chart_tf_period) || null;
+      const signalTf =
+        mt5TfToMinutes(
+          payload.signal_tf ??
+            payload.signalTf ??
+            payload.sourceTf ??
+            payload.timeframe ??
+            payload.tf,
+        ) || null;
+      const chartTf =
+        mt5TfToMinutes(
+          payload.chart_tf ??
+            payload.chartTf ??
+            payload.chartTimeframe ??
+            payload.chart_tf_period,
+        ) || null;
       const entry = asNum(payload.entry ?? payload.price, NaN);
       const sl = asNum(payload.sl, NaN);
       const tp = asNum(payload.tp, NaN);
       const note = String(derived.note || payload.note || "").trim();
-      const rawPayload = payload && typeof payload === "object" ? { ...payload } : {};
-      const sessionPrefix = sanitizeSessionPrefix(payload.session_prefix || payload.sessionPrefix || rawPayload?.session_prefix || rawPayload?.sessionPrefix || "");
-      const sidBaseRaw = String(payload.sid || payload.trade_sid || rawPayload?.sid || rawPayload?.trade_sid || "").trim();
+      const rawPayload =
+        payload && typeof payload === "object" ? { ...payload } : {};
+      const sessionPrefix = sanitizeSessionPrefix(
+        payload.session_prefix ||
+          payload.sessionPrefix ||
+          rawPayload?.session_prefix ||
+          rawPayload?.sessionPrefix ||
+          "",
+      );
+      const sidBaseRaw = String(
+        payload.sid ||
+          payload.trade_sid ||
+          rawPayload?.sid ||
+          rawPayload?.trade_sid ||
+          "",
+      ).trim();
       const tradeSidBase = sidBaseRaw
         ? normalizePublicSidBase(sidBaseRaw, "TRD")
-        : normalizePublicSidBase(sessionPrefix ? `${symbol}_${sessionPrefix}` : `${symbol}_TRD`, "TRD");
-      if (!symbol) return json(res, 400, { ok: false, error: "symbol is required" });
-      if (!Number.isFinite(entry) || !Number.isFinite(sl) || !Number.isFinite(tp)) {
-        return json(res, 400, { ok: false, error: "entry/sl/tp are required numeric values" });
+        : normalizePublicSidBase(
+            sessionPrefix ? `${symbol}_${sessionPrefix}` : `${symbol}_TRD`,
+            "TRD",
+          );
+      if (!symbol)
+        return json(res, 400, { ok: false, error: "symbol is required" });
+      if (
+        !Number.isFinite(entry) ||
+        !Number.isFinite(sl) ||
+        !Number.isFinite(tp)
+      ) {
+        return json(res, 400, {
+          ok: false,
+          error: "entry/sl/tp are required numeric values",
+        });
       }
 
       await mt5UpsertSourceV2({
@@ -9592,13 +12951,22 @@ const appHandler = async (req, res) => {
           provider: payload.provider || null,
           session_prefix: sessionPrefix || null,
           entry_model_raw: derived.entryModelRaw || null,
-          raw_json: rawPayload?.raw_json && typeof rawPayload.raw_json === "object" ? rawPayload.raw_json : rawPayload,
-          analysis_snapshot: rawPayload?.analysis_snapshot && typeof rawPayload.analysis_snapshot === "object"
-            ? rawPayload.analysis_snapshot
-            : null,
+          raw_json:
+            rawPayload?.raw_json && typeof rawPayload.raw_json === "object"
+              ? rawPayload.raw_json
+              : rawPayload,
+          analysis_snapshot:
+            rawPayload?.analysis_snapshot &&
+            typeof rawPayload.analysis_snapshot === "object"
+              ? rawPayload.analysis_snapshot
+              : null,
         },
       });
-      return json(res, 200, { ok: true, created: fanout?.created || 0, account_ids: fanout?.account_ids || [] });
+      return json(res, 200, {
+        ok: true,
+        created: fanout?.created || 0,
+        account_ids: fanout?.account_ids || [],
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });
@@ -9606,14 +12974,22 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/mt5/trades/delete") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
       if (!requireAdminKey(req, res, url, payload)) return;
-      const { rows, filters, limit } = await mt5GetFilteredTrades(url, payload, 50000);
+      const { rows, filters, limit } = await mt5GetFilteredTrades(
+        url,
+        payload,
+        50000,
+      );
       const ids = rows.map((r) => String(r.signal_id || "")).filter(Boolean);
       const removed = await mt5DeleteSignalsByIds(ids);
-      const cleanup = await mt5CleanupSignalTradeArtifacts({ signalRows: rows, signalIds: ids });
+      const cleanup = await mt5CleanupSignalTradeArtifacts({
+        signalRows: rows,
+        signalIds: ids,
+      });
       return json(res, 200, {
         ok: true,
         deleted: removed.deleted || 0,
@@ -9630,15 +13006,23 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/mt5/trades/cancel") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
       if (!requireAdminKey(req, res, url, payload)) return;
-      const { rows, filters, limit } = await mt5GetFilteredTrades(url, payload, 50000);
+      const { rows, filters, limit } = await mt5GetFilteredTrades(
+        url,
+        payload,
+        50000,
+      );
       const ids = rows.map((r) => String(r.signal_id || "")).filter(Boolean);
       const updated = await mt5CancelSignalsByIds(ids);
-      const cleanup = await mt5CleanupSignalTradeArtifacts({ signalRows: rows, signalIds: ids });
-      for (const signalId of (updated.updated_ids || [])) {
+      const cleanup = await mt5CleanupSignalTradeArtifacts({
+        signalRows: rows,
+        signalIds: ids,
+      });
+      for (const signalId of updated.updated_ids || []) {
         await mt5AppendSignalEvent(signalId, "SIGNAL_MANUAL_CANCEL", {
           via: "ui_bulk_cancel",
         });
@@ -9660,13 +13044,19 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/mt5/db/schema") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireSystemRoleForUi(req, res)) return;
     try {
       const b = await mt5Backend();
-      if (!b.getTableSchema) return json(res, 400, { ok: false, error: "Not supported by this backend" });
+      if (!b.getTableSchema)
+        return json(res, 400, {
+          ok: false,
+          error: "Not supported by this backend",
+        });
       const table = envStr(url.searchParams.get("table") || "signals");
-      if (table.toLowerCase() === "ui_auth_users") return json(res, 403, { ok: false, error: "table access forbidden" });
+      if (table.toLowerCase() === "ui_auth_users")
+        return json(res, 403, { ok: false, error: "table access forbidden" });
       const schema = await b.getTableSchema(table);
       return json(res, 200, { ok: true, table, schema });
     } catch (error) {
@@ -9674,22 +13064,39 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "GET" && (url.pathname === "/v2/system/storage/stats" || url.pathname === "/system/storage/stats" || url.pathname === "/mt5/storage/stats")) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "GET" &&
+    (url.pathname === "/v2/system/storage/stats" ||
+      url.pathname === "/system/storage/stats" ||
+      url.pathname === "/mt5/storage/stats")
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAuthForUi(req, res)) return;
     try {
       const b = await mt5Backend();
-      if (!b.getStorageStats) return json(res, 400, { ok: false, error: "Not supported by this backend" });
+      if (!b.getStorageStats)
+        return json(res, 400, {
+          ok: false,
+          error: "Not supported by this backend",
+        });
       const userId = uiEffectiveUserId(req, url);
       const stats = await b.getStorageStats(userId);
       const sess = getUiSessionFromReq(req);
-      return json(res, 200, { ok: true, stats, can_hard_disk_cleanup: Boolean(sess?.ok && isSystemRole(sess.role)) });
+      return json(res, 200, {
+        ok: true,
+        stats,
+        can_hard_disk_cleanup: Boolean(sess?.ok && isSystemRole(sess.role)),
+      });
     } catch (error) {
       return json(res, 400, { ok: false, error: error.message });
     }
   }
 
-  if (req.method === "GET" && (url.pathname === "/v2/system/cache" || url.pathname === "/system/cache")) {
+  if (
+    req.method === "GET" &&
+    (url.pathname === "/v2/system/cache" || url.pathname === "/system/cache")
+  ) {
     // If browser navigation (wants HTML), fall through to static server
     const accept = req.headers["accept"] || "";
     if (url.pathname === "/system/cache" && accept.includes("text/html")) {
@@ -9710,13 +13117,17 @@ const appHandler = async (req, res) => {
         const items = await b.uiListCache();
         return json(res, 200, { ok: true, items });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error";
+        const message =
+          error instanceof Error ? error.message : "Unknown error";
         return json(res, 400, { ok: false, error: message });
       }
     }
   }
 
-  if (req.method === "DELETE" && (url.pathname === "/v2/system/cache" || url.pathname === "/system/cache")) {
+  if (
+    req.method === "DELETE" &&
+    (url.pathname === "/v2/system/cache" || url.pathname === "/system/cache")
+  ) {
     if (!requireSystemRoleForUi(req, res)) return;
     try {
       const b = await mt5Backend();
@@ -9735,16 +13146,27 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "POST" && (url.pathname === "/v2/system/storage/cleanup" || url.pathname === "/system/storage/cleanup" || url.pathname === "/mt5/storage/cleanup")) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "POST" &&
+    (url.pathname === "/v2/system/storage/cleanup" ||
+      url.pathname === "/system/storage/cleanup" ||
+      url.pathname === "/mt5/storage/cleanup")
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAuthForUi(req, res)) return;
     try {
       const payload = await readJson(req);
       const target = String(payload.target || "").trim();
-      if (!target) return json(res, 400, { ok: false, error: "target is required" });
+      if (!target)
+        return json(res, 400, { ok: false, error: "target is required" });
       if (target === "hard_disk" && !requireSystemRoleForUi(req, res)) return;
       const b = await mt5Backend();
-      if (!b.storageCleanup) return json(res, 400, { ok: false, error: "Not supported by this backend" });
+      if (!b.storageCleanup)
+        return json(res, 400, {
+          ok: false,
+          error: "Not supported by this backend",
+        });
       const userId = uiEffectiveUserId(req, url, payload);
       const stats = await b.storageCleanup(target, userId);
       return json(res, 200, { ok: true, stats });
@@ -9754,12 +13176,19 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/mt5/db/tables") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireSystemRoleForUi(req, res)) return;
     try {
       const b = await mt5Backend();
-      if (!b.listTables) return json(res, 400, { ok: false, error: "Not supported by this backend" });
-      const tables = (await b.listTables()).filter((t) => String(t || "").toLowerCase() !== "ui_auth_users");
+      if (!b.listTables)
+        return json(res, 400, {
+          ok: false,
+          error: "Not supported by this backend",
+        });
+      const tables = (await b.listTables()).filter(
+        (t) => String(t || "").toLowerCase() !== "ui_auth_users",
+      );
       return json(res, 200, { ok: true, tables });
     } catch (error) {
       return json(res, 400, { ok: false, error: error.message });
@@ -9767,11 +13196,16 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/mt5/db/rows") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireSystemRoleForUi(req, res)) return;
     try {
       const b = await mt5Backend();
-      if (!b.listTableRows) return json(res, 400, { ok: false, error: "Not supported by this backend" });
+      if (!b.listTableRows)
+        return json(res, 400, {
+          ok: false,
+          error: "Not supported by this backend",
+        });
 
       const table = envStr(url.searchParams.get("table") || "signals");
       if (table.toLowerCase() === "ui_auth_users") {
@@ -9779,7 +13213,10 @@ const appHandler = async (req, res) => {
       }
       const q = envStr(url.searchParams.get("q"));
       const page = Math.max(1, Number(url.searchParams.get("page") || 1));
-      const pageSize = Math.max(5, Math.min(500, Number(url.searchParams.get("pageSize") || 50)));
+      const pageSize = Math.max(
+        5,
+        Math.min(500, Number(url.searchParams.get("pageSize") || 50)),
+      );
       const offset = (page - 1) * pageSize;
 
       const { rows, total } = await b.listTableRows(table, pageSize, offset, q);
@@ -9790,7 +13227,7 @@ const appHandler = async (req, res) => {
         rows,
         page,
         pageSize,
-        pages: Math.max(1, Math.ceil(total / pageSize))
+        pages: Math.max(1, Math.ceil(total / pageSize)),
       });
     } catch (error) {
       return json(res, 400, { ok: false, error: error.message });
@@ -9798,49 +13235,68 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/mt5/db/rows/create") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireSystemRoleForUi(req, res)) return;
     try {
       const payload = await readJson(req);
-      const table = String(payload.table || "").trim().toLowerCase();
-      const row = payload.row && typeof payload.row === "object" ? payload.row : {};
+      const table = String(payload.table || "")
+        .trim()
+        .toLowerCase();
+      const row =
+        payload.row && typeof payload.row === "object" ? payload.row : {};
       const sess = getUiSessionFromReq(req);
-      if (!table) return json(res, 400, { ok: false, error: "table is required" });
+      if (!table)
+        return json(res, 400, { ok: false, error: "table is required" });
 
       if (table === "signals") {
-        const created = await mt5EnqueueSignalFromPayload({
-          id: row.signal_id || row.id || "",
-          action: row.action,
-          symbol: row.symbol,
-          volume: row.volume ?? row.lots,
-          sl: row.sl ?? null,
-          tp: row.tp ?? null,
-          rr: row.rr ?? row.risk_reward ?? null,
-          risk_money: row.risk_money ?? row.money_risk ?? null,
-          price: row.price ?? row.entry ?? null,
-          strategy: row.strategy || "DB Insert",
-          timeframe: row.timeframe || "manual",
-          note: row.note || "",
-          user_id: row.user_id || sess.user_id || CFG.mt5DefaultUserId,
-          order_type: row.order_type || "limit",
-          provider: "ui_db",
-          raw_json: row,
-        }, {
-          source: "ui_db",
-          eventType: "UI_DB_INSERT_SIGNAL",
-          fallbackIdPrefix: "db",
-        });
+        const created = await mt5EnqueueSignalFromPayload(
+          {
+            id: row.signal_id || row.id || "",
+            action: row.action,
+            symbol: row.symbol,
+            volume: row.volume ?? row.lots,
+            sl: row.sl ?? null,
+            tp: row.tp ?? null,
+            rr: row.rr ?? row.risk_reward ?? null,
+            risk_money: row.risk_money ?? row.money_risk ?? null,
+            price: row.price ?? row.entry ?? null,
+            strategy: row.strategy || "DB Insert",
+            timeframe: row.timeframe || "manual",
+            note: row.note || "",
+            user_id: row.user_id || sess.user_id || CFG.mt5DefaultUserId,
+            order_type: row.order_type || "limit",
+            provider: "ui_db",
+            raw_json: row,
+          },
+          {
+            source: "ui_db",
+            eventType: "UI_DB_INSERT_SIGNAL",
+            fallbackIdPrefix: "db",
+          },
+        );
         return json(res, 200, { ok: true, table, created });
       }
 
       if (table === "signal_events") {
         const signalId = String(row.signal_id || "").trim();
         const eventType = String(row.event_type || "").trim();
-        if (!signalId) return json(res, 400, { ok: false, error: "row.signal_id is required" });
-        if (!eventType) return json(res, 400, { ok: false, error: "row.event_type is required" });
-        const payloadJson = row.payload_json && typeof row.payload_json === "object"
-          ? { ...row.payload_json }
-          : (row.payload && typeof row.payload === "object" ? { ...row.payload } : {});
+        if (!signalId)
+          return json(res, 400, {
+            ok: false,
+            error: "row.signal_id is required",
+          });
+        if (!eventType)
+          return json(res, 400, {
+            ok: false,
+            error: "row.event_type is required",
+          });
+        const payloadJson =
+          row.payload_json && typeof row.payload_json === "object"
+            ? { ...row.payload_json }
+            : row.payload && typeof row.payload === "object"
+              ? { ...row.payload }
+              : {};
         delete payloadJson.apiKey;
         delete payloadJson.api_key;
         delete payloadJson.password;
@@ -9848,39 +13304,66 @@ const appHandler = async (req, res) => {
         payloadJson.via = "ui_db_create";
         payloadJson.created_by = sess.user_id || CFG.mt5DefaultUserId;
         await mt5AppendSignalEvent(signalId, eventType, payloadJson);
-        return json(res, 200, { ok: true, table, created: { signal_id: signalId, event_type: eventType } });
+        return json(res, 200, {
+          ok: true,
+          table,
+          created: { signal_id: signalId, event_type: eventType },
+        });
       }
 
       if (table === "users") {
         const out = await uiCreateUser(row);
-        if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to create user" });
+        if (!out.ok)
+          return json(res, 400, {
+            ok: false,
+            error: out.error || "Failed to create user",
+          });
         return json(res, 200, { ok: true, table, created: out.user });
       }
 
       if (table === "accounts" || table === "user_accounts") {
         const userId = String(row.user_id || "").trim();
-        if (!userId) return json(res, 400, { ok: false, error: "row.user_id is required" });
+        if (!userId)
+          return json(res, 400, {
+            ok: false,
+            error: "row.user_id is required",
+          });
         const out = await uiUpsertUserAccount(userId, row);
-        if (!out.ok) return json(res, 400, { ok: false, error: out.error || "Failed to create account" });
+        if (!out.ok)
+          return json(res, 400, {
+            ok: false,
+            error: out.error || "Failed to create account",
+          });
         return json(res, 200, { ok: true, table, created: out.account });
       }
 
       if (table === "user_api_keys") {
-        return json(res, 410, { ok: false, error: "user_api_keys is removed. Use accounts api-key rotation." });
+        return json(res, 410, {
+          ok: false,
+          error: "user_api_keys is removed. Use accounts api-key rotation.",
+        });
       }
 
-      return json(res, 400, { ok: false, error: `Create is not supported for table: ${table}` });
+      return json(res, 400, {
+        ok: false,
+        error: `Create is not supported for table: ${table}`,
+      });
     } catch (error) {
       return json(res, 400, { ok: false, error: error.message });
     }
   }
 
   if (req.method === "POST" && url.pathname === "/mt5/trades/renew") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
       if (!requireAdminKey(req, res, url, payload)) return;
-      const { rows, filters, limit } = await mt5GetFilteredTrades(url, payload, 50000);
+      const { rows, filters, limit } = await mt5GetFilteredTrades(
+        url,
+        payload,
+        50000,
+      );
       const ids = rows.map((r) => String(r.signal_id || "")).filter(Boolean);
       const updated = await mt5RenewSignalsByIds(ids);
       return json(res, 200, {
@@ -9898,16 +13381,24 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname.startsWith("/mt5/trades/")) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
-      const signalId = decodeURIComponent(url.pathname.slice("/mt5/trades/".length));
-      if (!signalId) return json(res, 400, { ok: false, error: "signal_id is required" });
+      const signalId = decodeURIComponent(
+        url.pathname.slice("/mt5/trades/".length),
+      );
+      if (!signalId)
+        return json(res, 400, { ok: false, error: "signal_id is required" });
       const rows = await mt5ListSignals(50000, "");
       const trade = rows.find((r) => String(r.signal_id) === signalId);
-      if (!trade) return json(res, 404, { ok: false, error: "signal not found" });
+      if (!trade)
+        return json(res, 404, { ok: false, error: "signal not found" });
       const eventLimitRaw = Number(url.searchParams.get("event_limit") || 200);
-      const eventLimit = Math.max(1, Math.min(2000, Number.isFinite(eventLimitRaw) ? eventLimitRaw : 200));
+      const eventLimit = Math.max(
+        1,
+        Math.min(2000, Number.isFinite(eventLimitRaw) ? eventLimitRaw : 200),
+      );
       const events = await mt5ListSignalEvents(signalId, eventLimit);
       return json(res, 200, {
         ok: true,
@@ -9930,15 +13421,24 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/mt5/trades") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
       const limitRaw = Number(url.searchParams.get("limit") || 200);
-      const limit = Math.max(10, Math.min(1000, Number.isFinite(limitRaw) ? limitRaw : 200));
-      const status = String(url.searchParams.get("status") || "").trim().toUpperCase();
+      const limit = Math.max(
+        10,
+        Math.min(1000, Number.isFinite(limitRaw) ? limitRaw : 200),
+      );
+      const status = String(url.searchParams.get("status") || "")
+        .trim()
+        .toUpperCase();
       const symbol = String(url.searchParams.get("symbol") || "").trim();
       const userId = uiEffectiveUserId(req, url);
-      const trades = mt5FilterRows(await mt5ListSignals(limit, { symbol, status }, userId), { statuses: status ? [status] : [] });
+      const trades = mt5FilterRows(
+        await mt5ListSignals(limit, { symbol, status }, userId),
+        { statuses: status ? [status] : [] },
+      );
       const b = await mt5Backend();
       return json(res, 200, {
         ok: true,
@@ -9952,11 +13452,16 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if (req.method === "GET" && (url.pathname === "/csv" || url.pathname === "/mt5/csv")) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "GET" &&
+    (url.pathname === "/csv" || url.pathname === "/mt5/csv")
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
-      const includeHeader = String(url.searchParams.get("header") || "1").toLowerCase() !== "0";
+      const includeHeader =
+        String(url.searchParams.get("header") || "1").toLowerCase() !== "0";
       const { rows } = await mt5GetFilteredTrades(url, null, 20000);
       const symbol = envStr(url.searchParams.get("symbol")).toUpperCase();
       const status = envStr(url.searchParams.get("status")).toUpperCase();
@@ -9982,16 +13487,25 @@ const appHandler = async (req, res) => {
     }
   }
 
-  if ((req.method === "POST" || req.method === "GET") && url.pathname === "/mt5/prune") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    (req.method === "POST" || req.method === "GET") &&
+    url.pathname === "/mt5/prune"
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
       let payload = {};
       if (req.method === "POST") {
         payload = await readJson(req);
       }
-      const daysRaw = Number(payload.days ?? url.searchParams.get("days") ?? CFG.mt5PruneDays);
-      const days = Math.max(1, Math.min(3650, Number.isFinite(daysRaw) ? daysRaw : CFG.mt5PruneDays));
+      const daysRaw = Number(
+        payload.days ?? url.searchParams.get("days") ?? CFG.mt5PruneDays,
+      );
+      const days = Math.max(
+        1,
+        Math.min(3650, Number.isFinite(daysRaw) ? daysRaw : CFG.mt5PruneDays),
+      );
       const result = await mt5PruneSignals(days);
       return json(res, 200, { ok: true, days, ...result });
     } catch (error) {
@@ -10000,50 +13514,92 @@ const appHandler = async (req, res) => {
     }
   }
 
-
   if (req.method === "GET" && url.pathname === "/mt5/ea/sync") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!(await requireEaKey(req, res, url))) return;
     try {
       const signals = await mt5ListActiveSignals();
-      const data = signals.map(s => ({
-        signal_id: s.signal_id, status: s.status, symbol: s.symbol, action: s.action,
-        ticket: s.ack_ticket || "", pnl: s.pnl_money_realized || 0,
-        volume: s.volume, sl: s.sl, tp: s.tp
+      const data = signals.map((s) => ({
+        signal_id: s.signal_id,
+        status: s.status,
+        symbol: s.symbol,
+        action: s.action,
+        ticket: s.ack_ticket || "",
+        pnl: s.pnl_money_realized || 0,
+        volume: s.volume,
+        sl: s.sl,
+        tp: s.tp,
       }));
       return json(res, 200, { ok: true, count: data.length, signals: data });
-    } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message });
+    }
   }
 
   if (req.method === "GET" && url.pathname === "/mt5/api/events") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     const sess = getUiSessionFromReq(req);
-    const userId = sess.ok ? sess.user_id : (url.searchParams.get("user_id") || null);
+    const userId = sess.ok
+      ? sess.user_id
+      : url.searchParams.get("user_id") || null;
 
     try {
       const limitRaw = Number(url.searchParams.get("limit") || 200);
-      const limit = Math.max(1, Math.min(5000, Number.isFinite(limitRaw) ? limitRaw : 200));
+      const limit = Math.max(
+        1,
+        Math.min(5000, Number.isFinite(limitRaw) ? limitRaw : 200),
+      );
       const offsetRaw = Number(url.searchParams.get("offset") || 0);
       const offset = Math.max(0, Number.isFinite(offsetRaw) ? offsetRaw : 0);
-      const q = String(url.searchParams.get("q") || "").trim().toLowerCase();
-      const typeFilter = String(url.searchParams.get("type") || "").trim().toLowerCase();
-      const symbolFilter = String(url.searchParams.get("symbol") || "").trim().toUpperCase();
-      const range = String(url.searchParams.get("range") || "all").trim().toLowerCase();
+      const q = String(url.searchParams.get("q") || "")
+        .trim()
+        .toLowerCase();
+      const typeFilter = String(url.searchParams.get("type") || "")
+        .trim()
+        .toLowerCase();
+      const symbolFilter = String(url.searchParams.get("symbol") || "")
+        .trim()
+        .toUpperCase();
+      const range = String(url.searchParams.get("range") || "all")
+        .trim()
+        .toLowerCase();
       const { start: rangeStart, end: rangeEnd } = mt5PeriodRange(range);
-      const hasExtraFilter = Boolean(q || typeFilter || symbolFilter || (range && range !== "all"));
+      const hasExtraFilter = Boolean(
+        q || typeFilter || symbolFilter || (range && range !== "all"),
+      );
 
       const b = await mt5Backend();
-      const fetchLimit = hasExtraFilter ? Math.max(limit + offset, 5000) : limit;
+      const fetchLimit = hasExtraFilter
+        ? Math.max(limit + offset, 5000)
+        : limit;
       const fetchOffset = hasExtraFilter ? 0 : offset;
-      const rows = await b.listLogs({ user_id: userId }, fetchLimit, fetchOffset);
+      const rows = await b.listLogs(
+        { user_id: userId },
+        fetchLimit,
+        fetchOffset,
+      );
       let events = (rows || []).map((r) => {
-        const payload = r?.metadata && typeof r.metadata === "object" ? r.metadata : {};
-        const data = payload?.data && typeof payload.data === "object" ? payload.data : payload;
+        const payload =
+          r?.metadata && typeof r.metadata === "object" ? r.metadata : {};
+        const data =
+          payload?.data && typeof payload.data === "object"
+            ? payload.data
+            : payload;
         const symbol = String(data?.symbol || payload?.symbol || "").trim();
-        const eventType = String(payload.event_type || payload.event || "").trim() || String(r.object_table || "LOG");
+        const eventType =
+          String(payload.event_type || payload.event || "").trim() ||
+          String(r.object_table || "LOG");
         const eventTime = String(r.created_at || "");
         const signalId = String(r.object_id || "");
-        const ackTicket = String(data?.ticket || payload?.ticket || data?.ack_ticket || payload?.ack_ticket || "");
+        const ackTicket = String(
+          data?.ticket ||
+            payload?.ticket ||
+            data?.ack_ticket ||
+            payload?.ack_ticket ||
+            "",
+        );
         return {
           id: Number(r.log_id || 0),
           event_time: eventTime,
@@ -10056,8 +13612,18 @@ const appHandler = async (req, res) => {
       });
       if (hasExtraFilter) {
         events = events.filter((ev) => {
-          if (symbolFilter && String(ev.symbol || "").toUpperCase() !== symbolFilter) return false;
-          if (typeFilter && !String(ev.event_type || "").toLowerCase().includes(typeFilter)) return false;
+          if (
+            symbolFilter &&
+            String(ev.symbol || "").toUpperCase() !== symbolFilter
+          )
+            return false;
+          if (
+            typeFilter &&
+            !String(ev.event_type || "")
+              .toLowerCase()
+              .includes(typeFilter)
+          )
+            return false;
           if (rangeStart || rangeEnd) {
             const ts = mt5ToMs(ev.event_time);
             if (!Number.isFinite(ts)) return false;
@@ -10071,7 +13637,9 @@ const appHandler = async (req, res) => {
               ev.symbol,
               ev.event_type,
               JSON.stringify(ev.payload_json || {}),
-            ].join(" ").toLowerCase();
+            ]
+              .join(" ")
+              .toLowerCase();
             if (!haystack.includes(q)) return false;
           }
           return true;
@@ -10086,17 +13654,24 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/mt5/api/events/create") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireSystemRoleForUi(req, res)) return;
     try {
       const payload = await readJson(req);
       const sess = getUiSessionFromReq(req);
-      const signalId = String(payload.signal_id || payload.object_id || "").trim() || `ui_note_${Date.now()}`;
+      const signalId =
+        String(payload.signal_id || payload.object_id || "").trim() ||
+        `ui_note_${Date.now()}`;
       const eventType = String(payload.event_type || "").trim();
-      if (!eventType) return json(res, 400, { ok: false, error: "event_type is required" });
-      const payloadJson = payload.payload_json && typeof payload.payload_json === "object"
-        ? { ...payload.payload_json }
-        : (payload.payload && typeof payload.payload === "object" ? { ...payload.payload } : {});
+      if (!eventType)
+        return json(res, 400, { ok: false, error: "event_type is required" });
+      const payloadJson =
+        payload.payload_json && typeof payload.payload_json === "object"
+          ? { ...payload.payload_json }
+          : payload.payload && typeof payload.payload === "object"
+            ? { ...payload.payload }
+            : {};
       delete payloadJson.apiKey;
       delete payloadJson.api_key;
       delete payloadJson.password;
@@ -10104,7 +13679,10 @@ const appHandler = async (req, res) => {
       payloadJson.via = "ui_manual_log";
       payloadJson.created_by = sess.user_id || CFG.mt5DefaultUserId;
       await mt5AppendSignalEvent(signalId, eventType, payloadJson);
-      return json(res, 200, { ok: true, event: { signal_id: signalId, event_type: eventType } });
+      return json(res, 200, {
+        ok: true,
+        event: { signal_id: signalId, event_type: eventType },
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return json(res, 400, { ok: false, error: message });
@@ -10112,7 +13690,8 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/mt5/api/events/delete") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireSystemRoleForUi(req, res)) return;
     try {
       const resVal = await mt5DeleteAllEvents();
@@ -10124,7 +13703,8 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/mt5/ea/sync") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
       if (!(await requireEaKey(req, res, url, payload))) return;
@@ -10144,7 +13724,9 @@ const appHandler = async (req, res) => {
         const hasEaPnl = Number.isFinite(eaPnl);
 
         // Find trade by signal_id + ticket
-        let sig = dbSignals.find(d => String(d.signal_id) === sid && String(d.ack_ticket) === ticket);
+        let sig = dbSignals.find(
+          (d) => String(d.signal_id) === sid && String(d.ack_ticket) === ticket,
+        );
         if (!sig) {
           // Backup: find by ticket alone if mapping is loose
           sig = await mt5GetSignalByTicket(ticket);
@@ -10154,7 +13736,9 @@ const appHandler = async (req, res) => {
           const dbCan = mt5CanonicalStoredStatus(sig.status);
           const eaCan = mt5CanonicalStoredStatus(eaStatus);
           const dbPnl = Number(sig.pnl_money_realized);
-          const pnlChanged = hasEaPnl && (!Number.isFinite(dbPnl) || Math.abs(dbPnl - eaPnl) > 0.000001);
+          const pnlChanged =
+            hasEaPnl &&
+            (!Number.isFinite(dbPnl) || Math.abs(dbPnl - eaPnl) > 0.000001);
 
           // Sync if status changed OR pnl changed.
           if (dbCan !== eaCan || pnlChanged) {
@@ -10163,9 +13747,10 @@ const appHandler = async (req, res) => {
               status: eaStatus || sig.status,
               ticket: ticket,
               pnl: hasEaPnl ? eaPnl : undefined,
-              note: dbCan !== eaCan
-                ? `sync_status_diff_${dbCan}_to_${eaCan}`
-                : `sync_pnl_${Number.isFinite(dbPnl) ? dbPnl : "null"}_to_${eaPnl}`
+              note:
+                dbCan !== eaCan
+                  ? `sync_status_diff_${dbCan}_to_${eaCan}`
+                  : `sync_pnl_${Number.isFinite(dbPnl) ? dbPnl : "null"}_to_${eaPnl}`,
             });
           }
         }
@@ -10179,36 +13764,46 @@ const appHandler = async (req, res) => {
       if (updates.length > 0) {
         await mt5BulkAckSignals(updates);
 
-        await mt5AppendSignalEvent('SYSTEM_SYNC_PUSH', 'SIGNAL_EA_SYNC_PUSH', {
+        await mt5AppendSignalEvent("SYSTEM_SYNC_PUSH", "SIGNAL_EA_SYNC_PUSH", {
           account: payload.account_id,
           active_count: activeSignals.length,
           updates_count: updates.length,
-          updates_details: updates
+          updates_details: updates,
         });
       }
 
       return json(res, 200, { ok: true, reconciled: updates.length, updates });
-    } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message });
+    }
   }
 
   if (req.method === "POST" && url.pathname === "/mt5/ea/bulk-sync") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
       if (!(await requireEaKey(req, res, url, payload))) return;
       const updates = payload.updates || [];
-      if (!Array.isArray(updates)) return json(res, 400, { ok: false, error: "updates array required" });
+      if (!Array.isArray(updates))
+        return json(res, 400, { ok: false, error: "updates array required" });
       const result = await mt5BulkAckSignals(updates);
       for (const u of updates) {
-        await mt5AppendSignalEvent(u.signal_id, `SIGNAL_EA_SYNC_${u.status}`, { ticket: u.ticket, pnl: u.pnl, account: payload.account_id });
+        await mt5AppendSignalEvent(u.signal_id, `SIGNAL_EA_SYNC_${u.status}`, {
+          ticket: u.ticket,
+          pnl: u.pnl,
+          account: payload.account_id,
+        });
       }
       return json(res, 200, { ok: true, updated: result.updated });
-    } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message });
+    }
   }
 
-
   if (req.method === "GET" && url.pathname === "/v2/accounts") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
       const userId = uiEffectiveUserId(req, url);
@@ -10220,22 +13815,33 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/v2/accounts") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
-    try { payload = await readJson(req); } catch { }
+    try {
+      payload = await readJson(req);
+    } catch {}
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
       const accountId = String(payload?.account_id || "").trim();
-      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
+      if (!accountId)
+        return json(res, 400, { ok: false, error: "account_id is required" });
       const out = await mt5CreateAccountV2({
         account_id: accountId,
         user_id: String(payload?.user_id || CFG.mt5DefaultUserId),
         name: String(payload?.name || accountId),
         balance: payload?.balance,
         status: String(payload?.status || "ACTIVE"),
-        metadata: payload?.metadata && typeof payload.metadata === "object" ? payload.metadata : {},
+        metadata:
+          payload?.metadata && typeof payload.metadata === "object"
+            ? payload.metadata
+            : {},
       });
-      if (!out?.ok) return json(res, 400, { ok: false, error: out?.error || "failed to create account" });
+      if (!out?.ok)
+        return json(res, 400, {
+          ok: false,
+          error: out?.error || "failed to create account",
+        });
       const rows = await mt5ListAccountsV2();
       return json(res, 200, {
         ok: true,
@@ -10244,35 +13850,51 @@ const appHandler = async (req, res) => {
         items: rows,
       });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "PUT" && /^\/v2\/accounts\/[^/]+$/.test(url.pathname)) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
-    try { payload = await readJson(req); } catch { }
+    try {
+      payload = await readJson(req);
+    } catch {}
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
       const m = url.pathname.match(/^\/v2\/accounts\/([^/]+)$/);
       const accountId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
+      if (!accountId)
+        return json(res, 400, { ok: false, error: "account_id is required" });
       const out = await mt5UpdateAccountV2(accountId, payload || {});
-      if (!out?.ok) return json(res, 400, { ok: false, error: out?.error || "failed to update account" });
+      if (!out?.ok)
+        return json(res, 400, {
+          ok: false,
+          error: out?.error || "failed to update account",
+        });
       const rows = await mt5ListAccountsV2();
       return json(res, 200, { ok: true, item: out.item || null, items: rows });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "DELETE" && /^\/v2\/accounts\/[^/]+$/.test(url.pathname)) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
       const m = url.pathname.match(/^\/v2\/accounts\/([^/]+)$/);
       const accountId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
+      if (!accountId)
+        return json(res, 400, { ok: false, error: "account_id is required" });
       const out = await mt5ArchiveAccountV2(accountId);
       if (!out?.ok) {
         const statusCode = out?.blocking_open_trades ? 409 : 400;
@@ -10285,7 +13907,10 @@ const appHandler = async (req, res) => {
       const rows = await mt5ListAccountsV2();
       return json(res, 200, { ok: true, item: out.item || null, items: rows });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -10301,10 +13926,14 @@ const appHandler = async (req, res) => {
       const db = await mt5InitBackend();
       const { rows } = await db.query(
         "SELECT id as template_id, name, data FROM user_templates WHERE user_id = $1 ORDER BY created_at DESC",
-        [CFG.mt5DefaultUserId]
+        [CFG.mt5DefaultUserId],
       );
       // Flatten data for frontend compatibility
-      const templates = rows.map(r => ({ template_id: r.template_id, name: r.name, ...r.data }));
+      const templates = rows.map((r) => ({
+        template_id: r.template_id,
+        name: r.name,
+        ...r.data,
+      }));
       return json(res, 200, { ok: true, templates });
     } catch (e) {
       return json(res, 500, { ok: false, error: e.message });
@@ -10321,19 +13950,22 @@ const appHandler = async (req, res) => {
       if (template_id) {
         const { rows } = await db.query(
           "UPDATE user_templates SET data = $1, name = $2, updated_at = NOW() WHERE id = $3 RETURNING id, name, data",
-          [data, name || data.name || "Unnamed Template", template_id]
+          [data, name || data.name || "Unnamed Template", template_id],
         );
         row = rows[0];
       } else {
         const { rows } = await db.query(
           "INSERT INTO user_templates (user_id, name, data) VALUES ($1, $2, $3) RETURNING id, name, data",
-          [CFG.mt5DefaultUserId, name || data.name || "New Template", data]
+          [CFG.mt5DefaultUserId, name || data.name || "New Template", data],
         );
         row = rows[0];
       }
 
       await StateRepo.del("USER_TEMPLATES", CFG.mt5DefaultUserId);
-      return json(res, 201, { ok: true, template: { template_id: row.id, name: row.name, ...row.data } });
+      return json(res, 201, {
+        ok: true,
+        template: { template_id: row.id, name: row.name, ...row.data },
+      });
     } catch (e) {
       return json(res, 500, { ok: false, error: e.message });
     }
@@ -10345,7 +13977,7 @@ const appHandler = async (req, res) => {
       const db = await mt5InitBackend();
       const { rows } = await db.query(
         "SELECT data as settings FROM user_settings WHERE type = 'api_key' AND user_id = $1",
-        [CFG.mt5DefaultUserId]
+        [CFG.mt5DefaultUserId],
       );
       const rawSettings = rows[0]?.settings || {};
       const settings = decryptObject(rawSettings); // Decrypt for frontend
@@ -10365,38 +13997,70 @@ const appHandler = async (req, res) => {
       if (body.key && body.value !== undefined) {
         // Individual key update
         const encValue = encryptData(String(body.value));
-        await db.query(`
+        await db
+          .query(
+            `
           INSERT INTO user_settings (user_id, type, name, data)
           VALUES ($1, 'api_key', 'default', jsonb_build_object($2, $3))
           ON CONFLICT (user_id, type, name)
           DO UPDATE SET data = user_settings.data || jsonb_build_object($2, $3), updated_at = NOW()
-        `, [userId, body.key, encValue]).catch(async () => {
-          // Fallback for systems without the partial unique index
-          const existing = await db.query("SELECT id, data FROM user_settings WHERE user_id=$1 AND type='api_key'", [userId]);
-          if (existing.rows.length) {
-            const oldData = (existing.rows[0].data && typeof existing.rows[0].data === 'object') ? existing.rows[0].data : {};
-            const newData = { ...oldData, [body.key]: encValue };
-            await db.query("UPDATE user_settings SET data=$1, updated_at=NOW() WHERE id=$2", [newData, existing.rows[0].id]);
-          } else {
-            await db.query("INSERT INTO user_settings (user_id, type, data) VALUES ($1, 'api_key', $2)", [userId, { [body.key]: encValue }]);
-          }
-        });
+        `,
+            [userId, body.key, encValue],
+          )
+          .catch(async () => {
+            // Fallback for systems without the partial unique index
+            const existing = await db.query(
+              "SELECT id, data FROM user_settings WHERE user_id=$1 AND type='api_key'",
+              [userId],
+            );
+            if (existing.rows.length) {
+              const oldData =
+                existing.rows[0].data &&
+                typeof existing.rows[0].data === "object"
+                  ? existing.rows[0].data
+                  : {};
+              const newData = { ...oldData, [body.key]: encValue };
+              await db.query(
+                "UPDATE user_settings SET data=$1, updated_at=NOW() WHERE id=$2",
+                [newData, existing.rows[0].id],
+              );
+            } else {
+              await db.query(
+                "INSERT INTO user_settings (user_id, type, data) VALUES ($1, 'api_key', $2)",
+                [userId, { [body.key]: encValue }],
+              );
+            }
+          });
       } else {
         // Bulk settings update
         const settings = encryptObject(body.settings || body || {});
-        await db.query(`
+        await db
+          .query(
+            `
           INSERT INTO user_settings (user_id, type, name, data)
           VALUES ($1, 'api_key', 'default', $2)
           ON CONFLICT (user_id, type, name)
           DO UPDATE SET data = $2, updated_at = NOW()
-        `, [userId, settings]).catch(async () => {
-          const existing = await db.query("SELECT id FROM user_settings WHERE user_id=$1 AND type='api_key'", [userId]);
-          if (existing.rows.length) {
-            await db.query("UPDATE user_settings SET data=$1, updated_at=NOW() WHERE id=$2", [settings, existing.rows[0].id]);
-          } else {
-            await db.query("INSERT INTO user_settings (user_id, type, data) VALUES ($1, 'api_key', $2)", [userId, settings]);
-          }
-        });
+        `,
+            [userId, settings],
+          )
+          .catch(async () => {
+            const existing = await db.query(
+              "SELECT id FROM user_settings WHERE user_id=$1 AND type='api_key'",
+              [userId],
+            );
+            if (existing.rows.length) {
+              await db.query(
+                "UPDATE user_settings SET data=$1, updated_at=NOW() WHERE id=$2",
+                [settings, existing.rows[0].id],
+              );
+            } else {
+              await db.query(
+                "INSERT INTO user_settings (user_id, type, data) VALUES ($1, 'api_key', $2)",
+                [userId, settings],
+              );
+            }
+          });
       }
 
       await StateRepo.del("SYSTEM_SETTINGS", "global");
@@ -10407,47 +14071,53 @@ const appHandler = async (req, res) => {
   }
   if (req.method === "GET" && url.pathname === "/v2/settings") {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
 
     try {
       const db = await mt5InitBackend();
       const userId = sess.user_id || CFG.mt5DefaultUserId;
-      await db.query(`
+      await db.query(
+        `
         INSERT INTO user_settings (user_id, type, name, data, status)
         VALUES
           ($1, 'cron', 'market_data', $2::jsonb, 'INACTIVE'),
           ($1, 'cron', 'ai_analysis', $3::jsonb, 'INACTIVE')
         ON CONFLICT (user_id, type, name) DO NOTHING
-      `, [
-        userId,
-        JSON.stringify({
-          enabled: false,
-          provider: "twelvedata",
-          timezone: CFG.marketDataDefaultTimezone,
-          symbols: [],
-          timeframes: ["1m", "5m", "15m"],
-          batch_size: CFG.marketDataCronBatchSize,
-          last_sync: {},
-        }),
-        JSON.stringify({
-          enabled: false,
-          symbols: [],
-          timeframes: ["15m", "1h"],
-          cadence_minutes: 60,
-          model: "claude-sonnet-4-0",
-          profile: "",
-          entry_models: [],
-          directions: ["BUY", "SELL"],
-          order_types: ["market", "limit", "stop"],
-          prompt: "",
-          last_sync: {},
-        }),
-      ]);
+      `,
+        [
+          userId,
+          JSON.stringify({
+            enabled: false,
+            provider: "twelvedata",
+            timezone: CFG.marketDataDefaultTimezone,
+            symbols: [],
+            timeframes: ["1m", "5m", "15m"],
+            batch_size: CFG.marketDataCronBatchSize,
+            last_sync: {},
+          }),
+          JSON.stringify({
+            enabled: false,
+            symbols: [],
+            timeframes: ["15m", "1h"],
+            cadence_minutes: 60,
+            model: "claude-sonnet-4-0",
+            profile: "",
+            entry_models: [],
+            directions: ["BUY", "SELL"],
+            order_types: ["market", "limit", "stop"],
+            prompt: "",
+            last_sync: {},
+          }),
+        ],
+      );
       const rows = await repoListUserSettings(userId);
-      const settings = rows.map(r => ({
+      const settings = rows.map((r) => ({
         ...r,
-        data: r.data
+        data: r.data,
       }));
       return json(res, 200, { ok: true, settings });
     } catch (e) {
@@ -10457,24 +14127,36 @@ const appHandler = async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/v2/settings/secret") {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       const type = String(url.searchParams.get("type") || "").trim();
       const name = String(url.searchParams.get("name") || "").trim();
       const field = String(url.searchParams.get("field") || "value").trim();
-      if (!type || !name) return json(res, 400, { ok: false, error: "Missing type or name" });
-      if (type !== "api_key") return json(res, 400, { ok: false, error: "Secret reveal is only supported for api_key type" });
+      if (!type || !name)
+        return json(res, 400, { ok: false, error: "Missing type or name" });
+      if (type !== "api_key")
+        return json(res, 400, {
+          ok: false,
+          error: "Secret reveal is only supported for api_key type",
+        });
 
       const db = await mt5InitBackend();
       const userId = sess.user_id || CFG.mt5DefaultUserId;
       const rowRes = await db.query(
         "SELECT data FROM user_settings WHERE user_id = $1 AND type = $2 AND name = $3 LIMIT 1",
-        [userId, type, name]
+        [userId, type, name],
       );
-      if (!rowRes.rows.length) return json(res, 404, { ok: false, error: "Setting not found" });
+      if (!rowRes.rows.length)
+        return json(res, 404, { ok: false, error: "Setting not found" });
 
-      const enc = rowRes.rows[0]?.data && typeof rowRes.rows[0].data === "object" ? rowRes.rows[0].data : {};
+      const enc =
+        rowRes.rows[0]?.data && typeof rowRes.rows[0].data === "object"
+          ? rowRes.rows[0].data
+          : {};
       const dec = decryptObject(enc);
       return json(res, 200, { ok: true, value: String(dec?.[field] || "") });
     } catch (e) {
@@ -10484,42 +14166,67 @@ const appHandler = async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/v2/settings") {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
 
     try {
       const body = await readJson(req);
-      if (!body.type) return json(res, 400, { ok: false, error: "Missing type" });
+      if (!body.type)
+        return json(res, 400, { ok: false, error: "Missing type" });
       const db = await mt5InitBackend();
       const userId = sess.user_id || CFG.mt5DefaultUserId;
-      const payloadData = (body.data && typeof body.data === "object") ? body.data : {};
+      const payloadData =
+        body.data && typeof body.data === "object" ? body.data : {};
       let settingName = String(body.name || body.type || "").trim();
       let data = payloadData;
 
       if (body.type === "ai_template") {
-        return json(res, 400, { ok: false, error: "ai_template moved to user_templates. Use /v2/ai/templates." });
+        return json(res, 400, {
+          ok: false,
+          error: "ai_template moved to user_templates. Use /v2/ai/templates.",
+        });
       }
 
       if (body.type === "api_key") {
         settingName = normalizeAiApiKeyName(settingName);
         if (!ALLOWED_AI_API_KEY_NAMES.has(settingName)) {
-          return json(res, 400, { ok: false, error: "Invalid api_key name. Allowed: GEMINI_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY, CLAUDE_API_KEY, TWELVE_DATA_API_KEY" });
+          return json(res, 400, {
+            ok: false,
+            error:
+              "Invalid api_key name. Allowed: GEMINI_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY, CLAUDE_API_KEY, TWELVE_DATA_API_KEY",
+          });
         }
         const rawValue = String(payloadData.value || "").trim();
         data = encryptObject({ value: rawValue });
       }
 
-      const res2 = await db.query(`
+      const res2 = await db.query(
+        `
         INSERT INTO user_settings (user_id, type, name, data, status, value)
         VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (user_id, type, name)
         DO UPDATE SET data = EXCLUDED.data, status = EXCLUDED.status, value = EXCLUDED.value, updated_at = NOW()
         RETURNING *
-      `, [userId, body.type, settingName || body.type, data, body.status || 'active', body.value || null]);
+      `,
+        [
+          userId,
+          body.type,
+          settingName || body.type,
+          data,
+          body.status || "active",
+          body.value || null,
+        ],
+      );
 
       await StateRepo.del("USER_SETTINGS", userId);
 
-      if (body.type === "system_config" && settingName === "enabled_log_prefixes") {
+      if (
+        body.type === "system_config" &&
+        settingName === "enabled_log_prefixes"
+      ) {
         const b = await mt5Backend();
         if (b.refreshLogConfig) await b.refreshLogConfig();
       }
@@ -10532,18 +14239,25 @@ const appHandler = async (req, res) => {
 
   if (req.method === "DELETE" && url.pathname.startsWith("/v2/settings/")) {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
 
     try {
       const parts = url.pathname.split("/"); // ["", "v2", "settings", type, name]
       const type = decodeURIComponent(parts[3] || "");
       const name = decodeURIComponent(parts[4] || "");
 
-      if (!type || !name) return json(res, 400, { ok: false, error: "Missing type or name" });
+      if (!type || !name)
+        return json(res, 400, { ok: false, error: "Missing type or name" });
       const db = await mt5InitBackend();
       const userId = sess.user_id || CFG.mt5DefaultUserId;
-      await db.query("DELETE FROM user_settings WHERE user_id = $1 AND type = $2 AND name = $3", [userId, type, name]);
+      await db.query(
+        "DELETE FROM user_settings WHERE user_id = $1 AND type = $2 AND name = $3",
+        [userId, type, name],
+      );
       await StateRepo.del("USER_SETTINGS", userId);
       return json(res, 200, { ok: true });
     } catch (e) {
@@ -10567,23 +14281,41 @@ const appHandler = async (req, res) => {
     if (!requireAdminKey(req, res, url)) return;
     try {
       const body = await readJson(req);
-      const { templateId, customPrompt, service, provider: bodyProvider, model, context } = body;
+      const {
+        templateId,
+        customPrompt,
+        service,
+        provider: bodyProvider,
+        model,
+        context,
+      } = body;
       const db = await mt5InitBackend();
       const userId = CFG.mt5DefaultUserId;
       const sessionId = `ai_gen_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      await (await mt5Backend()).log(sessionId, 'ai', { event: 'AI_ANALYSIS', payload: body }, userId);
+      await (
+        await mt5Backend()
+      ).log(sessionId, "ai", { event: "AI_ANALYSIS", payload: body }, userId);
 
       let finalPrompt = customPrompt || "";
       if (templateId) {
-        const { rows } = await db.query("SELECT data FROM user_templates WHERE id = $1", [templateId]);
-        if (rows.length) finalPrompt = rows[0].data.prompt_text || rows[0].data.prompt;
+        const { rows } = await db.query(
+          "SELECT data FROM user_templates WHERE id = $1",
+          [templateId],
+        );
+        if (rows.length)
+          finalPrompt = rows[0].data.prompt_text || rows[0].data.prompt;
       }
 
-      const configRes = await db.query("SELECT name, data FROM user_settings WHERE user_id = $1 AND type = 'api_key'", [userId]);
+      const configRes = await db.query(
+        "SELECT name, data FROM user_settings WHERE user_id = $1 AND type = 'api_key'",
+        [userId],
+      );
       const config = {};
       for (const row of configRes.rows || []) {
         const name = normalizeAiApiKeyName(row?.name);
-        const dec = decryptObject(row?.data && typeof row.data === "object" ? row.data : {});
+        const dec = decryptObject(
+          row?.data && typeof row.data === "object" ? row.data : {},
+        );
         if (ALLOWED_AI_API_KEY_NAMES.has(name) && dec?.value) {
           config[name] = String(dec.value || "");
         }
@@ -10593,7 +14325,11 @@ const appHandler = async (req, res) => {
         }
       }
 
-      const { rows: tRows } = templateId ? await db.query("SELECT data FROM user_templates WHERE id = $1", [templateId]) : { rows: [] };
+      const { rows: tRows } = templateId
+        ? await db.query("SELECT data FROM user_templates WHERE id = $1", [
+            templateId,
+          ])
+        : { rows: [] };
       const tData = tRows[0]?.data || {};
 
       // Data for placeholders
@@ -10604,9 +14340,15 @@ const appHandler = async (req, res) => {
         .replace(/{SYMBOL}/g, symbol)
         .replace(/{TIMEFRAME: default 15m}/g, tf)
         .replace(/{TIMEFRAME}/g, tf)
-        .replace(/{STRATEGY: default Price Action}/g, body.strategy || "Price Action")
+        .replace(
+          /{STRATEGY: default Price Action}/g,
+          body.strategy || "Price Action",
+        )
         .replace(/{STRATEGY}/g, body.strategy || "Price Action")
-        .replace(/{INDICATORS\/STRATEGY}/g, body.indicators || "Technical Analysis")
+        .replace(
+          /{INDICATORS\/STRATEGY}/g,
+          body.indicators || "Technical Analysis",
+        )
         .replace(/{RR}/g, body.rr || "1:2");
 
       const sess = getUiSessionFromReq(req);
@@ -10619,19 +14361,23 @@ const appHandler = async (req, res) => {
       }
 
       const provider = (bodyProvider || service || "gemini").toLowerCase();
-      const apiKey = provider === "deepseek"
-        ? config.DEEPSEEK_API_KEY
-        : provider === "openai"
-          ? config.OPENAI_API_KEY
-          : provider === "claude"
-            ? (config.CLAUDE_API_KEY || config.ANTHROPIC_API_KEY)
-            : config.GEMINI_API_KEY;
+      const apiKey =
+        provider === "deepseek"
+          ? config.DEEPSEEK_API_KEY
+          : provider === "openai"
+            ? config.OPENAI_API_KEY
+            : provider === "claude"
+              ? config.CLAUDE_API_KEY || config.ANTHROPIC_API_KEY
+              : config.GEMINI_API_KEY;
 
       if (!apiKey) {
-        return json(res, 400, { ok: false, error: `API Key for ${provider} is missing. Please configure it in the AI Hub.` });
+        return json(res, 400, {
+          ok: false,
+          error: `API Key for ${provider} is missing. Please configure it in the AI Hub.`,
+        });
       }
 
-      console.log(`[ai] invoking ${provider} with model ${model || 'default'}`);
+      console.log(`[ai] invoking ${provider} with model ${model || "default"}`);
 
       let endpoint = "";
       let authHeader = "";
@@ -10647,7 +14393,7 @@ const appHandler = async (req, res) => {
         bodyData = {
           model: requestModel,
           messages: [{ role: "user", content: finalPrompt }],
-          response_format: { type: "json_object" }
+          response_format: { type: "json_object" },
         };
       } else if (provider === "openai") {
         endpoint = "https://api.openai.com/v1/chat/completions";
@@ -10656,7 +14402,7 @@ const appHandler = async (req, res) => {
         bodyData = {
           model: requestModel,
           messages: [{ role: "user", content: finalPrompt }],
-          response_format: { type: "json_object" }
+          response_format: { type: "json_object" },
         };
       } else if (provider === "claude") {
         endpoint = "https://api.anthropic.com/v1/messages";
@@ -10665,16 +14411,17 @@ const appHandler = async (req, res) => {
         bodyData = {
           model: requestModel,
           max_tokens: 4500,
-          messages: [{ role: "user", content: finalPrompt }]
+          messages: [{ role: "user", content: finalPrompt }],
         };
       } else {
         // Default to Gemini (OpenAI compatible route)
-        endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+        endpoint =
+          "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
         authHeader = `Bearer ${apiKey}`;
         if (!requestModel) requestModel = "gemini-2.0-flash";
         bodyData = {
           model: requestModel,
-          messages: [{ role: "user", content: finalPrompt }]
+          messages: [{ role: "user", content: finalPrompt }],
         };
       }
 
@@ -10699,14 +14446,16 @@ const appHandler = async (req, res) => {
             signal: aiCtrl.signal,
             headers: {
               "Content-Type": "application/json",
-              ...(authHeader ? { "Authorization": authHeader } : {})
+              ...(authHeader ? { Authorization: authHeader } : {}),
             },
-            body: JSON.stringify(bodyData)
+            body: JSON.stringify(bodyData),
           });
         }
       } catch (e) {
         if (e?.name === "AbortError") {
-          throw new Error(`AI Provider Timeout (${provider}/${requestModel}) after 45s. Check provider status/network and retry.`);
+          throw new Error(
+            `AI Provider Timeout (${provider}/${requestModel}) after 45s. Check provider status/network and retry.`,
+          );
         }
         throw e;
       } finally {
@@ -10719,11 +14468,15 @@ const appHandler = async (req, res) => {
       }
 
       const aiJson = await aiRes.json();
-      const rawResponse = provider === "claude"
-        ? (Array.isArray(aiJson?.content)
-          ? aiJson.content.filter((x) => x?.type === "text").map((x) => String(x?.text || "")).join("\n")
-          : String(aiJson?.content || ""))
-        : (aiJson.choices?.[0]?.message?.content || "");
+      const rawResponse =
+        provider === "claude"
+          ? Array.isArray(aiJson?.content)
+            ? aiJson.content
+                .filter((x) => x?.type === "text")
+                .map((x) => String(x?.text || ""))
+                .join("\n")
+            : String(aiJson?.content || "")
+          : aiJson.choices?.[0]?.message?.content || "";
 
       // Robust JSON extraction
       let cleanJson = rawResponse.trim();
@@ -10733,16 +14486,38 @@ const appHandler = async (req, res) => {
       }
 
       // If it still has markdown prefix (sometimes LLMs ignore instructions), strip it manually
-      cleanJson = cleanJson.replace(/^```json/, "").replace(/```$/, "").trim();
+      cleanJson = cleanJson
+        .replace(/^```json/, "")
+        .replace(/```$/, "")
+        .trim();
 
-      await (await mt5Backend()).log(sessionId, 'ai', { event: 'AI_RESPONSE', schema_version: AI_RESPONSE_SCHEMA_VERSION, raw_json: aiJson }, userId);
+      await (
+        await mt5Backend()
+      ).log(
+        sessionId,
+        "ai",
+        {
+          event: "AI_RESPONSE",
+          schema_version: AI_RESPONSE_SCHEMA_VERSION,
+          raw_json: aiJson,
+        },
+        userId,
+      );
 
       let signals = [];
       let analysisResult = null;
       try {
         const parsed = normalizeAiAnalysisContract(JSON.parse(cleanJson));
-        if (parsed.bias || parsed.analysis || parsed.key_levels || parsed.market_analysis || parsed.trade_plan || parsed.final_verdict) {
-          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) parsed.schema_version = AI_RESPONSE_SCHEMA_VERSION;
+        if (
+          parsed.bias ||
+          parsed.analysis ||
+          parsed.key_levels ||
+          parsed.market_analysis ||
+          parsed.trade_plan ||
+          parsed.final_verdict
+        ) {
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+            parsed.schema_version = AI_RESPONSE_SCHEMA_VERSION;
           analysisResult = parsed;
           signals = parsed.signals || [];
         } else if (Array.isArray(parsed)) {
@@ -10762,7 +14537,9 @@ const appHandler = async (req, res) => {
         if (analysisResult && body.bars && body.bars.length > 0) {
           const bars = body.bars;
           const barStart = Number(bars[0].time || bars[0].bar_start);
-          const barEnd = Number(bars[bars.length - 1].time || bars[bars.length - 1].bar_end);
+          const barEnd = Number(
+            bars[bars.length - 1].time || bars[bars.length - 1].bar_end,
+          );
           if (barStart && barEnd) {
             const symbolNorm = normalizeMarketDataSymbol(body.symbol);
             const tfNorm = normalizeMarketDataTf(body.timeframe);
@@ -10770,11 +14547,12 @@ const appHandler = async (req, res) => {
               bar_start: barStart,
               bar_end: barEnd,
               bars: bars,
-              metadata: analysisResult
-            }).catch(e => console.error("[ai-gen] DB Write Failed:", e.message));
+              metadata: analysisResult,
+            }).catch((e) =>
+              console.error("[ai-gen] DB Write Failed:", e.message),
+            );
           }
         }
-
       } catch (e) {
         console.error("[ai] failed to parse JSON from AI response:", cleanJson);
         // We still return ok: true but empty signals, showing the raw_response to user
@@ -10786,10 +14564,21 @@ const appHandler = async (req, res) => {
         schema_version: AI_RESPONSE_SCHEMA_VERSION,
         raw_response: rawResponse,
         signals: (signals || []).map((s) => {
-          const rawEntryModel = s?.entry_model || s?.model || s?.strategy || tData.name || "AI_AGENT";
-          const entryModel = mt5NormalizeEntryModel(rawEntryModel, { fallback: tData.name || "AI_AGENT" });
+          const rawEntryModel =
+            s?.entry_model ||
+            s?.model ||
+            s?.strategy ||
+            tData.name ||
+            "AI_AGENT";
+          const entryModel = mt5NormalizeEntryModel(rawEntryModel, {
+            fallback: tData.name || "AI_AGENT",
+          });
           const noteRaw = mt5CollapseWhitespace(s?.note || "");
-          const note = noteRaw || (mt5EntryModelLooksVerbose(rawEntryModel) ? mt5CollapseWhitespace(rawEntryModel) : "");
+          const note =
+            noteRaw ||
+            (mt5EntryModelLooksVerbose(rawEntryModel)
+              ? mt5CollapseWhitespace(rawEntryModel)
+              : "");
           return {
             ...s,
             symbol: s.symbol || symbol,
@@ -10802,7 +14591,7 @@ const appHandler = async (req, res) => {
             entry_model_raw: mt5CollapseWhitespace(rawEntryModel) || null,
             note,
           };
-        })
+        }),
       });
     } catch (e) {
       console.error("[ai] generation error:", e);
@@ -10812,8 +14601,11 @@ const appHandler = async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/v2/chart/snapshot") {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       const body = await readJson(req);
       const item = await captureTradingViewSnapshot({
@@ -10831,14 +14623,20 @@ const appHandler = async (req, res) => {
       });
       return json(res, 200, { ok: true, item });
     } catch (error) {
-      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "POST" && url.pathname === "/v2/chart/snapshot/batch") {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       const body = await readJson(req);
       const items = await captureTradingViewSnapshotsBatch({
@@ -10856,39 +14654,85 @@ const appHandler = async (req, res) => {
       });
       return json(res, 200, { ok: true, items });
     } catch (error) {
-      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "POST" && url.pathname === "/v2/chart/refresh") {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       const body = await readJson(req);
       const userId = sess.user_id || CFG.mt5DefaultUserId;
-      const symbols = (Array.isArray(body.symbols) ? body.symbols : [body.symbol])
+      const symbols = (
+        Array.isArray(body.symbols) ? body.symbols : [body.symbol]
+      )
         .map((x) => String(x || "").trim())
         .filter(Boolean)
         .slice(0, 8);
-      if (!symbols.length) return json(res, 400, { ok: false, error: "symbol or symbols is required" });
-      const timeframes = (Array.isArray(body.timeframes) ? body.timeframes : String(body.timeframes || body.tfs || "D,4H,1H,15M").split(","))
+      if (!symbols.length)
+        return json(res, 400, {
+          ok: false,
+          error: "symbol or symbols is required",
+        });
+      const timeframes = (
+        Array.isArray(body.timeframes)
+          ? body.timeframes
+          : String(body.timeframes || body.tfs || "D,4H,1H,15M").split(",")
+      )
         .map((x) => String(x || "").trim())
         .filter(Boolean)
         .slice(0, 8);
-      const types = new Set((Array.isArray(body.types) ? body.types : String(body.types || "context,snapshots").split(","))
-        .map((x) => String(x || "").trim().toLowerCase())
-        .filter(Boolean));
-      const wantsContext = ["context", "bars", "analysis", "tradeplans"].some((x) => types.has(x));
-      const wantsSnapshots = ["snapshot", "snapshots", "images"].some((x) => types.has(x));
-      const bars = Math.max(50, Math.min(Number(body.bars || body.lookbackBars || 300) || 300, 1000));
+      const types = new Set(
+        (Array.isArray(body.types)
+          ? body.types
+          : String(body.types || "context,snapshots").split(",")
+        )
+          .map((x) =>
+            String(x || "")
+              .trim()
+              .toLowerCase(),
+          )
+          .filter(Boolean),
+      );
+      const wantsContext = ["context", "bars", "analysis", "tradeplans"].some(
+        (x) => types.has(x),
+      );
+      const wantsSnapshots = ["snapshot", "snapshots", "images"].some((x) =>
+        types.has(x),
+      );
+      const bars = Math.max(
+        50,
+        Math.min(Number(body.bars || body.lookbackBars || 300) || 300, 1000),
+      );
       const provider = String(body.provider || "ICMARKETS").trim();
       const force = body.force === true || asBool(body.refresh, false);
-      const sessionPrefix = sanitizeSessionPrefix(body.session_prefix || body.sessionPrefix || "");
-      const snapshotMaxAgeMs = Math.max(0, Number(body.snapshot_max_age_ms || body.snapshotMaxAgeMs || 15 * 60 * 1000) || 0);
-      const includeSnapshotsInContext = body.include_snapshots === true || body.includeSnapshots === true;
-      const claudeKey = wantsContext ? await loadClaudeApiKeyForUser(userId) : "";
-      if (wantsContext && !claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
+      const sessionPrefix = sanitizeSessionPrefix(
+        body.session_prefix || body.sessionPrefix || "",
+      );
+      const snapshotMaxAgeMs = Math.max(
+        0,
+        Number(
+          body.snapshot_max_age_ms || body.snapshotMaxAgeMs || 15 * 60 * 1000,
+        ) || 0,
+      );
+      const includeSnapshotsInContext =
+        body.include_snapshots === true || body.includeSnapshots === true;
+      const claudeKey = wantsContext
+        ? await loadClaudeApiKeyForUser(userId)
+        : "";
+      if (wantsContext && !claudeKey)
+        return json(res, 400, {
+          ok: false,
+          error: "CLAUDE_API_KEY is missing in Settings.",
+        });
 
       const results = [];
       for (const symbol of symbols) {
@@ -10919,15 +14763,32 @@ const appHandler = async (req, res) => {
             });
           } catch (error) {
             row.status = "partial";
-            row.errors.push({ type: "context", error: error instanceof Error ? error.message : String(error) });
+            row.errors.push({
+              type: "context",
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
         }
 
         if (wantsSnapshots) {
           try {
             const cached = force
-              ? { items: [], missing_timeframes: timeframes.map((tf) => toTradingViewInterval(tf).toUpperCase()), target_timeframes: timeframes.map((tf) => toTradingViewInterval(tf).toUpperCase()) }
-              : findRecentChartSnapshots({ symbol, provider, timeframes, sessionPrefix, maxAgeMs: snapshotMaxAgeMs });
+              ? {
+                  items: [],
+                  missing_timeframes: timeframes.map((tf) =>
+                    toTradingViewInterval(tf).toUpperCase(),
+                  ),
+                  target_timeframes: timeframes.map((tf) =>
+                    toTradingViewInterval(tf).toUpperCase(),
+                  ),
+                }
+              : findRecentChartSnapshots({
+                  symbol,
+                  provider,
+                  timeframes,
+                  sessionPrefix,
+                  maxAgeMs: snapshotMaxAgeMs,
+                });
             let created = [];
             if (cached.missing_timeframes.length) {
               created = await captureTradingViewSnapshotsBatch({
@@ -10949,12 +14810,28 @@ const appHandler = async (req, res) => {
               items: [...cached.items, ...created],
               matched_count: cached.items.length + created.length,
               target_count: cached.target_timeframes.length,
-              missing_timeframes: cached.target_timeframes.filter((tf) => ![...cached.items, ...created].some((x) => String(x?.timeframe || "").toUpperCase() === tf)),
+              missing_timeframes: cached.target_timeframes.filter(
+                (tf) =>
+                  ![...cached.items, ...created].some(
+                    (x) => String(x?.timeframe || "").toUpperCase() === tf,
+                  ),
+              ),
             };
           } catch (error) {
             row.status = row.status === "ok" ? "partial" : row.status;
-            row.errors.push({ type: "snapshots", error: error instanceof Error ? error.message : String(error) });
-            row.snapshots = row.snapshots || { target_timeframes: timeframes, cached: [], created: [], items: [], matched_count: 0, target_count: timeframes.length, missing_timeframes: timeframes };
+            row.errors.push({
+              type: "snapshots",
+              error: error instanceof Error ? error.message : String(error),
+            });
+            row.snapshots = row.snapshots || {
+              target_timeframes: timeframes,
+              cached: [],
+              created: [],
+              items: [],
+              matched_count: 0,
+              target_count: timeframes.length,
+              missing_timeframes: timeframes,
+            };
           }
         }
 
@@ -10969,20 +14846,34 @@ const appHandler = async (req, res) => {
         snapshots: results.length === 1 ? results[0].snapshots : undefined,
       });
     } catch (error) {
-      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "GET" && url.pathname === "/v2/chart/twelve/candles") {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       const symbol = String(url.searchParams.get("symbol") || "").trim();
-      const timeframe = String(url.searchParams.get("timeframe") || url.searchParams.get("tf") || "15m").trim();
-      const bars = Math.max(50, Math.min(Number(url.searchParams.get("bars") || 300) || 300, 1000));
+      const timeframe = String(
+        url.searchParams.get("timeframe") ||
+          url.searchParams.get("tf") ||
+          "15m",
+      ).trim();
+      const bars = Math.max(
+        50,
+        Math.min(Number(url.searchParams.get("bars") || 300) || 300, 1000),
+      );
       const forceRefresh = asBool(url.searchParams.get("refresh"), false);
-      if (!symbol) return json(res, 400, { ok: false, error: "symbol is required" });
+      if (!symbol)
+        return json(res, 400, { ok: false, error: "symbol is required" });
       const userId = sess.user_id || CFG.mt5DefaultUserId;
       const snapshot = await buildAnalysisSnapshotFromTwelve({
         userId,
@@ -10991,45 +14882,79 @@ const appHandler = async (req, res) => {
         timeframe,
       });
       if (String(snapshot?.status || "").toLowerCase() !== "ok") {
-        return json(res, 400, { ok: false, error: snapshot?.reason || "twelve_data_failed", snapshot });
+        return json(res, 400, {
+          ok: false,
+          error: snapshot?.reason || "twelve_data_failed",
+          snapshot,
+        });
       }
 
       // Add UI metadata fields
-      const updated_time = snapshot.updated_time || (snapshot.fetched_at ? new Date(snapshot.fetched_at).getTime() : Date.now());
+      const updated_time =
+        snapshot.updated_time ||
+        (snapshot.fetched_at
+          ? new Date(snapshot.fetched_at).getTime()
+          : Date.now());
       const source = snapshot.cache_source || "remote_api";
       const auto_refresh = parseTfTokenToSeconds(timeframe) || 60; // Refresh based on timeframe
 
-      return json(res, 200, { 
-        ok: true, 
+      return json(res, 200, {
+        ok: true,
         snapshot,
         source,
         updated_time,
-        auto_refresh
+        auto_refresh,
       });
     } catch (error) {
-      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "GET" && url.pathname === "/v2/chart/context") {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       const userId = sess.user_id || CFG.mt5DefaultUserId;
       const claudeKey = await loadClaudeApiKeyForUser(userId);
-      if (!claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
+      if (!claudeKey)
+        return json(res, 400, {
+          ok: false,
+          error: "CLAUDE_API_KEY is missing in Settings.",
+        });
       const symbol = String(url.searchParams.get("symbol") || "").trim();
-      if (!symbol) return json(res, 400, { ok: false, error: "symbol is required" });
-      const timeframes = String(url.searchParams.get("tfs") || url.searchParams.get("timeframes") || "D,4H,1H,15M")
+      if (!symbol)
+        return json(res, 400, { ok: false, error: "symbol is required" });
+      const timeframes = String(
+        url.searchParams.get("tfs") ||
+          url.searchParams.get("timeframes") ||
+          "D,4H,1H,15M",
+      )
         .split(",")
         .map((x) => x.trim())
         .filter(Boolean);
-      const bars = Math.max(50, Math.min(Number(url.searchParams.get("bars") || 300) || 300, 1000));
-      const provider = String(url.searchParams.get("provider") || "ICMARKETS").trim();
+      const bars = Math.max(
+        50,
+        Math.min(Number(url.searchParams.get("bars") || 300) || 300, 1000),
+      );
+      const provider = String(
+        url.searchParams.get("provider") || "ICMARKETS",
+      ).trim();
       const forceRefresh = asBool(url.searchParams.get("refresh"), false);
-      const forceSnapshot = asBool(url.searchParams.get("snapshot_refresh"), false);
-      const includeSnapshots = asBool(url.searchParams.get("include_snapshots"), false);
+      const forceSnapshot = asBool(
+        url.searchParams.get("snapshot_refresh"),
+        false,
+      );
+      const includeSnapshots = asBool(
+        url.searchParams.get("include_snapshots"),
+        false,
+      );
       const bundle = await buildAiContextBundle({
         userId,
         apiKey: claudeKey,
@@ -11043,44 +14968,77 @@ const appHandler = async (req, res) => {
       });
       return json(res, 200, { ok: true, ...bundle });
     } catch (error) {
-      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "GET" && url.pathname === "/v2/chart/symbols") {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
-      const q = String(url.searchParams.get("q") || url.searchParams.get("text") || "").trim();
-      const provider = String(url.searchParams.get("provider") || "ICMARKETS").trim();
-      const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit") || 20) || 20, 50));
+      const q = String(
+        url.searchParams.get("q") || url.searchParams.get("text") || "",
+      ).trim();
+      const provider = String(
+        url.searchParams.get("provider") || "ICMARKETS",
+      ).trim();
+      const limit = Math.max(
+        1,
+        Math.min(Number(url.searchParams.get("limit") || 20) || 20, 50),
+      );
       if (!q) return json(res, 200, { ok: true, items: [] });
       const items = await fetchTradingViewSymbolSearch(q, provider, limit);
       return json(res, 200, { ok: true, items });
     } catch (error) {
-      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "POST" && url.pathname === "/v2/chart/snapshots/analyze") {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       const body = await readJson(req);
-      const reqSessionPrefix = sanitizeSessionPrefix(body.session_prefix || body.sessionPrefix || "");
+      const reqSessionPrefix = sanitizeSessionPrefix(
+        body.session_prefix || body.sessionPrefix || "",
+      );
       ensureChartSnapshotDir();
       const userId = sess.user_id || CFG.mt5DefaultUserId;
       const sessionId = `ai_analyze_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      await (await mt5Backend()).log(sessionId, 'ai', { event: 'AI_ANALYSIS', payload: body }, userId);
+      await (
+        await mt5Backend()
+      ).log(sessionId, "ai", { event: "AI_ANALYSIS", payload: body }, userId);
       const claudeKey = await loadClaudeApiKeyForUser(userId);
-      if (!claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
+      if (!claudeKey)
+        return json(res, 400, {
+          ok: false,
+          error: "CLAUDE_API_KEY is missing in Settings.",
+        });
 
-      const useContextFiles = body.use_context_files === true || String(body.context_mode || "").toLowerCase() === "claude";
+      const useContextFiles =
+        body.use_context_files === true ||
+        String(body.context_mode || "").toLowerCase() === "claude";
       if (useContextFiles) {
         const symbol = String(body.symbol || "").trim();
-        if (!symbol) return json(res, 400, { ok: false, error: "symbol is required for context analysis." });
+        if (!symbol)
+          return json(res, 400, {
+            ok: false,
+            error: "symbol is required for context analysis.",
+          });
         const timeframes = Array.isArray(body.timeframes)
           ? body.timeframes
           : String(body.tfs || body.timeframes || "D,4H,1H,15M").split(",");
@@ -11089,17 +15047,23 @@ const appHandler = async (req, res) => {
           apiKey: claudeKey,
           symbol,
           timeframes,
-          bars: Number(body.bars_count || body.lookbackBars || body.lookback_bars || 300) || 300,
+          bars:
+            Number(
+              body.bars_count || body.lookbackBars || body.lookback_bars || 300,
+            ) || 300,
           provider: String(body.provider || "ICMARKETS"),
           forceRefresh: body.force_refresh === true,
           forceSnapshot: body.snapshot_refresh === true,
         });
-        let finalPrompt = String(body.prompt || "").trim() || "Analyze this chart context and return only JSON.";
+        let finalPrompt =
+          String(body.prompt || "").trim() ||
+          "Analyze this chart context and return only JSON.";
         const manifest = {
           symbol: contextBundle.symbol,
           current_price: contextBundle.current_price,
           generated_at: contextBundle.generated_at,
-          instruction: "Use the attached snapshot, bars, prior analysis, and tradeplans files. Reconcile prior analysis and explicitly flag invalid trade plans.",
+          instruction:
+            "Use the attached snapshot, bars, prior analysis, and tradeplans files. Reconcile prior analysis and explicitly flag invalid trade plans.",
           context_files: contextBundle.context_files,
           timeframe_summaries: (contextBundle.timeframes || []).map((x) => ({
             tf: x.tf,
@@ -11114,15 +15078,23 @@ const appHandler = async (req, res) => {
         for (const item of contextBundle.timeframes || []) {
           const filesForTf = item.files || {};
           if (filesForTf.snapshot?.file_id) {
-            content.push({ type: "image", source: { type: "file", file_id: filesForTf.snapshot.file_id } });
+            content.push({
+              type: "image",
+              source: { type: "file", file_id: filesForTf.snapshot.file_id },
+            });
           }
           for (const type of ["bars", "analysis", "tradeplans"]) {
-            const block = makeAiContextTextBlock(filesForTf[type], `${item.tf} ${type}`);
+            const block = makeAiContextTextBlock(
+              filesForTf[type],
+              `${item.tf} ${type}`,
+            );
             if (block) content.push(block);
           }
         }
         content.push({ type: "text", text: finalPrompt });
-        const requestModel = String(body.model || "claude-sonnet-4-0").trim() || "claude-sonnet-4-0";
+        const requestModel =
+          String(body.model || "claude-sonnet-4-0").trim() ||
+          "claude-sonnet-4-0";
         const out = await anthropicMessagesWithFallback({
           apiKey: claudeKey,
           model: requestModel,
@@ -11139,16 +15111,25 @@ const appHandler = async (req, res) => {
         }
         const aiJson = await aiRes.json();
         const rawResponse = Array.isArray(aiJson?.content)
-          ? aiJson.content.filter((x) => x?.type === "text").map((x) => String(x?.text || "")).join("\n")
+          ? aiJson.content
+              .filter((x) => x?.type === "text")
+              .map((x) => String(x?.text || ""))
+              .join("\n")
           : String(aiJson?.content || "");
         const extracted = extractJsonFromAiText(rawResponse);
         const parsedJson = normalizeAiAnalysisContract(extracted.parsed || {});
-        if (parsedJson && typeof parsedJson === "object" && !Array.isArray(parsedJson)) {
+        if (
+          parsedJson &&
+          typeof parsedJson === "object" &&
+          !Array.isArray(parsedJson)
+        ) {
           parsedJson.schema_version = AI_RESPONSE_SCHEMA_VERSION;
         }
         const analysisFileUploads = [];
         try {
-          const firstOk = (contextBundle.timeframes || []).find((x) => x.status === "ok");
+          const firstOk = (contextBundle.timeframes || []).find(
+            (x) => x.status === "ok",
+          );
           const analysisFileName = aiContextFileName({
             symbol: contextBundle.symbol,
             tf: "ALL",
@@ -11159,23 +15140,43 @@ const appHandler = async (req, res) => {
             kind: "analysis_result",
             symbol: contextBundle.symbol,
             generated_at: new Date().toISOString(),
-            timeframes: (contextBundle.timeframes || []).map((x) => ({ tf: x.tf, bar_end: x.bar_end })),
+            timeframes: (contextBundle.timeframes || []).map((x) => ({
+              tf: x.tf,
+              bar_end: x.bar_end,
+            })),
             analysis: parsedJson,
           });
-          analysisFileUploads.push(await upsertClaudeContextFile({
-            apiKey: claudeKey,
-            contextKey: `${contextBundle.symbol}:ALL:${firstOk?.bar_end || "latest"}`,
-            type: "analysis_result",
-            absPath: analysisAbs,
-            fileName: analysisFileName,
-            symbol: contextBundle.symbol,
-            tf: "ALL",
-            barEnd: firstOk?.bar_end || nowUnixSec(),
-          }));
+          analysisFileUploads.push(
+            await upsertClaudeContextFile({
+              apiKey: claudeKey,
+              contextKey: `${contextBundle.symbol}:ALL:${firstOk?.bar_end || "latest"}`,
+              type: "analysis_result",
+              absPath: analysisAbs,
+              fileName: analysisFileName,
+              symbol: contextBundle.symbol,
+              tf: "ALL",
+              barEnd: firstOk?.bar_end || nowUnixSec(),
+            }),
+          );
         } catch (e) {
-          console.warn("[snapshot-analyze] Failed to upload analysis result context file:", e?.message || e);
+          console.warn(
+            "[snapshot-analyze] Failed to upload analysis result context file:",
+            e?.message || e,
+          );
         }
-        await (await mt5Backend()).log(sessionId, 'ai', { event: 'AI_RESPONSE', schema_version: AI_RESPONSE_SCHEMA_VERSION, raw_json: aiJson, context_files: contextBundle.context_files }, userId);
+        await (
+          await mt5Backend()
+        ).log(
+          sessionId,
+          "ai",
+          {
+            event: "AI_RESPONSE",
+            schema_version: AI_RESPONSE_SCHEMA_VERSION,
+            raw_json: aiJson,
+            context_files: contextBundle.context_files,
+          },
+          userId,
+        );
         return json(res, 200, {
           ok: true,
           model: resolvedModel,
@@ -11193,11 +15194,16 @@ const appHandler = async (req, res) => {
         });
       }
 
-      let files = Array.isArray(body.files) ? body.files.map((x) => String(x || "").trim()).filter(Boolean) : [];
+      let files = Array.isArray(body.files)
+        ? body.files.map((x) => String(x || "").trim()).filter(Boolean)
+        : [];
       if (!files.length) {
-        files = fs.readdirSync(CHART_SNAPSHOT_DIR)
+        files = fs
+          .readdirSync(CHART_SNAPSHOT_DIR)
           .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
-          .filter((f) => !reqSessionPrefix || f.includes(`_${reqSessionPrefix}_`))
+          .filter(
+            (f) => !reqSessionPrefix || f.includes(`_${reqSessionPrefix}_`),
+          )
           .map((f) => {
             const st = fs.statSync(path.join(CHART_SNAPSHOT_DIR, f));
             return { f, t: Number(st.mtimeMs || 0) };
@@ -11207,21 +15213,36 @@ const appHandler = async (req, res) => {
           .map((x) => x.f);
       }
       files = files.slice(0, 3);
-      if (!files.length) return json(res, 400, { ok: false, error: "No snapshots found for analysis." });
+      if (!files.length)
+        return json(res, 400, {
+          ok: false,
+          error: "No snapshots found for analysis.",
+        });
 
       const snapshotFiles = [];
       for (const fileNameRaw of files) {
         const safeName = path.basename(String(fileNameRaw || ""));
-        if (!safeName || safeName !== fileNameRaw || !/\.(png|jpg|jpeg)$/i.test(safeName)) continue;
+        if (
+          !safeName ||
+          safeName !== fileNameRaw ||
+          !/\.(png|jpg|jpeg)$/i.test(safeName)
+        )
+          continue;
         const abs = path.join(CHART_SNAPSHOT_DIR, safeName);
         if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue;
         const mediaType = snapshotMimeByFileName(safeName);
         if (!mediaType) continue;
         snapshotFiles.push({ fileName: safeName, abs, mediaType });
       }
-      if (!snapshotFiles.length) return json(res, 400, { ok: false, error: "No valid snapshot images available." });
+      if (!snapshotFiles.length)
+        return json(res, 400, {
+          ok: false,
+          error: "No valid snapshot images available.",
+        });
 
-      let finalPrompt = String(body.prompt || "").trim() || "Analyze these chart snapshots and return only JSON.";
+      let finalPrompt =
+        String(body.prompt || "").trim() ||
+        "Analyze these chart snapshots and return only JSON.";
 
       finalPrompt += `\n\n${buildAiSchemaPromptText()}`;
 
@@ -11229,10 +15250,14 @@ const appHandler = async (req, res) => {
       let claudeFilesMode = "base64";
       let claudeFilesError = "";
       try {
-        imagePayload = await buildClaudeFileSnapshotContent({ apiKey: claudeKey, snapshotFiles });
+        imagePayload = await buildClaudeFileSnapshotContent({
+          apiKey: claudeKey,
+          snapshotFiles,
+        });
         claudeFilesMode = "files_api";
       } catch (error) {
-        claudeFilesError = error instanceof Error ? error.message : String(error);
+        claudeFilesError =
+          error instanceof Error ? error.message : String(error);
         imagePayload = buildBase64SnapshotContent(snapshotFiles);
         claudeFilesMode = "fallback_base64";
       }
@@ -11243,7 +15268,8 @@ const appHandler = async (req, res) => {
         text: finalPrompt,
       });
 
-      const requestModel = String(body.model || "claude-sonnet-4-0").trim() || "claude-sonnet-4-0";
+      const requestModel =
+        String(body.model || "claude-sonnet-4-0").trim() || "claude-sonnet-4-0";
       let out = await anthropicMessagesWithFallback({
         apiKey: claudeKey,
         model: requestModel,
@@ -11257,10 +15283,15 @@ const appHandler = async (req, res) => {
       let finalAiRes = aiRes;
       if (!finalAiRes.ok && claudeFilesMode === "files_api") {
         const errText = await finalAiRes.text().catch(() => "");
-        claudeFilesError = errText || `Claude Messages rejected file references (${finalAiRes.status}).`;
+        claudeFilesError =
+          errText ||
+          `Claude Messages rejected file references (${finalAiRes.status}).`;
         removeMappedClaudeSnapshotFiles(snapshotFiles.map((x) => x.fileName));
         const fallbackPayload = buildBase64SnapshotContent(snapshotFiles);
-        const fallbackContent = [...fallbackPayload.content, { type: "text", text: finalPrompt }];
+        const fallbackContent = [
+          ...fallbackPayload.content,
+          { type: "text", text: finalPrompt },
+        ];
         imagePayload = {
           ...fallbackPayload,
           claudeFiles: imagePayload.claudeFiles || [],
@@ -11282,50 +15313,89 @@ const appHandler = async (req, res) => {
       }
       const aiJson = await finalAiRes.json();
       const rawResponse = Array.isArray(aiJson?.content)
-        ? aiJson.content.filter((x) => x?.type === "text").map((x) => String(x?.text || "")).join("\n")
+        ? aiJson.content
+            .filter((x) => x?.type === "text")
+            .map((x) => String(x?.text || ""))
+            .join("\n")
         : String(aiJson?.content || "");
       const extracted = extractJsonFromAiText(rawResponse);
       const parsedJson = normalizeAiAnalysisContract(extracted.parsed || {});
-      if (parsedJson && typeof parsedJson === "object" && !Array.isArray(parsedJson)) {
+      if (
+        parsedJson &&
+        typeof parsedJson === "object" &&
+        !Array.isArray(parsedJson)
+      ) {
         parsedJson.schema_version = AI_RESPONSE_SCHEMA_VERSION;
       }
 
       // Persistence: If we have analysis and bars context, store in market_data metadata
       // Persistence: If we have analysis and bars context, store in Unified Cache and DB
-      if ((parsedJson.bias || parsedJson.analysis || parsedJson.market_analysis || parsedJson.trade_plan || parsedJson.final_verdict) && body.bars && body.bars.length > 0) {
+      if (
+        (parsedJson.bias ||
+          parsedJson.analysis ||
+          parsedJson.market_analysis ||
+          parsedJson.trade_plan ||
+          parsedJson.final_verdict) &&
+        body.bars &&
+        body.bars.length > 0
+      ) {
         try {
           const bars = body.bars;
           const symbolNorm = normalizeMarketDataSymbol(body.symbol);
           const tfNorm = normalizeMarketDataTf(body.timeframe);
-          
+
           // Update Unified Cache (Read-Modify-Write)
           await repoUpsertUnifiedMarketData(symbolNorm, tfNorm, {
             bars: bars,
-            market_analysis: parsedJson
-          }).catch(e => console.error("[snapshot-analyze] Unified Cache Update Failed:", e.message));
+            market_analysis: parsedJson,
+          }).catch((e) =>
+            console.error(
+              "[snapshot-analyze] Unified Cache Update Failed:",
+              e.message,
+            ),
+          );
 
           // Legacy DB persistence
           const barStart = Number(bars[0].time || bars[0].bar_start);
-          const barEnd = Number(bars[bars.length - 1].time || bars[bars.length - 1].bar_end);
+          const barEnd = Number(
+            bars[bars.length - 1].time || bars[bars.length - 1].bar_end,
+          );
           if (barStart && barEnd) {
             await marketDataDbWrite(symbolNorm, tfNorm, {
               bar_start: barStart,
               bar_end: barEnd,
               bars: bars,
-              metadata: parsedJson
-            }).catch(e => console.error("[snapshot-analyze] DB Write Failed:", e.message));
+              metadata: parsedJson,
+            }).catch((e) =>
+              console.error("[snapshot-analyze] DB Write Failed:", e.message),
+            );
           }
         } catch (e) {
-          console.warn("[snapshot-analyze] Failed to persist metadata:", e.message);
+          console.warn(
+            "[snapshot-analyze] Failed to persist metadata:",
+            e.message,
+          );
         }
       }
 
-      await (await mt5Backend()).log(sessionId, 'ai', { event: 'AI_RESPONSE', schema_version: AI_RESPONSE_SCHEMA_VERSION, raw_json: aiJson }, userId);
+      await (
+        await mt5Backend()
+      ).log(
+        sessionId,
+        "ai",
+        {
+          event: "AI_RESPONSE",
+          schema_version: AI_RESPONSE_SCHEMA_VERSION,
+          raw_json: aiJson,
+        },
+        userId,
+      );
       return json(res, 200, {
         ok: true,
         model: resolvedModel,
         schema_version: AI_RESPONSE_SCHEMA_VERSION,
-        used_files: imagePayload.usedFiles || snapshotFiles.map((x) => x.fileName),
+        used_files:
+          imagePayload.usedFiles || snapshotFiles.map((x) => x.fileName),
         claude_files_mode: claudeFilesMode,
         claude_files: imagePayload.claudeFiles || [],
         claude_files_error: claudeFilesError,
@@ -11333,45 +15403,93 @@ const appHandler = async (req, res) => {
         parsed_json: parsedJson,
         source: "remote_api",
         updated_time: Date.now(),
-        auto_refresh: 0 // Analysis doesn't need auto-refresh by default
+        auto_refresh: 0, // Analysis doesn't need auto-refresh by default
       });
     } catch (error) {
-      if (error?.name === "AbortError" || String(error?.message || "").toLowerCase().includes("aborted")) {
-        return json(res, 504, { ok: false, error: "AI provider timeout while analyzing snapshots. Try fewer charts or a shorter prompt." });
+      if (
+        error?.name === "AbortError" ||
+        String(error?.message || "")
+          .toLowerCase()
+          .includes("aborted")
+      ) {
+        return json(res, 504, {
+          ok: false,
+          error:
+            "AI provider timeout while analyzing snapshots. Try fewer charts or a shorter prompt.",
+        });
       }
-      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "GET" && url.pathname === "/v2/ai/claude/files") {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       const userId = sess.user_id || CFG.mt5DefaultUserId;
       const claudeKey = await loadClaudeApiKeyForUser(userId);
-      if (!claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
-      const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit") || 100) || 100, 200));
+      if (!claudeKey)
+        return json(res, 400, {
+          ok: false,
+          error: "CLAUDE_API_KEY is missing in Settings.",
+        });
+      const limit = Math.max(
+        1,
+        Math.min(Number(url.searchParams.get("limit") || 100) || 100, 200),
+      );
       const afterId = String(url.searchParams.get("after_id") || "").trim();
       const qs = new URLSearchParams({ limit: String(limit) });
       if (afterId) qs.set("after_id", afterId);
-      const out = await anthropicFilesRequest({ apiKey: claudeKey, pathName: `/v1/files?${qs.toString()}` });
-      return json(res, 200, { ok: true, ...out, local_map: readClaudeLocalFileMap() });
+      const out = await anthropicFilesRequest({
+        apiKey: claudeKey,
+        pathName: `/v1/files?${qs.toString()}`,
+      });
+      return json(res, 200, {
+        ok: true,
+        ...out,
+        local_map: readClaudeLocalFileMap(),
+      });
     } catch (error) {
-      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "GET" && url.pathname.startsWith("/v2/ai/claude/files/") && url.pathname.endsWith("/content")) {
+  if (
+    req.method === "GET" &&
+    url.pathname.startsWith("/v2/ai/claude/files/") &&
+    url.pathname.endsWith("/content")
+  ) {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       const userId = sess.user_id || CFG.mt5DefaultUserId;
       const claudeKey = await loadClaudeApiKeyForUser(userId);
-      if (!claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
-      const rawId = decodeURIComponent(url.pathname.replace("/v2/ai/claude/files/", "").replace(/\/content$/, "") || "").trim();
-      if (!rawId || rawId.includes("/") || rawId.includes("\\")) return json(res, 400, { ok: false, error: "Invalid Claude file id." });
+      if (!claudeKey)
+        return json(res, 400, {
+          ok: false,
+          error: "CLAUDE_API_KEY is missing in Settings.",
+        });
+      const rawId = decodeURIComponent(
+        url.pathname
+          .replace("/v2/ai/claude/files/", "")
+          .replace(/\/content$/, "") || "",
+      ).trim();
+      if (!rawId || rawId.includes("/") || rawId.includes("\\"))
+        return json(res, 400, { ok: false, error: "Invalid Claude file id." });
       const meta = await anthropicFilesRequest({
         apiKey: claudeKey,
         pathName: `/v1/files/${encodeURIComponent(rawId)}`,
@@ -11390,11 +15508,23 @@ const appHandler = async (req, res) => {
       }
       const local = contentError ? findClaudeLocalFileById(rawId) : null;
       if (contentError && !local) throw contentError;
-      const fileName = String(meta?.filename || `${rawId}.bin`).replace(/[^\w.\- ()[\]]+/g, "_").slice(0, 180) || `${rawId}.bin`;
-      const dispositionMode = url.searchParams.get("download") === "1" ? "attachment" : "inline";
+      const fileName =
+        String(meta?.filename || `${rawId}.bin`)
+          .replace(/[^\w.\- ()[\]]+/g, "_")
+          .slice(0, 180) || `${rawId}.bin`;
+      const dispositionMode =
+        url.searchParams.get("download") === "1" ? "attachment" : "inline";
       const body = local ? fs.readFileSync(local.vps_path) : out.buffer;
-      const contentType = String(local?.mime_type || meta?.mime_type || out?.contentType || "application/octet-stream");
-      const finalFileName = String(local?.vps_file || fileName).replace(/[^\w.\- ()[\]]+/g, "_").slice(0, 180) || fileName;
+      const contentType = String(
+        local?.mime_type ||
+          meta?.mime_type ||
+          out?.contentType ||
+          "application/octet-stream",
+      );
+      const finalFileName =
+        String(local?.vps_file || fileName)
+          .replace(/[^\w.\- ()[\]]+/g, "_")
+          .slice(0, 180) || fileName;
       res.writeHead(200, {
         "Content-Type": contentType,
         "Content-Disposition": `${dispositionMode}; filename="${finalFileName}"`,
@@ -11405,20 +15535,33 @@ const appHandler = async (req, res) => {
       res.end(body);
       return;
     } catch (error) {
-      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "GET" && url.pathname.startsWith("/v2/ai/claude/files/")) {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       const userId = sess.user_id || CFG.mt5DefaultUserId;
       const claudeKey = await loadClaudeApiKeyForUser(userId);
-      if (!claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
-      const fileId = decodeURIComponent(url.pathname.replace("/v2/ai/claude/files/", "") || "").trim();
-      if (!fileId || fileId.includes("/") || fileId.includes("\\")) return json(res, 400, { ok: false, error: "Invalid Claude file id." });
+      if (!claudeKey)
+        return json(res, 400, {
+          ok: false,
+          error: "CLAUDE_API_KEY is missing in Settings.",
+        });
+      const fileId = decodeURIComponent(
+        url.pathname.replace("/v2/ai/claude/files/", "") || "",
+      ).trim();
+      if (!fileId || fileId.includes("/") || fileId.includes("\\"))
+        return json(res, 400, { ok: false, error: "Invalid Claude file id." });
       const out = await anthropicFilesRequest({
         apiKey: claudeKey,
         pathName: `/v1/files/${encodeURIComponent(fileId)}`,
@@ -11426,26 +15569,46 @@ const appHandler = async (req, res) => {
       });
       return json(res, 200, { ok: true, file: out });
     } catch (error) {
-      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "POST" && url.pathname === "/v2/ai/claude/files/upload-snapshots") {
+  if (
+    req.method === "POST" &&
+    url.pathname === "/v2/ai/claude/files/upload-snapshots"
+  ) {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       ensureChartSnapshotDir();
       const body = await readJson(req);
       const userId = sess.user_id || CFG.mt5DefaultUserId;
       const claudeKey = await loadClaudeApiKeyForUser(userId);
-      if (!claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
-      const reqSessionPrefix = sanitizeSessionPrefix(body?.session_prefix || body?.sessionPrefix || "");
-      let files = Array.isArray(body?.files) ? body.files.map((x) => String(x || "").trim()).filter(Boolean) : [];
+      if (!claudeKey)
+        return json(res, 400, {
+          ok: false,
+          error: "CLAUDE_API_KEY is missing in Settings.",
+        });
+      const reqSessionPrefix = sanitizeSessionPrefix(
+        body?.session_prefix || body?.sessionPrefix || "",
+      );
+      let files = Array.isArray(body?.files)
+        ? body.files.map((x) => String(x || "").trim()).filter(Boolean)
+        : [];
       if (!files.length) {
-        files = fs.readdirSync(CHART_SNAPSHOT_DIR)
+        files = fs
+          .readdirSync(CHART_SNAPSHOT_DIR)
           .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
-          .filter((f) => !reqSessionPrefix || f.includes(`_${reqSessionPrefix}_`))
+          .filter(
+            (f) => !reqSessionPrefix || f.includes(`_${reqSessionPrefix}_`),
+          )
           .slice(0, 20);
       }
       const uploaded = [];
@@ -11453,7 +15616,10 @@ const appHandler = async (req, res) => {
       for (const fileNameRaw of files) {
         const safeName = normalizeSnapshotFileName(fileNameRaw);
         if (!safeName) {
-          failed.push({ file: fileNameRaw, error: "Invalid snapshot file name." });
+          failed.push({
+            file: fileNameRaw,
+            error: "Invalid snapshot file name.",
+          });
           continue;
         }
         const abs = path.join(CHART_SNAPSHOT_DIR, safeName);
@@ -11463,33 +15629,69 @@ const appHandler = async (req, res) => {
           continue;
         }
         try {
-          uploaded.push(await uploadSnapshotToClaudeFile({ apiKey: claudeKey, fileName: safeName, absPath: abs, mediaType }));
+          uploaded.push(
+            await uploadSnapshotToClaudeFile({
+              apiKey: claudeKey,
+              fileName: safeName,
+              absPath: abs,
+              mediaType,
+            }),
+          );
         } catch (error) {
-          failed.push({ file: safeName, error: error instanceof Error ? error.message : String(error) });
+          failed.push({
+            file: safeName,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       }
-      return json(res, 200, { ok: true, uploaded_count: uploaded.length, failed_count: failed.length, uploaded, failed });
+      return json(res, 200, {
+        ok: true,
+        uploaded_count: uploaded.length,
+        failed_count: failed.length,
+        uploaded,
+        failed,
+      });
     } catch (error) {
-      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if ((req.method === "DELETE" && url.pathname.startsWith("/v2/ai/claude/files/")) || (req.method === "POST" && url.pathname === "/v2/ai/claude/files/delete")) {
+  if (
+    (req.method === "DELETE" &&
+      url.pathname.startsWith("/v2/ai/claude/files/")) ||
+    (req.method === "POST" && url.pathname === "/v2/ai/claude/files/delete")
+  ) {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       const userId = sess.user_id || CFG.mt5DefaultUserId;
       const claudeKey = await loadClaudeApiKeyForUser(userId);
-      if (!claudeKey) return json(res, 400, { ok: false, error: "CLAUDE_API_KEY is missing in Settings." });
+      if (!claudeKey)
+        return json(res, 400, {
+          ok: false,
+          error: "CLAUDE_API_KEY is missing in Settings.",
+        });
       let fileIds = [];
       if (req.method === "DELETE") {
-        const fileId = decodeURIComponent(url.pathname.replace("/v2/ai/claude/files/", "") || "").trim();
+        const fileId = decodeURIComponent(
+          url.pathname.replace("/v2/ai/claude/files/", "") || "",
+        ).trim();
         if (fileId) fileIds.push(fileId);
       } else {
         const body = await readJson(req);
-        fileIds = Array.isArray(body?.file_ids) ? body.file_ids.map((x) => String(x || "").trim()).filter(Boolean) : [];
-        const localFiles = Array.isArray(body?.files) ? body.files.map((x) => String(x || "").trim()).filter(Boolean) : [];
+        fileIds = Array.isArray(body?.file_ids)
+          ? body.file_ids.map((x) => String(x || "").trim()).filter(Boolean)
+          : [];
+        const localFiles = Array.isArray(body?.files)
+          ? body.files.map((x) => String(x || "").trim()).filter(Boolean)
+          : [];
         if (localFiles.length) {
           const map = readClaudeSnapshotFileMap();
           for (const localFile of localFiles) {
@@ -11500,7 +15702,11 @@ const appHandler = async (req, res) => {
         }
       }
       fileIds = [...new Set(fileIds)];
-      if (!fileIds.length) return json(res, 400, { ok: false, error: "No Claude file ids provided." });
+      if (!fileIds.length)
+        return json(res, 400, {
+          ok: false,
+          error: "No Claude file ids provided.",
+        });
       const deleted = [];
       const failed = [];
       for (const fileId of fileIds) {
@@ -11513,29 +15719,51 @@ const appHandler = async (req, res) => {
           });
           deleted.push({ file_id: fileId, result: out });
         } catch (error) {
-          failed.push({ file_id: fileId, error: error instanceof Error ? error.message : String(error) });
+          failed.push({
+            file_id: fileId,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       }
       const map = readClaudeSnapshotFileMap();
       for (const [localFile, item] of Object.entries(map)) {
-        if (fileIds.includes(String(item?.file_id || ""))) delete map[localFile];
+        if (fileIds.includes(String(item?.file_id || "")))
+          delete map[localFile];
       }
       writeClaudeSnapshotFileMap(map);
-      return json(res, 200, { ok: true, deleted_count: deleted.length, failed_count: failed.length, deleted, failed });
+      return json(res, 200, {
+        ok: true,
+        deleted_count: deleted.length,
+        failed_count: failed.length,
+        deleted,
+        failed,
+      });
     } catch (error) {
-      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "GET" && url.pathname === "/v2/chart/snapshots") {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       ensureChartSnapshotDir();
-      const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit") || 30) || 30, 200));
-      const reqSessionPrefix = sanitizeSessionPrefix(url.searchParams.get("session_prefix") || "");
-      const files = fs.readdirSync(CHART_SNAPSHOT_DIR)
+      const limit = Math.max(
+        1,
+        Math.min(Number(url.searchParams.get("limit") || 30) || 30, 200),
+      );
+      const reqSessionPrefix = sanitizeSessionPrefix(
+        url.searchParams.get("session_prefix") || "",
+      );
+      const files = fs
+        .readdirSync(CHART_SNAPSHOT_DIR)
         .filter((f) => !reqSessionPrefix || f.includes(`_${reqSessionPrefix}_`))
         .map((f) => {
           const abs = path.join(CHART_SNAPSHOT_DIR, f);
@@ -11551,11 +15779,16 @@ const appHandler = async (req, res) => {
           };
         })
         .filter(Boolean)
-        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+        .sort((a, b) =>
+          String(b.created_at).localeCompare(String(a.created_at)),
+        )
         .slice(0, limit);
       return json(res, 200, { ok: true, items: files });
     } catch (error) {
-      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -11565,7 +15798,9 @@ const appHandler = async (req, res) => {
       if (CFG.redisEnabled) {
         const client = await getRedisClient();
         if (client) {
-          const cached = await client.get("economic_calendar:today").catch(() => null);
+          const cached = await client
+            .get("economic_calendar:today")
+            .catch(() => null);
           if (cached) data = JSON.parse(cached);
         }
       }
@@ -11581,23 +15816,32 @@ const appHandler = async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/v2/chart/snapshots/delete") {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       ensureChartSnapshotDir();
       const body = await readJson(req);
-      const reqSessionPrefix = sanitizeSessionPrefix(body?.session_prefix || body?.sessionPrefix || "");
+      const reqSessionPrefix = sanitizeSessionPrefix(
+        body?.session_prefix || body?.sessionPrefix || "",
+      );
       const deleteAll = body?.all === true;
       const requestedFiles = Array.isArray(body?.files)
         ? body.files.map((x) => String(x || "").trim()).filter(Boolean)
         : [];
       const candidates = deleteAll
-        ? fs.readdirSync(CHART_SNAPSHOT_DIR)
-          .filter((f) => !reqSessionPrefix || f.includes(`_${reqSessionPrefix}_`))
-        : (reqSessionPrefix
-          ? fs.readdirSync(CHART_SNAPSHOT_DIR)
-            .filter((f) => f.includes(`_${reqSessionPrefix}_`))
-          : requestedFiles);
+        ? fs
+            .readdirSync(CHART_SNAPSHOT_DIR)
+            .filter(
+              (f) => !reqSessionPrefix || f.includes(`_${reqSessionPrefix}_`),
+            )
+        : reqSessionPrefix
+          ? fs
+              .readdirSync(CHART_SNAPSHOT_DIR)
+              .filter((f) => f.includes(`_${reqSessionPrefix}_`))
+          : requestedFiles;
       const deleted = [];
       const skipped = [];
       const claudeMap = readClaudeSnapshotFileMap();
@@ -11635,24 +15879,42 @@ const appHandler = async (req, res) => {
               });
               claudeDeleted.push(fileId);
             } catch (error) {
-              claudeDeleteFailed.push({ file_id: fileId, error: error instanceof Error ? error.message : String(error) });
+              claudeDeleteFailed.push({
+                file_id: fileId,
+                error: error instanceof Error ? error.message : String(error),
+              });
             }
           }
         }
       }
-      return json(res, 200, { ok: true, deleted_count: deleted.length, deleted, skipped, claude_deleted: claudeDeleted, claude_delete_failed: claudeDeleteFailed });
+      return json(res, 200, {
+        ok: true,
+        deleted_count: deleted.length,
+        deleted,
+        skipped,
+        claude_deleted: claudeDeleted,
+        claude_delete_failed: claudeDeleteFailed,
+      });
     } catch (error) {
-      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "GET" && url.pathname.startsWith("/v2/chart/snapshots/")) {
     const sess = getUiSessionFromReq(req);
-    const isAdmin = (req.headers["x-api-key"] || url.searchParams.get("key")) === CFG.adminKey;
-    if (!sess.ok && !isAdmin) return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
+    const isAdmin =
+      (req.headers["x-api-key"] || url.searchParams.get("key")) ===
+      CFG.adminKey;
+    if (!sess.ok && !isAdmin)
+      return json(res, 401, { ok: false, error: "AUTH_REQUIRED" });
     try {
       ensureChartSnapshotDir();
-      const fileName = decodeURIComponent(url.pathname.replace("/v2/chart/snapshots/", "") || "");
+      const fileName = decodeURIComponent(
+        url.pathname.replace("/v2/chart/snapshots/", "") || "",
+      );
       const safeName = normalizeChartFileName(fileName);
       if (!safeName) {
         return json(res, 400, { ok: false, error: "Invalid file" });
@@ -11664,12 +15926,19 @@ const appHandler = async (req, res) => {
       serveUiFile(res, abs, req.method);
       return;
     } catch (error) {
-      return json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "GET" && url.pathname === "/v2/settings/execution-profiles") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "GET" &&
+    url.pathname === "/v2/settings/execution-profiles"
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
       const userId = uiEffectiveUserId(req, url);
@@ -11685,82 +15954,145 @@ const appHandler = async (req, res) => {
         accounts: accounts || [],
       });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "POST" && url.pathname === "/v2/settings/execution-profile") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "POST" &&
+    url.pathname === "/v2/settings/execution-profile"
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
-    try { payload = await readJson(req); } catch { }
+    try {
+      payload = await readJson(req);
+    } catch {}
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
       const userId = uiEffectiveUserId(req, url, payload);
-      const route = String(payload?.route || "").trim().toLowerCase();
+      const route = String(payload?.route || "")
+        .trim()
+        .toLowerCase();
       if (!["ea", "v2", "ctrader"].includes(route)) {
-        return json(res, 400, { ok: false, error: "route must be one of: ea, v2, ctrader" });
+        return json(res, 400, {
+          ok: false,
+          error: "route must be one of: ea, v2, ctrader",
+        });
       }
       const accountId = String(payload?.account_id || "").trim();
-      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
-      const sourceIds = (Array.isArray(payload?.source_ids) ? payload.source_ids : [])
+      if (!accountId)
+        return json(res, 400, { ok: false, error: "account_id is required" });
+      const sourceIds = (
+        Array.isArray(payload?.source_ids) ? payload.source_ids : []
+      )
         .map((v) => String(v || "").trim())
         .filter(Boolean);
       const save = await mt5SaveExecutionProfileV2({
-        profile_id: String(payload?.profile_id || "default").trim() || "default",
-        profile_name: String(payload?.profile_name || `profile_${route}`).trim() || `profile_${route}`,
+        profile_id:
+          String(payload?.profile_id || "default").trim() || "default",
+        profile_name:
+          String(payload?.profile_name || `profile_${route}`).trim() ||
+          `profile_${route}`,
         user_id: userId,
         route,
         account_id: accountId,
         source_ids: sourceIds,
-        ctrader_mode: String(payload?.ctrader_mode || "").trim().toLowerCase(),
+        ctrader_mode: String(payload?.ctrader_mode || "")
+          .trim()
+          .toLowerCase(),
         ctrader_account_id: String(payload?.ctrader_account_id || "").trim(),
         is_active: payload?.is_active !== false,
-        metadata: payload?.metadata && typeof payload.metadata === "object" ? payload.metadata : {},
+        metadata:
+          payload?.metadata && typeof payload.metadata === "object"
+            ? payload.metadata
+            : {},
       });
-      if (!save?.ok) return json(res, 400, { ok: false, error: save?.error || "failed to save execution profile" });
+      if (!save?.ok)
+        return json(res, 400, {
+          ok: false,
+          error: save?.error || "failed to save execution profile",
+        });
       const rows = await mt5ListExecutionProfilesV2(userId);
       return json(res, 200, { ok: true, item: save.item || null, items: rows });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "POST" && url.pathname === "/v2/settings/execution-profile/apply") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "POST" &&
+    url.pathname === "/v2/settings/execution-profile/apply"
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
-    try { payload = await readJson(req); } catch { }
+    try {
+      payload = await readJson(req);
+    } catch {}
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
       const userId = uiEffectiveUserId(req, url, payload);
-      const route = String(payload?.route || "").trim().toLowerCase();
+      const route = String(payload?.route || "")
+        .trim()
+        .toLowerCase();
       if (!["ea", "v2", "ctrader"].includes(route)) {
-        return json(res, 400, { ok: false, error: "route must be one of: ea, v2, ctrader" });
+        return json(res, 400, {
+          ok: false,
+          error: "route must be one of: ea, v2, ctrader",
+        });
       }
       const accountId = String(payload?.account_id || "").trim();
-      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
-      const sourceIds = (Array.isArray(payload?.source_ids) ? payload.source_ids : ["signal", "tradingview"])
+      if (!accountId)
+        return json(res, 400, { ok: false, error: "account_id is required" });
+      const sourceIds = (
+        Array.isArray(payload?.source_ids)
+          ? payload.source_ids
+          : ["signal", "tradingview"]
+      )
         .map((v) => String(v || "").trim())
         .filter(Boolean);
       const save = await mt5SaveExecutionProfileV2({
-        profile_id: String(payload?.profile_id || "default").trim() || "default",
-        profile_name: String(payload?.profile_name || `active_${route}`).trim() || `active_${route}`,
+        profile_id:
+          String(payload?.profile_id || "default").trim() || "default",
+        profile_name:
+          String(payload?.profile_name || `active_${route}`).trim() ||
+          `active_${route}`,
         user_id: userId,
         route,
         account_id: accountId,
         source_ids: sourceIds,
-        ctrader_mode: String(payload?.ctrader_mode || "").trim().toLowerCase(),
+        ctrader_mode: String(payload?.ctrader_mode || "")
+          .trim()
+          .toLowerCase(),
         ctrader_account_id: String(payload?.ctrader_account_id || "").trim(),
         is_active: true,
-        metadata: payload?.metadata && typeof payload.metadata === "object" ? payload.metadata : {},
+        metadata:
+          payload?.metadata && typeof payload.metadata === "object"
+            ? payload.metadata
+            : {},
       });
-      if (!save?.ok) return json(res, 400, { ok: false, error: save?.error || "failed to save execution profile" });
+      if (!save?.ok)
+        return json(res, 400, {
+          ok: false,
+          error: save?.error || "failed to save execution profile",
+        });
 
       // Route one-account-only by subscriptions to avoid duplicate fanout.
       const accounts = await mt5ListAccountsV2(userId);
       for (const acc of accounts || []) {
         const aid = String(acc?.account_id || "").trim();
         if (!aid) continue;
-        const items = aid === accountId ? sourceIds.map((sid) => ({ source_id: sid, is_active: true })) : [];
+        const items =
+          aid === accountId
+            ? sourceIds.map((sid) => ({ source_id: sid, is_active: true }))
+            : [];
         await mt5ReplaceAccountSubscriptionsV2(aid, items);
       }
       const active = await mt5GetActiveExecutionProfileV2(userId);
@@ -11772,33 +16104,49 @@ const appHandler = async (req, res) => {
         note: "Signal fanout routed to selected account. Runtime process mode (EA/v2 daemon/cTrader bridge) is still managed outside server.",
       });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "GET" && url.pathname === "/v2/sources") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
       const rows = await mt5ListSourcesV2();
       return json(res, 200, { ok: true, items: rows });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "GET" && url.pathname === "/v2/brokers") {
-    return json(res, 410, { ok: false, error: "Brokers endpoint removed. Broker metadata is account-scoped." });
+    return json(res, 410, {
+      ok: false,
+      error: "Brokers endpoint removed. Broker metadata is account-scoped.",
+    });
   }
 
   if (req.method === "GET" && url.pathname === "/v2/trades") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
       const pageRaw = Number(url.searchParams.get("page") || 1);
-      const pageSizeRaw = Number(url.searchParams.get("pageSize") || url.searchParams.get("limit") || 50);
+      const pageSizeRaw = Number(
+        url.searchParams.get("pageSize") || url.searchParams.get("limit") || 50,
+      );
       const page = Math.max(1, Number.isFinite(pageRaw) ? pageRaw : 1);
-      const pageSize = Math.max(1, Math.min(200, Number.isFinite(pageSizeRaw) ? pageSizeRaw : 50));
+      const pageSize = Math.max(
+        1,
+        Math.min(200, Number.isFinite(pageSizeRaw) ? pageSizeRaw : 50),
+      );
       const userId = uiEffectiveUserId(req, url);
       const filters = {
         user_id: userId,
@@ -11809,7 +16157,8 @@ const appHandler = async (req, res) => {
         created_from: url.searchParams.get("created_from") || "",
         created_to: url.searchParams.get("created_to") || "",
         symbol: url.searchParams.get("symbol") || "",
-        action: url.searchParams.get("action") || url.searchParams.get("side") || "",
+        action:
+          url.searchParams.get("action") || url.searchParams.get("side") || "",
         entry_model: url.searchParams.get("entry_model") || "",
         chart_tf: url.searchParams.get("chart_tf") || "",
         q: url.searchParams.get("q") || "",
@@ -11818,13 +16167,22 @@ const appHandler = async (req, res) => {
       const total = Number(out?.total || 0);
       const items = Array.isArray(out?.items)
         ? out.items.map((item) => {
-          const metadata = item?.metadata && typeof item.metadata === "object" ? item.metadata : {};
-          const rawEntryModel = item?.entry_model || metadata?.entry_model || metadata?.entry_model_raw || "";
-          return {
-            ...item,
-            entry_model: mt5NormalizeEntryModel(rawEntryModel, { fallback: item?.source_id || "manual" }),
-          };
-        })
+            const metadata =
+              item?.metadata && typeof item.metadata === "object"
+                ? item.metadata
+                : {};
+            const rawEntryModel =
+              item?.entry_model ||
+              metadata?.entry_model ||
+              metadata?.entry_model_raw ||
+              "";
+            return {
+              ...item,
+              entry_model: mt5NormalizeEntryModel(rawEntryModel, {
+                fallback: item?.source_id || "manual",
+              }),
+            };
+          })
         : [];
       return json(res, 200, {
         ok: true,
@@ -11832,21 +16190,32 @@ const appHandler = async (req, res) => {
         page: Number(out?.page || page),
         pageSize: Number(out?.page_size || pageSize),
         total,
-        pages: Math.max(1, Math.ceil(total / Math.max(1, Number(out?.page_size || pageSize)))),
+        pages: Math.max(
+          1,
+          Math.ceil(total / Math.max(1, Number(out?.page_size || pageSize))),
+        ),
       });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "POST" && url.pathname === "/v2/trades/bulk-action") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
-    try { payload = await readJson(req); } catch { }
+    try {
+      payload = await readJson(req);
+    } catch {}
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
       const userId = uiEffectiveUserId(req, url, payload);
-      const action = String(payload.action || "").trim().toLowerCase();
+      const action = String(payload.action || "")
+        .trim()
+        .toLowerCase();
       const filters = {
         user_id: userId,
         trade_ids: Array.isArray(payload.trade_ids) ? payload.trade_ids : [],
@@ -11868,73 +16237,133 @@ const appHandler = async (req, res) => {
       }
       return json(res, out?.ok ? 200 : 400, out);
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "GET" && /^\/v2\/trades\/[^/]+\/events$/.test(url.pathname)) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "GET" &&
+    /^\/v2\/trades\/[^/]+\/events$/.test(url.pathname)
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
       const m = url.pathname.match(/^\/v2\/trades\/([^/]+)\/events$/);
       const tradeRef = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!tradeRef) return json(res, 400, { ok: false, error: "trade_id is required" });
+      if (!tradeRef)
+        return json(res, 400, { ok: false, error: "trade_id is required" });
       const userId = uiEffectiveUserId(req, url);
       const resolved = await mt5ResolveTradeRefV2(tradeRef, userId || null);
-      if (!resolved?.trade_id) return json(res, 404, { ok: false, error: "trade not found" });
+      if (!resolved?.trade_id)
+        return json(res, 404, { ok: false, error: "trade not found" });
       const limitRaw = Number(url.searchParams.get("limit") || 200);
-      const limit = Math.max(1, Math.min(1000, Number.isFinite(limitRaw) ? limitRaw : 200));
+      const limit = Math.max(
+        1,
+        Math.min(1000, Number.isFinite(limitRaw) ? limitRaw : 200),
+      );
       const rows = await mt5ListTradeEventsV2(resolved.trade_id, limit);
-      return json(res, 200, { ok: true, trade_id: resolved.trade_id, id: resolved.id || null, sid: resolved.sid || null, items: rows });
+      return json(res, 200, {
+        ok: true,
+        trade_id: resolved.trade_id,
+        id: resolved.id || null,
+        sid: resolved.sid || null,
+        items: rows,
+      });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "POST" && /^\/v2\/trades\/[^/]+\/update$/.test(url.pathname)) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "POST" &&
+    /^\/v2\/trades\/[^/]+\/update$/.test(url.pathname)
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
-    try { payload = await readJson(req); } catch { }
+    try {
+      payload = await readJson(req);
+    } catch {}
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
       const m = url.pathname.match(/^\/v2\/trades\/([^/]+)\/update$/);
       const tradeRef = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!tradeRef) return json(res, 400, { ok: false, error: "trade_id is required" });
+      if (!tradeRef)
+        return json(res, 400, { ok: false, error: "trade_id is required" });
       const userId = uiEffectiveUserId(req, url, payload);
-      const out = await mt5UpdateTradeManualV2(tradeRef, userId || null, payload || {});
+      const out = await mt5UpdateTradeManualV2(
+        tradeRef,
+        userId || null,
+        payload || {},
+      );
       return json(res, out?.ok ? 200 : 400, out);
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "POST" && /^\/v2\/signals\/[^/]+\/trade-plan\/save$/.test(url.pathname)) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "POST" &&
+    /^\/v2\/signals\/[^/]+\/trade-plan\/save$/.test(url.pathname)
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
-    try { payload = await readJson(req); } catch { }
+    try {
+      payload = await readJson(req);
+    } catch {}
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
-      const m = url.pathname.match(/^\/v2\/signals\/([^/]+)\/trade-plan\/save$/);
+      const m = url.pathname.match(
+        /^\/v2\/signals\/([^/]+)\/trade-plan\/save$/,
+      );
       const signalRef = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!signalRef) return json(res, 400, { ok: false, error: "signal_id is required" });
+      if (!signalRef)
+        return json(res, 400, { ok: false, error: "signal_id is required" });
       const userId = uiEffectiveUserId(req, url, payload);
-      const resolvedSignal = await mt5ResolveSignalRefV2(signalRef, userId || null);
-      if (!resolvedSignal?.signal_id) return json(res, 404, { ok: false, error: "signal not found" });
+      const resolvedSignal = await mt5ResolveSignalRefV2(
+        signalRef,
+        userId || null,
+      );
+      if (!resolvedSignal?.signal_id)
+        return json(res, 404, { ok: false, error: "signal not found" });
       const signalId = String(resolvedSignal.signal_id || "").trim();
-      const sideRaw = String(payload.direction || payload.side || "").trim().toUpperCase();
-      const side = sideRaw.includes("SELL") ? "SELL" : (sideRaw.includes("BUY") ? "BUY" : null);
+      const sideRaw = String(payload.direction || payload.side || "")
+        .trim()
+        .toUpperCase();
+      const side = sideRaw.includes("SELL")
+        ? "SELL"
+        : sideRaw.includes("BUY")
+          ? "BUY"
+          : null;
       const sl = asNum(payload.sl, NaN);
       const tp = asNum(payload.tp, NaN);
       const rr = asNum(payload.rr, NaN);
       const entry = asNum(payload.entry ?? payload.price, NaN);
-      const tradeType = String(payload.trade_type || payload.order_type || "limit").trim().toLowerCase();
+      const tradeType = String(
+        payload.trade_type || payload.order_type || "limit",
+      )
+        .trim()
+        .toLowerCase();
       const note = String(payload.note || "").trim();
       const rawPatch = {};
       if (Number.isFinite(entry)) {
         rawPatch.entry = entry;
         rawPatch.price = entry;
       }
-      rawPatch.order_type = ["limit", "market", "stop"].includes(tradeType) ? tradeType : "limit";
+      rawPatch.order_type = ["limit", "market", "stop"].includes(tradeType)
+        ? tradeType
+        : "limit";
       rawPatch.trade_plan = {
         direction: side || null,
         entry: Number.isFinite(entry) ? entry : null,
@@ -11956,7 +16385,8 @@ const appHandler = async (req, res) => {
         userId || null,
       ];
       const whereUser = userId ? "AND user_id = $8" : "";
-      const resUpd = await b.query(`
+      const resUpd = await b.query(
+        `
         UPDATE signals
         SET side = COALESCE($1, side),
             sl = COALESCE($2, sl),
@@ -11968,61 +16398,115 @@ const appHandler = async (req, res) => {
         WHERE signal_id = $7
         ${whereUser}
         RETURNING *
-      `, userId ? params : params.slice(0, 7));
+      `,
+        userId ? params : params.slice(0, 7),
+      );
       const row = resUpd.rows?.[0];
       if (!row) return json(res, 404, { ok: false, error: "signal not found" });
-      await mt5Log(signalId, "signals", { event_type: "SIGNAL_TRADE_PLAN_SAVED", data: rawPatch }, row.user_id || userId || CFG.mt5DefaultUserId);
+      await mt5Log(
+        signalId,
+        "signals",
+        { event_type: "SIGNAL_TRADE_PLAN_SAVED", data: rawPatch },
+        row.user_id || userId || CFG.mt5DefaultUserId,
+      );
       return json(res, 200, { ok: true, item: mt5MapDbRow(row) });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "POST" && /^\/v2\/signals\/[^/]+\/trade$/.test(url.pathname)) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "POST" &&
+    /^\/v2\/signals\/[^/]+\/trade$/.test(url.pathname)
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
-    try { payload = await readJson(req); } catch { }
+    try {
+      payload = await readJson(req);
+    } catch {}
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
       const m = url.pathname.match(/^\/v2\/signals\/([^/]+)\/trade$/);
       const signalRef = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!signalRef) return json(res, 400, { ok: false, error: "signal_id is required" });
+      if (!signalRef)
+        return json(res, 400, { ok: false, error: "signal_id is required" });
       const userId = uiEffectiveUserId(req, url, payload);
-      const resolvedSignal = await mt5ResolveSignalRefV2(signalRef, userId || null);
-      if (!resolvedSignal?.signal_id) return json(res, 404, { ok: false, error: "signal not found" });
+      const resolvedSignal = await mt5ResolveSignalRefV2(
+        signalRef,
+        userId || null,
+      );
+      if (!resolvedSignal?.signal_id)
+        return json(res, 404, { ok: false, error: "signal not found" });
       const signalId = String(resolvedSignal.signal_id || "").trim();
       const b = await mt5Backend();
       const whereUser = userId ? "AND user_id = $2" : "";
-      const signalRes = await b.query(`
+      const signalRes = await b.query(
+        `
         SELECT * FROM signals WHERE signal_id = $1 ${whereUser} LIMIT 1
-      `, userId ? [signalId, userId] : [signalId]);
+      `,
+        userId ? [signalId, userId] : [signalId],
+      );
       const signal = signalRes.rows?.[0];
-      if (!signal) return json(res, 404, { ok: false, error: "signal not found" });
-      const raw = signal.raw_json && typeof signal.raw_json === "object" ? signal.raw_json : {};
-      const sideRaw = String(payload.direction || payload.side || signal.side || "").trim().toUpperCase();
+      if (!signal)
+        return json(res, 404, { ok: false, error: "signal not found" });
+      const raw =
+        signal.raw_json && typeof signal.raw_json === "object"
+          ? signal.raw_json
+          : {};
+      const sideRaw = String(
+        payload.direction || payload.side || signal.side || "",
+      )
+        .trim()
+        .toUpperCase();
       const side = sideRaw.includes("SELL") ? "SELL" : "BUY";
-      const entry = asNum(payload.entry ?? payload.price ?? raw.entry ?? raw.price, NaN);
+      const entry = asNum(
+        payload.entry ?? payload.price ?? raw.entry ?? raw.price,
+        NaN,
+      );
       const sl = asNum(payload.sl ?? signal.sl, NaN);
       const tp = asNum(payload.tp ?? signal.tp, NaN);
       const rr = asNum(payload.rr ?? signal.rr_planned, NaN);
       const note = String(payload.note || signal.note || "").trim();
-      const tradeType = String(payload.trade_type || payload.order_type || raw.order_type || "limit").trim().toLowerCase();
-      const sourceId = String(signal.source_id || mt5SlugId(signal.source || "signal", "signal")).trim();
-      const signalRawJson = signal.raw_json && typeof signal.raw_json === "object" ? signal.raw_json : {};
+      const tradeType = String(
+        payload.trade_type || payload.order_type || raw.order_type || "limit",
+      )
+        .trim()
+        .toLowerCase();
+      const sourceId = String(
+        signal.source_id || mt5SlugId(signal.source || "signal", "signal"),
+      ).trim();
+      const signalRawJson =
+        signal.raw_json && typeof signal.raw_json === "object"
+          ? signal.raw_json
+          : {};
       const copiedMetadata = {
         ...signalRawJson,
       };
       if (!copiedMetadata.order_type && !copiedMetadata.orderType) {
-        copiedMetadata.order_type = ["limit", "market", "stop"].includes(tradeType) ? tradeType : "limit";
+        copiedMetadata.order_type = ["limit", "market", "stop"].includes(
+          tradeType,
+        )
+          ? tradeType
+          : "limit";
       }
       const fanout = await mt5FanoutSignalTradeV2({
         signal_id: signalId,
         source_id: sourceId,
         user_id: signal.user_id || userId || CFG.mt5DefaultUserId,
-        entry_model: mt5NormalizeEntryModel(
-          signal.entry_model || raw.entry_model || raw.entryModel || raw.model || raw.strategy || "",
-          { fallback: signal.source_id || signal.source || "manual" },
-        ) || null,
+        entry_model:
+          mt5NormalizeEntryModel(
+            signal.entry_model ||
+              raw.entry_model ||
+              raw.entryModel ||
+              raw.model ||
+              raw.strategy ||
+              "",
+            { fallback: signal.source_id || signal.source || "manual" },
+          ) || null,
         signal_tf: signal.signal_tf || null,
         chart_tf: signal.chart_tf || null,
         symbol: signal.symbol,
@@ -12034,36 +16518,75 @@ const appHandler = async (req, res) => {
         note: note || null,
         metadata: copiedMetadata,
       });
-      await mt5Log(signalId, "signals", { event_type: "SIGNAL_CREATE_TRADE", data: { created: fanout?.created || 0 } }, signal.user_id || userId || CFG.mt5DefaultUserId);
-      return json(res, 200, { ok: true, signal_id: signalId, created: fanout?.created || 0, account_ids: fanout?.account_ids || [] });
+      await mt5Log(
+        signalId,
+        "signals",
+        {
+          event_type: "SIGNAL_CREATE_TRADE",
+          data: { created: fanout?.created || 0 },
+        },
+        signal.user_id || userId || CFG.mt5DefaultUserId,
+      );
+      return json(res, 200, {
+        ok: true,
+        signal_id: signalId,
+        created: fanout?.created || 0,
+        account_ids: fanout?.account_ids || [],
+      });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "POST" && /^\/v2\/trades\/[^/]+\/trade-plan\/save$/.test(url.pathname)) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "POST" &&
+    /^\/v2\/trades\/[^/]+\/trade-plan\/save$/.test(url.pathname)
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
-    try { payload = await readJson(req); } catch { }
+    try {
+      payload = await readJson(req);
+    } catch {}
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
       const m = url.pathname.match(/^\/v2\/trades\/([^/]+)\/trade-plan\/save$/);
       const tradeRef = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!tradeRef) return json(res, 400, { ok: false, error: "trade_id is required" });
+      if (!tradeRef)
+        return json(res, 400, { ok: false, error: "trade_id is required" });
       const userId = uiEffectiveUserId(req, url, payload);
-      const resolvedTrade = await mt5ResolveTradeRefV2(tradeRef, userId || null);
-      if (!resolvedTrade?.trade_id) return json(res, 404, { ok: false, error: "trade not found" });
+      const resolvedTrade = await mt5ResolveTradeRefV2(
+        tradeRef,
+        userId || null,
+      );
+      if (!resolvedTrade?.trade_id)
+        return json(res, 404, { ok: false, error: "trade not found" });
       const tradeId = String(resolvedTrade.trade_id || "").trim();
-      const sideRaw = String(payload.direction || payload.side || "").trim().toUpperCase();
-      const side = sideRaw.includes("SELL") ? "SELL" : (sideRaw.includes("BUY") ? "BUY" : null);
+      const sideRaw = String(payload.direction || payload.side || "")
+        .trim()
+        .toUpperCase();
+      const side = sideRaw.includes("SELL")
+        ? "SELL"
+        : sideRaw.includes("BUY")
+          ? "BUY"
+          : null;
       const entry = asNum(payload.entry ?? payload.price, NaN);
       const sl = asNum(payload.sl, NaN);
       const tp = asNum(payload.tp, NaN);
       const rr = asNum(payload.rr, NaN);
-      const tradeType = String(payload.trade_type || payload.order_type || "limit").trim().toLowerCase();
+      const tradeType = String(
+        payload.trade_type || payload.order_type || "limit",
+      )
+        .trim()
+        .toLowerCase();
       const note = String(payload.note || "").trim();
       const metaPatch = {
-        order_type: ["limit", "market", "stop"].includes(tradeType) ? tradeType : "limit",
+        order_type: ["limit", "market", "stop"].includes(tradeType)
+          ? tradeType
+          : "limit",
         rr_planned: Number.isFinite(rr) ? rr : null,
       };
       const params = [
@@ -12077,7 +16600,10 @@ const appHandler = async (req, res) => {
         userId || null,
       ];
       const whereUser = userId ? "AND user_id = $8" : "";
-      const resUpd = await (await mt5Backend()).query(`
+      const resUpd = await (
+        await mt5Backend()
+      ).query(
+        `
         UPDATE trades
         SET action = COALESCE($1, action),
             entry = COALESCE($2, entry),
@@ -12085,7 +16611,7 @@ const appHandler = async (req, res) => {
             tp = $4,
             note = COALESCE($5, note),
             metadata = metadata || $6,
-            execution_status = CASE 
+            execution_status = CASE
               WHEN execution_status IN ('OPEN', 'PENDING') THEN 'PENDING_MOD'
               ELSE execution_status
             END,
@@ -12093,25 +16619,40 @@ const appHandler = async (req, res) => {
         WHERE trade_id = $7
           ${whereUser}
         RETURNING *
-      `, userId ? params : params.slice(0, 7));
+      `,
+        userId ? params : params.slice(0, 7),
+      );
       const row = resUpd.rows?.[0];
       if (!row) return json(res, 404, { ok: false, error: "trade not found" });
-      await mt5Log(tradeId, "trades", { event_type: "TRADE_PLAN_SAVED", data: metaPatch }, row.user_id || userId || CFG.mt5DefaultUserId);
+      await mt5Log(
+        tradeId,
+        "trades",
+        { event_type: "TRADE_PLAN_SAVED", data: metaPatch },
+        row.user_id || userId || CFG.mt5DefaultUserId,
+      );
       return json(res, 200, { ok: true, item: row });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "POST" && url.pathname === "/v2/sources") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
-    try { payload = await readJson(req); } catch { }
+    try {
+      payload = await readJson(req);
+    } catch {}
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
       const name = String(payload?.name || "").trim();
-      if (!name) return json(res, 400, { ok: false, error: "name is required" });
-      const sourceId = String(payload?.source_id || "").trim() || mt5SlugId(name, "source");
+      if (!name)
+        return json(res, 400, { ok: false, error: "name is required" });
+      const sourceId =
+        String(payload?.source_id || "").trim() || mt5SlugId(name, "source");
       await mt5UpsertSourceV2({
         source_id: sourceId,
         name,
@@ -12119,75 +16660,126 @@ const appHandler = async (req, res) => {
         auth_mode: String(payload?.auth_mode || "token"),
         auth_secret_hash: payload?.auth_secret_hash ?? null,
         is_active: normalizeUserActive(payload?.is_active, true),
-        metadata: payload?.metadata && typeof payload.metadata === "object" ? payload.metadata : {},
+        metadata:
+          payload?.metadata && typeof payload.metadata === "object"
+            ? payload.metadata
+            : {},
       });
       const rows = await mt5ListSourcesV2();
-      const created = (rows || []).find((r) => String(r.source_id || "") === sourceId) || null;
+      const created =
+        (rows || []).find((r) => String(r.source_id || "") === sourceId) ||
+        null;
       return json(res, 200, { ok: true, item: created, items: rows });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "PUT" && /^\/v2\/sources\/[^/]+$/.test(url.pathname)) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
-    try { payload = await readJson(req); } catch { }
+    try {
+      payload = await readJson(req);
+    } catch {}
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
       const m = url.pathname.match(/^\/v2\/sources\/([^/]+)$/);
       const sourceId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!sourceId) return json(res, 400, { ok: false, error: "source_id is required" });
+      if (!sourceId)
+        return json(res, 400, { ok: false, error: "source_id is required" });
       const rowsBefore = await mt5ListSourcesV2();
-      const prev = (rowsBefore || []).find((r) => String(r.source_id || "") === sourceId);
-      if (!prev) return json(res, 404, { ok: false, error: "source not found" });
+      const prev = (rowsBefore || []).find(
+        (r) => String(r.source_id || "") === sourceId,
+      );
+      if (!prev)
+        return json(res, 404, { ok: false, error: "source not found" });
 
       await mt5UpsertSourceV2({
         source_id: sourceId,
         name: String(payload?.name ?? prev.name ?? sourceId),
         kind: String(payload?.kind ?? prev.kind ?? "api"),
         auth_mode: String(payload?.auth_mode ?? prev.auth_mode ?? "token"),
-        auth_secret_hash: payload?.auth_secret_hash ?? prev.auth_secret_hash ?? null,
-        is_active: payload?.is_active === undefined ? normalizeUserActive(prev.is_active, true) : normalizeUserActive(payload?.is_active, true),
-        metadata: payload?.metadata && typeof payload.metadata === "object"
-          ? payload.metadata
-          : (prev?.metadata && typeof prev.metadata === "object" ? prev.metadata : {}),
+        auth_secret_hash:
+          payload?.auth_secret_hash ?? prev.auth_secret_hash ?? null,
+        is_active:
+          payload?.is_active === undefined
+            ? normalizeUserActive(prev.is_active, true)
+            : normalizeUserActive(payload?.is_active, true),
+        metadata:
+          payload?.metadata && typeof payload.metadata === "object"
+            ? payload.metadata
+            : prev?.metadata && typeof prev.metadata === "object"
+              ? prev.metadata
+              : {},
       });
       const rows = await mt5ListSourcesV2();
-      const updated = (rows || []).find((r) => String(r.source_id || "") === sourceId) || null;
+      const updated =
+        (rows || []).find((r) => String(r.source_id || "") === sourceId) ||
+        null;
       return json(res, 200, { ok: true, item: updated, items: rows });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "GET" && /^\/v2\/sources\/[^/]+\/events$/.test(url.pathname)) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "GET" &&
+    /^\/v2\/sources\/[^/]+\/events$/.test(url.pathname)
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
       const m = url.pathname.match(/^\/v2\/sources\/([^/]+)\/events$/);
       const sourceId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!sourceId) return json(res, 400, { ok: false, error: "source_id is required" });
+      if (!sourceId)
+        return json(res, 400, { ok: false, error: "source_id is required" });
       const limitRaw = Number(url.searchParams.get("limit") || 100);
-      const limit = Math.max(1, Math.min(1000, Number.isFinite(limitRaw) ? limitRaw : 100));
+      const limit = Math.max(
+        1,
+        Math.min(1000, Number.isFinite(limitRaw) ? limitRaw : 100),
+      );
       const rows = await mt5ListSourceEventsV2(sourceId, limit);
       return json(res, 200, { ok: true, source_id: sourceId, items: rows });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "POST" && /^\/v2\/sources\/[^/]+\/auth-secret\/rotate$/.test(url.pathname)) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "POST" &&
+    /^\/v2\/sources\/[^/]+\/auth-secret\/rotate$/.test(url.pathname)
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
-    try { payload = await readJson(req); } catch { }
+    try {
+      payload = await readJson(req);
+    } catch {}
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
-      const m = url.pathname.match(/^\/v2\/sources\/([^/]+)\/auth-secret\/rotate$/);
+      const m = url.pathname.match(
+        /^\/v2\/sources\/([^/]+)\/auth-secret\/rotate$/,
+      );
       const sourceId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!sourceId) return json(res, 400, { ok: false, error: "source_id is required" });
+      if (!sourceId)
+        return json(res, 400, { ok: false, error: "source_id is required" });
       const out = await mt5RotateSourceSecretV2(sourceId);
-      if (!out) return json(res, 404, { ok: false, error: "source not found or backend unsupported" });
+      if (!out)
+        return json(res, 404, {
+          ok: false,
+          error: "source not found or backend unsupported",
+        });
       return json(res, 200, {
         ok: true,
         source_id: out.source_id,
@@ -12195,71 +16787,136 @@ const appHandler = async (req, res) => {
         source_secret_last4: out.source_secret_last4 || null,
       });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "POST" && /^\/v2\/sources\/[^/]+\/auth-secret\/revoke$/.test(url.pathname)) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "POST" &&
+    /^\/v2\/sources\/[^/]+\/auth-secret\/revoke$/.test(url.pathname)
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
-    try { payload = await readJson(req); } catch { }
+    try {
+      payload = await readJson(req);
+    } catch {}
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
-      const m = url.pathname.match(/^\/v2\/sources\/([^/]+)\/auth-secret\/revoke$/);
+      const m = url.pathname.match(
+        /^\/v2\/sources\/([^/]+)\/auth-secret\/revoke$/,
+      );
       const sourceId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!sourceId) return json(res, 400, { ok: false, error: "source_id is required" });
+      if (!sourceId)
+        return json(res, 400, { ok: false, error: "source_id is required" });
       const out = await mt5RevokeSourceSecretV2(sourceId);
-      if (!out?.ok) return json(res, 400, { ok: false, error: out?.error || "failed to revoke source secret" });
+      if (!out?.ok)
+        return json(res, 400, {
+          ok: false,
+          error: out?.error || "failed to revoke source secret",
+        });
       return json(res, 200, { ok: true, source_id: sourceId });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "GET" && /^\/v2\/accounts\/[^/]+\/subscriptions$/.test(url.pathname)) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "GET" &&
+    /^\/v2\/accounts\/[^/]+\/subscriptions$/.test(url.pathname)
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!requireAdminKey(req, res, url)) return;
     try {
       const m = url.pathname.match(/^\/v2\/accounts\/([^/]+)\/subscriptions$/);
       const accountId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
+      if (!accountId)
+        return json(res, 400, { ok: false, error: "account_id is required" });
       const rows = await mt5GetAccountSubscriptionsV2(accountId);
       return json(res, 200, { ok: true, account_id: accountId, items: rows });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "PUT" && /^\/v2\/accounts\/[^/]+\/subscriptions$/.test(url.pathname)) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "PUT" &&
+    /^\/v2\/accounts\/[^/]+\/subscriptions$/.test(url.pathname)
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
-    try { payload = await readJson(req); } catch { }
+    try {
+      payload = await readJson(req);
+    } catch {}
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
       const m = url.pathname.match(/^\/v2\/accounts\/([^/]+)\/subscriptions$/);
       const accountId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
+      if (!accountId)
+        return json(res, 400, { ok: false, error: "account_id is required" });
       const items = Array.isArray(payload?.items) ? payload.items : [];
       const out = await mt5ReplaceAccountSubscriptionsV2(accountId, items);
-      if (!out?.ok) return json(res, 400, { ok: false, error: out?.error || "failed to update subscriptions" });
+      if (!out?.ok)
+        return json(res, 400, {
+          ok: false,
+          error: out?.error || "failed to update subscriptions",
+        });
       const rows = await mt5GetAccountSubscriptionsV2(accountId);
       return json(res, 200, { ok: true, account_id: accountId, items: rows });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if ((req.method === "POST" || req.method === "GET") && url.pathname === "/v2/broker/pull") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!CFG.mt5V2BrokerApiEnabled) return json(res, 404, { ok: false, error: "v2 broker api disabled" });
+  if (
+    (req.method === "POST" || req.method === "GET") &&
+    url.pathname === "/v2/broker/pull"
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5V2BrokerApiEnabled)
+      return json(res, 404, { ok: false, error: "v2 broker api disabled" });
     try {
       const payload = req.method === "POST" ? await readJson(req) : null;
       const account = await requireV2BrokerAccount(req, res, url, payload);
       if (!account) return;
-      const maxItemsRaw = Number(payload?.max_items ?? payload?.maxItems ?? url.searchParams.get("max_items") ?? url.searchParams.get("maxItems") ?? 1);
-      const maxItems = Math.max(1, Math.min(100, Number.isFinite(maxItemsRaw) ? maxItemsRaw : 1));
-      const leaseSeconds = Math.max(5, Math.min(300, Number.isFinite(CFG.mt5V2LeaseSeconds) ? CFG.mt5V2LeaseSeconds : 30));
-      const items = await mt5PullLeasedTradesV2(account.account_id, maxItems, leaseSeconds);
+      const maxItemsRaw = Number(
+        payload?.max_items ??
+          payload?.maxItems ??
+          url.searchParams.get("max_items") ??
+          url.searchParams.get("maxItems") ??
+          1,
+      );
+      const maxItems = Math.max(
+        1,
+        Math.min(100, Number.isFinite(maxItemsRaw) ? maxItemsRaw : 1),
+      );
+      const leaseSeconds = Math.max(
+        5,
+        Math.min(
+          300,
+          Number.isFinite(CFG.mt5V2LeaseSeconds) ? CFG.mt5V2LeaseSeconds : 30,
+        ),
+      );
+      const items = await mt5PullLeasedTradesV2(
+        account.account_id,
+        maxItems,
+        leaseSeconds,
+      );
       return json(res, 200, {
         ok: true,
         items: (items || []).map((t) => ({
@@ -12277,17 +16934,23 @@ const appHandler = async (req, res) => {
           tp: t.tp ?? t.intent_tp ?? null,
           volume: t.volume ?? t.intent_volume ?? null,
           note: t.note ?? t.intent_note ?? null,
-          metadata: t.metadata && typeof t.metadata === "object" ? t.metadata : {},
+          metadata:
+            t.metadata && typeof t.metadata === "object" ? t.metadata : {},
         })),
       });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "POST" && url.pathname === "/v2/broker/ack") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!CFG.mt5V2BrokerApiEnabled) return json(res, 404, { ok: false, error: "v2 broker api disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5V2BrokerApiEnabled)
+      return json(res, 404, { ok: false, error: "v2 broker api disabled" });
     try {
       const payload = await readJson(req);
       const account = await requireV2BrokerAccount(req, res, url, payload);
@@ -12295,23 +16958,40 @@ const appHandler = async (req, res) => {
       const tradeId = String(payload.trade_id || "").trim();
       const leaseToken = String(payload.lease_token || "").trim();
       if (!tradeId || !leaseToken) {
-        return json(res, 400, { ok: false, error: "trade_id and lease_token are required" });
+        return json(res, 400, {
+          ok: false,
+          error: "trade_id and lease_token are required",
+        });
       }
       const result = await mt5AckTradeV2(account.account_id, payload);
-      if (!result?.ok) return json(res, 409, { ok: false, error: result?.error || "ack failed" });
+      if (!result?.ok)
+        return json(res, 409, {
+          ok: false,
+          error: result?.error || "ack failed",
+        });
       return json(res, 200, {
         ok: true,
         dispatch_status: result.dispatch_status,
         execution_status: result.execution_status,
       });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "POST" && /^\/(webhook\/)?(v2\/broker\/(sync|reconcile)|mt5\/ea\/sync-v2)$/.test(url.pathname)) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!CFG.mt5V2BrokerApiEnabled) return json(res, 404, { ok: false, error: "v2 broker api disabled" });
+  if (
+    req.method === "POST" &&
+    /^\/(webhook\/)?(v2\/broker\/(sync|reconcile)|mt5\/ea\/sync-v2)$/.test(
+      url.pathname,
+    )
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5V2BrokerApiEnabled)
+      return json(res, 404, { ok: false, error: "v2 broker api disabled" });
     try {
       const payload = await readJson(req);
       const account = await requireV2BrokerAccount(req, res, url, payload);
@@ -12324,85 +17004,138 @@ const appHandler = async (req, res) => {
         message: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : null,
       });
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "POST" && url.pathname === "/v2/broker/heartbeat") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!CFG.mt5V2BrokerApiEnabled) return json(res, 404, { ok: false, error: "v2 broker api disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5V2BrokerApiEnabled)
+      return json(res, 404, { ok: false, error: "v2 broker api disabled" });
     try {
       const payload = await readJson(req);
       const account = await requireV2BrokerAccount(req, res, url, payload);
       if (!account) return;
-      const result = await mt5BrokerHeartbeatV2(account.account_id, payload || {});
+      const result = await mt5BrokerHeartbeatV2(
+        account.account_id,
+        payload || {},
+      );
       const statusCode = result?.ok ? 200 : 400;
       return json(res, statusCode, result);
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "POST" && url.pathname === "/v2/broker/trades/create") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
-    if (!CFG.mt5V2BrokerApiEnabled) return json(res, 404, { ok: false, error: "v2 broker api disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5V2BrokerApiEnabled)
+      return json(res, 404, { ok: false, error: "v2 broker api disabled" });
     try {
       const payload = await readJson(req);
       const account = await requireV2BrokerAccount(req, res, url, payload);
       if (!account) return;
-      const result = await mt5CreateBrokerTradeV2(account.account_id, payload || {});
+      const result = await mt5CreateBrokerTradeV2(
+        account.account_id,
+        payload || {},
+      );
       const statusCode = result?.ok ? 200 : 400;
       return json(res, statusCode, result);
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "POST" && /^\/v2\/accounts\/[^/]+\/api-key\/rotate$/.test(url.pathname)) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "POST" &&
+    /^\/v2\/accounts\/[^/]+\/api-key\/rotate$/.test(url.pathname)
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
-    try { payload = await readJson(req); } catch { }
+    try {
+      payload = await readJson(req);
+    } catch {}
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
-      const m = url.pathname.match(/^\/v2\/accounts\/([^/]+)\/api-key\/rotate$/);
+      const m = url.pathname.match(
+        /^\/v2\/accounts\/([^/]+)\/api-key\/rotate$/,
+      );
       const accountId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
+      if (!accountId)
+        return json(res, 400, { ok: false, error: "account_id is required" });
       const rotated = await mt5RotateAccountApiKeyV2(accountId);
-      if (!rotated) return json(res, 404, { ok: false, error: "account not found or backend unsupported" });
+      if (!rotated)
+        return json(res, 404, {
+          ok: false,
+          error: "account not found or backend unsupported",
+        });
       return json(res, 200, {
         ok: true,
         account_id: rotated.account_id,
         api_key_plaintext: rotated.api_key_plaintext,
       });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  if (req.method === "POST" && /^\/v2\/accounts\/[^/]+\/api-key\/revoke$/.test(url.pathname)) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "POST" &&
+    /^\/v2\/accounts\/[^/]+\/api-key\/revoke$/.test(url.pathname)
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     let payload = {};
-    try { payload = await readJson(req); } catch { }
+    try {
+      payload = await readJson(req);
+    } catch {}
     if (!requireAdminKey(req, res, url, payload)) return;
     try {
-      const m = url.pathname.match(/^\/v2\/accounts\/([^/]+)\/api-key\/revoke$/);
+      const m = url.pathname.match(
+        /^\/v2\/accounts\/([^/]+)\/api-key\/revoke$/,
+      );
       const accountId = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
-      if (!accountId) return json(res, 400, { ok: false, error: "account_id is required" });
+      if (!accountId)
+        return json(res, 400, { ok: false, error: "account_id is required" });
       const out = await mt5RevokeAccountApiKeyV2(accountId);
-      if (!out?.ok) return json(res, 400, { ok: false, error: out?.error || "failed to revoke api key" });
+      if (!out?.ok)
+        return json(res, 400, {
+          ok: false,
+          error: out?.error || "failed to revoke api key",
+        });
       return json(res, 200, { ok: true, account_id: accountId });
     } catch (error) {
-      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+      return json(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (req.method === "POST" && url.pathname === "/v2/ea/trades/sync-bulk") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
       if (!(await requireEaKey(req, res, url, payload))) return;
       const updates = payload.updates || [];
-      if (!Array.isArray(updates)) return json(res, 400, { ok: false, error: "updates array required" });
+      if (!Array.isArray(updates))
+        return json(res, 400, { ok: false, error: "updates array required" });
       const b = await mt5Backend();
       let updatedCount = 0;
       let unmatchedCount = 0;
@@ -12411,24 +17144,34 @@ const appHandler = async (req, res) => {
         const ticket = ticketCandidates[0] || "";
         const signalId = String(u.signal_id || "").trim();
         if (!ticketCandidates.length && !signalId) continue;
-        const stRaw = String(u.status || u.execution_status || "CLOSED").toUpperCase();
+        const stRaw = String(
+          u.status || u.execution_status || "CLOSED",
+        ).toUpperCase();
         const execStatus = ["TP", "SL", "CLOSED"].includes(stRaw)
           ? "CLOSED"
-          : (["CANCEL", "CANCELLED", "EXPIRED"].includes(stRaw) ? "CANCELLED" : (stRaw === "FAIL" ? "REJECTED" : stRaw));
+          : ["CANCEL", "CANCELLED", "EXPIRED"].includes(stRaw)
+            ? "CANCELLED"
+            : stRaw === "FAIL"
+              ? "REJECTED"
+              : stRaw;
         const pnl = Number(u.pnl ?? u.profit ?? 0);
         const closeTime = mt5SyncTime(u.closed_at ?? u.close_time ?? u.time);
         const closeReason = mt5CloseReasonFromSync(u);
-        const accountId = String(payload.account_id || u.account_id || "").trim();
+        const accountId = String(
+          payload.account_id || u.account_id || "",
+        ).trim();
         const syncMeta = JSON.stringify({
           broker_ticket_candidates: ticketCandidates,
-          broker_position_id: u.position_ticket || u.position_id || ticket || null,
+          broker_position_id:
+            u.position_ticket || u.position_id || ticket || null,
           deal_ticket: u.deal_ticket || u.deal_id || null,
           order_ticket: u.order_ticket || u.order_id || null,
           close_reason: closeReason,
           last_sync_source: "ea_bulk_history",
         });
 
-        const resUpd = await b.query(`
+        const resUpd = await b.query(
+          `
           UPDATE trades
           SET execution_status = $1,
               pnl_realized = $2,
@@ -12450,41 +17193,76 @@ const appHandler = async (req, res) => {
               OR ($7::text <> '' AND signal_id = $7)
             )
           RETURNING trade_id, user_id
-        `, [execStatus, pnl, closeTime, ticketCandidates, u.symbol || null, u.volume || null, signalId, closeReason, syncMeta, ticket, accountId, u.order_type || null]);
+        `,
+          [
+            execStatus,
+            pnl,
+            closeTime,
+            ticketCandidates,
+            u.symbol || null,
+            u.volume || null,
+            signalId,
+            closeReason,
+            syncMeta,
+            ticket,
+            accountId,
+            u.order_type || null,
+          ],
+        );
 
         if (resUpd.rowCount > 0) {
           updatedCount++;
           const row = resUpd.rows[0];
-          await b.log(row.trade_id, 'trades', {
-            event: 'TRADE_SYNC_UPDATE',
-            ticket,
-            ticket_candidates: ticketCandidates,
-            status_raw: stRaw,
-            execution_status: execStatus,
-            close_reason: closeReason,
-            pnl,
-            source: 'ea_bulk_sync'
-          }, row.user_id || CFG.mt5DefaultUserId);
+          await b.log(
+            row.trade_id,
+            "trades",
+            {
+              event: "TRADE_SYNC_UPDATE",
+              ticket,
+              ticket_candidates: ticketCandidates,
+              status_raw: stRaw,
+              execution_status: execStatus,
+              close_reason: closeReason,
+              pnl,
+              source: "ea_bulk_sync",
+            },
+            row.user_id || CFG.mt5DefaultUserId,
+          );
         } else {
           unmatchedCount++;
-          await b.log(signalId || ticket || "unknown", 'trades', {
-            event: 'TRADE_SYNC_UNMATCHED',
-            ticket,
-            ticket_candidates: ticketCandidates,
-            account_id: accountId || null,
-            symbol: u.symbol || null,
-            volume: u.volume || null,
-            pnl,
-            source: 'ea_bulk_sync'
-          }, CFG.mt5DefaultUserId);
+          await b.log(
+            signalId || ticket || "unknown",
+            "trades",
+            {
+              event: "TRADE_SYNC_UNMATCHED",
+              ticket,
+              ticket_candidates: ticketCandidates,
+              account_id: accountId || null,
+              symbol: u.symbol || null,
+              volume: u.volume || null,
+              pnl,
+              source: "ea_bulk_sync",
+            },
+            CFG.mt5DefaultUserId,
+          );
         }
       }
-      return json(res, 200, { ok: true, updated: updatedCount, unmatched: unmatchedCount });
-    } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
+      return json(res, 200, {
+        ok: true,
+        updated: updatedCount,
+        unmatched: unmatchedCount,
+      });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message });
+    }
   }
 
-  if (req.method === "POST" && (url.pathname === "/v2/ea/log" || url.pathname === "/mt5/ea/log-v2")) {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+  if (
+    req.method === "POST" &&
+    (url.pathname === "/v2/ea/log" || url.pathname === "/mt5/ea/log-v2")
+  ) {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
       if (!(await requireEaKey(req, res, url, payload))) return;
@@ -12493,7 +17271,12 @@ const appHandler = async (req, res) => {
       const message = String(payload.message || "");
       const b = await mt5Backend();
       if (b.log) {
-        await b.log(null, 'ea_logs', { level, message, account_id: accountId }, CFG.mt5DefaultUserId);
+        await b.log(
+          null,
+          "ea_logs",
+          { level, message, account_id: accountId },
+          CFG.mt5DefaultUserId,
+        );
       }
       console.log(`[EA LOG] [${accountId}] [${level}] ${message}`);
       return json(res, 200, { ok: true });
@@ -12503,7 +17286,8 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/mt5/ea/pull") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     if (!(await requireEaKey(req, res, url))) return;
 
     const signalId = String(url.searchParams.get("signal_id") || "").trim();
@@ -12516,21 +17300,21 @@ const appHandler = async (req, res) => {
     const taskId = task.task_id || task.signal_id;
     await mt5AppendSignalEvent(taskId, "TASK_FETCH", {
       type: task.type,
-      account: account || null
+      account: account || null,
     });
-
 
     // Flatten task for EA compatibility (top-level fields)
     return json(res, 200, {
       ok: true,
       ...task,
       // Backward compatibility
-      signal: task.type === 'OPEN' ? task : null
+      signal: task.type === "OPEN" ? task : null,
     });
   }
 
   if (req.method === "POST" && url.pathname === "/mt5/ea/heartbeat") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
       if (!(await requireEaKey(req, res, url, payload))) return;
@@ -12547,8 +17331,8 @@ const appHandler = async (req, res) => {
           equity: payload.equity,
           free_margin: payload.free_margin || payload.margin,
           name: payload.account_name,
-          broker_type: 'mt5_legacy',
-          now: payload.now || now
+          broker_type: "mt5_legacy",
+          now: payload.now || now,
         });
       }
 
@@ -12561,7 +17345,8 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/mt5/ea/ack") {
-    if (!CFG.mt5Enabled) return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
     try {
       const payload = await readJson(req);
       if (!(await requireEaKey(req, res, url, payload))) return;
@@ -12578,21 +17363,37 @@ const appHandler = async (req, res) => {
         return json(res, 404, { ok: false, error: "signal not found" });
       }
 
-      const pnlRealized = asNum(payload.pnl_money_realized ?? payload.pnl ?? payload.profit, NaN);
-      const entryExecRaw = asNum(payload.entry_price_exec ?? payload.entry, NaN);
+      const pnlRealized = asNum(
+        payload.pnl_money_realized ?? payload.pnl ?? payload.profit,
+        NaN,
+      );
+      const entryExecRaw = asNum(
+        payload.entry_price_exec ?? payload.entry,
+        NaN,
+      );
       const slExecRaw = asNum(payload.sl_exec ?? payload.sl, NaN);
       const tpExecRaw = asNum(payload.tp_exec ?? payload.tp, NaN);
-      const entryExec = (Number.isFinite(entryExecRaw) && entryExecRaw > 0.0) ? entryExecRaw : NaN;
-      const slExec = (Number.isFinite(slExecRaw) && slExecRaw > 0.0) ? slExecRaw : NaN;
-      const tpExec = (Number.isFinite(tpExecRaw) && tpExecRaw > 0.0) ? tpExecRaw : NaN;
+      const entryExec =
+        Number.isFinite(entryExecRaw) && entryExecRaw > 0.0
+          ? entryExecRaw
+          : NaN;
+      const slExec =
+        Number.isFinite(slExecRaw) && slExecRaw > 0.0 ? slExecRaw : NaN;
+      const tpExec =
+        Number.isFinite(tpExecRaw) && tpExecRaw > 0.0 ? tpExecRaw : NaN;
       // Pip/lot telemetry from EA
       const slPipsFromPayload = asNum(payload.sl_pips, NaN);
       const tpPipsFromPayload = asNum(payload.tp_pips, NaN);
       const pipValuePerLotFromPayload = asNum(payload.pip_value_per_lot, NaN);
       const riskMoneyActualFromPayload = asNum(payload.risk_money_actual, NaN);
-      const rewardMoneyPlannedFromPayload = asNum(payload.reward_money_planned, NaN);
-      const ackResult = payload.result ?? payload.retcode ?? payload.code ?? null;
-      const ackMessage = payload.message ?? payload.msg ?? payload.comment ?? null;
+      const rewardMoneyPlannedFromPayload = asNum(
+        payload.reward_money_planned,
+        NaN,
+      );
+      const ackResult =
+        payload.result ?? payload.retcode ?? payload.code ?? null;
+      const ackMessage =
+        payload.message ?? payload.msg ?? payload.comment ?? null;
       const ackNote = payload.note ?? payload.reason ?? null;
 
       // Smart Parsing: If direct fields are missing, try to extract from note string (e.g., risk$=100.29)
@@ -12615,10 +17416,16 @@ const appHandler = async (req, res) => {
       const ackSummary = [ackResult, ackMessage, ackNote]
         .filter((v) => v !== null && v !== undefined && String(v).trim() !== "")
         .join(" | ");
-      const ackErrorCombined = [payload.error, ackSummary]
-        .filter((v) => v !== null && v !== undefined && String(v).trim() !== "")
-        .join(" | ") || null;
-      const retryableConnectivityFail = mt5IsRetryableConnectivityFail(status, ackErrorCombined);
+      const ackErrorCombined =
+        [payload.error, ackSummary]
+          .filter(
+            (v) => v !== null && v !== undefined && String(v).trim() !== "",
+          )
+          .join(" | ") || null;
+      const retryableConnectivityFail = mt5IsRetryableConnectivityFail(
+        status,
+        ackErrorCombined,
+      );
 
       await mt5AckSignal(signalId, status, payload.ticket, ackErrorCombined, {
         pnl_money_realized: Number.isFinite(pnlRealized) ? pnlRealized : null,
@@ -12627,11 +17434,22 @@ const appHandler = async (req, res) => {
         tp_exec: Number.isFinite(tpExec) ? tpExec : null,
         sl_pips: Number.isFinite(slPips) && slPips > 0 ? slPips : null,
         tp_pips: Number.isFinite(tpPips) && tpPips > 0 ? tpPips : null,
-        pip_value_per_lot: Number.isFinite(pipValuePerLot) && pipValuePerLot > 0 ? pipValuePerLot : null,
-        risk_money_actual: Number.isFinite(riskMoneyActual) && riskMoneyActual > 0 ? riskMoneyActual : null,
-        reward_money_planned: Number.isFinite(rewardMoneyPlanned) && rewardMoneyPlanned > 0 ? rewardMoneyPlanned : null,
+        pip_value_per_lot:
+          Number.isFinite(pipValuePerLot) && pipValuePerLot > 0
+            ? pipValuePerLot
+            : null,
+        risk_money_actual:
+          Number.isFinite(riskMoneyActual) && riskMoneyActual > 0
+            ? riskMoneyActual
+            : null,
+        reward_money_planned:
+          Number.isFinite(rewardMoneyPlanned) && rewardMoneyPlanned > 0
+            ? rewardMoneyPlanned
+            : null,
       });
-      const eventType = retryableConnectivityFail ? "SIGNAL_EA_REQUEUE" : `SIGNAL_EA_ACK_${status}`;
+      const eventType = retryableConnectivityFail
+        ? "SIGNAL_EA_REQUEUE"
+        : `SIGNAL_EA_ACK_${status}`;
       await mt5AppendSignalEvent(signalId, eventType, {
         ticket: payload.ticket ?? null,
         error: ackErrorCombined,
@@ -12645,20 +17463,36 @@ const appHandler = async (req, res) => {
         tp_exec: Number.isFinite(tpExec) ? tpExec : null,
         sl_pips: Number.isFinite(slPips) && slPips > 0 ? slPips : null,
         tp_pips: Number.isFinite(tpPips) && tpPips > 0 ? tpPips : null,
-        pip_value_per_lot: Number.isFinite(pipValuePerLot) && pipValuePerLot > 0 ? pipValuePerLot : null,
-        risk_money_actual: Number.isFinite(riskMoneyActual) && riskMoneyActual > 0 ? riskMoneyActual : null,
-        reward_money_planned: Number.isFinite(rewardMoneyPlanned) && rewardMoneyPlanned > 0 ? rewardMoneyPlanned : null,
+        pip_value_per_lot:
+          Number.isFinite(pipValuePerLot) && pipValuePerLot > 0
+            ? pipValuePerLot
+            : null,
+        risk_money_actual:
+          Number.isFinite(riskMoneyActual) && riskMoneyActual > 0
+            ? riskMoneyActual
+            : null,
+        reward_money_planned:
+          Number.isFinite(rewardMoneyPlanned) && rewardMoneyPlanned > 0
+            ? rewardMoneyPlanned
+            : null,
       });
 
       if (status === "TP" || status === "SL") {
         try {
           const model = mt5EntryModelFromRow(sig);
           const tf = sig.signal_tf || sig.chart_tf || "n/a";
-          const pnlStr = Number.isFinite(pnlRealized) ? (pnlRealized >= 0 ? `+$${pnlRealized.toFixed(2)}` : `-$${Math.abs(pnlRealized).toFixed(2)}`) : "n/a";
+          const pnlStr = Number.isFinite(pnlRealized)
+            ? pnlRealized >= 0
+              ? `+$${pnlRealized.toFixed(2)}`
+              : `-$${Math.abs(pnlRealized).toFixed(2)}`
+            : "n/a";
           const telMsg = `[${sig.symbol}, ${sig.action}, ${signalId}, ${pnlStr}, ${model}, ${tf}, ${status}]`;
           await sendTelegram(telMsg);
         } catch (telErr) {
-          console.error("[Webhook] Telegram notification failed for TP/SL:", telErr);
+          console.error(
+            "[Webhook] Telegram notification failed for TP/SL:",
+            telErr,
+          );
         }
       }
 
@@ -12705,7 +17539,9 @@ const appHandler = async (req, res) => {
 async function start() {
   if (CFG.uiAuthEnabled) {
     const auth = await uiEnsureAuthBootstrap();
-    console.log(`UI auth enabled=true, user=${auth.email}, storage=${(await mt5Backend()).storage}`);
+    console.log(
+      `UI auth enabled=true, user=${auth.email}, storage=${(await mt5Backend()).storage}`,
+    );
   } else {
     console.log("UI auth enabled=false");
   }
@@ -12713,15 +17549,33 @@ async function start() {
   if (CFG.mt5Enabled) {
     const b = await mt5Backend();
     const where = b.info.path || b.info.url || "configured";
-    console.log(`MT5 bridge enabled=true, storage=${b.storage}, target=${where}`);
+    console.log(
+      `MT5 bridge enabled=true, storage=${b.storage}, target=${where}`,
+    );
     if (CFG.mt5PruneEnabled) {
-      const safeDays = Math.max(1, Math.min(3650, Number.isFinite(CFG.mt5PruneDays) ? CFG.mt5PruneDays : 14));
-      const safeMins = Math.max(1, Math.min(1440, Number.isFinite(CFG.mt5PruneIntervalMinutes) ? CFG.mt5PruneIntervalMinutes : 60));
+      const safeDays = Math.max(
+        1,
+        Math.min(
+          3650,
+          Number.isFinite(CFG.mt5PruneDays) ? CFG.mt5PruneDays : 14,
+        ),
+      );
+      const safeMins = Math.max(
+        1,
+        Math.min(
+          1440,
+          Number.isFinite(CFG.mt5PruneIntervalMinutes)
+            ? CFG.mt5PruneIntervalMinutes
+            : 60,
+        ),
+      );
       const runPrune = async () => {
         try {
           const out = await mt5PruneSignals(safeDays);
           if (out.removed > 0) {
-            console.log(`MT5 prune removed=${out.removed}, remaining=${out.remaining}, days=${safeDays}`);
+            console.log(
+              `MT5 prune removed=${out.removed}, remaining=${out.remaining}, days=${safeDays}`,
+            );
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -12731,7 +17585,9 @@ async function start() {
       await runPrune();
       const handle = setInterval(runPrune, safeMins * 60 * 1000);
       handle.unref();
-      console.log(`MT5 prune enabled=true, days=${safeDays}, intervalMinutes=${safeMins}`);
+      console.log(
+        `MT5 prune enabled=true, days=${safeDays}, intervalMinutes=${safeMins}`,
+      );
     } else {
       console.log("MT5 prune enabled=false");
     }
@@ -12742,19 +17598,24 @@ async function start() {
   function loadTlsOptions() {
     if (!CFG.httpsEnabled) return null;
     if (!CFG.httpsKeyPath || !CFG.httpsCertPath) {
-      throw new Error("HTTPS_ENABLED=true requires HTTPS_KEY_PATH and HTTPS_CERT_PATH");
+      throw new Error(
+        "HTTPS_ENABLED=true requires HTTPS_KEY_PATH and HTTPS_CERT_PATH",
+      );
     }
     const keyPath = path.resolve(__dirname, CFG.httpsKeyPath);
     const certPath = path.resolve(__dirname, CFG.httpsCertPath);
-    if (!fs.existsSync(keyPath)) throw new Error(`HTTPS key file not found: ${keyPath}`);
-    if (!fs.existsSync(certPath)) throw new Error(`HTTPS cert file not found: ${certPath}`);
+    if (!fs.existsSync(keyPath))
+      throw new Error(`HTTPS key file not found: ${keyPath}`);
+    if (!fs.existsSync(certPath))
+      throw new Error(`HTTPS cert file not found: ${certPath}`);
     const out = {
       key: fs.readFileSync(keyPath, "utf8"),
       cert: fs.readFileSync(certPath, "utf8"),
     };
     if (CFG.httpsCaPath) {
       const caPath = path.resolve(__dirname, CFG.httpsCaPath);
-      if (!fs.existsSync(caPath)) throw new Error(`HTTPS CA file not found: ${caPath}`);
+      if (!fs.existsSync(caPath))
+        throw new Error(`HTTPS CA file not found: ${caPath}`);
       out.ca = fs.readFileSync(caPath, "utf8");
     }
     return out;
@@ -12764,11 +17625,14 @@ async function start() {
     server.on("clientError", (_err, socket) => {
       if (!socket) return;
       try {
-        if (socket.writable) socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+        if (socket.writable)
+          socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
       } catch {
         // ignore
       }
-      try { socket.destroy(); } catch { }
+      try {
+        socket.destroy();
+      } catch {}
     });
   }
 
@@ -12780,12 +17644,18 @@ async function start() {
       httpsServer.once("error", reject);
       httpsServer.listen(CFG.httpsPort, "0.0.0.0", resolve);
     });
-    console.log(`telegram-trading-bot listening on https://0.0.0.0:${CFG.httpsPort}`);
+    console.log(
+      `telegram-trading-bot listening on https://0.0.0.0:${CFG.httpsPort}`,
+    );
 
     if (CFG.httpsRedirectHttp) {
       const httpRedirectServer = http.createServer((req, res) => {
-        const hostHeader = String(req.headers.host || "localhost").replace(/:\d+$/, "");
-        const targetHost = CFG.httpsPort === 443 ? hostHeader : `${hostHeader}:${CFG.httpsPort}`;
+        const hostHeader = String(req.headers.host || "localhost").replace(
+          /:\d+$/,
+          "",
+        );
+        const targetHost =
+          CFG.httpsPort === 443 ? hostHeader : `${hostHeader}:${CFG.httpsPort}`;
         const location = `https://${targetHost}${req.url || "/"}`;
         res.writeHead(308, { Location: location });
         res.end();
@@ -12795,7 +17665,9 @@ async function start() {
         httpRedirectServer.once("error", reject);
         httpRedirectServer.listen(CFG.port, "0.0.0.0", resolve);
       });
-      console.log(`HTTP redirect enabled on http://0.0.0.0:${CFG.port} -> https://0.0.0.0:${CFG.httpsPort}`);
+      console.log(
+        `HTTP redirect enabled on http://0.0.0.0:${CFG.port} -> https://0.0.0.0:${CFG.httpsPort}`,
+      );
     }
   } else {
     const httpServer = http.createServer(appHandler);
@@ -12811,16 +17683,20 @@ async function start() {
   if (CFG.mt5Enabled) {
     // Start Cron Loop
     initMarketDataQueue();
-    mt5CronLoop().catch(err => console.error("[Cron] Loop failed to start:", err));
+    mt5CronLoop().catch((err) =>
+      console.error("[Cron] Loop failed to start:", err),
+    );
   }
 
-  console.log(`Binance mode=${CFG.binanceMode || "off"}, cTrader mode=${CFG.ctraderMode || "off"}`);
+  console.log(
+    `Binance mode=${CFG.binanceMode || "off"}, cTrader mode=${CFG.ctraderMode || "off"}`,
+  );
 }
 
 const CRON_STATE = {
   lastMarketDataRun: {}, // { [userId_name_tf]: timestamp }
   lastAiAnalysisRun: {}, // { [userId_name_tf]: timestamp }
-  isRunning: false
+  isRunning: false,
 };
 let MARKET_DATA_QUEUE = null;
 let MARKET_DATA_WORKER = null;
@@ -12833,7 +17709,8 @@ function bullConnectionFromRedisUrl(redisUrl) {
       port: Number(u.port || 6379),
       username: u.username ? decodeURIComponent(u.username) : undefined,
       password: u.password ? decodeURIComponent(u.password) : undefined,
-      db: u.pathname && u.pathname !== "/" ? Number(u.pathname.slice(1)) || 0 : 0,
+      db:
+        u.pathname && u.pathname !== "/" ? Number(u.pathname.slice(1)) || 0 : 0,
       maxRetriesPerRequest: null,
     };
   } catch {
@@ -12846,32 +17723,51 @@ function marketDataCronSettingEnabled(data = {}) {
 }
 
 function marketDataCronTimezone(data = {}) {
-  return normalizeMarketDataTimezone(data.timezone || data.market_data_timezone || CFG.marketDataDefaultTimezone);
+  return normalizeMarketDataTimezone(
+    data.timezone || data.market_data_timezone || CFG.marketDataDefaultTimezone,
+  );
 }
 
-async function marketDataUpdateCronState({ userId, settingName, symbol, tf, patch }) {
+async function marketDataUpdateCronState({
+  userId,
+  settingName,
+  symbol,
+  tf,
+  patch,
+}) {
   const b = await mt5Backend();
   const key = `${normalizeMarketDataSymbol(symbol)}:${normalizeMarketDataTf(tf)}`;
   const res = await b.query(
     `SELECT data FROM user_settings WHERE user_id = $1 AND type = 'cron' AND name = 'MARKET_DATA_CRON' LIMIT 1`,
-    [userId]
+    [userId],
   );
   if (!res.rows.length) return;
-  const data = (res.rows[0].data && typeof res.rows[0].data === "object") ? res.rows[0].data : {};
-  const sync = (data.last_sync && typeof data.last_sync === "object") ? data.last_sync : {};
+  const data =
+    res.rows[0].data && typeof res.rows[0].data === "object"
+      ? res.rows[0].data
+      : {};
+  const sync =
+    data.last_sync && typeof data.last_sync === "object" ? data.last_sync : {};
   sync[key] = { ...(sync[key] || {}), ...patch };
   await b.query(
     `UPDATE user_settings
         SET data = $1::jsonb, updated_at = NOW()
       WHERE user_id = $2 AND type = 'cron' AND name = 'MARKET_DATA_CRON'`,
-    [JSON.stringify({ ...data, last_sync: sync }), userId]
+    [JSON.stringify({ ...data, last_sync: sync }), userId],
   );
 }
 
-async function marketDataFetchJob({ userId, settingName, symbol, tf, timezone }) {
+async function marketDataFetchJob({
+  userId,
+  settingName,
+  symbol,
+  tf,
+  timezone,
+}) {
   const symbolNorm = normalizeMarketDataSymbol(symbol);
   const tfNorm = normalizeMarketDataTf(tf);
-  if (!symbolNorm || !tfNorm) return { ok: false, reason: "invalid_symbol_or_tf" };
+  if (!symbolNorm || !tfNorm)
+    return { ok: false, reason: "invalid_symbol_or_tf" };
   try {
     const snapshot = await buildAnalysisSnapshotFromTwelve({
       userId,
@@ -12882,9 +17778,15 @@ async function marketDataFetchJob({ userId, settingName, symbol, tf, timezone })
         setting_name: settingName || "default",
       },
       symbol,
-      timeframe: tf
+      timeframe: tf,
     });
-    if (snapshot?.status === "ok") return { ok: true, symbol: symbolNorm, tf: tfNorm, bars: snapshot.bars?.length || 0 };
+    if (snapshot?.status === "ok")
+      return {
+        ok: true,
+        symbol: symbolNorm,
+        tf: tfNorm,
+        bars: snapshot.bars?.length || 0,
+      };
     await marketDataUpdateCronState({
       userId,
       settingName,
@@ -12894,10 +17796,16 @@ async function marketDataFetchJob({ userId, settingName, symbol, tf, timezone })
         last_error_at: new Date().toISOString(),
         last_error: snapshot?.reason || "fetch_failed",
       },
-    }).catch(() => { });
-    return { ok: false, symbol: symbolNorm, tf: tfNorm, reason: snapshot?.reason || "fetch_failed" };
+    }).catch(() => {});
+    return {
+      ok: false,
+      symbol: symbolNorm,
+      tf: tfNorm,
+      reason: snapshot?.reason || "fetch_failed",
+    };
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err || "fetch_failed");
+    const reason =
+      err instanceof Error ? err.message : String(err || "fetch_failed");
     await marketDataUpdateCronState({
       userId,
       settingName,
@@ -12907,13 +17815,19 @@ async function marketDataFetchJob({ userId, settingName, symbol, tf, timezone })
         last_error_at: new Date().toISOString(),
         last_error: reason,
       },
-    }).catch(() => { });
+    }).catch(() => {});
     throw err;
   }
 }
 
 function initMarketDataQueue() {
-  if (!CFG.marketDataCronEnabled || !CFG.marketDataCronQueueEnabled || !CFG.redisEnabled || !BullQueue || !BullWorker) {
+  if (
+    !CFG.marketDataCronEnabled ||
+    !CFG.marketDataCronQueueEnabled ||
+    !CFG.redisEnabled ||
+    !BullQueue ||
+    !BullWorker
+  ) {
     console.log(`[Cron][MarketData] queue enabled=false`);
     return false;
   }
@@ -12928,13 +17842,21 @@ function initMarketDataQueue() {
       removeOnFail: 1000,
     },
   });
-  MARKET_DATA_WORKER = new BullWorker("market-data-bars", async (job) => {
-    return marketDataFetchJob(job.data || {});
-  }, { connection, concurrency: CFG.marketDataCronConcurrency });
+  MARKET_DATA_WORKER = new BullWorker(
+    "market-data-bars",
+    async (job) => {
+      return marketDataFetchJob(job.data || {});
+    },
+    { connection, concurrency: CFG.marketDataCronConcurrency },
+  );
   MARKET_DATA_WORKER.on("failed", (job, err) => {
-    console.error(`[Cron][MarketData] job failed id=${job?.id || ""}: ${err?.message || err}`);
+    console.error(
+      `[Cron][MarketData] job failed id=${job?.id || ""}: ${err?.message || err}`,
+    );
   });
-  console.log(`[Cron][MarketData] BullMQ enabled=true concurrency=${CFG.marketDataCronConcurrency}`);
+  console.log(
+    `[Cron][MarketData] BullMQ enabled=true concurrency=${CFG.marketDataCronConcurrency}`,
+  );
   return true;
 }
 
@@ -12965,7 +17887,7 @@ async function mt5RunMarketDataCron() {
   if (!CFG.marketDataCronEnabled) return;
   const b = await mt5Backend();
   const res = await b.query(`
-    SELECT s.* 
+    SELECT s.*
     FROM user_settings s
     JOIN users u ON s.user_id = u.user_id
     WHERE s.type = 'cron' AND s.name = 'MARKET_DATA_CRON'
@@ -12991,43 +17913,58 @@ async function mt5RunMarketDataCron() {
       const lastRun = CRON_STATE.lastMarketDataRun[stateKey] || 0;
 
       // Run if never run or if cadence passed
-      if (now - lastRun >= tfSec * 1000 - 5000) { // 5s buffer
-        console.log(`[Cron][MarketData] Running userId=${userId} name=${conf.name} tf=${tf} symbols=${symbols.length}`);
+      if (now - lastRun >= tfSec * 1000 - 5000) {
+        // 5s buffer
+        console.log(
+          `[Cron][MarketData] Running userId=${userId} name=${conf.name} tf=${tf} symbols=${symbols.length}`,
+        );
         CRON_STATE.lastMarketDataRun[stateKey] = now;
 
         // Batch symbols to avoid hitting Twelve Data limits
-        const batchSize = Number(data.batch_size || CFG.marketDataCronBatchSize) || 8;
+        const batchSize =
+          Number(data.batch_size || CFG.marketDataCronBatchSize) || 8;
         for (let i = 0; i < symbols.length; i += batchSize) {
           const batch = symbols.slice(i, i + batchSize);
           if (MARKET_DATA_QUEUE) {
             const bucket = Math.floor(now / (tfSec * 1000));
-            await Promise.all(batch.map((symbol) => {
-              const symbolNorm = normalizeMarketDataSymbol(symbol);
-              const tfNorm = normalizeMarketDataTf(tf);
-              return MARKET_DATA_QUEUE.add("fetch-bars", {
-                userId,
-                settingName: conf.name || "default",
-                symbol,
-                tf,
-                timezone,
-              }, {
-                jobId: `market:${userId}:${conf.name || "default"}:${symbolNorm}:${tfNorm}:${bucket}`,
-              });
-            }));
+            await Promise.all(
+              batch.map((symbol) => {
+                const symbolNorm = normalizeMarketDataSymbol(symbol);
+                const tfNorm = normalizeMarketDataTf(tf);
+                return MARKET_DATA_QUEUE.add(
+                  "fetch-bars",
+                  {
+                    userId,
+                    settingName: conf.name || "default",
+                    symbol,
+                    tf,
+                    timezone,
+                  },
+                  {
+                    jobId: `market:${userId}:${conf.name || "default"}:${symbolNorm}:${tfNorm}:${bucket}`,
+                  },
+                );
+              }),
+            );
           } else {
-            await Promise.all(batch.map(async (symbol) => {
-              try {
-                await marketDataFetchJob({
-                  userId,
-                  settingName: conf.name || "default",
-                  symbol,
-                  tf,
-                  timezone,
-                });
-              } catch (err) {
-                console.error(`[Cron][MarketData] Failed symbol=${symbol} tf=${tf}:`, err.message);
-              }
-            }));
+            await Promise.all(
+              batch.map(async (symbol) => {
+                try {
+                  await marketDataFetchJob({
+                    userId,
+                    settingName: conf.name || "default",
+                    symbol,
+                    tf,
+                    timezone,
+                  });
+                } catch (err) {
+                  console.error(
+                    `[Cron][MarketData] Failed symbol=${symbol} tf=${tf}:`,
+                    err.message,
+                  );
+                }
+              }),
+            );
           }
         }
         await marketDataUpdateCronState({
@@ -13042,7 +17979,7 @@ async function mt5RunMarketDataCron() {
             batch_size: batchSize,
             queue: MARKET_DATA_QUEUE ? "bullmq" : "inline",
           },
-        }).catch(() => { });
+        }).catch(() => {});
       }
     }
   }
@@ -13051,7 +17988,7 @@ async function mt5RunMarketDataCron() {
 async function mt5RunAiAnalysisCron() {
   const b = await mt5Backend();
   const res = await b.query(`
-    SELECT s.* 
+    SELECT s.*
     FROM user_settings s
     JOIN users u ON s.user_id = u.user_id
     WHERE s.type = 'cron' AND s.name = 'ANALYSIS_CRON'
@@ -13074,24 +18011,30 @@ async function mt5RunAiAnalysisCron() {
     const lastRun = CRON_STATE.lastAiAnalysisRun[stateKey] || 0;
 
     if (now - lastRun >= cadenceMin * 60 * 1000 - 5000) {
-      console.log(`[Cron][AiAnalysis] Running userId=${userId} name=${conf.name} symbols=${symbols.length}`);
+      console.log(
+        `[Cron][AiAnalysis] Running userId=${userId} name=${conf.name} symbols=${symbols.length}`,
+      );
       CRON_STATE.lastAiAnalysisRun[stateKey] = now;
 
       for (const symbol of symbols) {
         for (const tf of tfs) {
           try {
-            console.log(`[Cron][AiAnalysis] Triggering analysis for ${symbol} ${tf}`);
+            console.log(
+              `[Cron][AiAnalysis] Triggering analysis for ${symbol} ${tf}`,
+            );
             // Logic for automated analysis would go here.
             // Requires integration with screenshot capture or bar-only analysis.
           } catch (err) {
-            console.error(`[Cron][AiAnalysis] Failed symbol=${symbol} tf=${tf}:`, err.message);
+            console.error(
+              `[Cron][AiAnalysis] Failed symbol=${symbol} tf=${tf}:`,
+              err.message,
+            );
           }
         }
       }
     }
   }
 }
-
 
 start().catch((err) => {
   const message = err instanceof Error ? err.stack || err.message : String(err);
