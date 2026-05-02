@@ -35,6 +35,22 @@ const DEFAULT_WATCHLIST = [
   "XAUEUR", "XAUGBP", "XAUJPY", "XTIUSD"
 ];
 
+// Fixed default sets for asset-type filter tabs
+const DEFAULT_CRYPTO_SYMBOLS = ["BTCUSD", "ETHUSD", "ADAUSD"];
+const DEFAULT_FOREX_SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD", "EURJPY", "GBPJPY", "AUDJPY"];
+
+// Classify a symbol as crypto/forex/other (deterministic, conservative)
+const CRYPTO_PREFIXES = new Set(["BTC","ETH","ADA","BNB","XRP","SOL","DOGE","LTC","LINK","DOT","BCH","MATIC","TRX","AVAX","SHIB","UNI","ATOM","ETC","FIL","ALGO","VET","ICP","FTM","GRT","SAND","MANA","AXS","GALA"]);
+const FOREX_PAIRS = new Set(["EURUSD","USDJPY","GBPUSD","AUDUSD","USDCAD","USDCHF","NZDUSD","EURGBP","EURJPY","EURCHF","GBPJPY","GBPCHF","AUDJPY","AUDNZD","AUDCAD","AUDCHF","CADJPY","CADCHF","CHFJPY","NZDJPY","NZDCAD","NZDCHF","EURAUD","EURCAD","EURNZD","GBPAUD","GBPCAD","GBPNZD","USDSGD","SGDJPY","EURHUF","USDHUF","USDTRY","EURTRY","USDNOK","USDDKK","USDPLN","EURSEK","EURNOK","EURDKK","EURPLN","EURSGD"]);
+const classifySymbol = (s) => {
+  const upper = String(s || "").toUpperCase();
+  if (!upper) return "other";
+  const prefix = upper.replace(/USD$|USDT$/, "");
+  if (CRYPTO_PREFIXES.has(prefix) && (upper.endsWith("USD") || upper.endsWith("USDT"))) return "crypto";
+  if (FOREX_PAIRS.has(upper)) return "forex";
+  return "other";
+};
+
 const PROFILE_PRESETS = {
   position: {
     label: "Position (w+d / 4h / 1h)",
@@ -1004,7 +1020,9 @@ export default function ChartSnapshotsPage() {
   const [sessionPrefix, setSessionPrefix] = useState("");
 
   const [selectedFiles, setSelectedFiles] = useState(new Set());
-  const [watchlist, setWatchlist] = useState(DEFAULT_WATCHLIST);
+  const [watchlist, setWatchlist] = useState([]);
+  const [isSymbolPanelOpen, setIsSymbolPanelOpen] = useState(true);
+  const [symbolFilterTab, setSymbolFilterTab] = useState("ALL");
   const [analysisFilesDisplay, setAnalysisFilesDisplay] = useState([]);
   const [position, setPosition] = useState({ direction: "BUY", entry: "", tp: "", sl: "", rr: "", trade_type: "limit", note: "" });
   const [barsCache, setBarsCache] = useState({});
@@ -2033,16 +2051,13 @@ export default function ChartSnapshotsPage() {
     try {
       const out = await api.authMe();
       const arr = Array.isArray(out?.user?.metadata?.watchlist) ? out.user.metadata.watchlist : [];
-
-      // Combine with default watchlist and filter duplicates
-      const final = [...new Set([...DEFAULT_WATCHLIST, ...arr].map(normalizeWatchSymbol).filter(Boolean))];
-
-      console.log("[watchlist] Loaded from DB + Default:", final);
-      setWatchlist(final);
+      // Favourite tab must represent user-owned persisted settings only.
+      const persisted = [...new Set(arr.map(normalizeWatchSymbol).filter(Boolean))];
+      console.log("[watchlist] Loaded favourites from DB:", persisted);
+      setWatchlist(persisted);
     } catch (err) {
-      console.warn("[watchlist] Load failed, using defaults:", err.message);
-      const defaults = [...new Set(DEFAULT_WATCHLIST.map(normalizeWatchSymbol).filter(Boolean))];
-      setWatchlist(defaults);
+      console.warn("[watchlist] Load failed, using empty favourites:", err.message);
+      setWatchlist([]);
     }
   };
 
@@ -2408,23 +2423,57 @@ export default function ChartSnapshotsPage() {
     };
   }, [responseTab, currentBarsSnapshot, chartPdArrays, chartKeyLevels, position.entry, position.sl, position.tp]);
 
+  // Computed symbol sets for filter tabs
+  const favoriteSymbols = useMemo(() => {
+    const fromMeta = Array.isArray(watchlist) ? watchlist : [];
+    return [...new Set(fromMeta.map(normalizeWatchSymbol).filter(Boolean))];
+  }, [watchlist]);
+
+  const allSymbols = useMemo(() => {
+    return [...new Set([...DEFAULT_WATCHLIST, ...favoriteSymbols].map(normalizeWatchSymbol).filter(Boolean))];
+  }, [favoriteSymbols]);
+
+  const cryptoSymbols = useMemo(() => {
+    const fromAll = allSymbols.filter((s) => classifySymbol(s) === "crypto");
+    const merged = [...new Set([...DEFAULT_CRYPTO_SYMBOLS, ...fromAll].map(normalizeWatchSymbol).filter(Boolean))];
+    return merged.sort();
+  }, [allSymbols]);
+
+  const forexSymbols = useMemo(() => {
+    const fromAll = allSymbols.filter((s) => classifySymbol(s) === "forex");
+    const merged = [...new Set([...DEFAULT_FOREX_SYMBOLS, ...fromAll].map(normalizeWatchSymbol).filter(Boolean))];
+    return merged.sort();
+  }, [allSymbols]);
+
+  const symbolsByTab = useMemo(() => {
+    switch (symbolFilterTab) {
+      case "FAVOURITE": return favoriteSymbols;
+      case "CRYPTO": return cryptoSymbols;
+      case "FOREX": return forexSymbols;
+      case "ALL":
+      default: return allSymbols;
+    }
+  }, [symbolFilterTab, favoriteSymbols, allSymbols, cryptoSymbols, forexSymbols]);
+
   return (
     <section className="snapshot-builder-v2 snapshot-builder-v3 snapshot-builder-ai-v4">
       <section className="panel snapshot-col-v3 snapshot-col-symbols-v3">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', height: '100%' }}>
-          <div className="snapshot-symbol-row-inline-v4">
-            <span className="panel-label" style={{ margin: 0 }}>Symbols</span>
+                    <div className="snapshot-symbol-row-inline-v4">
             <input
               list="tv-symbol-options"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && searchTerm.trim()) {
-                  setCfgField("symbol", normalizeWatchSymbol(searchTerm.trim()));
+                  setCfgField(
+                    "symbol",
+                    normalizeWatchSymbol(searchTerm.trim()),
+                  );
                 }
               }}
               placeholder="Search..."
-              style={{ width: '100%' }}
+              style={{ width: "100%" }}
             />
             <button
               className="secondary-button snapshot-plus-btn-v2"
@@ -2438,39 +2487,68 @@ export default function ChartSnapshotsPage() {
                 }
               }}
               title="Add current symbol"
-            >+</button>
+            >
+              +
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setIsSymbolPanelOpen((v) => !v)}
+              title={isSymbolPanelOpen ? "Collapse symbols panel" : "Expand symbols panel"}
+              style={{ whiteSpace: "nowrap", fontSize: 11 }}
+            >
+              {isSymbolPanelOpen ? "Close <<" : "Open >>"}
+            </button>
           </div>
           <datalist id="tv-symbol-options">
-            {[...new Set([...symbolSelectOptions, ...apiSymbolOptions])].map((opt) => <option key={opt} value={opt} />)}
+            {[...new Set([...symbolSelectOptions, ...apiSymbolOptions])].map(
+              (opt) => (
+                <option key={opt} value={opt} />
+              ),
+            )}
           </datalist>
-          <div className="snapshot-watchlist-v2">
-            {(() => {
-              const query = String(searchTerm || "").trim().toUpperCase();
-              const filtered = watchlist.filter(s => s.toUpperCase().includes(query));
-              if (filtered.length === 0) return <span className="minor-text">No matching symbols.</span>;
-              return (
-                <div className="snapshot-tabs-v2" style={{ flexWrap: 'wrap' }}>
+          {isSymbolPanelOpen && (
+            <>
+              <div className="snapshot-tabs-v2" style={{ flexWrap: "wrap" }}>
+                {["FAVOURITE", "ALL", "CRYPTO", "FOREX"].map((tab) => (
                   <button
-                    className={`secondary-button snapshot-tag-v2 ${!cfg.symbol ? 'active' : ''}`}
-                    onClick={() => setCfgField('symbol', '')}
+                    key={tab}
+                    type="button"
+                    className={`secondary-button snapshot-tag-v2 ${symbolFilterTab === tab ? "active" : ""}`}
+                    onClick={() => setSymbolFilterTab(tab)}
                   >
-                    🌐 ALL
+                    {tab === "FAVOURITE" ? "Favourite" : tab === "ALL" ? "All" : tab === "CRYPTO" ? "Crypto" : "Forex"}
                   </button>
-                  <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 8px' }} />
-                  {filtered.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
-                      onClick={() => setCfgField("symbol", s)}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              );
-            })()}
-          </div>
+                ))}
+              </div>
+              <div className="snapshot-watchlist-v2">
+                {(() => {
+                  const query = String(searchTerm || "")
+                    .trim()
+                    .toUpperCase();
+                  const filtered = symbolsByTab.filter((s) =>
+                    s.toUpperCase().includes(query),
+                  );
+                  if (filtered.length === 0)
+                    return <span className="minor-text">No matching symbols.</span>;
+                  return (
+                    <div className="snapshot-tabs-v2" style={{ flexWrap: "wrap" }}>
+                      {filtered.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
+                          onClick={() => setCfgField("symbol", s)}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            </>
+          )}
           <div className="snapshot-live-card-v3" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', marginTop: 'auto' }}>
             <div className="snapshot-gallery-head-v2" style={{ marginBottom: 6 }}>
               <span className="panel-label" style={{ margin: 0 }}>Related Pending / Filled / New</span>
