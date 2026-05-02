@@ -3090,7 +3090,7 @@ export default function ChartSnapshotsPage() {
           alignItems: "flex-end",
         }}
       >
-        <div style={{ minWidth: 180 }}>
+        <div style={{ minWidth: 150 }}>
           <label className="minor-text">Profile TFs</label>
           <select
             value={cfg.profile || "day"}
@@ -3103,7 +3103,7 @@ export default function ChartSnapshotsPage() {
             <option value="scalper">{PROFILE_PRESETS.scalper.label}</option>
           </select>
         </div>
-        <div style={{ minWidth: 120 }}>
+        <div style={{ minWidth: 100 }}>
           <label className="minor-text">Sessions</label>
           <select
             value={cfg.session}
@@ -3117,7 +3117,7 @@ export default function ChartSnapshotsPage() {
             <option>London+NY</option>
           </select>
         </div>
-        <div style={{ minWidth: 70 }}>
+        <div style={{ minWidth: 60 }}>
           <label className="minor-text">MinRR</label>
           <input
             type="number"
@@ -3128,7 +3128,7 @@ export default function ChartSnapshotsPage() {
             style={{ width: "100%" }}
           />
         </div>
-        <div style={{ minWidth: 110 }}>
+        <div style={{ minWidth: 100 }}>
           <label className="minor-text">HTF Bias</label>
           <select
             value={cfg.htfbias}
@@ -3141,7 +3141,7 @@ export default function ChartSnapshotsPage() {
             <option>Ranging</option>
           </select>
         </div>
-        <div style={{ minWidth: 140 }}>
+        <div style={{ minWidth: 120 }}>
           <label className="minor-text">Direction</label>
           <select
             value={cfg.dir}
@@ -3154,7 +3154,7 @@ export default function ChartSnapshotsPage() {
             <option>Short only</option>
           </select>
         </div>
-        <div style={{ minWidth: 130 }}>
+        <div style={{ minWidth: 110 }}>
           <label className="minor-text">News</label>
           <select
             value={cfg.news}
@@ -4388,105 +4388,27 @@ export default function ChartSnapshotsPage() {
           >
             <div
               className="snapshot-modal-head-v4"
-              style={{ flexWrap: "wrap", gap: 10 }}
+              style={{ flexWrap: "wrap", gap: 8, alignItems: "center" }}
             >
-              <span className="panel-label" style={{ margin: 0 }}>
-                Settings
-              </span>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 6,
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  marginLeft: "auto",
-                }}
-              >
-                <select
-                  className="secondary-button"
-                  value={templateId}
-                  onChange={(e) => handleSelectTemplate(e.target.value)}
-                  style={{ height: 34, padding: "0 10px", fontSize: 12 }}
-                >
-                  <option value="">New Template</option>
-                  <option value={DEFAULT_TEMPLATE_ID}>Default Template</option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  value={templateName}
-                  onChange={(e) => setTemplateName(e.target.value)}
-                  placeholder="Template name"
-                  style={{
-                    width: 140,
-                    height: 34,
-                    padding: "0 10px",
-                    fontSize: 12,
-                  }}
-                />
-                <button
-                  className="primary-button"
-                  type="button"
-                  onClick={saveTemplate}
-                  style={{ height: 34, fontSize: 12, padding: "0 12px" }}
-                >
-                  Save
-                </button>
-                {templateId && templateId !== DEFAULT_TEMPLATE_ID && (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={deleteTemplate}
-                    style={{
-                      color: "var(--bearish)",
-                      height: 34,
-                      fontSize: 12,
-                    }}
-                  >
-                    Delete
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="danger-button"
-                  onClick={() => setSettingsModalOpen(false)}
-                >
-                  Close
-                </button>
+              <div className="snapshot-tabs-v2" style={{ margin: 0 }}>
+                <button type="button" className={`secondary-button ${settingsTab === "settings" ? "active" : ""}`} onClick={() => setSettingsTab("settings")} style={{ fontSize: 11, padding: "4px 10px" }}>Settings</button>
+                <button type="button" className={`secondary-button ${settingsTab === "prompt" ? "active" : ""}`} onClick={() => setSettingsTab("prompt")} style={{ fontSize: 11, padding: "4px 10px" }}>Prompt</button>
+                <button type="button" className={`secondary-button ${settingsTab === "json" ? "active" : ""}`} onClick={() => setSettingsTab("json")} style={{ fontSize: 11, padding: "4px 10px" }}>JSON</button>
+                <button type="button" className={`secondary-button ${settingsTab === "guide" ? "active" : ""}`} onClick={() => setSettingsTab("guide")} style={{ fontSize: 11, padding: "4px 10px" }}>Guide</button>
               </div>
-            </div>
-            <div className="snapshot-tabs-v2" style={{ marginBottom: 10 }}>
-              <button
-                type="button"
-                className={`secondary-button ${settingsTab === "settings" ? "active" : ""}`}
-                onClick={() => setSettingsTab("settings")}
-              >
-                Settings
-              </button>
-              <button
-                type="button"
-                className={`secondary-button ${settingsTab === "prompt" ? "active" : ""}`}
-                onClick={() => setSettingsTab("prompt")}
-              >
-                Prompt
-              </button>
-              <button
-                type="button"
-                className={`secondary-button ${settingsTab === "json" ? "active" : ""}`}
-                onClick={() => setSettingsTab("json")}
-              >
-                JSON Config
-              </button>
-              <button
-                type="button"
-                className={`secondary-button ${settingsTab === "guide" ? "active" : ""}`}
-                onClick={() => setSettingsTab("guide")}
-              >
-                Guide
-              </button>
+              <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
+                <select className="secondary-button" value={templateId} onChange={(e) => handleSelectTemplate(e.target.value)} style={{ height: 28, padding: "0 6px", fontSize: 11 }}>
+                  <option value="">New</option>
+                  <option value={DEFAULT_TEMPLATE_ID}>Default</option>
+                  {templates.map((t) => (<option key={t.id} value={t.id}>{t.name}</option>))}
+                </select>
+                <input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Name" style={{ width: 100, height: 28, padding: "0 6px", fontSize: 11 }} />
+                <button className="primary-button" type="button" onClick={saveTemplate} style={{ height: 28, fontSize: 11, padding: "0 8px" }}>Save</button>
+                {templateId && templateId !== DEFAULT_TEMPLATE_ID && (
+                  <button className="secondary-button" type="button" onClick={deleteTemplate} style={{ color: "var(--bearish)", height: 28, fontSize: 11, padding: "0 6px" }}>Del</button>
+                )}
+                <button type="button" className="secondary-button" onClick={() => setSettingsModalOpen(false)} style={{ height: 28, fontSize: 12, padding: "0 6px", color: "var(--muted)", borderColor: "var(--border)" }}>X</button>
+              </div>
             </div>
             {settingsTabContentNode}
           </div>

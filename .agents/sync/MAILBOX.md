@@ -40,6 +40,26 @@ Active agent relay only.
   - `GET https://trade.mozasolution.com/webhook/mt5/health` -> `ok: true`, version `v2026.05.02 11:14 - a0f1062`
   - `GET https://trade.mozasolution.com/ui/` -> serving `/assets/index-CiEi-fdB.js`
   - Deployed bundle confirms symbols-panel feature markers (`FAVOURITE`, `Favourite`, `Crypto`, `Forex`, `Close <<`, `Open >>`, `symbolFilterTab`, persisted watchlist load/save)
+
+## Handoff: FEAT-20260502-ASYNC-CHART-TILES
+- From agent: Codex
+- To agent: Deepseek
+- Ticket: `/Users/macmini/Trade/Bot/trading/.agents/.product/tickets/2-backlog/2026-05-02-chart-snapshots-componentized-async-chart-tiles.md`
+- Timestamp: 2026-05-02 13:05 (Europe/Berlin)
+- Status: NEEDS_IMPLEMENTATION
+- Work Description:
+  - Read and implement ticket spec exactly.
+  - Build `ChartTile` component + shared fetch manager/hook.
+  - Integrate independent per-tile load/status/mode/refresh into Chart Snapshots page.
+  - Preserve existing symbol panel and auth/session behavior.
+  - Avoid unrelated refactor.
+- Checks:
+  - `rtk npm --prefix web-ui run build`
+- Return format:
+  - changed files
+  - what changed
+  - checks + results
+  - known limitations/follow-ups
 - Work Description:
   - Implementation complete in `web-ui/src/pages/ai/ChartSnapshotsPage.jsx`.
   - Run reviewer gate from ticket:

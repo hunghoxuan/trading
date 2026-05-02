@@ -12,6 +12,12 @@ This file tracks the status of user-facing features and links them to technical 
 - **Ticket**: [./2-backlog/2026-05-02-chart-snapshots-symbol-panel-filters-favorites.md]
 - **Summary**: Add favorites/asset tabs and panel toggle in symbols selector (`Favourite | All | Crypto | Forex`) with favorites sourced from user settings.
 
+## [ ] Chart Snapshots Componentized Async Chart Tiles
+- **Status**: Planned
+- **Feature Doc**: [../features/1-plan/chart_snapshots_componentized_async_charts.md]
+- **Ticket**: [./2-backlog/2026-05-02-chart-snapshots-componentized-async-chart-tiles.md]
+- **Summary**: Move from one global multi-timeframe bars call to independent chart tiles with per-tile status, mode switch, refresh, and shared fetch manager.
+
 ## [x] AI Signal Engine
 - **Status**: Done
 - **Feature Doc**: [../features/2-done/ai_signal_engine.md]
