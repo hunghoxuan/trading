@@ -21,3 +21,13 @@ When creating new scripts or tests in this project, you must follow these standa
 - Tests must be stateless. Always clean up the database or state you create after the test runs.
 - Remote API testing must rely on `curl` and strictly validate HTTP status codes.
 - Tests should output clear `[PASS]` or `[FAIL]` markers.
+
+## 4. Local Usage Docs (Mandatory)
+- Whenever creating or changing scripts in a folder, ensure that folder has a `README.md` with:
+  - purpose
+  - how to run
+  - required flags/env
+  - examples
+  - safety notes (if command can deploy, mutate data, or push)
+- If a folder has no `README.md`, create one in the same change.
+- Do not rely only on chat instructions; usage guidance must live in repository files.

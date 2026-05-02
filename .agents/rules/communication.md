@@ -10,3 +10,12 @@ trigger: always_on
 - Do not claim tests, deploys, or commits unless done.
 - If no manual action exists, do not add a manual-action section.
 - Use exact file paths, commands, versions, and endpoints.
+- If work is delegated to another agent, always include a copy-paste prompt at end of response with detailed instructions:
+  - where to read
+  - what to do
+  - constraints
+  - checks to run
+  - expected return format
+- If user manual action is required, always include at end of response:
+  - a detailed copy-paste prompt for the user
+  - exact bash script/commands the user can run

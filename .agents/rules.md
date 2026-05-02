@@ -17,6 +17,7 @@ Read all files in this order:
 11. `rules/scripting.md`
 12. `rules/token.md`
 13. `rules/memory-governance.md`
+14. `rules/documentation_integrity.md`
 
 ## Global Law
 - Plan first for feature/UI/DB/architecture changes.

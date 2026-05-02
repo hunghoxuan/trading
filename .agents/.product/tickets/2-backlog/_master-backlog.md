@@ -24,6 +24,7 @@
 - [ ] [2026-04-21 10:30] [Web-UI/AI + webhook/server.js + DB] [Author: User] Feature: Add SYSTEM-only AI provider registry config (`type='SYSTEM'`) to manage provider metadata (name, models, API URL, api_key_setting_name, authorization header strategy) without code deploy.
 - [x] [2026-04-20 13:35] [Scripts/AI] [Author: Gemini] Feature: Implement Multi-Model AI CLI Gateway. -> MOVED TO SPRINT.
 - [ ] [2026-04-20 13:58] [Web-UI/AI] [Author: User] Feature: AI Agent Hub Page. -> MOVED TO SPRINT.
+- [ ] [2026-05-02 10:49] [Web-UI/AI] [Author: User] Feature: Chart Snapshots symbols panel update with `Favourite | All | Crypto | Forex` filters, panel open/close toggle, and favorites from user settings. Spec: `2-backlog/2026-05-02-chart-snapshots-symbol-panel-filters-favorites.md`.
 
 ## Low Priority (`P2`)
 - [ ] [2026-04-14 15:00] [Architecture] [Author: User] Feature: Define HTF1-priority trend/bias direction policy.

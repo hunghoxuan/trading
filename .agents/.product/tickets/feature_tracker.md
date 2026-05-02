@@ -6,6 +6,12 @@ This file tracks the status of user-facing features and links them to technical 
 - **Database Schema**: [./architecture/db-schema.md]
 - **External APIs**: [./architecture/external_apis.md]
 
+## [ ] Chart Snapshots Symbols Panel Filters
+- **Status**: Planned
+- **Feature Doc**: [../features/1-plan/chart_snapshots_symbols_panel_filters.md]
+- **Ticket**: [./2-backlog/2026-05-02-chart-snapshots-symbol-panel-filters-favorites.md]
+- **Summary**: Add favorites/asset tabs and panel toggle in symbols selector (`Favourite | All | Crypto | Forex`) with favorites sourced from user settings.
+
 ## [x] AI Signal Engine
 - **Status**: Done
 - **Feature Doc**: [../features/2-done/ai_signal_engine.md]

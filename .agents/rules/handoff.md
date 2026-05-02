@@ -11,3 +11,12 @@
 - Use `.agents/sync/MAILBOX.md` only for agent-to-agent relay.
 - Keep sprint ownership markers. Do not steal `[DOING: other-agent]` work.
 - Put durable lessons in `.agents/wiki/`.
+- Any delegated work must have handoff documentation before asking another agent to execute.
+- Handoff doc must include clear work description:
+  - exact ticket/file to read
+  - implementation scope
+  - non-goals
+  - checks/tests
+  - output/report format
+- Mirror the same detailed delegation prompt at end of user-facing chat so user can copy-paste to other agent.
+- **On ticket finish**: update MAILBOX handoff section (status → DONE, add next agent relay), and include a copy-paste prompt in chat instructing the next agent what to do (read ticket, run checks, deploy, etc).

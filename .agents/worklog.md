@@ -1,3 +1,40 @@
+# Session Log: 2026-05-02 13:00
+- **Starting Task**:
+  - Fix bugs: watchlist source from user_settings, UI sizing, panel collapse, Favourite->Watchlist.
+- **Work Accomplished**:
+  - loadWatchlist -> api.getSettings() (type=trade, name=WATCHLIST, data.symbols).
+  - saveWatchlistToDb -> api.upsertSetting().
+  - Search box bigger, + button fixed 32px.
+  - Toggle: << only, panel collapses left (display:none), right spans 100%.
+  - Floating >> button when collapsed. Favourite renamed to Watchlist.
+- **Changed Files**:
+  - web-ui/src/pages/ai/ChartSnapshotsPage.jsx
+- **Verification**:
+  - rtk npm --prefix web-ui run build OK
+- **Deploy Status**:
+  - Not deployed.
+
+
+# Session Log: 2026-05-02 12:00
+- **Starting Task**:
+  - Implement FEAT-20260502-SYMBOL-PANEL-FILTERS (Chart Snapshots symbols panel filters + favorites).
+- **Work Accomplished**:
+  - Removed "Symbols" label from symbols header row.
+  - Added `Open >>` / `Close <<` panel toggle button after `+` button.
+  - Added filter tabs: `Favourite | All | Crypto | Forex` with active styling.
+  - Added `classifySymbol()` classifier with `CRYPTO_PREFIXES` and `FOREX_PAIRS` sets.
+  - Added `DEFAULT_CRYPTO_SYMBOLS` and `DEFAULT_FOREX_SYMBOLS` constants.
+  - Added `isSymbolPanelOpen` (default true) and `symbolFilterTab` (default ALL) state.
+  - Added computed memos: `favoriteSymbols`, `allSymbols`, `cryptoSymbols`, `forexSymbols`, `symbolsByTab`.
+  - Favourites source from watchlist (existing `authMe`/`updateMetadata` flow preserved).
+  - Symbol chips filter by selected tab + search term.
+  - Conditional visibility: tabs + symbol chips hidden when panel collapsed.
+- **Changed Files**:
+  - `/Users/macmini/Trade/Bot/trading/web-ui/src/pages/ai/ChartSnapshotsPage.jsx`
+- **Verification**:
+  - `rtk npm --prefix web-ui run build` ✅
+- **Deploy Status**:
+  - Not deployed (review pending by Codex).
 
 # Session Log: 2026-05-01 15:20
 - **Starting Task**:
@@ -147,6 +184,43 @@
 # Session Log: 2026-05-01 19:35
 - **Starting Task**:
   - Create warm-up script for overnight approval prefix setup.
+- **Work Accomplished**:
+  - Added warm-up script for approval priming with safe default mode.
+  - Added optional flags for git write flow and deploy flow.
+  - Made script executable and verified syntax.
+- **Changed Files**:
+  - `/Users/macmini/Trade/Bot/trading/scripts/ops/warmup_overnight_approvals.sh`
+  - `/Users/macmini/Trade/Bot/trading/.agents/worklog.md`
+- **Technical Decisions**:
+  - Default mode is non-destructive; push/deploy are opt-in flags.
+  - Keep deploy warm-up under `rtk` command path for approval prefix capture.
+- **Verification**:
+  - `bash -n scripts/ops/warmup_overnight_approvals.sh` ✅
+  - `chmod +x scripts/ops/warmup_overnight_approvals.sh` ✅
+- **Deploy Status**:
+  - Not deployed (script/tooling only).
+
+# Session Log: 2026-05-01 19:50
+- **Starting Task**:
+  - Add persistent rule requiring local README usage guidelines in edited script folders.
+- **Work Accomplished**:
+  - Added mandatory rule in scripting guidelines to keep local `README.md` usage docs per script folder.
+  - Added root `scripts/README.md` with structure and documentation requirement.
+  - Added `scripts/ops/README.md` for warm-up script usage and safety notes.
+  - Added missing `documentation_integrity` file reference to rule index.
+- **Changed Files**:
+  - `/Users/macmini/Trade/Bot/trading/.agents/rules.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/rules/scripting.md`
+  - `/Users/macmini/Trade/Bot/trading/scripts/README.md`
+  - `/Users/macmini/Trade/Bot/trading/scripts/ops/README.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/worklog.md`
+- **Technical Decisions**:
+  - Persist operational usage guidance in repo files, not only in chat.
+  - Make folder-local README creation mandatory when scripts are added/edited.
+- **Verification**:
+  - `rg -n "Local Usage Docs|documentation_integrity|Scripts Guide|Ops Scripts" ...` ✅
+- **Deploy Status**:
+  - Not deployed (docs/rules only).
 
 # Session Log: 2026-05-01 17:20
 - **Starting Task**:
@@ -174,3 +248,76 @@
 - **Build Versions**:
   - `SERVER_VERSION`: `v2026.05.01 17:16 - f912806`
   - `EA_BUILD_VERSION`: `v2026.05.01 17:16 - f912806`
+
+# Session Log: 2026-05-02 10:58
+- **Starting Task**:
+  - Refresh full `.agents`/product context and create a detailed full-stack ticket spec for Deepseek.
+  - Scope: Chart Snapshots symbols panel UX update (toggle panel + asset filters + favorites source).
+- **Work Accomplished**:
+  - Refreshed mandatory context in required order (`AI.md`, `.agents` bootstrap/rules/state/product tracker/mailbox/worklog).
+  - Located exact implementation surface in `web-ui/src/pages/ai/ChartSnapshotsPage.jsx` and validated existing favorites/watchlist persistence flow (`/auth/me`, `/auth/metadata`).
+  - Created detailed implementation ticket for Deepseek with fullstack profile, explicit acceptance criteria, test plan, reviewer gate, and deploy gate.
+  - Added corresponding planned feature doc and linked tracker entry for documentation integrity.
+- **Changed Files**:
+  - `/Users/macmini/Trade/Bot/trading/.agents/.product/tickets/2-backlog/2026-05-02-chart-snapshots-symbol-panel-filters-favorites.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/.product/tickets/2-backlog/_master-backlog.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/.product/tickets/feature_tracker.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/.product/features/1-plan/chart_snapshots_symbols_panel_filters.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/worklog.md`
+- **Technical Decisions**:
+  - Reuse existing user metadata watchlist as favorites source to avoid DB/API expansion.
+  - Keep ticket scope UI-focused and low-coupling for Deepseek execution.
+- **Verification**:
+  - Manual spec consistency checks against current UI/backend files (`ChartSnapshotsPage.jsx`, `web-ui/src/api.js`, `webhook/server.js`) ✅
+- **Deploy Status**:
+  - Not deployed (documentation/ticketing only).
+
+# Session Log: 2026-05-02 11:12
+- **Starting Task**:
+  - Add persistent rule for delegated-agent prompt + manual-action prompt/scripts.
+  - Apply rule to previous ticket response by creating handoff entry for Deepseek.
+- **Work Accomplished**:
+  - Updated communication rules to require copy-paste delegation prompts and manual-action prompt/scripts at end of responses.
+  - Updated handoff rules to require full work description in handoff document and mirrored chat prompt.
+  - Added concrete handoff entry in mailbox for `FEAT-20260502-SYMBOL-PANEL-FILTERS`.
+- **Changed Files**:
+  - `/Users/macmini/Trade/Bot/trading/.agents/rules/communication.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/rules/handoff.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/sync/MAILBOX.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/worklog.md`
+- **Technical Decisions**:
+  - Keep delegation and manual-action delivery standardized as mandatory response footer content.
+- **Verification**:
+  - Manual file verification after patch apply ✅
+- **Deploy Status**:
+  - Not deployed (docs/process only).
+
+# Session Log: 2026-05-02 12:30
+- **Starting Task**:
+  - Review + deploy `FEAT-20260502-SYMBOL-PANEL-FILTERS` from Deepseek handoff.
+- **Work Accomplished**:
+  - Reviewed Deepseek implementation in `ChartSnapshotsPage.jsx` against ticket reviewer gate.
+  - Identified and fixed one spec drift: `Favourite` list was incorrectly merged with defaults; corrected to persisted user metadata only.
+  - Kept `All` tab as union of defaults + favourites; preserved existing watchlist persistence path.
+  - Ran build/syntax checks, committed ticket files with mandatory version bumps, deployed to production, and completed live smoke checks.
+- **Changed Files**:
+  - `/Users/macmini/Trade/Bot/trading/web-ui/src/pages/ai/ChartSnapshotsPage.jsx`
+  - `/Users/macmini/Trade/Bot/trading/webhook/server.js`
+  - `/Users/macmini/Trade/Bot/trading/mql5/TVBridgeEA.mq5`
+  - `/Users/macmini/Trade/Bot/trading/.agents/sync/MAILBOX.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/worklog.md`
+- **Technical Decisions**:
+  - `Favourite` tab source of truth is user metadata watchlist only.
+  - Defaults remain under `All` and asset tabs, not injected into persisted favourites.
+- **Verification**:
+  - `rtk npm --prefix web-ui run build` ✅
+  - `rtk node --check webhook/server.js` ✅
+  - Deploy: `rtk bash scripts/deploy/deploy_webhook.sh` ✅
+  - `rtk curl -sS --max-time 20 https://trade.mozasolution.com/webhook/mt5/health` ✅ (`ok: true`, version `v2026.05.02 11:14 - a0f1062`)
+  - `rtk curl -sS --max-time 20 https://trade.mozasolution.com/ui/` ✅ (serving `index-CiEi-fdB.js`)
+  - Deployed bundle contains feature markers (`FAVOURITE`, `Favourite`, `Crypto`, `Forex`, `Close <<`, `Open >>`, `symbolFilterTab`) ✅
+- **Deploy Status**:
+  - Deployed to production.
+- **Build Versions**:
+  - `SERVER_VERSION`: `v2026.05.02 11:14 - a0f1062`
+  - `EA_BUILD_VERSION`: `v2026.05.02 11:14 - a0f1062`

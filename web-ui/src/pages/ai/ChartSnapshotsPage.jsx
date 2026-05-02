@@ -9,44 +9,219 @@ import TradeSignalChart from "../../components/TradeSignalChart";
 const STORAGE_KEY = "chart_prompt_builder_templates_v2";
 
 const STRATEGY_OPTIONS = [
-  "ICT", "SMC", "Price Action", "Market Structure", "Wyckoff", "EMA Trend", "Breakout", "VWAP",
-  "Mean Reversion", "Order Flow", "Volatility", "Trend Following", "Divergence"
+  "ICT",
+  "SMC",
+  "Price Action",
+  "Market Structure",
+  "Wyckoff",
+  "EMA Trend",
+  "Breakout",
+  "VWAP",
+  "Mean Reversion",
+  "Order Flow",
+  "Volatility",
+  "Trend Following",
+  "Divergence",
 ];
 
 const STRATEGY_CHECKLIST = {
-  ICT: ["Liquidity sweep", "BOS/CHoCH confirmed", "PD Array reaction", "Displacement candle", "London/NY killzone alignment"],
-  "Market Structure": ["HTF narrative clear", "BOS/CHoCH sequence valid", "Premium/Discount aligned", "DOL target mapped", "No structure conflict"],
-  SMC: ["Liquidity grab", "Structure break", "Order block mitigation", "Imbalance/FVG reaction", "HTF bias alignment"],
-  "Price Action": ["Trend context clear", "Key S/R reaction", "Candlestick confirmation", "RR >= target", "No major news conflict"],
-  Wyckoff: ["Phase identified", "Spring/Upthrust event", "Volume confirmation", "Sign of strength/weakness", "Markup/markdown continuation"],
-  "EMA Trend": ["EMA stack aligned", "Pullback to EMA zone", "Trend continuation candle", "Momentum confirmation", "Avoid chop/range"],
-  Breakout: ["Range clearly defined", "Valid breakout close", "Retest holds", "Volume expansion", "False-break risk checked"],
-  VWAP: ["Price vs VWAP bias", "VWAP reclaim/reject", "Session anchor context", "Confluence with S/R", "Risk controlled around VWAP"],
+  ICT: [
+    "Liquidity sweep",
+    "BOS/CHoCH confirmed",
+    "PD Array reaction",
+    "Displacement candle",
+    "London/NY killzone alignment",
+  ],
+  "Market Structure": [
+    "HTF narrative clear",
+    "BOS/CHoCH sequence valid",
+    "Premium/Discount aligned",
+    "DOL target mapped",
+    "No structure conflict",
+  ],
+  SMC: [
+    "Liquidity grab",
+    "Structure break",
+    "Order block mitigation",
+    "Imbalance/FVG reaction",
+    "HTF bias alignment",
+  ],
+  "Price Action": [
+    "Trend context clear",
+    "Key S/R reaction",
+    "Candlestick confirmation",
+    "RR >= target",
+    "No major news conflict",
+  ],
+  Wyckoff: [
+    "Phase identified",
+    "Spring/Upthrust event",
+    "Volume confirmation",
+    "Sign of strength/weakness",
+    "Markup/markdown continuation",
+  ],
+  "EMA Trend": [
+    "EMA stack aligned",
+    "Pullback to EMA zone",
+    "Trend continuation candle",
+    "Momentum confirmation",
+    "Avoid chop/range",
+  ],
+  Breakout: [
+    "Range clearly defined",
+    "Valid breakout close",
+    "Retest holds",
+    "Volume expansion",
+    "False-break risk checked",
+  ],
+  VWAP: [
+    "Price vs VWAP bias",
+    "VWAP reclaim/reject",
+    "Session anchor context",
+    "Confluence with S/R",
+    "Risk controlled around VWAP",
+  ],
 };
-
 
 const DEFAULT_TEMPLATE_ID = "__default__";
 const SYMBOLS_SETTING_TYPE = "SYMBOLS";
 
 const DEFAULT_WATCHLIST = [
-  "ADAUSD", "AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD", "BTCUSD", "CADJPY", "DE40", "ETHUSD",
-  "EURAUD", "EURCAD", "EURGBP", "EURJPY", "EURSGD", "EURUSD", "GBPAUD", "GBPCAD", "GBPJPY", "GBPNZD",
-  "GBPUSD", "NZDCAD", "NZDUSD", "UK100", "US30", "USDCAD", "USDCHF", "USDJPY", "USDSGD", "XAGUSD",
-  "XAUEUR", "XAUGBP", "XAUJPY", "XTIUSD"
+  "ADAUSD",
+  "AUDCAD",
+  "AUDCHF",
+  "AUDJPY",
+  "AUDNZD",
+  "AUDUSD",
+  "BTCUSD",
+  "CADJPY",
+  "DE40",
+  "ETHUSD",
+  "EURAUD",
+  "EURCAD",
+  "EURGBP",
+  "EURJPY",
+  "EURSGD",
+  "EURUSD",
+  "GBPAUD",
+  "GBPCAD",
+  "GBPJPY",
+  "GBPNZD",
+  "GBPUSD",
+  "NZDCAD",
+  "NZDUSD",
+  "UK100",
+  "US30",
+  "USDCAD",
+  "USDCHF",
+  "USDJPY",
+  "USDSGD",
+  "XAGUSD",
+  "XAUEUR",
+  "XAUGBP",
+  "XAUJPY",
+  "XTIUSD",
 ];
 
 // Fixed default sets for asset-type filter tabs
 const DEFAULT_CRYPTO_SYMBOLS = ["BTCUSD", "ETHUSD", "ADAUSD"];
-const DEFAULT_FOREX_SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD", "EURJPY", "GBPJPY", "AUDJPY"];
+const DEFAULT_FOREX_SYMBOLS = [
+  "EURUSD",
+  "GBPUSD",
+  "USDJPY",
+  "AUDUSD",
+  "USDCAD",
+  "USDCHF",
+  "NZDUSD",
+  "EURJPY",
+  "GBPJPY",
+  "AUDJPY",
+];
 
 // Classify a symbol as crypto/forex/other (deterministic, conservative)
-const CRYPTO_PREFIXES = new Set(["BTC","ETH","ADA","BNB","XRP","SOL","DOGE","LTC","LINK","DOT","BCH","MATIC","TRX","AVAX","SHIB","UNI","ATOM","ETC","FIL","ALGO","VET","ICP","FTM","GRT","SAND","MANA","AXS","GALA"]);
-const FOREX_PAIRS = new Set(["EURUSD","USDJPY","GBPUSD","AUDUSD","USDCAD","USDCHF","NZDUSD","EURGBP","EURJPY","EURCHF","GBPJPY","GBPCHF","AUDJPY","AUDNZD","AUDCAD","AUDCHF","CADJPY","CADCHF","CHFJPY","NZDJPY","NZDCAD","NZDCHF","EURAUD","EURCAD","EURNZD","GBPAUD","GBPCAD","GBPNZD","USDSGD","SGDJPY","EURHUF","USDHUF","USDTRY","EURTRY","USDNOK","USDDKK","USDPLN","EURSEK","EURNOK","EURDKK","EURPLN","EURSGD"]);
+const CRYPTO_PREFIXES = new Set([
+  "BTC",
+  "ETH",
+  "ADA",
+  "BNB",
+  "XRP",
+  "SOL",
+  "DOGE",
+  "LTC",
+  "LINK",
+  "DOT",
+  "BCH",
+  "MATIC",
+  "TRX",
+  "AVAX",
+  "SHIB",
+  "UNI",
+  "ATOM",
+  "ETC",
+  "FIL",
+  "ALGO",
+  "VET",
+  "ICP",
+  "FTM",
+  "GRT",
+  "SAND",
+  "MANA",
+  "AXS",
+  "GALA",
+]);
+const FOREX_PAIRS = new Set([
+  "EURUSD",
+  "USDJPY",
+  "GBPUSD",
+  "AUDUSD",
+  "USDCAD",
+  "USDCHF",
+  "NZDUSD",
+  "EURGBP",
+  "EURJPY",
+  "EURCHF",
+  "GBPJPY",
+  "GBPCHF",
+  "AUDJPY",
+  "AUDNZD",
+  "AUDCAD",
+  "AUDCHF",
+  "CADJPY",
+  "CADCHF",
+  "CHFJPY",
+  "NZDJPY",
+  "NZDCAD",
+  "NZDCHF",
+  "EURAUD",
+  "EURCAD",
+  "EURNZD",
+  "GBPAUD",
+  "GBPCAD",
+  "GBPNZD",
+  "USDSGD",
+  "SGDJPY",
+  "EURHUF",
+  "USDHUF",
+  "USDTRY",
+  "EURTRY",
+  "USDNOK",
+  "USDDKK",
+  "USDPLN",
+  "EURSEK",
+  "EURNOK",
+  "EURDKK",
+  "EURPLN",
+  "EURSGD",
+]);
 const classifySymbol = (s) => {
   const upper = String(s || "").toUpperCase();
   if (!upper) return "other";
   const prefix = upper.replace(/USD$|USDT$/, "");
-  if (CRYPTO_PREFIXES.has(prefix) && (upper.endsWith("USD") || upper.endsWith("USDT"))) return "crypto";
+  if (
+    CRYPTO_PREFIXES.has(prefix) &&
+    (upper.endsWith("USD") || upper.endsWith("USDT"))
+  )
+    return "crypto";
   if (FOREX_PAIRS.has(upper)) return "forex";
   return "other";
 };
@@ -113,18 +288,35 @@ const GUIDE_TEXT = `Compact ICT guide:
 
 function normalizeTemplateConfig(raw) {
   const strategyValue = raw?.strategies || raw?.strategy || ["ICT"];
-  const strategies = Array.isArray(strategyValue) ? strategyValue : [String(strategyValue || "ICT")];
-  const profileRaw = String(raw?.profile || "").trim().toLowerCase();
-  const profile = PROFILE_PRESETS[profileRaw] ? profileRaw : DEFAULT_CONFIG.profile;
+  const strategies = Array.isArray(strategyValue)
+    ? strategyValue
+    : [String(strategyValue || "ICT")];
+  const profileRaw = String(raw?.profile || "")
+    .trim()
+    .toLowerCase();
+  const profile = PROFILE_PRESETS[profileRaw]
+    ? profileRaw
+    : DEFAULT_CONFIG.profile;
   const preset = PROFILE_PRESETS[profile] || PROFILE_PRESETS.day;
   return {
     ...DEFAULT_CONFIG,
     ...(raw || {}),
     profile,
-    htf_tfs: Array.isArray(raw?.htf_tfs) && raw.htf_tfs.length ? raw.htf_tfs : [...preset.htf_tfs],
-    exec_tfs: Array.isArray(raw?.exec_tfs) && raw.exec_tfs.length ? raw.exec_tfs : [...preset.exec_tfs],
-    conf_tfs: Array.isArray(raw?.conf_tfs) && raw.conf_tfs.length ? raw.conf_tfs : [...preset.conf_tfs],
-    strategies: [...new Set(strategies.map((x) => String(x || "").trim()).filter(Boolean))],
+    htf_tfs:
+      Array.isArray(raw?.htf_tfs) && raw.htf_tfs.length
+        ? raw.htf_tfs
+        : [...preset.htf_tfs],
+    exec_tfs:
+      Array.isArray(raw?.exec_tfs) && raw.exec_tfs.length
+        ? raw.exec_tfs
+        : [...preset.exec_tfs],
+    conf_tfs:
+      Array.isArray(raw?.conf_tfs) && raw.conf_tfs.length
+        ? raw.conf_tfs
+        : [...preset.conf_tfs],
+    strategies: [
+      ...new Set(strategies.map((x) => String(x || "").trim()).filter(Boolean)),
+    ],
   };
 }
 
@@ -132,7 +324,11 @@ function loadTemplates() {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
     return Array.isArray(parsed)
-      ? parsed.map((x) => ({ ...x, id: x.id || x.name, config: normalizeTemplateConfig(x?.config || {}) }))
+      ? parsed.map((x) => ({
+          ...x,
+          id: x.id || x.name,
+          config: normalizeTemplateConfig(x?.config || {}),
+        }))
       : [];
   } catch {
     return [];
@@ -148,13 +344,20 @@ function toggleArrayValue(arr, val) {
 }
 
 function sanitizeSnapshotFileToken(value, fallback = "chart") {
-  const raw = String(value || fallback).trim().toUpperCase();
-  const token = raw.replace(/[^A-Z0-9_-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+  const raw = String(value || fallback)
+    .trim()
+    .toUpperCase();
+  const token = raw
+    .replace(/[^A-Z0-9_-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
   return token || fallback;
 }
 
 function toTradingViewInterval(tfRaw) {
-  const tf = String(tfRaw || "5").trim().toLowerCase();
+  const tf = String(tfRaw || "5")
+    .trim()
+    .toLowerCase();
   if (!tf) return "5";
   if (/^\d+$/.test(tf)) return tf;
   if (tf.endsWith("m")) return tf.slice(0, -1) || "5";
@@ -177,11 +380,18 @@ function parseSnapshotMeta(it) {
   let sessionPrefix = "";
   let symbolParts = [];
   let tsFromName = 0;
-  if (parts.length >= 5 && /^\d{8}$/.test(parts[0]) && /^\d{2}$/.test(parts[1]) && /^\d{2}$/.test(parts[2])) {
+  if (
+    parts.length >= 5 &&
+    /^\d{8}$/.test(parts[0]) &&
+    /^\d{2}$/.test(parts[1]) &&
+    /^\d{2}$/.test(parts[2])
+  ) {
     const rest = parts.slice(3);
     if (rest.length < 2) return null;
     const hasDup = rest.length >= 3 && /^\d+$/.test(rest[rest.length - 1]);
-    tfToken = String(hasDup ? rest[rest.length - 2] : rest[rest.length - 1]).toUpperCase();
+    tfToken = String(
+      hasDup ? rest[rest.length - 2] : rest[rest.length - 1],
+    ).toUpperCase();
     symbolParts = rest.slice(0, hasDup ? -2 : -1);
     const yyyy = Number(parts[0].slice(0, 4));
     const mm = Number(parts[0].slice(4, 6));
@@ -191,8 +401,12 @@ function parseSnapshotMeta(it) {
     tsFromName = Date.UTC(yyyy, Math.max(mm - 1, 0), dd, hh, mi, 0, 0);
   } else {
     const hasDup = parts.length >= 4 && /^\d+$/.test(parts[parts.length - 1]);
-    tfToken = String(hasDup ? parts[parts.length - 2] : parts[parts.length - 1]).toUpperCase();
-    sessionPrefix = String(hasDup ? parts[parts.length - 3] : parts[parts.length - 2] || "").toUpperCase();
+    tfToken = String(
+      hasDup ? parts[parts.length - 2] : parts[parts.length - 1],
+    ).toUpperCase();
+    sessionPrefix = String(
+      hasDup ? parts[parts.length - 3] : parts[parts.length - 2] || "",
+    ).toUpperCase();
     symbolParts = parts.slice(0, hasDup ? -3 : -2);
   }
   if (!symbolParts.length || !tfToken) return null;
@@ -250,8 +464,10 @@ function formatNum3(value) {
 }
 
 function parsePdZoneBounds(zoneRaw) {
-  if (zoneRaw === null || zoneRaw === undefined) return { low: null, high: null };
-  if (typeof zoneRaw === "number" && Number.isFinite(zoneRaw)) return { low: zoneRaw, high: zoneRaw };
+  if (zoneRaw === null || zoneRaw === undefined)
+    return { low: null, high: null };
+  if (typeof zoneRaw === "number" && Number.isFinite(zoneRaw))
+    return { low: zoneRaw, high: zoneRaw };
   const txt = String(zoneRaw).trim();
   if (!txt) return { low: null, high: null };
   const nums = txt.match(/-?\d+(?:\.\d+)?/g) || [];
@@ -266,8 +482,12 @@ function parsePdZoneBounds(zoneRaw) {
 
 function getPlanTpCandidates(plan = {}) {
   const partials = Array.isArray(plan?.partial_tps) ? plan.partial_tps : [];
-  const partialPrices = partials.map((x) => (x && typeof x === "object" ? x.price : x));
-  const compactTps = Array.isArray(plan?.tps) ? plan.tps.map((x) => (x && typeof x === "object" ? x.price : x)) : [];
+  const partialPrices = partials.map((x) =>
+    x && typeof x === "object" ? x.price : x,
+  );
+  const compactTps = Array.isArray(plan?.tps)
+    ? plan.tps.map((x) => (x && typeof x === "object" ? x.price : x))
+    : [];
   const legacyLevels = Array.isArray(plan?.tp_levels) ? plan.tp_levels : [];
   const targets = Array.isArray(plan?.targets) ? plan.targets : [];
   return [
@@ -286,7 +506,8 @@ function getPlanTpCandidates(plan = {}) {
 
 function getPlanPrimaryTp(plan = {}) {
   for (const candidate of getPlanTpCandidates(plan)) {
-    const value = candidate && typeof candidate === "object" ? candidate.price : candidate;
+    const value =
+      candidate && typeof candidate === "object" ? candidate.price : candidate;
     const n = parseNum(value);
     if (Number.isFinite(n)) return n;
   }
@@ -294,41 +515,63 @@ function getPlanPrimaryTp(plan = {}) {
 }
 
 function normalizeAnalysisContract(parsed) {
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return parsed;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+    return parsed;
   const out = { ...parsed };
-  if (!out.market_analysis && (Array.isArray(out.timeframes) || Array.isArray(out.pdArrays) || Array.isArray(out.keyLevels) || out.checklist || out.dol)) {
+  if (
+    !out.market_analysis &&
+    (Array.isArray(out.timeframes) ||
+      Array.isArray(out.pdArrays) ||
+      Array.isArray(out.keyLevels) ||
+      out.checklist ||
+      out.dol)
+  ) {
     out.market_analysis = {
-      timeframes: (Array.isArray(out.timeframes) ? out.timeframes : []).map((x) => ({
-        tf: x?.tf || "",
-        trend: x?.trend || "",
-        structure: x?.structure || "",
-        market_phase: x?.phase || "",
-        bias: x?.bias || "",
-        poi_alignment: Boolean(x?.poiAlign),
-        price_action_summary: {
-          recent_move: String(x?.did || ""),
-          key_breaks: (Array.isArray(x?.keyBreaks) ? x.keyBreaks : []).map((b) => ({
-            event: b?.event || "",
-            price_level: b?.price ?? null,
-            direction: b?.direction === "Bull" ? "Bullish" : (b?.direction === "Bear" ? "Bearish" : b?.direction || ""),
-            bar_ref: b?.bar_ref ?? null,
-          })),
-        },
-        price_prediction: {
-          narrative: String(x?.next || ""),
-          expected_path: (Array.isArray(x?.path) ? x.path : []).map((p) => ({
-            step: p?.step ?? null,
-            action: p?.action || "",
-            target_price: p?.target ?? null,
-            condition: p?.condition || "",
-          })),
-        },
-        note: x?.note || "",
-      })),
+      timeframes: (Array.isArray(out.timeframes) ? out.timeframes : []).map(
+        (x) => ({
+          tf: x?.tf || "",
+          trend: x?.trend || "",
+          structure: x?.structure || "",
+          market_phase: x?.phase || "",
+          bias: x?.bias || "",
+          poi_alignment: Boolean(x?.poiAlign),
+          price_action_summary: {
+            recent_move: String(x?.did || ""),
+            key_breaks: (Array.isArray(x?.keyBreaks) ? x.keyBreaks : []).map(
+              (b) => ({
+                event: b?.event || "",
+                price_level: b?.price ?? null,
+                direction:
+                  b?.direction === "Bull"
+                    ? "Bullish"
+                    : b?.direction === "Bear"
+                      ? "Bearish"
+                      : b?.direction || "",
+                bar_ref: b?.bar_ref ?? null,
+              }),
+            ),
+          },
+          price_prediction: {
+            narrative: String(x?.next || ""),
+            expected_path: (Array.isArray(x?.path) ? x.path : []).map((p) => ({
+              step: p?.step ?? null,
+              action: p?.action || "",
+              target_price: p?.target ?? null,
+              condition: p?.condition || "",
+            })),
+          },
+          note: x?.note || "",
+        }),
+      ),
       pd_arrays: (Array.isArray(out.pdArrays) ? out.pdArrays : []).map((x) => ({
         id: x?.id ?? null,
         type: x?.type || "",
-        direction: x?.dir === "Bull" ? "Bullish" : (x?.dir === "Bear" ? "Bearish" : x?.direction || ""),
+        direction:
+          x?.dir === "Bull"
+            ? "Bullish"
+            : x?.dir === "Bear"
+              ? "Bearish"
+              : x?.direction || "",
         strength: x?.strength || "",
         price_top: x?.top ?? null,
         price_bottom: x?.bot ?? null,
@@ -337,10 +580,30 @@ function normalizeAnalysisContract(parsed) {
         timeframe: x?.tf || "",
         note: x?.note || "",
       })),
-      key_levels: (Array.isArray(out.keyLevels) ? out.keyLevels : []).map((x) => ({ name: x?.name || "", price: x?.price ?? null, swept: Boolean(x?.swept) })),
+      key_levels: (Array.isArray(out.keyLevels) ? out.keyLevels : []).map(
+        (x) => ({
+          name: x?.name || "",
+          price: x?.price ?? null,
+          swept: Boolean(x?.swept),
+        }),
+      ),
       confluence_checklist: {
-        buy: (Array.isArray(out.checklist?.buy?.items) ? out.checklist.buy.items : []).map((x) => ({ ...x, checked: Boolean(x?.passed), pd_array_ref: x?.pdRef ?? null })),
-        sell: (Array.isArray(out.checklist?.sell?.items) ? out.checklist.sell.items : []).map((x) => ({ ...x, checked: Boolean(x?.passed), pd_array_ref: x?.pdRef ?? null })),
+        buy: (Array.isArray(out.checklist?.buy?.items)
+          ? out.checklist.buy.items
+          : []
+        ).map((x) => ({
+          ...x,
+          checked: Boolean(x?.passed),
+          pd_array_ref: x?.pdRef ?? null,
+        })),
+        sell: (Array.isArray(out.checklist?.sell?.items)
+          ? out.checklist.sell.items
+          : []
+        ).map((x) => ({
+          ...x,
+          checked: Boolean(x?.passed),
+          pd_array_ref: x?.pdRef ?? null,
+        })),
       },
     };
   }
@@ -354,10 +617,14 @@ function normalizeAnalysisContract(parsed) {
       entry: x?.entry ?? null,
       sl: x?.sl ?? null,
       be_trigger: x?.be ?? null,
-      tp: Array.isArray(x?.tps) && x.tps[0] ? x.tps[0].price ?? null : null,
+      tp: Array.isArray(x?.tps) && x.tps[0] ? (x.tps[0].price ?? null) : null,
       risk_pct: x?.riskPct ?? null,
       rr: x?.rr ?? null,
-      partial_tps: (Array.isArray(x?.tps) ? x.tps : []).map((t) => ({ price: t?.price ?? null, size_pct: t?.pct ?? null, rr: t?.rr ?? null })),
+      partial_tps: (Array.isArray(x?.tps) ? x.tps : []).map((t) => ({
+        price: t?.price ?? null,
+        size_pct: t?.pct ?? null,
+        rr: t?.rr ?? null,
+      })),
       reasons_to_skip: x?.skipReasons || [],
       skip_recommendation: x?.skip || "",
       invalidation: x?.invalidation || out.verdict?.invalidation || "",
@@ -371,7 +638,11 @@ function normalizeAnalysisContract(parsed) {
       risk_tier: out.verdict.tier || "",
       confidence: out.verdict.confidence || 0,
       bias_shift_invalidation: out.verdict.invalidation || "",
-      next_poi: { price: out.verdict.nextPoi?.price ?? null, timeframe: out.verdict.nextPoi?.tf || "", type: out.verdict.nextPoi?.type || "" },
+      next_poi: {
+        price: out.verdict.nextPoi?.price ?? null,
+        timeframe: out.verdict.nextPoi?.tf || "",
+        type: out.verdict.nextPoi?.type || "",
+      },
       note: out.verdict.note || "",
     };
   }
@@ -379,15 +650,25 @@ function normalizeAnalysisContract(parsed) {
 }
 
 function normalizeTfLabelToLower(tfRaw) {
-  const tf = String(tfRaw || "").trim().toLowerCase();
+  const tf = String(tfRaw || "")
+    .trim()
+    .toLowerCase();
   if (!tf) return "15m";
   if (/^\d+$/.test(tf)) return `${tf}m`;
-  if (tf.endsWith("m") || tf.endsWith("h") || tf.endsWith("d") || tf.endsWith("w")) return tf;
+  if (
+    tf.endsWith("m") ||
+    tf.endsWith("h") ||
+    tf.endsWith("d") ||
+    tf.endsWith("w")
+  )
+    return tf;
   return tf;
 }
 
 function tfToSeconds(tfRaw) {
-  const s = String(tfRaw || "").trim().toLowerCase();
+  const s = String(tfRaw || "")
+    .trim()
+    .toLowerCase();
   if (!s) return 900;
   if (/^\d+$/.test(s)) return Math.max(60, Number(s) * 60);
   const m = s.match(/^(\d+)\s*(m|min|h|d|w)$/i);
@@ -405,7 +686,9 @@ function normalizeSnapshotBars(snapshot, tfRaw = "") {
   const rawBars = Array.isArray(snapshot?.bars) ? snapshot.bars : [];
   if (!rawBars.length) return snapshot;
 
-  const tfSec = tfToSeconds(tfRaw || snapshot?.tf_norm || snapshot?.timeframe || snapshot?.interval);
+  const tfSec = tfToSeconds(
+    tfRaw || snapshot?.tf_norm || snapshot?.timeframe || snapshot?.interval,
+  );
   const nowSec = Math.floor(Date.now() / 1000);
   const dedup = new Map();
 
@@ -415,7 +698,14 @@ function normalizeSnapshotBars(snapshot, tfRaw = "") {
     const h = Number(x?.high);
     const l = Number(x?.low);
     const c = Number(x?.close);
-    if (!Number.isFinite(t) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return;
+    if (
+      !Number.isFinite(t) ||
+      !Number.isFinite(o) ||
+      !Number.isFinite(h) ||
+      !Number.isFinite(l) ||
+      !Number.isFinite(c)
+    )
+      return;
 
     // STRICT FUTURE FILTER: Avoid bars more than 1 period into the future
     if (t > nowSec + tfSec) return;
@@ -427,8 +717,12 @@ function normalizeSnapshotBars(snapshot, tfRaw = "") {
 
   // TINY RANGE FILTER: Remove flat/buggy bars at the end (often artifacts from provider)
   if (bars.length >= 30) {
-    const ranges = bars.map((b) => Math.abs(b.high - b.low)).filter((v) => v > 0);
-    const medianRange = ranges.length ? ranges.sort((a, b) => a - b)[Math.floor(ranges.length / 2)] : 0;
+    const ranges = bars
+      .map((b) => Math.abs(b.high - b.low))
+      .filter((v) => v > 0);
+    const medianRange = ranges.length
+      ? ranges.sort((a, b) => a - b)[Math.floor(ranges.length / 2)]
+      : 0;
 
     if (medianRange > 0) {
       const tinyThreshold = medianRange * 0.05;
@@ -455,7 +749,9 @@ function normalizeSnapshotBars(snapshot, tfRaw = "") {
 }
 
 function aiSourceFromModel(modelRaw) {
-  const model = String(modelRaw || "").trim().toLowerCase();
+  const model = String(modelRaw || "")
+    .trim()
+    .toLowerCase();
   if (!model) return "ai_claude";
   if (model.includes("gpt") || model.includes("openai")) return "ai_openai";
   if (model.includes("gemini")) return "ai_gemini";
@@ -476,7 +772,9 @@ function liveTfToTradingViewInterval(tfRaw) {
 }
 
 function configTfToSnapshotTf(tfRaw) {
-  const s = String(tfRaw || "").trim().toUpperCase();
+  const s = String(tfRaw || "")
+    .trim()
+    .toUpperCase();
   if (s === "W" || s === "W1") return "1w";
   if (s === "D" || s === "D1") return "1D";
   if (s === "4H") return "4h";
@@ -493,38 +791,59 @@ function configTfToSnapshotTf(tfRaw) {
 function extractPositionFromAnalysis(parsed) {
   const tradePlans = [];
   if (Array.isArray(parsed?.trade_plan)) tradePlans.push(...parsed.trade_plan);
-  if (parsed?.trade_plan && typeof parsed.trade_plan === "object" && !Array.isArray(parsed.trade_plan)) tradePlans.push(parsed.trade_plan);
-  if (!tradePlans.length && parsed?.trade_setup && typeof parsed.trade_setup === "object") tradePlans.push(parsed.trade_setup);
-  if (!tradePlans.length && parsed && typeof parsed === "object") tradePlans.push(parsed);
-  const bestPlan = tradePlans
-    .map((x) => ({ ...(x || {}), confidence_pct: parseNum(x?.confidence_pct) }))
-    .sort((a, b) => {
-      const ac = Number.isFinite(a.confidence_pct) ? a.confidence_pct : -1;
-      const bc = Number.isFinite(b.confidence_pct) ? b.confidence_pct : -1;
-      return bc - ac;
-    })[0] || {};
+  if (
+    parsed?.trade_plan &&
+    typeof parsed.trade_plan === "object" &&
+    !Array.isArray(parsed.trade_plan)
+  )
+    tradePlans.push(parsed.trade_plan);
+  if (
+    !tradePlans.length &&
+    parsed?.trade_setup &&
+    typeof parsed.trade_setup === "object"
+  )
+    tradePlans.push(parsed.trade_setup);
+  if (!tradePlans.length && parsed && typeof parsed === "object")
+    tradePlans.push(parsed);
+  const bestPlan =
+    tradePlans
+      .map((x) => ({
+        ...(x || {}),
+        confidence_pct: parseNum(x?.confidence_pct),
+      }))
+      .sort((a, b) => {
+        const ac = Number.isFinite(a.confidence_pct) ? a.confidence_pct : -1;
+        const bc = Number.isFinite(b.confidence_pct) ? b.confidence_pct : -1;
+        return bc - ac;
+      })[0] || {};
   const plan = bestPlan;
-  const directionRaw = String(plan.direction || parsed?.direction || "").trim().toUpperCase();
-  const direction = (
+  const directionRaw = String(plan.direction || parsed?.direction || "")
+    .trim()
+    .toUpperCase();
+  const direction =
     directionRaw.includes("SELL") ||
     directionRaw.includes("SHORT") ||
     directionRaw === "S"
-  )
-    ? "SELL"
-    : (
-      directionRaw.includes("BUY") ||
-      directionRaw.includes("LONG") ||
-      directionRaw === "B"
-    )
-      ? "BUY"
-      : "";
+      ? "SELL"
+      : directionRaw.includes("BUY") ||
+          directionRaw.includes("LONG") ||
+          directionRaw === "B"
+        ? "BUY"
+        : "";
   const entry = parseNum(plan.entry ?? parsed?.entry ?? parsed?.price);
   const sl = parseNum(plan.sl ?? parsed?.sl);
   const planTp = getPlanPrimaryTp(plan);
-  const tp = Number.isFinite(planTp) ? planTp : parseNum(parsed?.tp ?? parsed?.take_profit);
+  const tp = Number.isFinite(planTp)
+    ? planTp
+    : parseNum(parsed?.tp ?? parsed?.take_profit);
   const rrRaw = parseNum(plan.rr ?? parsed?.rr);
   let rr = Number.isFinite(rrRaw) ? rrRaw : null;
-  if (!Number.isFinite(rr) && Number.isFinite(entry) && Number.isFinite(sl) && Number.isFinite(tp)) {
+  if (
+    !Number.isFinite(rr) &&
+    Number.isFinite(entry) &&
+    Number.isFinite(sl) &&
+    Number.isFinite(tp)
+  ) {
     const risk = Math.abs(entry - sl);
     const reward = Math.abs(tp - entry);
     if (risk > 0 && reward > 0) rr = Number((reward / risk).toFixed(2));
@@ -535,26 +854,41 @@ function extractPositionFromAnalysis(parsed) {
     tp: Number.isFinite(tp) ? formatNum3(tp) : "",
     sl: Number.isFinite(sl) ? formatNum3(sl) : "",
     rr: Number.isFinite(rr) ? formatNum3(rr) : "",
-    trade_type: String(plan.type || parsed?.type || "limit").trim().toLowerCase() || "limit",
-    note: String(plan.note || parsed?.invalidation || parsed?.note || "").trim(),
+    trade_type:
+      String(plan.type || parsed?.type || "limit")
+        .trim()
+        .toLowerCase() || "limit",
+    note: String(
+      plan.note || parsed?.invalidation || parsed?.note || "",
+    ).trim(),
   };
 }
 
 function extractPositionFromPlan(plan, parsed = {}) {
   const item = plan && typeof plan === "object" ? plan : {};
-  const directionRaw = String(item.direction || parsed?.direction || "").trim().toUpperCase();
-  const direction = directionRaw.includes("SELL") || directionRaw.includes("SHORT")
-    ? "SELL"
-    : directionRaw.includes("BUY") || directionRaw.includes("LONG")
-      ? "BUY"
-      : "BUY";
+  const directionRaw = String(item.direction || parsed?.direction || "")
+    .trim()
+    .toUpperCase();
+  const direction =
+    directionRaw.includes("SELL") || directionRaw.includes("SHORT")
+      ? "SELL"
+      : directionRaw.includes("BUY") || directionRaw.includes("LONG")
+        ? "BUY"
+        : "BUY";
   const entry = parseNum(item.entry ?? parsed?.entry ?? parsed?.price);
   const sl = parseNum(item.sl ?? parsed?.sl);
   const planTp = getPlanPrimaryTp(item);
-  const tp = Number.isFinite(planTp) ? planTp : parseNum(parsed?.tp ?? parsed?.take_profit);
+  const tp = Number.isFinite(planTp)
+    ? planTp
+    : parseNum(parsed?.tp ?? parsed?.take_profit);
   const rrRaw = parseNum(item.rr ?? parsed?.rr);
   let rr = Number.isFinite(rrRaw) ? rrRaw : null;
-  if (!Number.isFinite(rr) && Number.isFinite(entry) && Number.isFinite(sl) && Number.isFinite(tp)) {
+  if (
+    !Number.isFinite(rr) &&
+    Number.isFinite(entry) &&
+    Number.isFinite(sl) &&
+    Number.isFinite(tp)
+  ) {
     const risk = Math.abs(entry - sl);
     const reward = Math.abs(tp - entry);
     if (risk > 0 && reward > 0) rr = Number((reward / risk).toFixed(2));
@@ -565,17 +899,26 @@ function extractPositionFromPlan(plan, parsed = {}) {
     tp: Number.isFinite(tp) ? formatNum3(tp) : "",
     sl: Number.isFinite(sl) ? formatNum3(sl) : "",
     rr: Number.isFinite(rr) ? formatNum3(rr) : "",
-    trade_type: String(item.type || parsed?.type || "limit").trim().toLowerCase() || "limit",
-    note: String(item.note || parsed?.invalidation || parsed?.note || "").trim(),
+    trade_type:
+      String(item.type || parsed?.type || "limit")
+        .trim()
+        .toLowerCase() || "limit",
+    note: String(
+      item.note || parsed?.invalidation || parsed?.note || "",
+    ).trim(),
   };
 }
 
 function normalizeSignalSymbol(symbolRaw) {
-  const s = String(symbolRaw || "").trim().toUpperCase();
+  const s = String(symbolRaw || "")
+    .trim()
+    .toUpperCase();
   if (!s) return "";
   if (s.includes(":")) {
     const parts = s.split(":");
-    return String(parts[parts.length - 1] || "").trim().toUpperCase();
+    return String(parts[parts.length - 1] || "")
+      .trim()
+      .toUpperCase();
   }
   return s;
 }
@@ -597,7 +940,11 @@ function normalizeNoteForStorage(v) {
 function extractJsonCandidate(textRaw) {
   const text = String(textRaw || "").trim();
   if (!text) return "";
-  let s = text.replace(/^\s*`+json\s*/i, "").replace(/^\s*```json\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+  let s = text
+    .replace(/^\s*`+json\s*/i, "")
+    .replace(/^\s*```json\s*/i, "")
+    .replace(/\s*```\s*$/i, "")
+    .trim();
   const fenced = s.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   if (fenced?.[1]) s = fenced[1].trim();
 
@@ -610,12 +957,21 @@ function extractJsonCandidate(textRaw) {
     for (let i = start; i < str.length; i += 1) {
       const ch = str[i];
       if (inString) {
-        if (escaped) { escaped = false; continue; }
-        if (ch === "\\") { escaped = true; continue; }
-        if (ch === "\"") inString = false;
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (ch === '"') inString = false;
         continue;
       }
-      if (ch === "\"") { inString = true; continue; }
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
       if (ch === openChar) depth += 1;
       if (ch === closeChar) {
         depth -= 1;
@@ -658,14 +1014,33 @@ function tryParseJsonLoose(textRaw) {
       for (let i = 0; i < candidate.length; i += 1) {
         const ch = candidate[i];
         if (inString) {
-          if (escaped) { repaired += ch; escaped = false; continue; }
-          if (ch === "\\") { repaired += ch; escaped = true; continue; }
-          if (ch === "\"") { repaired += ch; inString = false; continue; }
-          if (ch === "\n" || ch === "\r") { repaired += " "; continue; }
+          if (escaped) {
+            repaired += ch;
+            escaped = false;
+            continue;
+          }
+          if (ch === "\\") {
+            repaired += ch;
+            escaped = true;
+            continue;
+          }
+          if (ch === '"') {
+            repaired += ch;
+            inString = false;
+            continue;
+          }
+          if (ch === "\n" || ch === "\r") {
+            repaired += " ";
+            continue;
+          }
           repaired += ch;
           continue;
         }
-        if (ch === "\"") { repaired += ch; inString = true; continue; }
+        if (ch === '"') {
+          repaired += ch;
+          inString = true;
+          continue;
+        }
         repaired += ch;
       }
       repaired = repaired.replace(/,\s*([}\]])/g, "$1");
@@ -691,9 +1066,15 @@ function parseTradePlanFromRaw(rawText) {
   };
   const symbol = getString(/"symbol"\s*:\s*"([^"]+)"/i);
   const profile = getString(/"profile"\s*:\s*"([^"]+)"/i);
-  let tradePlanBlock = raw.match(/"trade_plan"\s*:\s*\{([\s\S]*?)\}\s*(?:|,\s*|(?=\s*[}\]]))}/i)?.[1] || "";
+  let tradePlanBlock =
+    raw.match(
+      /"trade_plan"\s*:\s*\{([\s\S]*?)\}\s*(?:|,\s*|(?=\s*[}\]]))}/i,
+    )?.[1] || "";
   if (!tradePlanBlock) {
-    tradePlanBlock = raw.match(/"trade_plan"\s*:\s*\[\s*\{([\s\S]*?)\}\s*(?:|,\s*|(?=\s*\]))/i)?.[1] || "";
+    tradePlanBlock =
+      raw.match(
+        /"trade_plan"\s*:\s*\[\s*\{([\s\S]*?)\}\s*(?:|,\s*|(?=\s*\]))/i,
+      )?.[1] || "";
   }
   if (!tradePlanBlock) return null;
   const inPlan = (re) => {
@@ -742,7 +1123,7 @@ function enrichParsedAnalysis(rawText, parsed) {
   const fallback = parseTradePlanFromRaw(rawText) || {};
 
   // If parsed is null or not an object/array, use fallback
-  if (!parsed || typeof parsed !== 'object') {
+  if (!parsed || typeof parsed !== "object") {
     return fallback;
   }
 
@@ -752,7 +1133,7 @@ function enrichParsedAnalysis(rawText, parsed) {
   if (Array.isArray(parsed)) {
     res = {
       ...fallback,
-      trade_plan: parsed
+      trade_plan: parsed,
     };
   } else {
     // Case 2: AI returned a full object
@@ -775,40 +1156,61 @@ function enrichParsedAnalysis(rawText, parsed) {
 
   // Final check for trade_plan
   if (!res.trade_plan && fallback.trade_plan) {
-    res.trade_plan = Array.isArray(fallback.trade_plan) ? fallback.trade_plan : [fallback.trade_plan];
-  } else if (Array.isArray(res.trade_plan) && res.trade_plan.length === 0 && fallback.trade_plan) {
-    res.trade_plan = Array.isArray(fallback.trade_plan) ? fallback.trade_plan : [fallback.trade_plan];
+    res.trade_plan = Array.isArray(fallback.trade_plan)
+      ? fallback.trade_plan
+      : [fallback.trade_plan];
+  } else if (
+    Array.isArray(res.trade_plan) &&
+    res.trade_plan.length === 0 &&
+    fallback.trade_plan
+  ) {
+    res.trade_plan = Array.isArray(fallback.trade_plan)
+      ? fallback.trade_plan
+      : [fallback.trade_plan];
   }
 
   return res;
 }
 
 function getEffectiveTfConfig(cfg) {
-  const profileKey = String(cfg?.profile || "").trim().toLowerCase();
+  const profileKey = String(cfg?.profile || "")
+    .trim()
+    .toLowerCase();
   const preset = PROFILE_PRESETS[profileKey] || PROFILE_PRESETS.day;
   return {
     profile: PROFILE_PRESETS[profileKey] ? profileKey : "day",
-    htf_tfs: Array.isArray(cfg?.htf_tfs) && cfg.htf_tfs.length ? cfg.htf_tfs : [...preset.htf_tfs],
-    exec_tfs: Array.isArray(cfg?.exec_tfs) && cfg.exec_tfs.length ? cfg.exec_tfs : [...preset.exec_tfs],
-    conf_tfs: Array.isArray(cfg?.conf_tfs) && cfg.conf_tfs.length ? cfg.conf_tfs : [...preset.conf_tfs],
+    htf_tfs:
+      Array.isArray(cfg?.htf_tfs) && cfg.htf_tfs.length
+        ? cfg.htf_tfs
+        : [...preset.htf_tfs],
+    exec_tfs:
+      Array.isArray(cfg?.exec_tfs) && cfg.exec_tfs.length
+        ? cfg.exec_tfs
+        : [...preset.exec_tfs],
+    conf_tfs:
+      Array.isArray(cfg?.conf_tfs) && cfg.conf_tfs.length
+        ? cfg.conf_tfs
+        : [...preset.conf_tfs],
   };
 }
 
 function buildPrompt(cfg) {
   const tfConfig = getEffectiveTfConfig(cfg);
-  const profileLabel = {
-    position: "position",
-    swing: "swing",
-    day: "daily",
-    scalper: "scalping",
-  }[tfConfig.profile] || "daily";
+  const profileLabel =
+    {
+      position: "position",
+      swing: "swing",
+      day: "daily",
+      scalper: "scalping",
+    }[tfConfig.profile] || "daily";
   const symbol = String(cfg.symbol || "UK100").trim() || "UK100";
   const strategy = cfg.strategies.join(", ") || "ICT";
   const context = [];
   if (cfg.htfbias) context.push(`htf_bias_override: "${cfg.htfbias}"`);
   if (cfg.dir) context.push(`direction: "${cfg.dir}"`);
   if (cfg.news) context.push(`news_risk: "${cfg.news}"`);
-  if (cfg.session && cfg.session !== "Any") context.push(`session: "${cfg.session}"`);
+  if (cfg.session && cfg.session !== "Any")
+    context.push(`session: "${cfg.session}"`);
   if (cfg.notes) context.push(`notes: "${cfg.notes}"`);
   const tfJson = JSON.stringify(
     {
@@ -855,7 +1257,15 @@ function buildJsonConfig(cfg) {
           standard: 0.5,
           high_risk: 0.25,
         },
-        required_patterns: ["V-Shape", "Quasimodo", "Flag", "Triangle", "Pin Bar", "Inside Bar", "Fakey"],
+        required_patterns: [
+          "V-Shape",
+          "Quasimodo",
+          "Flag",
+          "Triangle",
+          "Pin Bar",
+          "Inside Bar",
+          "Fakey",
+        ],
         lookback_bars: Number(cfg.lookbackBars),
         timeframe_array: {
           htf_bias_tfs: tfConfig.htf_tfs,
@@ -875,26 +1285,47 @@ function extractSignalsFromAnalysis(parsed, fallback = {}) {
   if (Array.isArray(parsed)) rows.push(...parsed);
   if (Array.isArray(parsed.signals)) rows.push(...parsed.signals);
   if (Array.isArray(parsed.trade_setups)) rows.push(...parsed.trade_setups);
-  if (Array.isArray(parsed.trade_plan)) rows.push(...parsed.trade_plan.map((x) => ({ ...(x || {}), symbol: parsed.symbol || fallback.symbol })));
+  if (Array.isArray(parsed.trade_plan))
+    rows.push(
+      ...parsed.trade_plan.map((x) => ({
+        ...(x || {}),
+        symbol: parsed.symbol || fallback.symbol,
+      })),
+    );
   if (parsed.trade_setup && typeof parsed.trade_setup === "object") {
-    rows.push({ ...(parsed.trade_setup || {}), symbol: parsed.symbol || fallback.symbol });
+    rows.push({
+      ...(parsed.trade_setup || {}),
+      symbol: parsed.symbol || fallback.symbol,
+    });
   }
-  if (parsed.trade_plan && typeof parsed.trade_plan === "object" && !Array.isArray(parsed.trade_plan)) {
-    rows.push({ ...(parsed.trade_plan || {}), symbol: parsed.symbol || fallback.symbol });
+  if (
+    parsed.trade_plan &&
+    typeof parsed.trade_plan === "object" &&
+    !Array.isArray(parsed.trade_plan)
+  ) {
+    rows.push({
+      ...(parsed.trade_plan || {}),
+      symbol: parsed.symbol || fallback.symbol,
+    });
   }
   if (!rows.length) rows.push(parsed);
 
   return rows
     .map((s) => {
-      const sideRaw = String(s?.side || s?.direction || s?.action || "").toUpperCase();
+      const sideRaw = String(
+        s?.side || s?.direction || s?.action || "",
+      ).toUpperCase();
       const action = sideRaw.includes("SELL") ? "SELL" : "BUY";
       const entry = parseNum(s?.entry ?? s?.price ?? s?.entry_price);
       const sl = parseNum(s?.sl ?? s?.stop_loss);
       const planTp = getPlanPrimaryTp(s);
       const tp = Number.isFinite(planTp) ? planTp : parseNum(s?.take_profit);
       const strategy = String(s?.strategy || fallback.strategy || "ai").trim();
-      const entryModel = String(s?.entry_model || s?.model || "ai_claude").trim() || "ai_claude";
-      const source = String(s?.source || fallback.source || "ai_claude").trim() || "ai_claude";
+      const entryModel =
+        String(s?.entry_model || s?.model || "ai_claude").trim() || "ai_claude";
+      const source =
+        String(s?.source || fallback.source || "ai_claude").trim() ||
+        "ai_claude";
       return {
         symbol: normalizeSignalSymbol(s?.symbol || fallback.symbol || ""),
         action,
@@ -904,17 +1335,30 @@ function extractSignalsFromAnalysis(parsed, fallback = {}) {
         tf: String(s?.timeframe || fallback.timeframe || "15m").trim(),
         model: entryModel,
         entry_model: entryModel,
-        order_type: String(s?.type || s?.order_type || "limit").trim().toLowerCase(),
+        order_type: String(s?.type || s?.order_type || "limit")
+          .trim()
+          .toLowerCase(),
         note: typeof s?.note === "string" ? s.note : "",
         source,
         strategy,
         rr: parseNum(s?.rr),
         profile: String(s?.profile || parsed?.profile || "").trim(),
         confidence_pct: parseNum(s?.confidence_pct),
-        invalidation: String(s?.invalidation || parsed?.invalidation || "").trim(),
+        invalidation: String(
+          s?.invalidation || parsed?.invalidation || "",
+        ).trim(),
       };
     })
-    .filter((x) => x.symbol && Number.isFinite(x.entry) && Number.isFinite(x.sl) && Number.isFinite(x.tp) && x.entry > 0 && x.sl > 0 && x.tp > 0);
+    .filter(
+      (x) =>
+        x.symbol &&
+        Number.isFinite(x.entry) &&
+        Number.isFinite(x.sl) &&
+        Number.isFinite(x.tp) &&
+        x.entry > 0 &&
+        x.sl > 0 &&
+        x.tp > 0,
+    );
 }
 
 function buildFriendlyResponse(parsed) {
@@ -964,10 +1408,17 @@ function validatePosition(pos = {}) {
   const tp = parseNum(pos.tp);
   const sl = parseNum(pos.sl);
   const rr = parseNum(pos.rr);
-  const directionRaw = String(pos.direction || "").trim().toUpperCase();
-  const direction = directionRaw === "BUY" || directionRaw === "SELL"
-    ? directionRaw
-    : (Number.isFinite(entry) && Number.isFinite(tp) ? (tp >= entry ? "BUY" : "SELL") : "");
+  const directionRaw = String(pos.direction || "")
+    .trim()
+    .toUpperCase();
+  const direction =
+    directionRaw === "BUY" || directionRaw === "SELL"
+      ? directionRaw
+      : Number.isFinite(entry) && Number.isFinite(tp)
+        ? tp >= entry
+          ? "BUY"
+          : "SELL"
+        : "";
 
   if (!Number.isFinite(entry) || !Number.isFinite(tp) || !Number.isFinite(sl)) {
     return "Entry/TP/SL must be numeric values.";
@@ -1002,8 +1453,16 @@ export default function ChartSnapshotsPage() {
   const [settingsTab, setSettingsTab] = useState("settings");
   const [responseTab, setResponseTab] = useState("text");
   const [status, setStatus] = useState({ type: "", text: "" });
-  const [actionStatus, setActionStatus] = useState({ action: "", type: "", text: "" });
-  const [warmupGate, setWarmupGate] = useState({ locked: false, timedOut: false, startedAt: 0 });
+  const [actionStatus, setActionStatus] = useState({
+    action: "",
+    type: "",
+    text: "",
+  });
+  const [warmupGate, setWarmupGate] = useState({
+    locked: false,
+    timedOut: false,
+    startedAt: 0,
+  });
 
   const [analysisRaw, setAnalysisRaw] = useState("");
   const [analysisJson, setAnalysisJson] = useState("");
@@ -1014,7 +1473,10 @@ export default function ChartSnapshotsPage() {
   const [browserPageSize] = useState(12);
   const [searchTerm, setSearchTerm] = useState("");
   const [apiSymbolOptions, setApiSymbolOptions] = useState([]);
-  const [symbolActivity, setSymbolActivity] = useState({ loading: false, items: [] });
+  const [symbolActivity, setSymbolActivity] = useState({
+    loading: false,
+    items: [],
+  });
 
   const [usedFiles, setUsedFiles] = useState([]);
   const [sessionPrefix, setSessionPrefix] = useState("");
@@ -1024,7 +1486,15 @@ export default function ChartSnapshotsPage() {
   const [isSymbolPanelOpen, setIsSymbolPanelOpen] = useState(true);
   const [symbolFilterTab, setSymbolFilterTab] = useState("ALL");
   const [analysisFilesDisplay, setAnalysisFilesDisplay] = useState([]);
-  const [position, setPosition] = useState({ direction: "BUY", entry: "", tp: "", sl: "", rr: "", trade_type: "limit", note: "" });
+  const [position, setPosition] = useState({
+    direction: "BUY",
+    entry: "",
+    tp: "",
+    sl: "",
+    rr: "",
+    trade_type: "limit",
+    note: "",
+  });
   const [barsCache, setBarsCache] = useState({});
   const [barsLoading, setBarsLoading] = useState(false);
   const [aiContext, setAiContext] = useState(null);
@@ -1043,9 +1513,15 @@ export default function ChartSnapshotsPage() {
     message: "",
     updatedAt: null,
   });
-  const [marketMetadata, setMarketMetadata] = useState({ source: "", updated_time: null, auto_refresh: 0 });
+  const [marketMetadata, setMarketMetadata] = useState({
+    source: "",
+    updated_time: null,
+    auto_refresh: 0,
+  });
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
-  const [promptDraft, setPromptDraft] = useState(() => buildPrompt(DEFAULT_CONFIG));
+  const [promptDraft, setPromptDraft] = useState(() =>
+    buildPrompt(DEFAULT_CONFIG),
+  );
   const [promptEdited, setPromptEdited] = useState(false);
   const [guideDraft, setGuideDraft] = useState(GUIDE_TEXT);
   const liteChartRef = useRef(null);
@@ -1058,7 +1534,9 @@ export default function ChartSnapshotsPage() {
   const tfConfig = useMemo(() => getEffectiveTfConfig(cfg), [cfg]);
 
   const tvSymbol = useMemo(() => {
-    const raw = String(cfg.symbol || "").trim().toUpperCase();
+    const raw = String(cfg.symbol || "")
+      .trim()
+      .toUpperCase();
     if (!raw) return "";
 
     let p = String(provider || "ICMARKETS").toUpperCase();
@@ -1071,24 +1549,24 @@ export default function ChartSnapshotsPage() {
 
     // Common fixes for TradingView indices/commodities by provider
     const FIXES = {
-      "OANDA": {
-        "US30": "US30USD",
-        "NAS100": "NAS100USD",
-        "SPX500": "SP500USD",
-        "GER30": "DE30EUR",
-        "GER40": "DE40EUR",
-        "UK100": "UK100GBP",
-        "HK33": "HK33HKD",
-        "JP225": "JP225USD",
+      OANDA: {
+        US30: "US30USD",
+        NAS100: "NAS100USD",
+        SPX500: "SP500USD",
+        GER30: "DE30EUR",
+        GER40: "DE40EUR",
+        UK100: "UK100GBP",
+        HK33: "HK33HKD",
+        JP225: "JP225USD",
       },
-      "ICMARKETS": {
-        "NAS100": "USTEC",
-        "SPX500": "US500",
+      ICMARKETS: {
+        NAS100: "USTEC",
+        SPX500: "US500",
       },
-      "EIGHTCAP": {
-        "NAS100": "NAS100",
-        "SPX500": "SPX500",
-      }
+      EIGHTCAP: {
+        NAS100: "NAS100",
+        SPX500: "SPX500",
+      },
     };
 
     const fixed = FIXES[p]?.[s] || s;
@@ -1099,24 +1577,34 @@ export default function ChartSnapshotsPage() {
     const merged = [...watchlist];
     const current = normalizeWatchSymbol(cfg.symbol);
     if (current && !merged.includes(current)) merged.unshift(current);
-    return [...new Set(merged.map(normalizeWatchSymbol).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    return [...new Set(merged.map(normalizeWatchSymbol).filter(Boolean))].sort(
+      (a, b) => a.localeCompare(b),
+    );
   }, [watchlist, cfg.symbol]);
 
   const promptText = useMemo(() => buildPrompt(cfg), [cfg]);
 
-	  useEffect(() => {
-	    // Reset analysis data when symbol changes
+  useEffect(() => {
+    // Reset analysis data when symbol changes
     setAnalysisRaw("");
     setAnalysisJson("");
     setAnalysisParsed(null);
-    setPosition({ direction: "BUY", entry: "", tp: "", sl: "", rr: "", trade_type: "limit", note: "" });
+    setPosition({
+      direction: "BUY",
+      entry: "",
+      tp: "",
+      sl: "",
+      rr: "",
+      trade_type: "limit",
+      note: "",
+    });
     setResponseTab("chart");
     setUsedFiles([]);
     setAnalysisFilesDisplay([]);
-	    setActionStatus({ action: "", type: "", text: "" });
-	    setSessionPrefix("");
-	    setAiContext(null);
-	  }, [cfg.symbol]);
+    setActionStatus({ action: "", type: "", text: "" });
+    setSessionPrefix("");
+    setAiContext(null);
+  }, [cfg.symbol]);
   const [selectedEntryTf, setSelectedEntryTf] = useState("");
   const timeframe = useMemo(() => {
     const raw = selectedEntryTf || "";
@@ -1126,14 +1614,30 @@ export default function ChartSnapshotsPage() {
     return raw;
   }, [selectedEntryTf, tfConfig.exec_tfs]);
   const snapshotTfs = useMemo(() => {
-    const all = [...(tfConfig.htf_tfs || []), ...(tfConfig.exec_tfs || []), ...(tfConfig.conf_tfs || [])];
+    const all = [
+      ...(tfConfig.htf_tfs || []),
+      ...(tfConfig.exec_tfs || []),
+      ...(tfConfig.conf_tfs || []),
+    ];
     return [...new Set(all.map(configTfToSnapshotTf).filter(Boolean))];
   }, [tfConfig.htf_tfs, tfConfig.exec_tfs, tfConfig.conf_tfs]);
   const jsonConfigText = useMemo(() => buildJsonConfig(cfg), [cfg]);
   const widgetTfs = useMemo(() => {
-    const base = [...new Set([...(tfConfig.htf_tfs || []), ...(tfConfig.exec_tfs || []), ...(tfConfig.conf_tfs || [])]
-      .map((x) => String(x || "").toLowerCase().trim())
-      .filter(Boolean))];
+    const base = [
+      ...new Set(
+        [
+          ...(tfConfig.htf_tfs || []),
+          ...(tfConfig.exec_tfs || []),
+          ...(tfConfig.conf_tfs || []),
+        ]
+          .map((x) =>
+            String(x || "")
+              .toLowerCase()
+              .trim(),
+          )
+          .filter(Boolean),
+      ),
+    ];
     const fallback = ["d", "4h", "15m", "5m", "1m", "w"];
     for (const tf of fallback) {
       if (base.length >= 4) break;
@@ -1141,15 +1645,21 @@ export default function ChartSnapshotsPage() {
     }
     return base.slice(0, 4);
   }, [tfConfig.htf_tfs, tfConfig.exec_tfs, tfConfig.conf_tfs]);
-  const normalizedSymbolForBars = useMemo(() => normalizeSignalSymbol(tvSymbol || cfg.symbol || ""), [tvSymbol, cfg.symbol]);
+  const normalizedSymbolForBars = useMemo(
+    () => normalizeSignalSymbol(tvSymbol || cfg.symbol || ""),
+    [tvSymbol, cfg.symbol],
+  );
   const currentBarsKey = useMemo(
-    () => `${normalizedSymbolForBars}|${timeframe}|${Number(cfg.lookbackBars || 300) || 300}`,
+    () =>
+      `${normalizedSymbolForBars}|${timeframe}|${Number(cfg.lookbackBars || 300) || 300}`,
     [normalizedSymbolForBars, timeframe, cfg.lookbackBars],
   );
   const currentBarsSnapshot = barsCache[currentBarsKey] || null;
   const contextByTf = useMemo(() => {
     const map = new Map();
-    const rows = Array.isArray(aiContext?.timeframes) ? aiContext.timeframes : [];
+    const rows = Array.isArray(aiContext?.timeframes)
+      ? aiContext.timeframes
+      : [];
     rows.forEach((row) => {
       const key = String(row?.tf || row?.tf_norm || "").toUpperCase();
       if (key) map.set(key, row);
@@ -1158,7 +1668,12 @@ export default function ChartSnapshotsPage() {
   }, [aiContext]);
 
   const effectiveParsed = useMemo(() => {
-    const current = enrichParsedAnalysis(analysisRaw, analysisParsed || tryParseJsonLoose(analysisJson) || tryParseJsonLoose(analysisRaw));
+    const current = enrichParsedAnalysis(
+      analysisRaw,
+      analysisParsed ||
+        tryParseJsonLoose(analysisJson) ||
+        tryParseJsonLoose(analysisRaw),
+    );
     if (current && Object.keys(current).length > 0) return current;
     if (currentBarsSnapshot?.metadata) {
       return enrichParsedAnalysis("", currentBarsSnapshot.metadata);
@@ -1167,45 +1682,81 @@ export default function ChartSnapshotsPage() {
   }, [analysisParsed, analysisJson, analysisRaw, currentBarsSnapshot]);
 
   const hasResponse = useMemo(
-    () => Boolean((analysisRaw || "").trim() || (analysisJson || "").trim() || (effectiveParsed && typeof effectiveParsed === "object" && Object.keys(effectiveParsed).length > 0)),
+    () =>
+      Boolean(
+        (analysisRaw || "").trim() ||
+        (analysisJson || "").trim() ||
+        (effectiveParsed &&
+          typeof effectiveParsed === "object" &&
+          Object.keys(effectiveParsed).length > 0),
+      ),
     [analysisRaw, analysisJson, effectiveParsed],
   );
   const flowChipText = useMemo(() => {
-    const fmt = (label, value) => `${label}:${value === "loading" ? "..." : value}`;
+    const fmt = (label, value) =>
+      `${label}:${value === "loading" ? "..." : value}`;
     return [
       fmt("C", autoFlow.context),
       `S:${autoFlow.snapshots === "loading" ? "..." : `${warmupState.snapshotsMatched}/${Math.max(1, warmupState.snapshotsTarget || snapshotTfs.length || 1)}`}`,
       fmt("A", autoFlow.analysis),
     ].join(" | ");
-  }, [autoFlow.context, autoFlow.snapshots, autoFlow.analysis, warmupState.snapshotsMatched, warmupState.snapshotsTarget, snapshotTfs.length]);
-  const responseText = useMemo(() => buildFriendlyResponse(effectiveParsed), [effectiveParsed]);
-  const canAddSignal = useMemo(
-    () => {
-      const fromAi = extractSignalsFromAnalysis(effectiveParsed, {
+  }, [
+    autoFlow.context,
+    autoFlow.snapshots,
+    autoFlow.analysis,
+    warmupState.snapshotsMatched,
+    warmupState.snapshotsTarget,
+    snapshotTfs.length,
+  ]);
+  const responseText = useMemo(
+    () => buildFriendlyResponse(effectiveParsed),
+    [effectiveParsed],
+  );
+  const canAddSignal = useMemo(() => {
+    const fromAi =
+      extractSignalsFromAnalysis(effectiveParsed, {
         symbol: tvSymbol,
         timeframe,
         strategy: cfg.strategies.join("+") || "ai",
         source: analysisSource,
       }).length > 0;
-      if (fromAi) return true;
-      const err = validatePosition(position);
-      return Boolean(normalizeSignalSymbol(tvSymbol || cfg.symbol || "")) && !err;
-    },
-    [effectiveParsed, tvSymbol, timeframe, cfg.strategies, position.entry, position.sl, position.tp, position.rr, position.direction, cfg.symbol],
-  );
+    if (fromAi) return true;
+    const err = validatePosition(position);
+    return Boolean(normalizeSignalSymbol(tvSymbol || cfg.symbol || "")) && !err;
+  }, [
+    effectiveParsed,
+    tvSymbol,
+    timeframe,
+    cfg.strategies,
+    position.entry,
+    position.sl,
+    position.tp,
+    position.rr,
+    position.direction,
+    cfg.symbol,
+  ]);
 
-
-
-  const setCfgField = (key, value) => setCfg((prev) => ({ ...prev, [key]: value }));
+  const setCfgField = (key, value) =>
+    setCfg((prev) => ({ ...prev, [key]: value }));
   const resetPositionLocal = () => {
     if (effectiveParsed && typeof effectiveParsed === "object") {
       setPosition(extractPositionFromAnalysis(effectiveParsed));
       return;
     }
-    setPosition({ direction: "BUY", entry: "", tp: "", sl: "", rr: "", trade_type: "limit", note: "" });
+    setPosition({
+      direction: "BUY",
+      entry: "",
+      tp: "",
+      sl: "",
+      rr: "",
+      trade_type: "limit",
+      note: "",
+    });
   };
   const setProfilePreset = (profileKey) => {
-    const key = String(profileKey || "").trim().toLowerCase();
+    const key = String(profileKey || "")
+      .trim()
+      .toLowerCase();
     const preset = PROFILE_PRESETS[key] || PROFILE_PRESETS.day;
     setCfg((prev) => ({
       ...prev,
@@ -1225,15 +1776,19 @@ export default function ChartSnapshotsPage() {
       setItems(arr);
       setSelectedFiles(new Set());
     } catch (e) {
-      setStatus({ type: "error", text: String(e?.message || e || "Failed to load snapshots.") });
+      setStatus({
+        type: "error",
+        text: String(e?.message || e || "Failed to load snapshots."),
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const waitTimeout = (ms = 10000) => new Promise((resolve) => {
-    window.setTimeout(resolve, Math.max(0, Number(ms) || 0));
-  });
+  const waitTimeout = (ms = 10000) =>
+    new Promise((resolve) => {
+      window.setTimeout(resolve, Math.max(0, Number(ms) || 0));
+    });
   const withTimeout = async (promise, ms = 10000) => {
     try {
       const value = await Promise.race([
@@ -1246,25 +1801,41 @@ export default function ChartSnapshotsPage() {
     }
   };
 
-  const isCurrentFlowRun = (runId) => !runId || autoFlowRef.current.runId === runId;
+  const isCurrentFlowRun = (runId) =>
+    !runId || autoFlowRef.current.runId === runId;
 
   const setAutoFlowForRun = (runId, patch) => {
     if (!isCurrentFlowRun(runId)) return;
-    setAutoFlow((prev) => ({ ...prev, ...patch, runId: runId || prev.runId, updatedAt: Date.now() }));
+    setAutoFlow((prev) => ({
+      ...prev,
+      ...patch,
+      runId: runId || prev.runId,
+      updatedAt: Date.now(),
+    }));
   };
 
   const resolveRecentSnapshots = (opts = {}) => {
     const nowMs = Date.now();
     const activeSessionPrefix = String(opts.sessionPrefix || "").trim();
-    const targetTfTokens = [...new Set(snapshotTfs.map((x) => toTradingViewInterval(x).toUpperCase()))];
+    const targetTfTokens = [
+      ...new Set(
+        snapshotTfs.map((x) => toTradingViewInterval(x).toUpperCase()),
+      ),
+    ];
     const tfTokenToTf = new Map();
     snapshotTfs.forEach((tf) => {
       const token = toTradingViewInterval(tf).toUpperCase();
       if (token && !tfTokenToTf.has(token)) tfTokenToTf.set(token, tf);
     });
-    const symbolRaw = String(cfg.symbol || "").trim().toUpperCase();
-    const providerRaw = String(provider || "").trim().toUpperCase();
-    const fullSymbol = symbolRaw.includes(":") ? symbolRaw : `${providerRaw}:${symbolRaw}`;
+    const symbolRaw = String(cfg.symbol || "")
+      .trim()
+      .toUpperCase();
+    const providerRaw = String(provider || "")
+      .trim()
+      .toUpperCase();
+    const fullSymbol = symbolRaw.includes(":")
+      ? symbolRaw
+      : `${providerRaw}:${symbolRaw}`;
     const symbolTokens = new Set(
       [symbolRaw, fullSymbol, tvSymbol]
         .map((x) => sanitizeSnapshotFileToken(x || ""))
@@ -1275,7 +1846,12 @@ export default function ChartSnapshotsPage() {
       .filter((x) => x && x.createdAtMs > 0)
       .filter((x) => symbolTokens.has(x.symbolToken))
       .filter((x) => targetTfTokens.includes(x.tfToken))
-      .filter((x) => !activeSessionPrefix || !x.sessionPrefix || x.sessionPrefix === activeSessionPrefix)
+      .filter(
+        (x) =>
+          !activeSessionPrefix ||
+          !x.sessionPrefix ||
+          x.sessionPrefix === activeSessionPrefix,
+      )
       .filter((x) => isSameDay(x.createdAtMs, nowMs))
       .filter((x) => Math.abs(nowMs - x.createdAtMs) <= 15 * 60 * 1000)
       .sort((a, b) => b.createdAtMs - a.createdAtMs);
@@ -1284,13 +1860,17 @@ export default function ChartSnapshotsPage() {
     for (const c of candidates) {
       if (!byTf.has(c.tfToken)) byTf.set(c.tfToken, c.fileName);
     }
-    const matchedFiles = targetTfTokens.map((tf) => byTf.get(tf)).filter(Boolean);
+    const matchedFiles = targetTfTokens
+      .map((tf) => byTf.get(tf))
+      .filter(Boolean);
     const missingTokens = targetTfTokens.filter((tf) => !byTf.has(tf));
     return {
       matchedFiles,
       targetTfTokens,
       missingTokens,
-      missingTfs: missingTokens.map((token) => tfTokenToTf.get(token)).filter(Boolean),
+      missingTfs: missingTokens
+        .map((token) => tfTokenToTf.get(token))
+        .filter(Boolean),
     };
   };
 
@@ -1298,7 +1878,11 @@ export default function ChartSnapshotsPage() {
     const symbol = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
     const warmupKey = `${symbol}|${String(provider || "").toUpperCase()}|${snapshotTfs.join(",")}|${Number(cfg.lookbackBars || 300) || 300}`;
     if (!symbol) return null;
-    if (!opts.force && contextWarmupRef.current.key === warmupKey && contextWarmupRef.current.promise) {
+    if (
+      !opts.force &&
+      contextWarmupRef.current.key === warmupKey &&
+      contextWarmupRef.current.promise
+    ) {
       return contextWarmupRef.current.promise;
     }
     const promise = (async () => {
@@ -1326,16 +1910,24 @@ export default function ChartSnapshotsPage() {
       const hasRows = rows.length > 0;
       if (isCurrentFlowRun(opts.runId)) {
         setWarmupState((prev) => ({ ...prev, contextReady: hasRows }));
-        setAutoFlowForRun(opts.runId, { context: hasRows ? "ready" : "failed" });
+        setAutoFlowForRun(opts.runId, {
+          context: hasRows ? "ready" : "failed",
+        });
       }
       return context;
-    })().catch((error) => {
-      setAutoFlowForRun(opts.runId, { context: "failed", message: String(error?.message || error || "Context refresh failed.") });
-      throw error;
-    })().finally(() => {
-      if (isCurrentFlowRun(opts.runId)) setContextLoading(false);
-      if (contextWarmupRef.current.key === warmupKey) contextWarmupRef.current.promise = null;
-    });
+    })()
+      .catch((error) => {
+        setAutoFlowForRun(opts.runId, {
+          context: "failed",
+          message: String(error?.message || error || "Context refresh failed."),
+        });
+        throw error;
+      })()
+      .finally(() => {
+        if (isCurrentFlowRun(opts.runId)) setContextLoading(false);
+        if (contextWarmupRef.current.key === warmupKey)
+          contextWarmupRef.current.promise = null;
+      });
     contextWarmupRef.current = { key: warmupKey, promise };
     return promise;
   };
@@ -1343,22 +1935,38 @@ export default function ChartSnapshotsPage() {
   const startSnapshotWarmup = async (opts = {}) => {
     const symbol = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
     const warmupKey = `${symbol}|${String(provider || "").toUpperCase()}|${snapshotTfs.join(",")}|${Number(cfg.lookbackBars || 300) || 300}|${String(opts.sessionPrefix || "").trim()}`;
-    if (!symbol) return { matchedFiles: [], targetTfTokens: [], missingTokens: [], missingTfs: [] };
-    if (!opts.force && snapshotWarmupRef.current.key === warmupKey && snapshotWarmupRef.current.promise) {
+    if (!symbol)
+      return {
+        matchedFiles: [],
+        targetTfTokens: [],
+        missingTokens: [],
+        missingTfs: [],
+      };
+    if (
+      !opts.force &&
+      snapshotWarmupRef.current.key === warmupKey &&
+      snapshotWarmupRef.current.promise
+    ) {
       return snapshotWarmupRef.current.promise;
     }
     const promise = (async () => {
       setAutoFlowForRun(opts.runId, { snapshots: "loading" });
       if (isCurrentFlowRun(opts.runId)) setCapturing(true);
-      const initial = resolveRecentSnapshots({ sessionPrefix: opts.sessionPrefix || "" });
+      const initial = resolveRecentSnapshots({
+        sessionPrefix: opts.sessionPrefix || "",
+      });
       setWarmupState((prev) => ({
         ...prev,
-        snapshotsReady: initial.missingTokens.length === 0 && initial.targetTfTokens.length > 0,
+        snapshotsReady:
+          initial.missingTokens.length === 0 &&
+          initial.targetTfTokens.length > 0,
         snapshotsMatched: initial.matchedFiles.length,
         snapshotsTarget: initial.targetTfTokens.length,
       }));
       if (!opts.captureMissing || initial.missingTfs.length === 0) {
-        setAutoFlowForRun(opts.runId, { snapshots: initial.missingTokens.length === 0 ? "ready" : "partial" });
+        setAutoFlowForRun(opts.runId, {
+          snapshots: initial.missingTokens.length === 0 ? "ready" : "partial",
+        });
         return initial;
       }
       const out = await api.chartRefresh({
@@ -1381,9 +1989,15 @@ export default function ChartSnapshotsPage() {
       } else {
         await loadSnapshots();
       }
-      const matchedFiles = returnedItems.map((x) => String(x?.file_name || "").trim()).filter(Boolean);
-      const targetTokens = Array.isArray(snap?.target_timeframes) ? snap.target_timeframes : initial.targetTfTokens;
-      const missingTokens = Array.isArray(snap?.missing_timeframes) ? snap.missing_timeframes : [];
+      const matchedFiles = returnedItems
+        .map((x) => String(x?.file_name || "").trim())
+        .filter(Boolean);
+      const targetTokens = Array.isArray(snap?.target_timeframes)
+        ? snap.target_timeframes
+        : initial.targetTfTokens;
+      const missingTokens = Array.isArray(snap?.missing_timeframes)
+        ? snap.missing_timeframes
+        : [];
       const resolved = {
         matchedFiles,
         targetTfTokens: targetTokens,
@@ -1394,20 +2008,29 @@ export default function ChartSnapshotsPage() {
       };
       setWarmupState((prev) => ({
         ...prev,
-        snapshotsReady: resolved.missingTokens.length === 0 && resolved.targetTfTokens.length > 0,
+        snapshotsReady:
+          resolved.missingTokens.length === 0 &&
+          resolved.targetTfTokens.length > 0,
         snapshotsMatched: resolved.matchedFiles.length,
         snapshotsTarget: resolved.targetTfTokens.length,
       }));
-      setAutoFlowForRun(opts.runId, { snapshots: resolved.missingTokens.length === 0 ? "ready" : "partial" });
+      setAutoFlowForRun(opts.runId, {
+        snapshots: resolved.missingTokens.length === 0 ? "ready" : "partial",
+      });
       return resolved;
-    })().catch(() => {
-      setWarmupState((prev) => ({ ...prev, snapshotsReady: false }));
-      setAutoFlowForRun(opts.runId, { snapshots: "failed" });
-      return resolveRecentSnapshots({ sessionPrefix: opts.sessionPrefix || "" });
-    }).finally(() => {
-      if (isCurrentFlowRun(opts.runId)) setCapturing(false);
-      if (snapshotWarmupRef.current.key === warmupKey) snapshotWarmupRef.current.promise = null;
-    });
+    })()
+      .catch(() => {
+        setWarmupState((prev) => ({ ...prev, snapshotsReady: false }));
+        setAutoFlowForRun(opts.runId, { snapshots: "failed" });
+        return resolveRecentSnapshots({
+          sessionPrefix: opts.sessionPrefix || "",
+        });
+      })
+      .finally(() => {
+        if (isCurrentFlowRun(opts.runId)) setCapturing(false);
+        if (snapshotWarmupRef.current.key === warmupKey)
+          snapshotWarmupRef.current.promise = null;
+      });
     snapshotWarmupRef.current = { key: warmupKey, promise };
     return promise;
   };
@@ -1417,7 +2040,10 @@ export default function ChartSnapshotsPage() {
   };
   const normalizeUiStatus = (type, text) => {
     const msg = String(text || "");
-    if (/bars\/context still not ready/i.test(msg) || /please retry in a few seconds/i.test(msg)) {
+    if (
+      /bars\/context still not ready/i.test(msg) ||
+      /please retry in a few seconds/i.test(msg)
+    ) {
       return {
         type: "warning",
         text: "Bars/context is warming in background. You can retry Analyze in a moment.",
@@ -1443,7 +2069,8 @@ export default function ChartSnapshotsPage() {
           auto_refresh: out.auto_refresh || 0,
         });
       }
-      const rawSnap = out?.snapshot && typeof out.snapshot === "object" ? out.snapshot : null;
+      const rawSnap =
+        out?.snapshot && typeof out.snapshot === "object" ? out.snapshot : null;
       const snap = rawSnap ? normalizeSnapshotBars(rawSnap, tf) : null;
       if (snap) {
         setBarsCache((prev) => ({ ...prev, [cacheKey]: snap }));
@@ -1477,7 +2104,10 @@ export default function ChartSnapshotsPage() {
       });
       return out;
     } catch (e) {
-      setStatus({ type: "warning", text: String(e?.message || e || "Failed to load AI context.") });
+      setStatus({
+        type: "warning",
+        text: String(e?.message || e || "Failed to load AI context."),
+      });
       return null;
     } finally {
       setContextLoading(false);
@@ -1487,8 +2117,20 @@ export default function ChartSnapshotsPage() {
   useEffect(() => {
     const symbol = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
     if (!symbol) {
-      setWarmupState({ contextReady: false, snapshotsReady: false, snapshotsMatched: 0, snapshotsTarget: 0 });
-      setAutoFlow({ runId: 0, context: "idle", snapshots: "idle", analysis: "idle", message: "", updatedAt: null });
+      setWarmupState({
+        contextReady: false,
+        snapshotsReady: false,
+        snapshotsMatched: 0,
+        snapshotsTarget: 0,
+      });
+      setAutoFlow({
+        runId: 0,
+        context: "idle",
+        snapshots: "idle",
+        analysis: "idle",
+        message: "",
+        updatedAt: null,
+      });
       return;
     }
     if (autoFlowRef.current.timer) {
@@ -1509,42 +2151,79 @@ export default function ChartSnapshotsPage() {
       warmupUnlockTimerRef.current = null;
     }, 45000);
     setSessionPrefix(activeSessionPrefix);
-    setAutoFlow({ runId, context: "loading", snapshots: "loading", analysis: "idle", message: "", updatedAt: Date.now() });
-    setWarmupState((prev) => ({ ...prev, contextReady: false, snapshotsReady: false }));
+    setAutoFlow({
+      runId,
+      context: "loading",
+      snapshots: "loading",
+      analysis: "idle",
+      message: "",
+      updatedAt: Date.now(),
+    });
+    setWarmupState((prev) => ({
+      ...prev,
+      contextReady: false,
+      snapshotsReady: false,
+    }));
 
     const runOnce = async (isInterval = false) => {
       const currentRunId = autoFlowRef.current.runId;
       const [ctxSettled, snapSettled] = await Promise.allSettled([
-        startContextWarmup({ includeSnapshots: false, runId: currentRunId, refresh: isInterval }),
-        startSnapshotWarmup({ captureMissing: true, sessionPrefix: activeSessionPrefix, runId: currentRunId }),
+        startContextWarmup({
+          includeSnapshots: false,
+          runId: currentRunId,
+          refresh: isInterval,
+        }),
+        startSnapshotWarmup({
+          captureMissing: true,
+          sessionPrefix: activeSessionPrefix,
+          runId: currentRunId,
+        }),
       ]);
       if (!isCurrentFlowRun(currentRunId)) return;
-      const context = ctxSettled.status === "fulfilled" ? ctxSettled.value : null;
-      const snapshots = snapSettled.status === "fulfilled" ? snapSettled.value : resolveRecentSnapshots({ sessionPrefix: activeSessionPrefix });
+      const context =
+        ctxSettled.status === "fulfilled" ? ctxSettled.value : null;
+      const snapshots =
+        snapSettled.status === "fulfilled"
+          ? snapSettled.value
+          : resolveRecentSnapshots({ sessionPrefix: activeSessionPrefix });
       if (context) {
         const analyzeKey = `${flowKey}|${context?.generated_at || ""}|${(snapshots?.matchedFiles || []).join(",")}`;
         if (lastAutoAnalyzeRef.current !== analyzeKey) {
           lastAutoAnalyzeRef.current = analyzeKey;
           setAutoFlowForRun(currentRunId, { analysis: "loading" });
-          const analyzed = await analyzeFiles(snapshots?.matchedFiles || [], { context, runId: currentRunId, auto: true });
-          if (isCurrentFlowRun(currentRunId) && analyzed) setAutoFlowForRun(currentRunId, { analysis: "ready" });
+          const analyzed = await analyzeFiles(snapshots?.matchedFiles || [], {
+            context,
+            runId: currentRunId,
+            auto: true,
+          });
+          if (isCurrentFlowRun(currentRunId) && analyzed)
+            setAutoFlowForRun(currentRunId, { analysis: "ready" });
         }
       } else {
-        setAutoFlowForRun(currentRunId, { analysis: "idle", message: "Context refresh failed; analysis skipped." });
+        setAutoFlowForRun(currentRunId, {
+          analysis: "idle",
+          message: "Context refresh failed; analysis skipped.",
+        });
       }
       if (isCurrentFlowRun(currentRunId)) {
-        autoFlowRef.current.timer = window.setTimeout(() => {
-          if (isCurrentFlowRun(currentRunId)) runOnce(true).catch(() => null);
-        }, 5 * 60 * 1000);
+        autoFlowRef.current.timer = window.setTimeout(
+          () => {
+            if (isCurrentFlowRun(currentRunId)) runOnce(true).catch(() => null);
+          },
+          5 * 60 * 1000,
+        );
       }
     };
 
     runOnce(false).catch((error) => {
-      setAutoFlowForRun(runId, { message: String(error?.message || error || "Auto flow failed.") });
+      setAutoFlowForRun(runId, {
+        message: String(error?.message || error || "Auto flow failed."),
+      });
     });
 
     return () => {
-      if (autoFlowRef.current.timer) window.clearTimeout(autoFlowRef.current.timer);
+      if (autoFlowRef.current.timer)
+        window.clearTimeout(autoFlowRef.current.timer);
       if (warmupUnlockTimerRef.current) {
         window.clearTimeout(warmupUnlockTimerRef.current);
         warmupUnlockTimerRef.current = null;
@@ -1577,14 +2256,19 @@ export default function ChartSnapshotsPage() {
     if (!sessionPrefix) setSessionPrefix(activeSessionPrefix);
     try {
       if (opts.runId && !isCurrentFlowRun(opts.runId)) return null;
-      const context = opts.context || await loadAiContext({ includeSnapshots: true });
+      const context =
+        opts.context || (await loadAiContext({ includeSnapshots: true }));
       if (opts.runId && !isCurrentFlowRun(opts.runId)) return null;
 
       const basePrompt = String(promptDraft || promptText || "").trim();
       const runtimeConfig = JSON.stringify({
         symbol: tvSymbol || cfg.symbol,
         assetClass: cfg.asset,
-        timeframes: [...tfConfig.htf_tfs, ...tfConfig.exec_tfs, ...tfConfig.conf_tfs].map((x) => String(x).toUpperCase()),
+        timeframes: [
+          ...tfConfig.htf_tfs,
+          ...tfConfig.exec_tfs,
+          ...tfConfig.conf_tfs,
+        ].map((x) => String(x).toUpperCase()),
         minRR: Number(cfg.rr),
         maxRiskPct: Number(cfg.risk),
         session: cfg.session,
@@ -1597,8 +2281,12 @@ export default function ChartSnapshotsPage() {
       const composedPrompt = [
         basePrompt,
         `CONFIG:${runtimeConfig}`,
-        guideOverride && guideOverride !== GUIDE_TEXT ? `USER_GUIDE:${guideOverride}` : "",
-      ].filter(Boolean).join("\n\n");
+        guideOverride && guideOverride !== GUIDE_TEXT
+          ? `USER_GUIDE:${guideOverride}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
       const payload = {
         model: "claude-sonnet-4-0",
         prompt: composedPrompt,
@@ -1611,7 +2299,9 @@ export default function ChartSnapshotsPage() {
         bars_count: Number(cfg.lookbackBars || 300) || 300,
         use_context_files: true,
         context_mode: "claude",
-        context_files: Array.isArray(context?.context_files) ? context.context_files : [],
+        context_files: Array.isArray(context?.context_files)
+          ? context.context_files
+          : [],
       };
 
       if (Array.isArray(files) && files.length) payload.files = files;
@@ -1627,22 +2317,29 @@ export default function ChartSnapshotsPage() {
       const raw = String(out?.raw_response || "");
       setAnalysisRaw(raw);
       setAnalysisSource(aiSourceFromModel(out?.model));
-      const parsed = enrichParsedAnalysis(raw, out?.parsed_json || tryParseJsonLoose(raw));
+      const parsed = enrichParsedAnalysis(
+        raw,
+        out?.parsed_json || tryParseJsonLoose(raw),
+      );
       if (parsed && typeof parsed === "object") {
         setAnalysisParsed(parsed);
         setAnalysisJson(JSON.stringify(parsed, null, 2));
         setPosition(extractPositionFromAnalysis(parsed));
       }
       setUsedFiles(Array.isArray(out?.used_files) ? out.used_files : []);
-      if (!files.length) setAnalysisFilesDisplay(Array.isArray(out?.used_files) ? out.used_files : []);
+      if (!files.length)
+        setAnalysisFilesDisplay(
+          Array.isArray(out?.used_files) ? out.used_files : [],
+        );
       setResponseTab("chart");
-      const fileMode = out?.claude_files_mode === "files_api"
-        ? ` Claude Files: ${Array.isArray(out?.claude_files) ? out.claude_files.length : 0}.`
-        : out?.claude_files_mode === "context_files"
-          ? ` Claude context files: ${Array.isArray(out?.claude_files) ? out.claude_files.length : 0}.`
-        : out?.claude_files_mode === "fallback_base64"
-          ? " Claude Files failed; used base64 fallback."
-          : "";
+      const fileMode =
+        out?.claude_files_mode === "files_api"
+          ? ` Claude Files: ${Array.isArray(out?.claude_files) ? out.claude_files.length : 0}.`
+          : out?.claude_files_mode === "context_files"
+            ? ` Claude context files: ${Array.isArray(out?.claude_files) ? out.claude_files.length : 0}.`
+            : out?.claude_files_mode === "fallback_base64"
+              ? " Claude Files failed; used base64 fallback."
+              : "";
       const msg = `Analyzed ${Array.isArray(out?.used_files) ? out.used_files.length : 0} screenshot(s).${fileMode}`;
       setStatus({ type: "success", text: msg });
       setActionMessage("analyze", "success", msg);
@@ -1652,7 +2349,11 @@ export default function ChartSnapshotsPage() {
       const normalized = normalizeUiStatus("error", msg);
       setStatus(normalized);
       setActionMessage("analyze", normalized.type, normalized.text);
-      if (opts.runId) setAutoFlowForRun(opts.runId, { analysis: "failed", message: normalized.text });
+      if (opts.runId)
+        setAutoFlowForRun(opts.runId, {
+          analysis: "failed",
+          message: normalized.text,
+        });
       return null;
     } finally {
       if (!opts.runId || isCurrentFlowRun(opts.runId)) setAnalyzing(false);
@@ -1664,7 +2365,11 @@ export default function ChartSnapshotsPage() {
       setStatus({ type: "warning", text: "Symbol is required." });
       return;
     }
-    const tfs = [...new Set(snapshotTfs.map((x) => String(x || "").trim()).filter(Boolean))];
+    const tfs = [
+      ...new Set(
+        snapshotTfs.map((x) => String(x || "").trim()).filter(Boolean),
+      ),
+    ];
     if (!tfs.length) {
       setStatus({ type: "warning", text: "Select at least one timeframe." });
       return;
@@ -1689,8 +2394,12 @@ export default function ChartSnapshotsPage() {
       } else {
         await loadSnapshots();
       }
-      const createdTfSet = new Set(created.map((x) => parseSnapshotMeta(x)?.tfToken).filter(Boolean));
-      const expectedTfSet = new Set(tfs.map((x) => toTradingViewInterval(x).toUpperCase()));
+      const createdTfSet = new Set(
+        created.map((x) => parseSnapshotMeta(x)?.tfToken).filter(Boolean),
+      );
+      const expectedTfSet = new Set(
+        tfs.map((x) => toTradingViewInterval(x).toUpperCase()),
+      );
       const missing = [...expectedTfSet].filter((tf) => !createdTfSet.has(tf));
       if (missing.length) {
         const msg = `Captured ${created.length} snapshot(s). Missing TF: ${missing.map(intervalTokenToLabel).join(", ")}`;
@@ -1718,33 +2427,62 @@ export default function ChartSnapshotsPage() {
       await analyzeFiles(files);
       return;
     }
-    const tfs = [...new Set(snapshotTfs.map((x) => String(x || "").trim()).filter(Boolean))];
+    const tfs = [
+      ...new Set(
+        snapshotTfs.map((x) => String(x || "").trim()).filter(Boolean),
+      ),
+    ];
     if (!String(tvSymbol || "").trim() || !tfs.length) {
-      setStatus({ type: "warning", text: "Symbol and at least one snapshot TF are required." });
+      setStatus({
+        type: "warning",
+        text: "Symbol and at least one snapshot TF are required.",
+      });
       return;
     }
 
     if (warmupGate.locked) {
-      setStatus({ type: "warning", text: "Warm-up in progress. Please wait..." });
+      setStatus({
+        type: "warning",
+        text: "Warm-up in progress. Please wait...",
+      });
       return;
     }
-    setStatus({ type: "warning", text: "Starting analyze. Missing data will continue warming in background..." });
+    setStatus({
+      type: "warning",
+      text: "Starting analyze. Missing data will continue warming in background...",
+    });
     try {
-      const contextRows = Array.isArray(aiContext?.timeframes) ? aiContext.timeframes : [];
+      const contextRows = Array.isArray(aiContext?.timeframes)
+        ? aiContext.timeframes
+        : [];
       const hasContext = contextRows.length > 0;
-      const recent = resolveRecentSnapshots({ sessionPrefix: activeSessionPrefix });
-      const readySnapshots = recent.matchedFiles.length === recent.targetTfTokens.length && recent.matchedFiles.length > 0;
-      if (!hasContext) startContextWarmup({ includeSnapshots: false, force: false }).catch(() => null);
+      const recent = resolveRecentSnapshots({
+        sessionPrefix: activeSessionPrefix,
+      });
+      const readySnapshots =
+        recent.matchedFiles.length === recent.targetTfTokens.length &&
+        recent.matchedFiles.length > 0;
+      if (!hasContext)
+        startContextWarmup({ includeSnapshots: false, force: false }).catch(
+          () => null,
+        );
       if (!readySnapshots) {
-        startSnapshotWarmup({ captureMissing: true, sessionPrefix: activeSessionPrefix, force: false }).catch(() => null);
+        startSnapshotWarmup({
+          captureMissing: true,
+          sessionPrefix: activeSessionPrefix,
+          force: false,
+        }).catch(() => null);
       }
       if (readySnapshots) {
         const msg = `Using snapshots (${recent.matchedFiles.length}) from warm-up cache.`;
         setStatus({ type: "success", text: msg });
         setActionMessage("analyze", "success", msg);
-        await analyzeFiles(recent.matchedFiles, { context: hasContext ? aiContext : undefined });
+        await analyzeFiles(recent.matchedFiles, {
+          context: hasContext ? aiContext : undefined,
+        });
       } else {
-        const msg = "Snapshots still partial. Analyze continues with bars/context while warm-up runs in background.";
+        const msg =
+          "Snapshots still partial. Analyze continues with bars/context while warm-up runs in background.";
         setStatus({ type: "warning", text: msg });
         setActionMessage("analyze", "warning", msg);
         await analyzeFiles([], { context: hasContext ? aiContext : undefined });
@@ -1763,9 +2501,15 @@ export default function ChartSnapshotsPage() {
     try {
       const out = await api.chartSnapshotsDelete(opts);
       await loadSnapshots();
-      setStatus({ type: "success", text: `Deleted ${Number(out?.deleted_count || 0)} screenshot(s).` });
+      setStatus({
+        type: "success",
+        text: `Deleted ${Number(out?.deleted_count || 0)} screenshot(s).`,
+      });
     } catch (e) {
-      setStatus({ type: "error", text: String(e?.message || e || "Delete failed.") });
+      setStatus({
+        type: "error",
+        text: String(e?.message || e || "Delete failed."),
+      });
     } finally {
       setDeleting(false);
     }
@@ -1800,18 +2544,33 @@ export default function ChartSnapshotsPage() {
       const t = parseNum(next.tp);
       const rrInput = parseNum(next.rr);
       if (key === "rr") {
-        if (Number.isFinite(e) && Number.isFinite(s) && Number.isFinite(rrInput) && rrInput > 0) {
+        if (
+          Number.isFinite(e) &&
+          Number.isFinite(s) &&
+          Number.isFinite(rrInput) &&
+          rrInput > 0
+        ) {
           const risk = Math.abs(e - s);
           if (risk > 0) {
             const currentTp = parseNum(prev.tp);
             const dirSign = Number.isFinite(currentTp)
-              ? (currentTp >= e ? 1 : -1)
-              : (String(prev.direction || "").toUpperCase().includes("SELL") ? -1 : 1);
+              ? currentTp >= e
+                ? 1
+                : -1
+              : String(prev.direction || "")
+                    .toUpperCase()
+                    .includes("SELL")
+                ? -1
+                : 1;
             const nextTp = e + dirSign * (risk * rrInput);
             if (Number.isFinite(nextTp)) next.tp = formatNum3(nextTp);
           }
         }
-      } else if (Number.isFinite(e) && Number.isFinite(s) && Number.isFinite(t)) {
+      } else if (
+        Number.isFinite(e) &&
+        Number.isFinite(s) &&
+        Number.isFinite(t)
+      ) {
         const risk = Math.abs(e - s);
         const reward = Math.abs(t - e);
         if (risk > 0 && reward > 0) next.rr = formatNum3(reward / risk);
@@ -1825,10 +2584,19 @@ export default function ChartSnapshotsPage() {
   };
 
   const [submittingPlanId, setSubmittingPlanId] = useState(null); // track which plan is adding
-  const chartFiles = (analysisFilesDisplay && analysisFilesDisplay.length ? analysisFilesDisplay : usedFiles).map((x) => String(x || "").trim()).filter(Boolean);
+  const chartFiles = (
+    analysisFilesDisplay && analysisFilesDisplay.length
+      ? analysisFilesDisplay
+      : usedFiles
+  )
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
 
-  const addBySelection = async (mode = "signal", overridePosition = null, planId = "main") => {
-
+  const addBySelection = async (
+    mode = "signal",
+    overridePosition = null,
+    planId = "main",
+  ) => {
     setAddingSignal(true);
     setSubmittingPlanId(planId);
     setStatus({ type: "", text: "" });
@@ -1838,37 +2606,61 @@ export default function ChartSnapshotsPage() {
     try {
       let parsed = effectiveParsed;
       if (!parsed && analysisJson) parsed = JSON.parse(analysisJson);
-      if (!parsed && analysisRaw) parsed = enrichParsedAnalysis(analysisRaw, tryParseJsonLoose(analysisRaw));
+      if (!parsed && analysisRaw)
+        parsed = enrichParsedAnalysis(
+          analysisRaw,
+          tryParseJsonLoose(analysisRaw),
+        );
 
       // If overridePosition is provided (from a specific plan card), we ONLY add that one.
-      const signals = overridePosition ? [] : extractSignalsFromAnalysis(parsed, {
-        symbol: tvSymbol,
-        timeframe,
-        strategy: cfg.strategies.join("+") || "ai",
-        source: analysisSource,
-      });
+      const signals = overridePosition
+        ? []
+        : extractSignalsFromAnalysis(parsed, {
+            symbol: tvSymbol,
+            timeframe,
+            strategy: cfg.strategies.join("+") || "ai",
+            source: analysisSource,
+          });
 
       if (!signals.length) {
-        const symbolManual = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
+        const symbolManual = normalizeSignalSymbol(
+          tvSymbol || cfg.symbol || "",
+        );
         const entry = parseNum(activePosition.entry);
         const sl = parseNum(activePosition.sl);
         const tp = parseNum(activePosition.tp);
         const validationErr = validatePosition(activePosition);
-        if (!symbolManual || !Number.isFinite(entry) || !Number.isFinite(sl) || !Number.isFinite(tp)) {
-          throw new Error("No valid signal found. Fill Entry/TP/SL or run Analyze first.");
+        if (
+          !symbolManual ||
+          !Number.isFinite(entry) ||
+          !Number.isFinite(sl) ||
+          !Number.isFinite(tp)
+        ) {
+          throw new Error(
+            "No valid signal found. Fill Entry/TP/SL or run Analyze first.",
+          );
         }
         if (validationErr) throw new Error(validationErr);
-        const dir = String(activePosition.direction || "").trim().toUpperCase();
+        const dir = String(activePosition.direction || "")
+          .trim()
+          .toUpperCase();
         signals.push({
           symbol: symbolManual,
-          action: dir === "BUY" || dir === "SELL" ? dir : (tp >= entry ? "BUY" : "SELL"),
+          action:
+            dir === "BUY" || dir === "SELL"
+              ? dir
+              : tp >= entry
+                ? "BUY"
+                : "SELL",
           entry,
           sl,
           tp,
           tf: timeframe,
           model: analysisSource,
           entry_model: analysisSource,
-          order_type: String(activePosition.trade_type || "limit").toLowerCase(),
+          order_type: String(
+            activePosition.trade_type || "limit",
+          ).toLowerCase(),
           note: activePosition.note || "",
           source: analysisSource,
           strategy: cfg.strategies.join("+") || "ai",
@@ -1880,33 +2672,55 @@ export default function ChartSnapshotsPage() {
       let createdCount = 0;
       for (let i = 0; i < signals.length; i++) {
         const payload = signals[i];
-        const dir = String(activePosition.direction || "").trim().toUpperCase();
-        const cachedSnapshot = currentBarsSnapshot && typeof currentBarsSnapshot === "object" ? currentBarsSnapshot : null;
-        const mergedPdArrays = Array.isArray(parsed?.market_analysis?.pd_arrays) ? parsed.market_analysis.pd_arrays : [];
-        const mergedKeyLevels = Array.isArray(parsed?.market_analysis?.key_levels) ? parsed.market_analysis.key_levels : [];
+        const dir = String(activePosition.direction || "")
+          .trim()
+          .toUpperCase();
+        const cachedSnapshot =
+          currentBarsSnapshot && typeof currentBarsSnapshot === "object"
+            ? currentBarsSnapshot
+            : null;
+        const mergedPdArrays = Array.isArray(parsed?.market_analysis?.pd_arrays)
+          ? parsed.market_analysis.pd_arrays
+          : [];
+        const mergedKeyLevels = Array.isArray(
+          parsed?.market_analysis?.key_levels,
+        )
+          ? parsed.market_analysis.key_levels
+          : [];
         const analysisSnapshotPayload = cachedSnapshot
           ? {
-            ...cachedSnapshot,
-            pd_arrays: mergedPdArrays,
-            key_levels: mergedKeyLevels,
-            htf_tfs: Array.isArray(tfConfig?.htf_tfs) ? tfConfig.htf_tfs : [],
-            summary: {
-              ...(cachedSnapshot.summary && typeof cachedSnapshot.summary === "object" ? cachedSnapshot.summary : {}),
-              profile: payload?.profile || parsed?.profile || "",
-              bias: parsed?.market_analysis?.bias || "",
-              trend: parsed?.market_analysis?.trend || "",
-              note: activePosition.note || payload.note || "",
-            },
-          }
+              ...cachedSnapshot,
+              pd_arrays: mergedPdArrays,
+              key_levels: mergedKeyLevels,
+              htf_tfs: Array.isArray(tfConfig?.htf_tfs) ? tfConfig.htf_tfs : [],
+              summary: {
+                ...(cachedSnapshot.summary &&
+                typeof cachedSnapshot.summary === "object"
+                  ? cachedSnapshot.summary
+                  : {}),
+                profile: payload?.profile || parsed?.profile || "",
+                bias: parsed?.market_analysis?.bias || "",
+                trend: parsed?.market_analysis?.trend || "",
+                note: activePosition.note || payload.note || "",
+              },
+            }
           : undefined;
 
         const finalPayload = {
           ...payload,
-          source: String(payload?.source || analysisSource || "ai_claude").trim() || "ai_claude",
-          session_prefix: activeSessionPrefix ? `${activeSessionPrefix}_${i}` : undefined,
+          source:
+            String(payload?.source || analysisSource || "ai_claude").trim() ||
+            "ai_claude",
+          session_prefix: activeSessionPrefix
+            ? `${activeSessionPrefix}_${i}`
+            : undefined,
           sid: (() => {
-            const s = normalizeSignalSymbol(payload.symbol || tvSymbol || cfg.symbol || "");
-            const p = String(activeSessionPrefix || "").trim().toUpperCase();
+            const s = normalizeSignalSymbol(
+              payload.symbol || tvSymbol || cfg.symbol || "",
+            );
+            const p = String(activeSessionPrefix || "")
+              .trim()
+              .toUpperCase();
             return s && p ? `${s}_${p}_${i}` : undefined;
           })(),
           action: dir === "BUY" || dir === "SELL" ? dir : payload.action,
@@ -1914,16 +2728,38 @@ export default function ChartSnapshotsPage() {
           tp: parseNum(activePosition.tp) || payload.tp,
           sl: parseNum(activePosition.sl) || payload.sl,
           rr: parseNum(activePosition.rr) || payload.rr,
-          order_type: String(activePosition.trade_type || payload.order_type || "limit").toLowerCase(),
-          note: String(activePosition.note || payload.note || parsed?.note || "").trim(),
+          order_type: String(
+            activePosition.trade_type || payload.order_type || "limit",
+          ).toLowerCase(),
+          note: String(
+            activePosition.note || payload.note || parsed?.note || "",
+          ).trim(),
           only_signal: mode === "signal",
           profile: payload?.profile || parsed?.profile || "",
-          trade_plan: parsed?.trade_plan && typeof parsed.trade_plan === "object" ? parsed.trade_plan : (Array.isArray(parsed?.trade_plan) ? parsed.trade_plan : undefined),
-          market_analysis: parsed?.market_analysis && typeof parsed.market_analysis === "object" ? parsed.market_analysis : undefined,
-          risk_management: parsed?.risk_management && typeof parsed.risk_management === "object" ? parsed.risk_management : undefined,
+          trade_plan:
+            parsed?.trade_plan && typeof parsed.trade_plan === "object"
+              ? parsed.trade_plan
+              : Array.isArray(parsed?.trade_plan)
+                ? parsed.trade_plan
+                : undefined,
+          market_analysis:
+            parsed?.market_analysis &&
+            typeof parsed.market_analysis === "object"
+              ? parsed.market_analysis
+              : undefined,
+          risk_management:
+            parsed?.risk_management &&
+            typeof parsed.risk_management === "object"
+              ? parsed.risk_management
+              : undefined,
           invalidation: payload?.invalidation || parsed?.invalidation || "",
-          confidence_pct: Number.isFinite(payload?.confidence_pct) ? payload.confidence_pct : (parsed?.confidence_pct ?? null),
-          final_verdict: parsed?.final_verdict && typeof parsed.final_verdict === "object" ? parsed.final_verdict : undefined,
+          confidence_pct: Number.isFinite(payload?.confidence_pct)
+            ? payload.confidence_pct
+            : (parsed?.confidence_pct ?? null),
+          final_verdict:
+            parsed?.final_verdict && typeof parsed.final_verdict === "object"
+              ? parsed.final_verdict
+              : undefined,
           raw_json: parsed && typeof parsed === "object" ? parsed : undefined,
           snapshot_files: chartFiles,
           analysis_snapshot: analysisSnapshotPayload,
@@ -1935,9 +2771,10 @@ export default function ChartSnapshotsPage() {
         }
         createdCount += 1;
       }
-      const msg = mode === "trade"
-        ? `Added ${createdCount} trade request(s).`
-        : `Added ${createdCount} signal(s) only.`;
+      const msg =
+        mode === "trade"
+          ? `Added ${createdCount} trade request(s).`
+          : `Added ${createdCount} signal(s) only.`;
       setStatus({ type: "success", text: msg });
       setActionMessage("add", "success", msg);
     } catch (e) {
@@ -1951,9 +2788,13 @@ export default function ChartSnapshotsPage() {
   };
 
   const saveTemplate = async () => {
-    const name = String(templateName || "").trim() || `${cfg.symbol} ${cfg.strategies.join("+")}`;
+    const name =
+      String(templateName || "").trim() ||
+      `${cfg.symbol} ${cfg.strategies.join("+")}`;
     const payload = {
-      ...(templateId && templateId !== DEFAULT_TEMPLATE_ID ? { template_id: templateId } : {}),
+      ...(templateId && templateId !== DEFAULT_TEMPLATE_ID
+        ? { template_id: templateId }
+        : {}),
       name,
       config: normalizeTemplateConfig(cfg),
       saved: new Date().toISOString(),
@@ -1964,13 +2805,18 @@ export default function ChartSnapshotsPage() {
       const out = await api.aiUpsertTemplate(payload);
       const savedTemplate = out?.template || payload;
       const item = {
-        id: String(savedTemplate.template_id || templateId || `t_${Date.now()}`),
+        id: String(
+          savedTemplate.template_id || templateId || `t_${Date.now()}`,
+        ),
         name: String(savedTemplate.name || name),
         config: normalizeTemplateConfig(savedTemplate.config || {}),
         saved: savedTemplate.saved || payload.saved,
       };
 
-      const next = [item, ...templates.filter((x) => x.name !== item.name)].slice(0, 200);
+      const next = [
+        item,
+        ...templates.filter((x) => x.name !== item.name),
+      ].slice(0, 200);
       setTemplates(next);
       saveTemplatesToLocal(next);
       setTemplateId(item.id);
@@ -2013,14 +2859,15 @@ export default function ChartSnapshotsPage() {
         id: String(r.template_id || r.id || r.name || `t_${Date.now()}`),
         name: String(r.name || "Unnamed Template"),
         config: normalizeTemplateConfig(r.config || {}),
-        saved: r.saved || r.updated_at || r.created_at || new Date().toISOString()
+        saved:
+          r.saved || r.updated_at || r.created_at || new Date().toISOString(),
       }));
 
-      setTemplates(prev => {
+      setTemplates((prev) => {
         // Merge with local storage (legacy), but DB takes priority
         const next = [...dbTemplates];
-        prev.forEach(p => {
-          if (!next.find(n => n.name === p.name)) {
+        prev.forEach((p) => {
+          if (!next.find((n) => n.name === p.name)) {
             next.push(p);
           }
         });
@@ -2049,24 +2896,33 @@ export default function ChartSnapshotsPage() {
 
   const loadWatchlist = async () => {
     try {
-      const out = await api.authMe();
-      const arr = Array.isArray(out?.user?.metadata?.watchlist) ? out.user.metadata.watchlist : [];
-      // Favourite tab must represent user-owned persisted settings only.
-      const persisted = [...new Set(arr.map(normalizeWatchSymbol).filter(Boolean))];
-      console.log("[watchlist] Loaded favourites from DB:", persisted);
+      const out = await api.getSettings();
+      const settings = Array.isArray(out?.settings) ? out.settings : [];
+      const watchlistSetting = settings.find(
+        (s) => s.type === "trade" && s.name === "WATCHLIST",
+      );
+      const symbols = Array.isArray(watchlistSetting?.data?.symbols)
+        ? watchlistSetting.data.symbols
+        : [];
+      const persisted = [
+        ...new Set(symbols.map(normalizeWatchSymbol).filter(Boolean)),
+      ];
+      console.log("[watchlist] Loaded from user_settings:", persisted);
       setWatchlist(persisted);
     } catch (err) {
-      console.warn("[watchlist] Load failed, using empty favourites:", err.message);
+      console.warn("[watchlist] Load failed, using empty list:", err.message);
       setWatchlist([]);
     }
   };
 
   const saveWatchlistToDb = async (nextList) => {
     try {
-      await api.updateMetadata({
-        watchlist: nextList,
+      await api.upsertSetting({
+        type: "trade",
+        name: "WATCHLIST",
+        data: { symbols: nextList },
       });
-      console.log("[watchlist] Saved to DB:", nextList);
+      console.log("[watchlist] Saved to user_settings:", nextList);
     } catch (e) {
       console.error("[watchlist] Save failed:", e.message);
       throw e;
@@ -2085,18 +2941,24 @@ export default function ChartSnapshotsPage() {
       setWatchlist(next);
       setStatus({ type: "success", text: `Added to watchlist: ${s}` });
     } catch (e) {
-      setStatus({ type: "error", text: String(e?.message || e || "Failed to save watchlist.") });
+      setStatus({
+        type: "error",
+        text: String(e?.message || e || "Failed to save watchlist."),
+      });
     }
   };
 
   const removeFromWatchlist = async (s) => {
-    const next = watchlist.filter(x => x !== s);
+    const next = watchlist.filter((x) => x !== s);
     try {
       await saveWatchlistToDb(next);
       setWatchlist(next);
       setStatus({ type: "success", text: `Removed from watchlist: ${s}` });
     } catch (e) {
-      setStatus({ type: "error", text: String(e?.message || e || "Failed to remove from watchlist.") });
+      setStatus({
+        type: "error",
+        text: String(e?.message || e || "Failed to remove from watchlist."),
+      });
     }
   };
 
@@ -2128,7 +2990,7 @@ export default function ChartSnapshotsPage() {
       try {
         const res = await api.chartSymbols(q, "ICMARKETS", 20);
         if (Array.isArray(res?.symbols)) {
-          setApiSymbolOptions(res.symbols.map(s => s.symbol || s));
+          setApiSymbolOptions(res.symbols.map((s) => s.symbol || s));
         }
       } catch (err) {
         console.warn("chartSymbols fetch error", err);
@@ -2156,11 +3018,17 @@ export default function ChartSnapshotsPage() {
           api.v2Trades({ symbol: symbol || undefined, page: 1, pageSize: 30 }),
           api.trades({ symbol: symbol || undefined, page: 1, pageSize: 30 }),
         ]);
-        const tradeItems = Array.isArray(tradesOut?.items) ? tradesOut.items : [];
-        const signalItems = Array.isArray(signalsOut?.trades) ? signalsOut.trades : [];
+        const tradeItems = Array.isArray(tradesOut?.items)
+          ? tradesOut.items
+          : [];
+        const signalItems = Array.isArray(signalsOut?.trades)
+          ? signalsOut.trades
+          : [];
         const allowed = new Set(["PENDING", "FILLED", "OPEN", "NEW"]);
         const normalizedTrades = tradeItems
-          .filter((x) => allowed.has(String(x?.execution_status || "").toUpperCase()))
+          .filter((x) =>
+            allowed.has(String(x?.execution_status || "").toUpperCase()),
+          )
           .map((x) => ({
             kind: "TRADE",
             status: String(x?.execution_status || "").toUpperCase(),
@@ -2186,60 +3054,166 @@ export default function ChartSnapshotsPage() {
             id: x?.signal_id || x?.id,
           }));
         const merged = [...normalizedTrades, ...normalizedSignals]
-          .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
+          .sort(
+            (a, b) =>
+              new Date(b.updatedAt || 0).getTime() -
+              new Date(a.updatedAt || 0).getTime(),
+          )
           .slice(0, 12);
         if (alive) setSymbolActivity({ loading: false, items: merged });
       } catch {
         if (alive) setSymbolActivity({ loading: false, items: [] });
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [tvSymbol, cfg.symbol]);
 
   const settingsFormNode = (
     <section className="snapshot-settings-v2">
       <div className="snapshot-template-row-v2">
         <div className="snapshot-template-col-v2">
-          <select aria-label="Template" value={templateId} onChange={(e) => handleSelectTemplate(e.target.value)}>
+          <select
+            aria-label="Template"
+            value={templateId}
+            onChange={(e) => handleSelectTemplate(e.target.value)}
+          >
             <option value="">New Template</option>
             <option value={DEFAULT_TEMPLATE_ID}>Default Template</option>
-            {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
           </select>
         </div>
         <div className="snapshot-template-col-v2">
-          <input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name" />
+          <input
+            value={templateName}
+            onChange={(e) => setTemplateName(e.target.value)}
+            placeholder="Template name"
+          />
         </div>
-        <button className="primary-button snapshot-template-save-btn-v2" type="button" onClick={saveTemplate}>Save</button>
+        <button
+          className="primary-button snapshot-template-save-btn-v2"
+          type="button"
+          onClick={saveTemplate}
+        >
+          Save
+        </button>
         {templateId && templateId !== DEFAULT_TEMPLATE_ID && (
-          <button className="secondary-button" type="button" onClick={deleteTemplate} style={{ color: 'var(--bearish)' }}>Delete</button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={deleteTemplate}
+            style={{ color: "var(--bearish)" }}
+          >
+            Delete
+          </button>
         )}
       </div>
       <div className="snapshot-fields-v2 compact">
         <div className="snapshot-col-span-4">
           <label className="minor-text">Bias / Execution / Confirm TFs</label>
-          <select value={cfg.profile || "day"} onChange={(e) => setProfilePreset(e.target.value)}>
+          <select
+            value={cfg.profile || "day"}
+            onChange={(e) => setProfilePreset(e.target.value)}
+          >
             <option value="position">{PROFILE_PRESETS.position.label}</option>
             <option value="swing">{PROFILE_PRESETS.swing.label}</option>
             <option value="day">{PROFILE_PRESETS.day.label}</option>
             <option value="scalper">{PROFILE_PRESETS.scalper.label}</option>
           </select>
         </div>
-        <div className="snapshot-col-span-2"><label className="minor-text">Sessions</label><select value={cfg.session} onChange={(e) => setCfgField("session", e.target.value)}><option>Any</option><option>London</option><option>New York</option><option>Asian</option><option>London+NY</option></select></div>
-        <div className="snapshot-col-span-2"><label className="minor-text">MinRR</label><input type="number" min="0.5" step="0.5" value={cfg.rr} onChange={(e) => setCfgField("rr", e.target.value)} /></div>
+        <div className="snapshot-col-span-2">
+          <label className="minor-text">Sessions</label>
+          <select
+            value={cfg.session}
+            onChange={(e) => setCfgField("session", e.target.value)}
+          >
+            <option>Any</option>
+            <option>London</option>
+            <option>New York</option>
+            <option>Asian</option>
+            <option>London+NY</option>
+          </select>
+        </div>
+        <div className="snapshot-col-span-2">
+          <label className="minor-text">MinRR</label>
+          <input
+            type="number"
+            min="0.5"
+            step="0.5"
+            value={cfg.rr}
+            onChange={(e) => setCfgField("rr", e.target.value)}
+          />
+        </div>
       </div>
       <div>
         <label className="minor-text">Strategy (multi-select)</label>
         <div className="snapshot-tag-wrap-v2">
           {STRATEGY_OPTIONS.map((s) => (
-            <button key={s} type="button" className={`secondary-button snapshot-tag-v2 ${cfg.strategies.includes(s) ? "active" : ""}`} onClick={() => setCfgField("strategies", toggleArrayValue(cfg.strategies, s))}>{s}</button>
+            <button
+              key={s}
+              type="button"
+              className={`secondary-button snapshot-tag-v2 ${cfg.strategies.includes(s) ? "active" : ""}`}
+              onClick={() =>
+                setCfgField("strategies", toggleArrayValue(cfg.strategies, s))
+              }
+            >
+              {s}
+            </button>
           ))}
         </div>
       </div>
       <div className="snapshot-context-v2">
-        <div className="snapshot-col-span-2"><label className="minor-text">HTF Bias</label><select value={cfg.htfbias} onChange={(e) => setCfgField("htfbias", e.target.value)}><option value="">Auto</option><option>Bullish</option><option>Bearish</option><option>Ranging</option></select></div>
-        <div className="snapshot-col-span-2"><label className="minor-text">Direction</label><select value={cfg.dir} onChange={(e) => setCfgField("dir", e.target.value)}><option>Direction: Both</option><option>Direction: Bias</option><option>Long only</option><option>Short only</option></select></div>
-        <div className="snapshot-col-span-2"><label className="minor-text">News</label><select value={cfg.news} onChange={(e) => setCfgField("news", e.target.value)}><option value="">None</option><option>High-impact today</option><option>NFP / FOMC week</option><option>Earnings release</option></select></div>
-        <div className="snapshot-col-span-12"><label className="minor-text">Notes</label><textarea className="snapshot-notes-textarea-v3" rows={4} value={cfg.notes} onChange={(e) => setCfgField("notes", e.target.value)} placeholder="Notes / extra context" /></div>
+        <div className="snapshot-col-span-2">
+          <label className="minor-text">HTF Bias</label>
+          <select
+            value={cfg.htfbias}
+            onChange={(e) => setCfgField("htfbias", e.target.value)}
+          >
+            <option value="">Auto</option>
+            <option>Bullish</option>
+            <option>Bearish</option>
+            <option>Ranging</option>
+          </select>
+        </div>
+        <div className="snapshot-col-span-2">
+          <label className="minor-text">Direction</label>
+          <select
+            value={cfg.dir}
+            onChange={(e) => setCfgField("dir", e.target.value)}
+          >
+            <option>Direction: Both</option>
+            <option>Direction: Bias</option>
+            <option>Long only</option>
+            <option>Short only</option>
+          </select>
+        </div>
+        <div className="snapshot-col-span-2">
+          <label className="minor-text">News</label>
+          <select
+            value={cfg.news}
+            onChange={(e) => setCfgField("news", e.target.value)}
+          >
+            <option value="">None</option>
+            <option>High-impact today</option>
+            <option>NFP / FOMC week</option>
+            <option>Earnings release</option>
+          </select>
+        </div>
+        <div className="snapshot-col-span-12">
+          <label className="minor-text">Notes</label>
+          <textarea
+            className="snapshot-notes-textarea-v3"
+            rows={4}
+            value={cfg.notes}
+            onChange={(e) => setCfgField("notes", e.target.value)}
+            placeholder="Notes / extra context"
+          />
+        </div>
       </div>
     </section>
   );
@@ -2248,20 +3222,47 @@ export default function ChartSnapshotsPage() {
       {settingsTab === "settings" ? settingsFormNode : null}
       {settingsTab === "prompt" ? (
         <>
-          <div className="minor-text">Prompt is the main instruction sent to AI on Analyze.</div>
-          <textarea className="snapshot-mono-v2" rows={30} value={promptDraft} onChange={(e) => { setPromptDraft(e.target.value); setPromptEdited(true); }} />
+          <div className="minor-text">
+            Prompt is the main instruction sent to AI on Analyze.
+          </div>
+          <textarea
+            className="snapshot-mono-v2"
+            rows={30}
+            value={promptDraft}
+            onChange={(e) => {
+              setPromptDraft(e.target.value);
+              setPromptEdited(true);
+            }}
+          />
         </>
       ) : null}
       {settingsTab === "json" ? (
         <>
-          <div className="minor-text">JSON Config is included in Analyze request as structured context (Prompt + JSON Config + Guide).</div>
-          <textarea className="snapshot-mono-v2" rows={30} value={jsonConfigText} readOnly disabled />
+          <div className="minor-text">
+            JSON Config is included in Analyze request as structured context
+            (Prompt + JSON Config + Guide).
+          </div>
+          <textarea
+            className="snapshot-mono-v2"
+            rows={30}
+            value={jsonConfigText}
+            readOnly
+            disabled
+          />
         </>
       ) : null}
       {settingsTab === "guide" ? (
         <>
-          <div className="minor-text">Guide is editable and included in Analyze request as additional instructions/checklist context.</div>
-          <textarea className="snapshot-mono-v2" rows={30} value={guideDraft} onChange={(e) => setGuideDraft(e.target.value)} />
+          <div className="minor-text">
+            Guide is editable and included in Analyze request as additional
+            instructions/checklist context.
+          </div>
+          <textarea
+            className="snapshot-mono-v2"
+            rows={30}
+            value={guideDraft}
+            onChange={(e) => setGuideDraft(e.target.value)}
+          />
         </>
       ) : null}
     </>
@@ -2282,29 +3283,36 @@ export default function ChartSnapshotsPage() {
   };
 
   const chartPdArrays = useMemo(() => {
-
-    const arr = Array.isArray(effectiveParsed?.market_analysis?.pd_arrays) ? effectiveParsed.market_analysis.pd_arrays : [];
-    return arr.map((x, idx) => {
-      const lowRaw = parseNum(x?.low ?? x?.price_bottom ?? x?.bottom ?? x?.bot);
-      const highRaw = parseNum(x?.high ?? x?.price_top ?? x?.top);
-      const zoneParsed = parsePdZoneBounds(x?.zone);
-      const low = Number.isFinite(lowRaw) ? lowRaw : zoneParsed.low;
-      const high = Number.isFinite(highRaw) ? highRaw : zoneParsed.high;
-      const startTs = Number(x?.bar_start_unix ?? x?.bar_start);
-      return {
-        id: String(x?.id || `${String(x?.type || "PD")}_${idx}`),
-        type: String(x?.type || "PD").trim(),
-        timeframe: String(x?.timeframe || x?.tf || "").trim(),
-        status: String(x?.status || "").trim(),
-        barStart: Number.isFinite(startTs) ? startTs : null,
-        low: Number.isFinite(low) ? low : null,
-        high: Number.isFinite(high) ? high : null,
-      };
-    }).filter((x) => Number.isFinite(x.low) || Number.isFinite(x.high));
+    const arr = Array.isArray(effectiveParsed?.market_analysis?.pd_arrays)
+      ? effectiveParsed.market_analysis.pd_arrays
+      : [];
+    return arr
+      .map((x, idx) => {
+        const lowRaw = parseNum(
+          x?.low ?? x?.price_bottom ?? x?.bottom ?? x?.bot,
+        );
+        const highRaw = parseNum(x?.high ?? x?.price_top ?? x?.top);
+        const zoneParsed = parsePdZoneBounds(x?.zone);
+        const low = Number.isFinite(lowRaw) ? lowRaw : zoneParsed.low;
+        const high = Number.isFinite(highRaw) ? highRaw : zoneParsed.high;
+        const startTs = Number(x?.bar_start_unix ?? x?.bar_start);
+        return {
+          id: String(x?.id || `${String(x?.type || "PD")}_${idx}`),
+          type: String(x?.type || "PD").trim(),
+          timeframe: String(x?.timeframe || x?.tf || "").trim(),
+          status: String(x?.status || "").trim(),
+          barStart: Number.isFinite(startTs) ? startTs : null,
+          low: Number.isFinite(low) ? low : null,
+          high: Number.isFinite(high) ? high : null,
+        };
+      })
+      .filter((x) => Number.isFinite(x.low) || Number.isFinite(x.high));
   }, [effectiveParsed]);
 
   const chartKeyLevels = useMemo(() => {
-    const arr = Array.isArray(effectiveParsed?.market_analysis?.key_levels) ? effectiveParsed.market_analysis.key_levels : [];
+    const arr = Array.isArray(effectiveParsed?.market_analysis?.key_levels)
+      ? effectiveParsed.market_analysis.key_levels
+      : [];
     return arr
       .map((x, idx) => {
         const p = parseNum(x?.price ?? x?.level ?? x?.value);
@@ -2313,7 +3321,9 @@ export default function ChartSnapshotsPage() {
           id: `${String(x?.name || "KEY")}_${idx}`,
           name: String(x?.name || x?.type || "Key Level"),
           price: p,
-          barStart: Number.isFinite(Number(x?.bar_start_unix ?? x?.bar_start)) ? Number(x?.bar_start_unix ?? x?.bar_start) : null,
+          barStart: Number.isFinite(Number(x?.bar_start_unix ?? x?.bar_start))
+            ? Number(x?.bar_start_unix ?? x?.bar_start)
+            : null,
         };
       })
       .filter(Boolean);
@@ -2322,7 +3332,10 @@ export default function ChartSnapshotsPage() {
   const analysisTradePlans = useMemo(() => {
     const plans = Array.isArray(effectiveParsed?.trade_plan)
       ? effectiveParsed.trade_plan
-      : (effectiveParsed?.trade_plan && typeof effectiveParsed.trade_plan === "object" ? [effectiveParsed.trade_plan] : []);
+      : effectiveParsed?.trade_plan &&
+          typeof effectiveParsed.trade_plan === "object"
+        ? [effectiveParsed.trade_plan]
+        : [];
     return plans
       .map((p, idx) => {
         const entry = parseNum(p?.entry);
@@ -2366,7 +3379,10 @@ export default function ChartSnapshotsPage() {
       width: Math.max(320, liteChartRef.current.clientWidth || 640),
       height: 320,
       layout: { background: { color: "transparent" }, textColor: "#b8c4de" },
-      grid: { vertLines: { color: "rgba(255,255,255,0.08)" }, horzLines: { color: "rgba(255,255,255,0.08)" } },
+      grid: {
+        vertLines: { color: "rgba(255,255,255,0.08)" },
+        horzLines: { color: "rgba(255,255,255,0.08)" },
+      },
       rightPriceScale: { borderColor: "rgba(255,255,255,0.1)" },
       timeScale: { borderColor: "rgba(255,255,255,0.1)", timeVisible: true },
       crosshair: { mode: 1 },
@@ -2386,13 +3402,30 @@ export default function ChartSnapshotsPage() {
       const y = Number.isFinite(pd.high) ? pd.high : pd.low;
       if (!Number.isFinite(y)) return;
       const color = idx % 2 ? "rgba(255,193,7,0.8)" : "rgba(29,185,84,0.8)";
-      const line = chart.addLineSeries({ color, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-      line.setData([{ time: bars[0].time, value: y }, { time: bars[bars.length - 1].time, value: y }]);
+      const line = chart.addLineSeries({
+        color,
+        lineWidth: 1,
+        lineStyle: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+      line.setData([
+        { time: bars[0].time, value: y },
+        { time: bars[bars.length - 1].time, value: y },
+      ]);
     });
 
     chartKeyLevels.forEach((lvl) => {
-      const line = chart.addLineSeries({ color: "rgba(104,163,255,0.9)", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
-      line.setData([{ time: bars[0].time, value: lvl.price }, { time: bars[bars.length - 1].time, value: lvl.price }]);
+      const line = chart.addLineSeries({
+        color: "rgba(104,163,255,0.9)",
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+      line.setData([
+        { time: bars[0].time, value: lvl.price },
+        { time: bars[bars.length - 1].time, value: lvl.price },
+      ]);
     });
 
     const entry = parseNum(position.entry);
@@ -2400,8 +3433,16 @@ export default function ChartSnapshotsPage() {
     const tp = parseNum(position.tp);
     const addTradeLine = (val, color) => {
       if (!Number.isFinite(val)) return;
-      const line = chart.addLineSeries({ color, lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
-      line.setData([{ time: bars[0].time, value: val }, { time: bars[bars.length - 1].time, value: val }]);
+      const line = chart.addLineSeries({
+        color,
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: true,
+      });
+      line.setData([
+        { time: bars[0].time, value: val },
+        { time: bars[bars.length - 1].time, value: val },
+      ]);
     };
     addTradeLine(entry, "#33a0ff");
     addTradeLine(sl, "#ef5350");
@@ -2411,7 +3452,9 @@ export default function ChartSnapshotsPage() {
 
     const onResize = () => {
       if (!liteChartRef.current || !liteChartApiRef.current) return;
-      liteChartApiRef.current.applyOptions({ width: Math.max(320, liteChartRef.current.clientWidth || 640) });
+      liteChartApiRef.current.applyOptions({
+        width: Math.max(320, liteChartRef.current.clientWidth || 640),
+      });
     };
     window.addEventListener("resize", onResize);
     return () => {
@@ -2421,7 +3464,15 @@ export default function ChartSnapshotsPage() {
         liteChartApiRef.current = null;
       }
     };
-  }, [responseTab, currentBarsSnapshot, chartPdArrays, chartKeyLevels, position.entry, position.sl, position.tp]);
+  }, [
+    responseTab,
+    currentBarsSnapshot,
+    chartPdArrays,
+    chartKeyLevels,
+    position.entry,
+    position.sl,
+    position.tp,
+  ]);
 
   // Computed symbol sets for filter tabs
   const favoriteSymbols = useMemo(() => {
@@ -2430,36 +3481,92 @@ export default function ChartSnapshotsPage() {
   }, [watchlist]);
 
   const allSymbols = useMemo(() => {
-    return [...new Set([...DEFAULT_WATCHLIST, ...favoriteSymbols].map(normalizeWatchSymbol).filter(Boolean))];
+    return [
+      ...new Set(
+        [...DEFAULT_WATCHLIST, ...favoriteSymbols]
+          .map(normalizeWatchSymbol)
+          .filter(Boolean),
+      ),
+    ];
   }, [favoriteSymbols]);
 
   const cryptoSymbols = useMemo(() => {
     const fromAll = allSymbols.filter((s) => classifySymbol(s) === "crypto");
-    const merged = [...new Set([...DEFAULT_CRYPTO_SYMBOLS, ...fromAll].map(normalizeWatchSymbol).filter(Boolean))];
+    const merged = [
+      ...new Set(
+        [...DEFAULT_CRYPTO_SYMBOLS, ...fromAll]
+          .map(normalizeWatchSymbol)
+          .filter(Boolean),
+      ),
+    ];
     return merged.sort();
   }, [allSymbols]);
 
   const forexSymbols = useMemo(() => {
     const fromAll = allSymbols.filter((s) => classifySymbol(s) === "forex");
-    const merged = [...new Set([...DEFAULT_FOREX_SYMBOLS, ...fromAll].map(normalizeWatchSymbol).filter(Boolean))];
+    const merged = [
+      ...new Set(
+        [...DEFAULT_FOREX_SYMBOLS, ...fromAll]
+          .map(normalizeWatchSymbol)
+          .filter(Boolean),
+      ),
+    ];
     return merged.sort();
   }, [allSymbols]);
 
   const symbolsByTab = useMemo(() => {
     switch (symbolFilterTab) {
-      case "FAVOURITE": return favoriteSymbols;
-      case "CRYPTO": return cryptoSymbols;
-      case "FOREX": return forexSymbols;
+      case "FAVOURITE":
+        return favoriteSymbols;
+      case "CRYPTO":
+        return cryptoSymbols;
+      case "FOREX":
+        return forexSymbols;
       case "ALL":
-      default: return allSymbols;
+      default:
+        return allSymbols;
     }
-  }, [symbolFilterTab, favoriteSymbols, allSymbols, cryptoSymbols, forexSymbols]);
+  }, [
+    symbolFilterTab,
+    favoriteSymbols,
+    allSymbols,
+    cryptoSymbols,
+    forexSymbols,
+  ]);
 
   return (
     <section className="snapshot-builder-v2 snapshot-builder-v3 snapshot-builder-ai-v4">
-      <section className="panel snapshot-col-v3 snapshot-col-symbols-v3">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', height: '100%' }}>
-                    <div className="snapshot-symbol-row-inline-v4">
+      {!isSymbolPanelOpen && (
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => setIsSymbolPanelOpen(true)}
+          title="Expand symbols panel"
+          style={{
+            position: "absolute",
+            left: 8,
+            top: 8,
+            zIndex: 10,
+            fontSize: 12,
+            padding: "4px 8px",
+          }}
+        >
+          {">>"}
+        </button>
+      )}
+      <section
+        className="panel snapshot-col-v3 snapshot-col-symbols-v3"
+        style={isSymbolPanelOpen ? {} : { display: "none" }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+            height: "100%",
+          }}
+        >
+          <div className="snapshot-symbol-row-inline-v4" style={{ gap: 6 }}>
             <input
               list="tv-symbol-options"
               value={searchTerm}
@@ -2472,12 +3579,23 @@ export default function ChartSnapshotsPage() {
                   );
                 }
               }}
-              placeholder="Search..."
-              style={{ width: "100%" }}
+              placeholder="Search symbol..."
+              style={{
+                flex: 1,
+                minWidth: 120,
+                fontSize: 13,
+                padding: "6px 10px",
+              }}
             />
             <button
               className="secondary-button snapshot-plus-btn-v2"
               type="button"
+              style={{
+                width: 32,
+                minWidth: 32,
+                padding: "4px 0",
+                fontSize: 14,
+              }}
               onClick={() => {
                 if (searchTerm.trim()) {
                   const s = normalizeWatchSymbol(searchTerm.trim());
@@ -2493,11 +3611,17 @@ export default function ChartSnapshotsPage() {
             <button
               className="secondary-button"
               type="button"
-              onClick={() => setIsSymbolPanelOpen((v) => !v)}
-              title={isSymbolPanelOpen ? "Collapse symbols panel" : "Expand symbols panel"}
-              style={{ whiteSpace: "nowrap", fontSize: 11 }}
+              onClick={() => setIsSymbolPanelOpen(false)}
+              title="Collapse symbols panel"
+              style={{
+                width: 32,
+                minWidth: 32,
+                padding: "4px 0",
+                fontSize: 12,
+                fontWeight: 700,
+              }}
             >
-              {isSymbolPanelOpen ? "Close <<" : "Open >>"}
+              {"<<"}
             </button>
           </div>
           <datalist id="tv-symbol-options">
@@ -2517,7 +3641,13 @@ export default function ChartSnapshotsPage() {
                     className={`secondary-button snapshot-tag-v2 ${symbolFilterTab === tab ? "active" : ""}`}
                     onClick={() => setSymbolFilterTab(tab)}
                   >
-                    {tab === "FAVOURITE" ? "Favourite" : tab === "ALL" ? "All" : tab === "CRYPTO" ? "Crypto" : "Forex"}
+                    {tab === "FAVOURITE"
+                      ? "Watchlist"
+                      : tab === "ALL"
+                        ? "All"
+                        : tab === "CRYPTO"
+                          ? "Crypto"
+                          : "Forex"}
                   </button>
                 ))}
               </div>
@@ -2530,9 +3660,14 @@ export default function ChartSnapshotsPage() {
                     s.toUpperCase().includes(query),
                   );
                   if (filtered.length === 0)
-                    return <span className="minor-text">No matching symbols.</span>;
+                    return (
+                      <span className="minor-text">No matching symbols.</span>
+                    );
                   return (
-                    <div className="snapshot-tabs-v2" style={{ flexWrap: "wrap" }}>
+                    <div
+                      className="snapshot-tabs-v2"
+                      style={{ flexWrap: "wrap" }}
+                    >
                       {filtered.map((s) => (
                         <button
                           key={s}
@@ -2549,85 +3684,216 @@ export default function ChartSnapshotsPage() {
               </div>
             </>
           )}
-          <div className="snapshot-live-card-v3" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', marginTop: 'auto' }}>
-            <div className="snapshot-gallery-head-v2" style={{ marginBottom: 6 }}>
-              <span className="panel-label" style={{ margin: 0 }}>Related Pending / Filled / New</span>
+          <div
+            className="snapshot-live-card-v3"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              marginTop: "auto",
+            }}
+          >
+            <div
+              className="snapshot-gallery-head-v2"
+              style={{ marginBottom: 6 }}
+            >
+              <span className="panel-label" style={{ margin: 0 }}>
+                Related Pending / Filled / New
+              </span>
             </div>
-            <div className="snapshot-activity-list-v4" style={{ flex: 1, overflowY: 'auto' }}>
-              {symbolActivity.loading ? <div className="minor-text">Loading...</div> : null}
-              {!symbolActivity.loading && symbolActivity.items.length === 0 ? <div className="minor-text">No related trades/signals.</div> : null}
-              {!symbolActivity.loading && symbolActivity.items.map((x) => (
-                <article key={`${x.kind}_${x.id}`} className="snapshot-activity-card-v4">
-                  <div className="snapshot-activity-top-v4">
-                    <span className={x.side === "SELL" ? "side-sell" : "side-buy"}>{x.side || "-"}</span>
-                    <span className="cell-major">{x.symbol || "-"}</span>
-                    <span className="minor-text">{x.kind} · {x.status === "OPEN" ? "FILLED" : x.status}</span>
-                  </div>
-                  <div className="minor-text">{x.entry ?? "-"} → {x.tp ?? "-"} / {x.sl ?? "-"}</div>
-                </article>
-              ))}
+            <div
+              className="snapshot-activity-list-v4"
+              style={{ flex: 1, overflowY: "auto" }}
+            >
+              {symbolActivity.loading ? (
+                <div className="minor-text">Loading...</div>
+              ) : null}
+              {!symbolActivity.loading && symbolActivity.items.length === 0 ? (
+                <div className="minor-text">No related trades/signals.</div>
+              ) : null}
+              {!symbolActivity.loading &&
+                symbolActivity.items.map((x) => (
+                  <article
+                    key={`${x.kind}_${x.id}`}
+                    className="snapshot-activity-card-v4"
+                  >
+                    <div className="snapshot-activity-top-v4">
+                      <span
+                        className={x.side === "SELL" ? "side-sell" : "side-buy"}
+                      >
+                        {x.side || "-"}
+                      </span>
+                      <span className="cell-major">{x.symbol || "-"}</span>
+                      <span className="minor-text">
+                        {x.kind} · {x.status === "OPEN" ? "FILLED" : x.status}
+                      </span>
+                    </div>
+                    <div className="minor-text">
+                      {x.entry ?? "-"} → {x.tp ?? "-"} / {x.sl ?? "-"}
+                    </div>
+                  </article>
+                ))}
             </div>
           </div>
         </div>
       </section>
 
-      <section className="panel snapshot-col-v3 snapshot-col-settings-v3">
+      <section
+        className="panel snapshot-col-v3 snapshot-col-settings-v3"
+        style={isSymbolPanelOpen ? {} : { gridColumn: "1 / -1" }}
+      >
         {cfg.symbol && (
-          <div className="snapshot-control-card-v3 toolbar-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, padding: '12px 16px', alignItems: 'flex-start' }}>
+          <div
+            className="snapshot-control-card-v3 toolbar-panel"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              marginBottom: 12,
+              padding: "12px 16px",
+              alignItems: "flex-start",
+            }}
+          >
             {/* Row 1 */}
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', width: '100%', justifyContent: 'flex-start' }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+                flexWrap: "wrap",
+                width: "100%",
+                justifyContent: "flex-start",
+              }}
+            >
               {hasResponse && (
-                <button className="secondary-button" type="button" onClick={resetAnalyzeSession}>{"<"} Back</button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={resetAnalyzeSession}
+                >
+                  {"<"} Back
+                </button>
               )}
 
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 <select
                   className="secondary-button"
-                  style={{ height: '34px', padding: '0 10px', fontSize: '12px' }}
+                  style={{
+                    height: "34px",
+                    padding: "0 10px",
+                    fontSize: "12px",
+                  }}
                   value={templateId}
                   onChange={(e) => handleSelectTemplate(e.target.value)}
                 >
                   <option value="">New Template</option>
                   <option value={DEFAULT_TEMPLATE_ID}>Default Template</option>
-                  {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
                 </select>
 
                 <select
                   className="secondary-button"
-                  style={{ height: '34px', padding: '0 10px', fontSize: '12px' }}
+                  style={{
+                    height: "34px",
+                    padding: "0 10px",
+                    fontSize: "12px",
+                  }}
                   value={cfg.profile || "day"}
                   onChange={(e) => setProfilePreset(e.target.value)}
                 >
                   {Object.entries(PROFILE_PRESETS).map(([k, v]) => (
-                    <option key={k} value={k}>{v.label}</option>
+                    <option key={k} value={k}>
+                      {v.label}
+                    </option>
                   ))}
                 </select>
               </div>
 
-              <div className="v-sep-v3" style={{ height: 20, width: 1, background: 'var(--border)', margin: '0 4px' }} />
+              <div
+                className="v-sep-v3"
+                style={{
+                  height: 20,
+                  width: 1,
+                  background: "var(--border)",
+                  margin: "0 4px",
+                }}
+              />
 
-              <button type="button" className="secondary-button" onClick={() => setSettingsModalOpen(true)}>Settings</button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setSettingsModalOpen(true)}
+              >
+                Settings
+              </button>
 
               <span className="minor-text" style={{ opacity: 0.8 }}>
-                {cfg.strategies.join("+") || "ai"} | {PROFILE_PRESETS[cfg.profile]?.label || cfg.profile}
+                {cfg.strategies.join("+") || "ai"} |{" "}
+                {PROFILE_PRESETS[cfg.profile]?.label || cfg.profile}
               </span>
 
               {(marketMetadata.updated_time || autoFlow.runId) && (
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.03)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', flexWrap: 'wrap', maxWidth: 360 }}>
-                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', boxShadow: '0 0 6px var(--accent)' }} />
-                  <span className="minor-text" style={{ fontSize: 11, fontWeight: 500 }}>{marketMetadata.updated_time ? showDateTime(marketMetadata.updated_time) : "refreshing..."}</span>
-                  <span className={`minor-text ${autoFlow.context === "failed" || autoFlow.snapshots === "failed" || autoFlow.analysis === "failed" ? "msg-error" : (autoFlow.context === "loading" || autoFlow.snapshots === "loading" || autoFlow.analysis === "loading" ? "msg-warning" : "msg-success")}`} style={{ fontSize: 11 }}>{flowChipText}</span>
+                <div
+                  style={{
+                    marginLeft: "auto",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    background: "rgba(255,255,255,0.03)",
+                    padding: "4px 10px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border)",
+                    flexWrap: "wrap",
+                    maxWidth: 360,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: "var(--accent)",
+                      boxShadow: "0 0 6px var(--accent)",
+                    }}
+                  />
+                  <span
+                    className="minor-text"
+                    style={{ fontSize: 11, fontWeight: 500 }}
+                  >
+                    {marketMetadata.updated_time
+                      ? showDateTime(marketMetadata.updated_time)
+                      : "refreshing..."}
+                  </span>
+                  <span
+                    className={`minor-text ${autoFlow.context === "failed" || autoFlow.snapshots === "failed" || autoFlow.analysis === "failed" ? "msg-error" : autoFlow.context === "loading" || autoFlow.snapshots === "loading" || autoFlow.analysis === "loading" ? "msg-warning" : "msg-success"}`}
+                    style={{ fontSize: 11 }}
+                  >
+                    {flowChipText}
+                  </span>
                 </div>
               )}
             </div>
 
             {/* Row 2 */}
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', width: '100%', justifyContent: 'flex-start', flexWrap: 'wrap' }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+                width: "100%",
+                justifyContent: "flex-start",
+                flexWrap: "wrap",
+              }}
+            >
               <select
                 value={analysisSource}
                 onChange={(e) => setAnalysisSource(e.target.value)}
                 className="secondary-button"
-                style={{ padding: '0 10px', height: 34, fontSize: '12px' }}
+                style={{ padding: "0 10px", height: 34, fontSize: "12px" }}
               >
                 <option value="ai_claude">Claude 3.5 Sonnet</option>
                 <option value="ai_gpt4o">GPT-4o</option>
@@ -2635,15 +3901,36 @@ export default function ChartSnapshotsPage() {
                 <option value="ai_gemini">Gemini 1.5 Pro</option>
               </select>
 
-              <button className="secondary-button" type="button" onClick={captureSnapshots} disabled={capturing}>
-                {capturing ? "Snapshots..." : (warmupGate.locked ? "Warming..." : "Snapshots")}
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={captureSnapshots}
+                disabled={capturing}
+              >
+                {capturing
+                  ? "Snapshots..."
+                  : warmupGate.locked
+                    ? "Warming..."
+                    : "Snapshots"}
               </button>
-              <button className="primary-button" type="button" onClick={analyzeSelected} disabled={analyzing || warmupGate.locked}>
-                {analyzing ? "Analyzing..." : (warmupGate.locked ? "Warming..." : "Analyze")}
+              <button
+                className="primary-button"
+                type="button"
+                onClick={analyzeSelected}
+                disabled={analyzing || warmupGate.locked}
+              >
+                {analyzing
+                  ? "Analyzing..."
+                  : warmupGate.locked
+                    ? "Warming..."
+                    : "Analyze"}
               </button>
 
               {status.text && (
-                <span className={`minor-text ${status.type === 'error' ? 'msg-error' : (status.type === 'warning' ? 'msg-warning' : 'msg-success')}`} style={{ marginLeft: 8, fontSize: '13px' }}>
+                <span
+                  className={`minor-text ${status.type === "error" ? "msg-error" : status.type === "warning" ? "msg-warning" : "msg-success"}`}
+                  style={{ marginLeft: 8, fontSize: "13px" }}
+                >
                   {status.text}
                 </span>
               )}
@@ -2653,14 +3940,22 @@ export default function ChartSnapshotsPage() {
 
         {!hasResponse && !cfg.symbol && (
           <div className="fadeIn">
-            <div className="toolbar-panel" style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <div
+              className="toolbar-panel"
+              style={{
+                marginBottom: 12,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                 {/* Global Browser TF label removed per user request */}
                 <div className="tf-pills">
-                  {["1m", "5m", "15m", "1h", "4h", "D"].map(tf => (
+                  {["1m", "5m", "15m", "1h", "4h", "D"].map((tf) => (
                     <button
                       key={tf}
-                      className={`tf-pill ${browserTf === tf ? 'active' : ''}`}
+                      className={`tf-pill ${browserTf === tf ? "active" : ""}`}
                       onClick={() => setBrowserTf(tf)}
                     >
                       {tf.toUpperCase()}
@@ -2668,29 +3963,67 @@ export default function ChartSnapshotsPage() {
                   ))}
                 </div>
               </div>
-              <div className="pager-area" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <button className="secondary-button icon-button" style={{ width: 28, height: 28 }} onClick={() => setBrowserPage(p => Math.max(1, p - 1))} disabled={browserPage <= 1}>&lt;</button>
+              <div
+                className="pager-area"
+                style={{ display: "flex", alignItems: "center", gap: 12 }}
+              >
+                <button
+                  className="secondary-button icon-button"
+                  style={{ width: 28, height: 28 }}
+                  onClick={() => setBrowserPage((p) => Math.max(1, p - 1))}
+                  disabled={browserPage <= 1}
+                >
+                  &lt;
+                </button>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>
-                  Page <span style={{ color: 'var(--accent)' }}>{browserPage}</span> of {Math.ceil(watchlist.length / browserPageSize)}
+                  Page{" "}
+                  <span style={{ color: "var(--accent)" }}>{browserPage}</span>{" "}
+                  of {Math.ceil(watchlist.length / browserPageSize)}
                 </span>
-                <button className="secondary-button icon-button" style={{ width: 28, height: 28 }} onClick={() => setBrowserPage(p => p + 1)} disabled={browserPage >= Math.ceil(watchlist.length / browserPageSize)}>&gt;</button>
+                <button
+                  className="secondary-button icon-button"
+                  style={{ width: 28, height: 28 }}
+                  onClick={() => setBrowserPage((p) => p + 1)}
+                  disabled={
+                    browserPage >= Math.ceil(watchlist.length / browserPageSize)
+                  }
+                >
+                  &gt;
+                </button>
               </div>
             </div>
             <div className="browser-grid-v1">
-              {watchlist.slice((browserPage - 1) * browserPageSize, browserPage * browserPageSize).map(sym => (
-                <div key={sym} className="browser-card-v1">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontWeight: 800, fontSize: 14 }}>{sym}</div>
-                    <button className="secondary-button" style={{ padding: '2px 8px', fontSize: 10 }} onClick={() => setCfgField('symbol', sym)}>SELECT</button>
-                  </div>
+              {watchlist
+                .slice(
+                  (browserPage - 1) * browserPageSize,
+                  browserPage * browserPageSize,
+                )
+                .map((sym) => (
+                  <div key={sym} className="browser-card-v1">
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, fontSize: 14 }}>{sym}</div>
+                      <button
+                        className="secondary-button"
+                        style={{ padding: "2px 8px", fontSize: 10 }}
+                        onClick={() => setCfgField("symbol", sym)}
+                      >
+                        SELECT
+                      </button>
+                    </div>
 
-                  <iframe
-                    title={`browser-chart-${sym}`}
-                    className="browser-chart-v1"
-                    src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(liveTfToTradingViewInterval(browserTf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-                  />
-                </div>
-              ))}
+                    <iframe
+                      title={`browser-chart-${sym}`}
+                      className="browser-chart-v1"
+                      src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(liveTfToTradingViewInterval(browserTf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+                    />
+                  </div>
+                ))}
             </div>
           </div>
         )}
@@ -2703,25 +4036,57 @@ export default function ChartSnapshotsPage() {
                   {tf}
                   {(() => {
                     const ctx = contextByTf.get(String(tf).toUpperCase());
-                    if (!ctx) return contextLoading ? " | loading context..." : "";
+                    if (!ctx)
+                      return contextLoading ? " | loading context..." : "";
                     const price = Number(ctx?.last_price);
                     const change = Number(ctx?.summary?.close_change_20);
-                    const previousClose = Number.isFinite(price) && Number.isFinite(change) ? price - change : null;
-                    const pct = Number.isFinite(previousClose) && Math.abs(previousClose) > 0
-                      ? change / previousClose
-                      : null;
-                    const barEndMs = Number(ctx?.bar_end) > 0 ? Number(ctx.bar_end) * 1000 : null;
-                    const cachedAt = ctx?.freshness?.updated_time || ctx?.fetched_at || barEndMs || null;
-                    const trendText = String(ctx?.analysis?.trend || ctx?.analysis?.bias || "").trim();
-                    const pctLabel = Number.isFinite(pct) && Math.abs(pct) < 1
-                      ? `${pct > 0 ? "+" : ""}${(pct * 100).toFixed(2)}%`
-                      : "";
-                    const pctColor = Number.isFinite(pct) ? (pct > 0 ? "#26a69a" : (pct < 0 ? "#ef5350" : "var(--muted)")) : "inherit";
+                    const previousClose =
+                      Number.isFinite(price) && Number.isFinite(change)
+                        ? price - change
+                        : null;
+                    const pct =
+                      Number.isFinite(previousClose) &&
+                      Math.abs(previousClose) > 0
+                        ? change / previousClose
+                        : null;
+                    const barEndMs =
+                      Number(ctx?.bar_end) > 0
+                        ? Number(ctx.bar_end) * 1000
+                        : null;
+                    const cachedAt =
+                      ctx?.freshness?.updated_time ||
+                      ctx?.fetched_at ||
+                      barEndMs ||
+                      null;
+                    const trendText = String(
+                      ctx?.analysis?.trend || ctx?.analysis?.bias || "",
+                    ).trim();
+                    const pctLabel =
+                      Number.isFinite(pct) && Math.abs(pct) < 1
+                        ? `${pct > 0 ? "+" : ""}${(pct * 100).toFixed(2)}%`
+                        : "";
+                    const pctColor = Number.isFinite(pct)
+                      ? pct > 0
+                        ? "#26a69a"
+                        : pct < 0
+                          ? "#ef5350"
+                          : "var(--muted)"
+                      : "inherit";
                     return (
                       <>
-                        {cachedAt ? <span>{` | cached ${showDateTime(cachedAt)}`}</span> : <span>{" | cached time n/a"}</span>}
-                        {Number.isFinite(price) ? <span>{` | ${price}`}</span> : null}
-                        {pctLabel ? <span style={{ color: pctColor }}>{` | ${pctLabel}`}</span> : null}
+                        {cachedAt ? (
+                          <span>{` | cached ${showDateTime(cachedAt)}`}</span>
+                        ) : (
+                          <span>{" | cached time n/a"}</span>
+                        )}
+                        {Number.isFinite(price) ? (
+                          <span>{` | ${price}`}</span>
+                        ) : null}
+                        {pctLabel ? (
+                          <span
+                            style={{ color: pctColor }}
+                          >{` | ${pctLabel}`}</span>
+                        ) : null}
                         {trendText ? <span>{` | ${trendText}`}</span> : null}
                       </>
                     );
@@ -2736,7 +4101,6 @@ export default function ChartSnapshotsPage() {
             ))}
           </div>
         )}
-
 
         {cfg.symbol && (
           <SignalDetailCard
@@ -2753,12 +4117,14 @@ export default function ChartSnapshotsPage() {
               profileTfs: [
                 ...(PROFILE_PRESETS[cfg.profile]?.htf_tfs || []),
                 ...(PROFILE_PRESETS[cfg.profile]?.exec_tfs || []),
-                ...(PROFILE_PRESETS[cfg.profile]?.conf_tfs || [])
+                ...(PROFILE_PRESETS[cfg.profile]?.conf_tfs || []),
               ],
               onDetailTfTabChange: setSelectedEntryTf,
               entryNode: (
                 <div className="snapshot-live-card-v3">
-                  <div className="minor-text" style={{ marginBottom: 12 }}>Chart ({timeframe}): Twelve + PD Arrays</div>
+                  <div className="minor-text" style={{ marginBottom: 12 }}>
+                    Chart ({timeframe}): Twelve + PD Arrays
+                  </div>
                   <TradeSignalChart
                     symbol={cfg.symbol}
                     interval={timeframe}
@@ -2767,9 +4133,15 @@ export default function ChartSnapshotsPage() {
                     slPrice={position.sl}
                     tpPrice={position.tp}
                   />
-                  <div className="minor-text" style={{ marginTop: 8 }}>{barsLoading ? "Loading bars..." : (currentBarsSnapshot?.normalized_symbol || currentBarsSnapshot?.symbol || "No bars cache yet")}</div>
+                  <div className="minor-text" style={{ marginTop: 8 }}>
+                    {barsLoading
+                      ? "Loading bars..."
+                      : currentBarsSnapshot?.normalized_symbol ||
+                        currentBarsSnapshot?.symbol ||
+                        "No bars cache yet"}
+                  </div>
                 </div>
-              )
+              ),
             }}
             response={{
               enabled: true,
@@ -2779,7 +4151,11 @@ export default function ChartSnapshotsPage() {
               onTabChange: setResponseTab,
               text: responseText,
               raw: effectiveParsed || analysisRaw || analysisJson,
-              bars: JSON.stringify(currentBarsSnapshot || { status: "no_cached_bars" }, null, 2),
+              bars: JSON.stringify(
+                currentBarsSnapshot || { status: "no_cached_bars" },
+                null,
+                2,
+              ),
               tradePlans: analysisTradePlans,
               snapshotFiles: chartFiles,
             }}
@@ -2789,8 +4165,10 @@ export default function ChartSnapshotsPage() {
               tradeId: null,
               value: position,
               onChange: updatePositionField,
-              onAddSignal: (pos, planId = "main") => addBySelection("signal", pos, planId),
-              onAddTrade: (pos, planId = "main") => addBySelection("trade", pos, planId),
+              onAddSignal: (pos, planId = "main") =>
+                addBySelection("signal", pos, planId),
+              onAddTrade: (pos, planId = "main") =>
+                addBySelection("trade", pos, planId),
               showSaveButton: false,
               showAddSignalButton: true,
               showAddTradeButton: true,
@@ -2798,34 +4176,82 @@ export default function ChartSnapshotsPage() {
               onReset: resetPositionLocal,
               busy: {
                 signal: addingSignal && submittingPlanId === "main",
-                trade: addingSignal && submittingPlanId === "main"
+                trade: addingSignal && submittingPlanId === "main",
               },
               submittingPlanId: submittingPlanId,
               disabled: false,
               error: !canAddSignal ? validatePosition(position) : "",
-              successMessage: actionStatus.action === "add" && actionStatus.text && actionStatus.type !== "error" && actionStatus.type !== "warning"
-                ? actionStatus.text
-                : "",
+              successMessage:
+                actionStatus.action === "add" &&
+                actionStatus.text &&
+                actionStatus.type !== "error" &&
+                actionStatus.type !== "warning"
+                  ? actionStatus.text
+                  : "",
             }}
           />
         )}
-        {actionStatus.action === "add" && actionStatus.text && (actionStatus.type === "error" || actionStatus.type === "warning") ? (
-          <span className={`minor-text snapshot-footer-msg-v3 ${actionStatus.type === "error" ? "msg-error" : "msg-warning"}`}>{actionStatus.text}</span>
+        {actionStatus.action === "add" &&
+        actionStatus.text &&
+        (actionStatus.type === "error" || actionStatus.type === "warning") ? (
+          <span
+            className={`minor-text snapshot-footer-msg-v3 ${actionStatus.type === "error" ? "msg-error" : "msg-warning"}`}
+          >
+            {actionStatus.text}
+          </span>
         ) : null}
       </section>
 
       {settingsModalOpen ? (
-        <div className="snapshot-modal-backdrop-v4" onClick={() => setSettingsModalOpen(false)}>
-          <div className="snapshot-modal-panel-v4" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="snapshot-modal-backdrop-v4"
+          onClick={() => setSettingsModalOpen(false)}
+        >
+          <div
+            className="snapshot-modal-panel-v4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="snapshot-modal-head-v4">
-              <span className="panel-label" style={{ margin: 0 }}>Settings</span>
-              <button type="button" className="danger-button" onClick={() => setSettingsModalOpen(false)}>Close</button>
+              <span className="panel-label" style={{ margin: 0 }}>
+                Settings
+              </span>
+              <button
+                type="button"
+                className="danger-button"
+                onClick={() => setSettingsModalOpen(false)}
+              >
+                Close
+              </button>
             </div>
             <div className="snapshot-tabs-v2" style={{ marginBottom: 10 }}>
-              <button type="button" className={`secondary-button ${settingsTab === "settings" ? "active" : ""}`} onClick={() => setSettingsTab("settings")}>Settings</button>
-              <button type="button" className={`secondary-button ${settingsTab === "prompt" ? "active" : ""}`} onClick={() => setSettingsTab("prompt")}>Prompt</button>
-              <button type="button" className={`secondary-button ${settingsTab === "json" ? "active" : ""}`} onClick={() => setSettingsTab("json")}>JSON Config</button>
-              <button type="button" className={`secondary-button ${settingsTab === "guide" ? "active" : ""}`} onClick={() => setSettingsTab("guide")}>Guide</button>
+              <button
+                type="button"
+                className={`secondary-button ${settingsTab === "settings" ? "active" : ""}`}
+                onClick={() => setSettingsTab("settings")}
+              >
+                Settings
+              </button>
+              <button
+                type="button"
+                className={`secondary-button ${settingsTab === "prompt" ? "active" : ""}`}
+                onClick={() => setSettingsTab("prompt")}
+              >
+                Prompt
+              </button>
+              <button
+                type="button"
+                className={`secondary-button ${settingsTab === "json" ? "active" : ""}`}
+                onClick={() => setSettingsTab("json")}
+              >
+                JSON Config
+              </button>
+              <button
+                type="button"
+                className={`secondary-button ${settingsTab === "guide" ? "active" : ""}`}
+                onClick={() => setSettingsTab("guide")}
+              >
+                Guide
+              </button>
             </div>
             {settingsTabContentNode}
           </div>
