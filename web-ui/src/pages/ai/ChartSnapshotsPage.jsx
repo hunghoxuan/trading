@@ -1470,8 +1470,8 @@ export default function ChartSnapshotsPage() {
   const [analysisSource, setAnalysisSource] = useState("ai_claude");
   const [browserTf, setBrowserTf] = useState("4h");
   const [browserTfs, setBrowserTfs] = useState(["4h"]);
-  const [browserPage, setBrowserPage] = useState(1);
-  const [browserPageSize] = useState(12);
+  const [visibleCount, setVisibleCount] = useState(8);
+  const sentinelRef = useRef(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [apiSymbolOptions, setApiSymbolOptions] = useState([]);
   const [symbolActivity, setSymbolActivity] = useState({
@@ -2990,6 +2990,19 @@ export default function ChartSnapshotsPage() {
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  // Infinite scroll: load more when sentinel is visible
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setVisibleCount((prev) => prev + 8);
+      }
+    }, { rootMargin: "200px" });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [symbolsByTab.length]);
+
   useEffect(() => {
     const q = String(searchTerm || "").trim();
     if (!q || q.length < 2) {
@@ -3923,6 +3936,7 @@ export default function ChartSnapshotsPage() {
                 </span>
               )}
             </div>
+            <div ref={sentinelRef} style={{ height: 1 }} />
           </div>
         )}
 
@@ -3965,7 +3979,7 @@ export default function ChartSnapshotsPage() {
                 <select
                   className="secondary-button"
                   value={symbolFilterTab}
-                  onChange={(e) => setSymbolFilterTab(e.target.value)}
+                  onChange={(e) => { setSymbolFilterTab(e.target.value); setVisibleCount(8); }}
                   style={{ padding: "6px 8px", fontSize: 12, height: 34 }}
                 >
                   <option value="FAVOURITE">Watchlist</option>
@@ -4047,35 +4061,7 @@ export default function ChartSnapshotsPage() {
                   ))}
                 </div>
               </div>
-              <div
-                className="pager-area"
-                style={{ display: "flex", alignItems: "center", gap: 12 }}
-              >
-                <button
-                  className="secondary-button icon-button"
-                  style={{ width: 28, height: 28 }}
-                  onClick={() => setBrowserPage((p) => Math.max(1, p - 1))}
-                  disabled={browserPage <= 1}
-                >
-                  &lt;
-                </button>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>
-                  Page{" "}
-                  <span style={{ color: "var(--accent)" }}>{browserPage}</span>{" "}
-                  of {Math.ceil(symbolsByTab.length / browserPageSize)}
-                </span>
-                <button
-                  className="secondary-button icon-button"
-                  style={{ width: 28, height: 28 }}
-                  onClick={() => setBrowserPage((p) => p + 1)}
-                  disabled={
-                    browserPage >=
-                    Math.ceil(symbolsByTab.length / browserPageSize)
-                  }
-                >
-                  &gt;
-                </button>
-              </div>
+              
             </div>
             <div
               className="browser-grid-v1"
@@ -4089,10 +4075,7 @@ export default function ChartSnapshotsPage() {
               }}
             >
               {symbolsByTab
-                .slice(
-                  (browserPage - 1) * browserPageSize,
-                  browserPage * browserPageSize,
-                )
+                .slice(0, visibleCount)
                 .map((sym) => (
                   <div key={sym} className="browser-card-v1">
                     <div
@@ -4200,6 +4183,7 @@ export default function ChartSnapshotsPage() {
                   </div>
                 ))}
             </div>
+            <div ref={sentinelRef} style={{ height: 1 }} />
           </div>
         )}
 

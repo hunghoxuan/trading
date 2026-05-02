@@ -44,22 +44,16 @@ Active agent relay only.
 ## Handoff: FEAT-20260502-ASYNC-CHART-TILES
 - From agent: Codex
 - To agent: Deepseek
-- Ticket: `/Users/macmini/Trade/Bot/trading/.agents/.product/tickets/2-backlog/2026-05-02-chart-snapshots-componentized-async-chart-tiles.md`
+- Ticket: `/Users/macmini/Trade/Bot/trading/.agents/.product/tickets/1-ideas/2026-05-02-chart-snapshots-componentized-async-chart-tiles.md`
 - Timestamp: 2026-05-02 13:05 (Europe/Berlin)
-- Status: NEEDS_IMPLEMENTATION
+- Status: PARKED_IDEA
 - Work Description:
-  - Read and implement ticket spec exactly.
-  - Build `ChartTile` component + shared fetch manager/hook.
-  - Integrate independent per-tile load/status/mode/refresh into Chart Snapshots page.
-  - Preserve existing symbol panel and auth/session behavior.
-  - Avoid unrelated refactor.
+  - Do not implement yet.
+  - Keep as design idea until contract is finalized.
 - Checks:
-  - `rtk npm --prefix web-ui run build`
+  - N/A
 - Return format:
-  - changed files
-  - what changed
-  - checks + results
-  - known limitations/follow-ups
+  - N/A
 - Work Description:
   - Implementation complete in `web-ui/src/pages/ai/ChartSnapshotsPage.jsx`.
   - Run reviewer gate from ticket:

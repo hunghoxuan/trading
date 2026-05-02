@@ -345,3 +345,24 @@
   - Manual doc integrity checks and link consistency ✅
 - **Deploy Status**:
   - Not deployed (planning/ticketing only).
+
+# Session Log: 2026-05-02 13:22
+- **Starting Task**:
+  - Move `FEAT-20260502-ASYNC-CHART-TILES` from backlog to idea due to immature scope.
+- **Work Accomplished**:
+  - Moved async-chart-tiles ticket from `2-backlog` to `1-ideas`.
+  - Updated feature tracker reference to idea path and marked summary as parked/immature.
+  - Removed backlog entry and updated mailbox handoff status to `PARKED_IDEA`.
+- **Changed Files**:
+  - `/Users/macmini/Trade/Bot/trading/.agents/.product/tickets/1-ideas/2026-05-02-chart-snapshots-componentized-async-chart-tiles.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/.product/tickets/2-backlog/2026-05-02-chart-snapshots-componentized-async-chart-tiles.md` (deleted)
+  - `/Users/macmini/Trade/Bot/trading/.agents/.product/tickets/feature_tracker.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/.product/tickets/2-backlog/_master-backlog.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/sync/MAILBOX.md`
+  - `/Users/macmini/Trade/Bot/trading/.agents/worklog.md`
+- **Technical Decisions**:
+  - Park implementation until refresh pipeline and cache contract are finalized.
+- **Verification**:
+  - Manual link/path consistency check after move ✅
+- **Deploy Status**:
+  - Not deployed (documentation/ticket-state change only).
