@@ -3669,14 +3669,40 @@ export default function ChartSnapshotsPage() {
                       style={{ flexWrap: "wrap" }}
                     >
                       {filtered.map((s) => (
-                        <button
-                          key={s}
-                          type="button"
-                          className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
-                          onClick={() => setCfgField("symbol", s)}
-                        >
-                          {s}
-                        </button>
+                        <span key={s} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                          <button
+                            type="button"
+                            className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
+                            onClick={() => setCfgField("symbol", s)}
+                          >
+                            {s}
+                          </button>
+                          {symbolFilterTab === "FAVOURITE" ? (
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              style={{ width: 18, height: 18, padding: 0, fontSize: 10, lineHeight: 1, minWidth: 18, borderRadius: 4 }}
+                              onClick={(e) => { e.stopPropagation(); removeFromWatchlist(s); }}
+                              title={"Remove " + s + " from watchlist"}
+                            >
+                              -
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              style={{ width: 18, height: 18, padding: 0, fontSize: 10, lineHeight: 1, minWidth: 18, borderRadius: 4 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const next = [...new Set([...watchlist, s])];
+                                saveWatchlistToDb(next).then(() => setWatchlist(next));
+                              }}
+                              title={"Add " + s + " to watchlist"}
+                            >
+                              +
+                            </button>
+                          )}
+                        </span>
                       ))}
                     </div>
                   );
@@ -3978,14 +4004,14 @@ export default function ChartSnapshotsPage() {
                 <span style={{ fontSize: 13, fontWeight: 600 }}>
                   Page{" "}
                   <span style={{ color: "var(--accent)" }}>{browserPage}</span>{" "}
-                  of {Math.ceil(watchlist.length / browserPageSize)}
+                  of {Math.ceil(symbolsByTab.length / browserPageSize)}
                 </span>
                 <button
                   className="secondary-button icon-button"
                   style={{ width: 28, height: 28 }}
                   onClick={() => setBrowserPage((p) => p + 1)}
                   disabled={
-                    browserPage >= Math.ceil(watchlist.length / browserPageSize)
+                    browserPage >= Math.ceil(symbolsByTab.length / browserPageSize)
                   }
                 >
                   &gt;
@@ -3993,7 +4019,7 @@ export default function ChartSnapshotsPage() {
               </div>
             </div>
             <div className="browser-grid-v1">
-              {watchlist
+              {symbolsByTab
                 .slice(
                   (browserPage - 1) * browserPageSize,
                   browserPage * browserPageSize,

@@ -1745,8 +1745,10 @@ export default function SettingsPage({
                       rows={15}
                       value={symbolsDetailText}
                       onChange={(e) => {
+                        setSymbolsDetailText(e.target.value);
+                      }}
+                      onBlur={(e) => {
                         const text = e.target.value;
-                        setSymbolsDetailText(text);
                         const arr = text
                           .split(/[\n,]/)
                           .map((x) =>
