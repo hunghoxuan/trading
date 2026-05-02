@@ -2982,7 +2982,9 @@ export default function ChartSnapshotsPage() {
   }, []);
 
   useEffect(() => {
-    const check = () => { if (window.innerWidth < 900) setIsSymbolPanelOpen(false); };
+    const check = () => {
+      if (window.innerWidth < 900) setIsSymbolPanelOpen(false);
+    };
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
@@ -3080,53 +3082,20 @@ export default function ChartSnapshotsPage() {
 
   const settingsFormNode = (
     <section className="snapshot-settings-v2">
-      <div className="snapshot-template-row-v2">
-        <div className="snapshot-template-col-v2">
-          <select
-            aria-label="Template"
-            value={templateId}
-            onChange={(e) => handleSelectTemplate(e.target.value)}
-          >
-            <option value="">New Template</option>
-            <option value={DEFAULT_TEMPLATE_ID}>Default Template</option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="snapshot-template-col-v2">
-          <input
-            value={templateName}
-            onChange={(e) => setTemplateName(e.target.value)}
-            placeholder="Template name"
-          />
-        </div>
-        <button
-          className="primary-button snapshot-template-save-btn-v2"
-          type="button"
-          onClick={saveTemplate}
-        >
-          Save
-        </button>
-        {templateId && templateId !== DEFAULT_TEMPLATE_ID && (
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={deleteTemplate}
-            style={{ color: "var(--bearish)" }}
-          >
-            Delete
-          </button>
-        )}
-      </div>
-      <div className="snapshot-fields-v2 compact">
-        <div className="snapshot-col-span-4">
-          <label className="minor-text">Bias / Execution / Confirm TFs</label>
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+          alignItems: "flex-end",
+        }}
+      >
+        <div style={{ minWidth: 180 }}>
+          <label className="minor-text">Profile TFs</label>
           <select
             value={cfg.profile || "day"}
             onChange={(e) => setProfilePreset(e.target.value)}
+            style={{ width: "100%" }}
           >
             <option value="position">{PROFILE_PRESETS.position.label}</option>
             <option value="swing">{PROFILE_PRESETS.swing.label}</option>
@@ -3134,11 +3103,12 @@ export default function ChartSnapshotsPage() {
             <option value="scalper">{PROFILE_PRESETS.scalper.label}</option>
           </select>
         </div>
-        <div className="snapshot-col-span-2">
+        <div style={{ minWidth: 120 }}>
           <label className="minor-text">Sessions</label>
           <select
             value={cfg.session}
             onChange={(e) => setCfgField("session", e.target.value)}
+            style={{ width: "100%" }}
           >
             <option>Any</option>
             <option>London</option>
@@ -3147,7 +3117,7 @@ export default function ChartSnapshotsPage() {
             <option>London+NY</option>
           </select>
         </div>
-        <div className="snapshot-col-span-2">
+        <div style={{ minWidth: 70 }}>
           <label className="minor-text">MinRR</label>
           <input
             type="number"
@@ -3155,7 +3125,47 @@ export default function ChartSnapshotsPage() {
             step="0.5"
             value={cfg.rr}
             onChange={(e) => setCfgField("rr", e.target.value)}
+            style={{ width: "100%" }}
           />
+        </div>
+        <div style={{ minWidth: 110 }}>
+          <label className="minor-text">HTF Bias</label>
+          <select
+            value={cfg.htfbias}
+            onChange={(e) => setCfgField("htfbias", e.target.value)}
+            style={{ width: "100%" }}
+          >
+            <option value="">Auto</option>
+            <option>Bullish</option>
+            <option>Bearish</option>
+            <option>Ranging</option>
+          </select>
+        </div>
+        <div style={{ minWidth: 140 }}>
+          <label className="minor-text">Direction</label>
+          <select
+            value={cfg.dir}
+            onChange={(e) => setCfgField("dir", e.target.value)}
+            style={{ width: "100%" }}
+          >
+            <option>Both</option>
+            <option>Bias</option>
+            <option>Long only</option>
+            <option>Short only</option>
+          </select>
+        </div>
+        <div style={{ minWidth: 130 }}>
+          <label className="minor-text">News</label>
+          <select
+            value={cfg.news}
+            onChange={(e) => setCfgField("news", e.target.value)}
+            style={{ width: "100%" }}
+          >
+            <option value="">None</option>
+            <option>High-impact</option>
+            <option>NFP/FOMC</option>
+            <option>Earnings</option>
+          </select>
         </div>
       </div>
       <div>
@@ -3176,42 +3186,6 @@ export default function ChartSnapshotsPage() {
         </div>
       </div>
       <div className="snapshot-context-v2">
-        <div className="snapshot-col-span-2">
-          <label className="minor-text">HTF Bias</label>
-          <select
-            value={cfg.htfbias}
-            onChange={(e) => setCfgField("htfbias", e.target.value)}
-          >
-            <option value="">Auto</option>
-            <option>Bullish</option>
-            <option>Bearish</option>
-            <option>Ranging</option>
-          </select>
-        </div>
-        <div className="snapshot-col-span-2">
-          <label className="minor-text">Direction</label>
-          <select
-            value={cfg.dir}
-            onChange={(e) => setCfgField("dir", e.target.value)}
-          >
-            <option>Direction: Both</option>
-            <option>Direction: Bias</option>
-            <option>Long only</option>
-            <option>Short only</option>
-          </select>
-        </div>
-        <div className="snapshot-col-span-2">
-          <label className="minor-text">News</label>
-          <select
-            value={cfg.news}
-            onChange={(e) => setCfgField("news", e.target.value)}
-          >
-            <option value="">None</option>
-            <option>High-impact today</option>
-            <option>NFP / FOMC week</option>
-            <option>Earnings release</option>
-          </select>
-        </div>
         <div className="snapshot-col-span-12">
           <label className="minor-text">Notes</label>
           <textarea
@@ -3544,7 +3518,6 @@ export default function ChartSnapshotsPage() {
 
   return (
     <section className="snapshot-builder-v2 snapshot-builder-v3 snapshot-builder-ai-v4">
-
       <section
         className="panel snapshot-col-v3 snapshot-col-symbols-v3"
         style={isSymbolPanelOpen ? {} : { display: "none" }}
@@ -3557,10 +3530,25 @@ export default function ChartSnapshotsPage() {
             height: "100%",
           }}
         >
-                    <div className="snapshot-symbol-row-inline-v4" style={{ gap: 6 }}>
-            <button className="secondary-button" type="button" onClick={() => setIsSymbolPanelOpen(false)} title="Collapse symbols panel" style={{ width: 32, minWidth: 32, padding: "4px 0", fontSize: 12, fontWeight: 700 }}>{"<<"}</button>
-            <span className="minor-text" style={{ fontSize: 11 }}>{symbolsByTab.length} symbols</span>
-
+          <div className="snapshot-symbol-row-inline-v4" style={{ gap: 6 }}>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setIsSymbolPanelOpen(false)}
+              title="Collapse symbols panel"
+              style={{
+                width: 32,
+                minWidth: 32,
+                padding: "4px 0",
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              {"<<"}
+            </button>
+            <span className="minor-text" style={{ fontSize: 11 }}>
+              {symbolsByTab.length} symbols
+            </span>
           </div>
           {isSymbolPanelOpen && (
             <>
@@ -3600,11 +3588,23 @@ export default function ChartSnapshotsPage() {
                       style={{ flexWrap: "wrap" }}
                     >
                       {filtered.map((s) => (
-                        <span key={s} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                        <span
+                          key={s}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 2,
+                          }}
+                        >
                           <button
                             type="button"
                             className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
-                            onClick={() => setCfgField("symbol", normalizeWatchSymbol(cfg.symbol) === s ? "" : s)}
+                            onClick={() =>
+                              setCfgField(
+                                "symbol",
+                                normalizeWatchSymbol(cfg.symbol) === s ? "" : s,
+                              )
+                            }
                           >
                             {s}
                           </button>
@@ -3612,8 +3612,21 @@ export default function ChartSnapshotsPage() {
                             <button
                               type="button"
                               className="secondary-button"
-                              style={{ width: 18, height: 18, padding: 0, fontSize: 10, lineHeight: 1, minWidth: 18, borderRadius: 4, color: "rgba(239,68,68,0.5)", borderColor: "rgba(239,68,68,0.25)" }}
-                              onClick={(e) => { e.stopPropagation(); removeFromWatchlist(s); }}
+                              style={{
+                                width: 18,
+                                height: 18,
+                                padding: 0,
+                                fontSize: 10,
+                                lineHeight: 1,
+                                minWidth: 18,
+                                borderRadius: 4,
+                                color: "rgba(239,68,68,0.5)",
+                                borderColor: "rgba(239,68,68,0.25)",
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeFromWatchlist(s);
+                              }}
                               title={"Remove " + s + " from watchlist"}
                             >
                               -
@@ -3622,11 +3635,23 @@ export default function ChartSnapshotsPage() {
                             <button
                               type="button"
                               className="secondary-button"
-                              style={{ width: 18, height: 18, padding: 0, fontSize: 10, lineHeight: 1, minWidth: 18, borderRadius: 4, color: "var(--muted)", borderColor: "rgba(255,255,255,0.08)" }}
+                              style={{
+                                width: 18,
+                                height: 18,
+                                padding: 0,
+                                fontSize: 10,
+                                lineHeight: 1,
+                                minWidth: 18,
+                                borderRadius: 4,
+                                color: "var(--muted)",
+                                borderColor: "rgba(255,255,255,0.08)",
+                              }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const next = [...new Set([...watchlist, s])];
-                                saveWatchlistToDb(next).then(() => setWatchlist(next));
+                                saveWatchlistToDb(next).then(() =>
+                                  setWatchlist(next),
+                                );
                               }}
                               title={"Add " + s + " to watchlist"}
                             >
@@ -3732,6 +3757,17 @@ export default function ChartSnapshotsPage() {
                 </button>
               )}
 
+              {cfg.symbol && (
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => setCfgField("symbol", "")}
+                  style={{ fontSize: 12, padding: "4px 8px" }}
+                >
+                  {"<"}
+                </button>
+              )}
+
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 <select
                   className="secondary-button"
@@ -3788,11 +3824,6 @@ export default function ChartSnapshotsPage() {
                 Settings
               </button>
 
-              <span className="minor-text" style={{ opacity: 0.8 }}>
-                {cfg.strategies.join("+") || "ai"} |{" "}
-                {PROFILE_PRESETS[cfg.profile]?.label || cfg.profile}
-              </span>
-
               {(marketMetadata.updated_time || autoFlow.runId) && (
                 <div
                   style={{
@@ -3835,7 +3866,6 @@ export default function ChartSnapshotsPage() {
               )}
             </div>
 
-            {cfg.symbol && (<button className="secondary-button" type="button" onClick={() => setCfgField("symbol", "")} style={{ fontSize: 11, padding: "4px 8px" }}>{"<"} Back</button>)}
             {/* Row 2 */}
             <div
               style={{
@@ -3907,9 +3937,30 @@ export default function ChartSnapshotsPage() {
                 alignItems: "center",
               }}
             >
-              <div style={{ display: "flex", gap: 12, alignItems: "center", flex: 1 }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  alignItems: "center",
+                  flex: 1,
+                }}
+              >
                 {!isSymbolPanelOpen && (
-                  <button className="secondary-button" type="button" onClick={() => setIsSymbolPanelOpen(true)} title="Expand symbols panel" style={{ width: 28, height: 28, padding: 0, fontSize: 12, fontWeight: 700 }}>{">>"}</button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => setIsSymbolPanelOpen(true)}
+                    title="Expand symbols panel"
+                    style={{
+                      width: 28,
+                      height: 28,
+                      padding: 0,
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {">>"}
+                  </button>
                 )}
                 <select
                   className="secondary-button"
@@ -3922,14 +3973,77 @@ export default function ChartSnapshotsPage() {
                   <option value="CRYPTO">Crypto</option>
                   <option value="FOREX">Forex</option>
                 </select>
-                <div style={{ position: "relative", flex: 1, maxWidth: 320, display: "flex", gap: 4 }}>
-                  <input list="tv-symbol-options" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && searchTerm.trim()) { setCfgField("symbol", normalizeWatchSymbol(searchTerm.trim())); } }} placeholder="Search symbol..." style={{ flex: 1, padding: "6px 10px", fontSize: 13 }} />
-                  <button className="secondary-button" type="button" style={{ width: 28, minWidth: 28, padding: "4px 0", fontSize: 14 }} onClick={() => { if (searchTerm.trim()) { const s = normalizeWatchSymbol(searchTerm.trim()); setCfgField("symbol", s); const next = [...new Set([...watchlist, s])]; saveWatchlistToDb(next).then(() => setWatchlist(next)); } }} title="Add current symbol">+</button>
-                  <datalist id="tv-symbol-options">{[...new Set([...symbolSelectOptions, ...apiSymbolOptions])].map((opt) => (<option key={opt} value={opt} />))}</datalist>
+                <div
+                  style={{
+                    position: "relative",
+                    flex: 1,
+                    maxWidth: 320,
+                    display: "flex",
+                    gap: 4,
+                  }}
+                >
+                  <input
+                    list="tv-symbol-options"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && searchTerm.trim()) {
+                        setCfgField(
+                          "symbol",
+                          normalizeWatchSymbol(searchTerm.trim()),
+                        );
+                      }
+                    }}
+                    placeholder="Search symbol..."
+                    style={{ flex: 1, padding: "6px 10px", fontSize: 13 }}
+                  />
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    style={{
+                      width: 28,
+                      minWidth: 28,
+                      padding: "4px 0",
+                      fontSize: 14,
+                    }}
+                    onClick={() => {
+                      if (searchTerm.trim()) {
+                        const s = normalizeWatchSymbol(searchTerm.trim());
+                        setCfgField("symbol", s);
+                        const next = [...new Set([...watchlist, s])];
+                        saveWatchlistToDb(next).then(() => setWatchlist(next));
+                      }
+                    }}
+                    title="Add current symbol"
+                  >
+                    +
+                  </button>
+                  <datalist id="tv-symbol-options">
+                    {[
+                      ...new Set([...symbolSelectOptions, ...apiSymbolOptions]),
+                    ].map((opt) => (
+                      <option key={opt} value={opt} />
+                    ))}
+                  </datalist>
                 </div>
                 <div className="tf-pills">
                   {["1m", "5m", "15m", "1h", "4h", "D"].map((tf) => (
-                    <button key={tf} className={`tf-pill ${browserTfs.includes(tf) ? "active" : ""}`} onClick={() => { setBrowserTfs((prev) => { if (prev.includes(tf)) { if (prev.length <= 1) return prev; return prev.filter((t) => t !== tf); } return [...prev, tf]; }); setBrowserTf(tf); }}>{tf.toUpperCase()}</button>
+                    <button
+                      key={tf}
+                      className={`tf-pill ${browserTfs.includes(tf) ? "active" : ""}`}
+                      onClick={() => {
+                        setBrowserTfs((prev) => {
+                          if (prev.includes(tf)) {
+                            if (prev.length <= 1) return prev;
+                            return prev.filter((t) => t !== tf);
+                          }
+                          return [...prev, tf];
+                        });
+                        setBrowserTf(tf);
+                      }}
+                    >
+                      {tf.toUpperCase()}
+                    </button>
                   ))}
                 </div>
               </div>
@@ -3955,14 +4069,25 @@ export default function ChartSnapshotsPage() {
                   style={{ width: 28, height: 28 }}
                   onClick={() => setBrowserPage((p) => p + 1)}
                   disabled={
-                    browserPage >= Math.ceil(symbolsByTab.length / browserPageSize)
+                    browserPage >=
+                    Math.ceil(symbolsByTab.length / browserPageSize)
                   }
                 >
                   &gt;
                 </button>
               </div>
             </div>
-            <div className="browser-grid-v1" style={{ gridTemplateColumns: browserTfs.length === 1 ? "repeat(4, 1fr)" : browserTfs.length <= 3 ? "repeat(2, 1fr)" : "1fr" }}>
+            <div
+              className="browser-grid-v1"
+              style={{
+                gridTemplateColumns:
+                  browserTfs.length === 1
+                    ? "repeat(4, 1fr)"
+                    : browserTfs.length <= 3
+                      ? "repeat(2, 1fr)"
+                      : "1fr",
+              }}
+            >
               {symbolsByTab
                 .slice(
                   (browserPage - 1) * browserPageSize,
@@ -3977,14 +4102,77 @@ export default function ChartSnapshotsPage() {
                         alignItems: "center",
                       }}
                     >
-                      <div style={{ fontWeight: 800, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
+                      <div
+                        style={{
+                          fontWeight: 800,
+                          fontSize: 14,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
                         {sym}
                         {watchlist.includes(sym) ? (
-                          <button type="button" className="secondary-button" style={{ width: 18, height: 18, padding: 0, fontSize: 10, lineHeight: 1, minWidth: 18, borderRadius: 4, color: "rgba(239,68,68,0.5)", borderColor: "rgba(239,68,68,0.25)" }} onClick={(e) => { e.stopPropagation(); removeFromWatchlist(sym); }} title={`Remove ${sym}`}>-</button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            style={{
+                              width: 18,
+                              height: 18,
+                              padding: 0,
+                              fontSize: 10,
+                              lineHeight: 1,
+                              minWidth: 18,
+                              borderRadius: 4,
+                              color: "rgba(239,68,68,0.5)",
+                              borderColor: "rgba(239,68,68,0.25)",
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFromWatchlist(sym);
+                            }}
+                            title={`Remove ${sym}`}
+                          >
+                            -
+                          </button>
                         ) : (
-                          <button type="button" className="secondary-button" style={{ width: 18, height: 18, padding: 0, fontSize: 10, lineHeight: 1, minWidth: 18, borderRadius: 4, color: "var(--muted)", borderColor: "rgba(255,255,255,0.08)" }} onClick={(e) => { e.stopPropagation(); const next = [...new Set([...watchlist, sym])]; saveWatchlistToDb(next).then(() => setWatchlist(next)); }} title={`Add ${sym} to watchlist`}>+</button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            style={{
+                              width: 18,
+                              height: 18,
+                              padding: 0,
+                              fontSize: 10,
+                              lineHeight: 1,
+                              minWidth: 18,
+                              borderRadius: 4,
+                              color: "var(--muted)",
+                              borderColor: "rgba(255,255,255,0.08)",
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const next = [...new Set([...watchlist, sym])];
+                              saveWatchlistToDb(next).then(() =>
+                                setWatchlist(next),
+                              );
+                            }}
+                            title={`Add ${sym} to watchlist`}
+                          >
+                            +
+                          </button>
                         )}
-                        <button className="secondary-button" style={{ padding: "2px 8px", fontSize: 10, marginLeft: "auto" }} onClick={() => setCfgField("symbol", sym)}>SELECT</button>
+                        <button
+                          className="secondary-button"
+                          style={{
+                            padding: "2px 8px",
+                            fontSize: 10,
+                            marginLeft: "auto",
+                          }}
+                          onClick={() => setCfgField("symbol", sym)}
+                        >
+                          SELECT
+                        </button>
                       </div>
                     </div>
 
@@ -3995,7 +4183,9 @@ export default function ChartSnapshotsPage() {
                         src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(liveTfToTradingViewInterval(browserTf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
                       />
                     ) : (
-                      <div style={{ display: "flex", gap: 4, overflowX: "auto" }}>
+                      <div
+                        style={{ display: "flex", gap: 4, overflowX: "auto" }}
+                      >
                         {browserTfs.map((tf) => (
                           <iframe
                             key={tf}
@@ -4196,17 +4386,77 @@ export default function ChartSnapshotsPage() {
             className="snapshot-modal-panel-v4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="snapshot-modal-head-v4">
+            <div
+              className="snapshot-modal-head-v4"
+              style={{ flexWrap: "wrap", gap: 10 }}
+            >
               <span className="panel-label" style={{ margin: 0 }}>
                 Settings
               </span>
-              <button
-                type="button"
-                className="danger-button"
-                onClick={() => setSettingsModalOpen(false)}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 6,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  marginLeft: "auto",
+                }}
               >
-                Close
-              </button>
+                <select
+                  className="secondary-button"
+                  value={templateId}
+                  onChange={(e) => handleSelectTemplate(e.target.value)}
+                  style={{ height: 34, padding: "0 10px", fontSize: 12 }}
+                >
+                  <option value="">New Template</option>
+                  <option value={DEFAULT_TEMPLATE_ID}>Default Template</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  placeholder="Template name"
+                  style={{
+                    width: 140,
+                    height: 34,
+                    padding: "0 10px",
+                    fontSize: 12,
+                  }}
+                />
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={saveTemplate}
+                  style={{ height: 34, fontSize: 12, padding: "0 12px" }}
+                >
+                  Save
+                </button>
+                {templateId && templateId !== DEFAULT_TEMPLATE_ID && (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={deleteTemplate}
+                    style={{
+                      color: "var(--bearish)",
+                      height: 34,
+                      fontSize: 12,
+                    }}
+                  >
+                    Delete
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="danger-button"
+                  onClick={() => setSettingsModalOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
             </div>
             <div className="snapshot-tabs-v2" style={{ marginBottom: 10 }}>
               <button
