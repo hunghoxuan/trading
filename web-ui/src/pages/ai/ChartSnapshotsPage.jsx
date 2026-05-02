@@ -4076,110 +4076,41 @@ export default function ChartSnapshotsPage() {
                       : "1fr",
               }}
             >
-              {symbolsByTab.slice(0, visibleCount).map((sym) => (
-                <div key={sym} className="browser-card-v1">
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
+              {symbolsByTab.slice(0, visibleCount).map((sym) =>
+                browserTfs.length <= 1 ? (
+                  <ChartTile
+                    key={sym}
+                    symbol={sym}
+                    timeframe={browserTf}
+                    provider={provider}
+                    defaultMode="fixed"
+                    onSelect={(s) => setCfgField("symbol", s)}
+                    onAddWatchlist={(s) => {
+                      const next = [...new Set([...watchlist, s])];
+                      saveWatchlistToDb(next).then(() => setWatchlist(next));
                     }}
-                  >
-                    <div
-                      style={{
-                        fontWeight: 800,
-                        fontSize: 14,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
+                    onRemoveWatchlist={(s) => removeFromWatchlist(s)}
+                    inWatchlist={watchlist.includes(sym)}
+                  />
+                ) : (
+                  browserTfs.map((tf) => (
+                    <ChartTile
+                      key={`${sym}-${tf}`}
+                      symbol={sym}
+                      timeframe={tf}
+                      provider={provider}
+                      defaultMode="fixed"
+                      onSelect={(s) => setCfgField("symbol", s)}
+                      onAddWatchlist={(s) => {
+                        const next = [...new Set([...watchlist, s])];
+                        saveWatchlistToDb(next).then(() => setWatchlist(next));
                       }}
-                    >
-                      {sym}
-                      {watchlist.includes(sym) ? (
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          style={{
-                            width: 18,
-                            height: 18,
-                            padding: 0,
-                            fontSize: 10,
-                            lineHeight: 1,
-                            minWidth: 18,
-                            borderRadius: 4,
-                            color: "rgba(239,68,68,0.5)",
-                            borderColor: "rgba(239,68,68,0.25)",
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeFromWatchlist(sym);
-                          }}
-                          title={`Remove ${sym}`}
-                        >
-                          -
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          style={{
-                            width: 18,
-                            height: 18,
-                            padding: 0,
-                            fontSize: 10,
-                            lineHeight: 1,
-                            minWidth: 18,
-                            borderRadius: 4,
-                            color: "var(--muted)",
-                            borderColor: "rgba(255,255,255,0.08)",
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const next = [...new Set([...watchlist, sym])];
-                            saveWatchlistToDb(next).then(() =>
-                              setWatchlist(next),
-                            );
-                          }}
-                          title={`Add ${sym} to watchlist`}
-                        >
-                          +
-                        </button>
-                      )}
-                      <button
-                        className="secondary-button"
-                        style={{
-                          padding: "2px 8px",
-                          fontSize: 10,
-                          marginLeft: "auto",
-                        }}
-                        onClick={() => setCfgField("symbol", sym)}
-                      >
-                        SELECT
-                      </button>
-                    </div>
-                  </div>
-
-                  {browserTfs.length <= 1 ? (
-                    <iframe
-                      title={`browser-chart-${sym}`}
-                      className="browser-chart-v1"
-                      src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(liveTfToTradingViewInterval(browserTf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+                      onRemoveWatchlist={(s) => removeFromWatchlist(s)}
+                      inWatchlist={watchlist.includes(sym)}
                     />
-                  ) : (
-                    <div style={{ display: "flex", gap: 4, overflowX: "auto" }}>
-                      {browserTfs.map((tf) => (
-                        <iframe
-                          key={tf}
-                          title={`browser-chart-${sym}-${tf}`}
-                          className="browser-chart-v1"
-                          style={{ minWidth: 200, flex: 1, height: 200 }}
-                          src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(liveTfToTradingViewInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+                  ))
+                )
+              )}              ))}
             </div>
           </div>
         )}
