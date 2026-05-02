@@ -1469,6 +1469,7 @@ export default function ChartSnapshotsPage() {
   const [analysisParsed, setAnalysisParsed] = useState(null);
   const [analysisSource, setAnalysisSource] = useState("ai_claude");
   const [browserTf, setBrowserTf] = useState("4h");
+  const [browserTfs, setBrowserTfs] = useState(["4h"]);
   const [browserPage, setBrowserPage] = useState(1);
   const [browserPageSize] = useState(12);
   const [searchTerm, setSearchTerm] = useState("");
@@ -1484,7 +1485,7 @@ export default function ChartSnapshotsPage() {
   const [selectedFiles, setSelectedFiles] = useState(new Set());
   const [watchlist, setWatchlist] = useState([]);
   const [isSymbolPanelOpen, setIsSymbolPanelOpen] = useState(true);
-  const [symbolFilterTab, setSymbolFilterTab] = useState("ALL");
+  const [symbolFilterTab, setSymbolFilterTab] = useState("FAVOURITE");
   const [analysisFilesDisplay, setAnalysisFilesDisplay] = useState([]);
   const [position, setPosition] = useState({
     direction: "BUY",
@@ -2981,6 +2982,13 @@ export default function ChartSnapshotsPage() {
   }, []);
 
   useEffect(() => {
+    const check = () => { if (window.innerWidth < 900) setIsSymbolPanelOpen(false); };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  useEffect(() => {
     const q = String(searchTerm || "").trim();
     if (!q || q.length < 2) {
       setApiSymbolOptions([]);
@@ -3536,24 +3544,7 @@ export default function ChartSnapshotsPage() {
 
   return (
     <section className="snapshot-builder-v2 snapshot-builder-v3 snapshot-builder-ai-v4">
-      {!isSymbolPanelOpen && (
-        <button
-          className="secondary-button"
-          type="button"
-          onClick={() => setIsSymbolPanelOpen(true)}
-          title="Expand symbols panel"
-          style={{
-            position: "absolute",
-            left: 8,
-            top: 8,
-            zIndex: 10,
-            fontSize: 12,
-            padding: "4px 8px",
-          }}
-        >
-          {">>"}
-        </button>
-      )}
+
       <section
         className="panel snapshot-col-v3 snapshot-col-symbols-v3"
         style={isSymbolPanelOpen ? {} : { display: "none" }}
@@ -3566,71 +3557,11 @@ export default function ChartSnapshotsPage() {
             height: "100%",
           }}
         >
-          <div className="snapshot-symbol-row-inline-v4" style={{ gap: 6 }}>
-            <input
-              list="tv-symbol-options"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && searchTerm.trim()) {
-                  setCfgField(
-                    "symbol",
-                    normalizeWatchSymbol(searchTerm.trim()),
-                  );
-                }
-              }}
-              placeholder="Search symbol..."
-              style={{
-                flex: 1,
-                minWidth: 120,
-                fontSize: 13,
-                padding: "6px 10px",
-              }}
-            />
-            <button
-              className="secondary-button snapshot-plus-btn-v2"
-              type="button"
-              style={{
-                width: 32,
-                minWidth: 32,
-                padding: "4px 0",
-                fontSize: 14,
-              }}
-              onClick={() => {
-                if (searchTerm.trim()) {
-                  const s = normalizeWatchSymbol(searchTerm.trim());
-                  setCfgField("symbol", s);
-                  const next = [...new Set([...watchlist, s])];
-                  saveWatchlistToDb(next).then(() => setWatchlist(next));
-                }
-              }}
-              title="Add current symbol"
-            >
-              +
-            </button>
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => setIsSymbolPanelOpen(false)}
-              title="Collapse symbols panel"
-              style={{
-                width: 32,
-                minWidth: 32,
-                padding: "4px 0",
-                fontSize: 12,
-                fontWeight: 700,
-              }}
-            >
-              {"<<"}
-            </button>
+                    <div className="snapshot-symbol-row-inline-v4" style={{ gap: 6 }}>
+            <button className="secondary-button" type="button" onClick={() => setIsSymbolPanelOpen(false)} title="Collapse symbols panel" style={{ width: 32, minWidth: 32, padding: "4px 0", fontSize: 12, fontWeight: 700 }}>{"<<"}</button>
+            <span className="minor-text" style={{ fontSize: 11 }}>{symbolsByTab.length} symbols</span>
+            <button className="secondary-button snapshot-plus-btn-v2" type="button" style={{ width: 32, minWidth: 32, padding: "4px 0", fontSize: 14 }} onClick={() => { if (searchTerm.trim()) { const s = normalizeWatchSymbol(searchTerm.trim()); setCfgField("symbol", s); const next = [...new Set([...watchlist, s])]; saveWatchlistToDb(next).then(() => setWatchlist(next)); } }} title="Add current symbol">+</button>
           </div>
-          <datalist id="tv-symbol-options">
-            {[...new Set([...symbolSelectOptions, ...apiSymbolOptions])].map(
-              (opt) => (
-                <option key={opt} value={opt} />
-              ),
-            )}
-          </datalist>
           {isSymbolPanelOpen && (
             <>
               <div className="snapshot-tabs-v2" style={{ flexWrap: "wrap" }}>
@@ -3681,7 +3612,7 @@ export default function ChartSnapshotsPage() {
                             <button
                               type="button"
                               className="secondary-button"
-                              style={{ width: 18, height: 18, padding: 0, fontSize: 10, lineHeight: 1, minWidth: 18, borderRadius: 4 }}
+                              style={{ width: 18, height: 18, padding: 0, fontSize: 10, lineHeight: 1, minWidth: 18, borderRadius: 4, color: "rgba(239,68,68,0.5)", borderColor: "rgba(239,68,68,0.25)" }}
                               onClick={(e) => { e.stopPropagation(); removeFromWatchlist(s); }}
                               title={"Remove " + s + " from watchlist"}
                             >
@@ -3691,7 +3622,7 @@ export default function ChartSnapshotsPage() {
                             <button
                               type="button"
                               className="secondary-button"
-                              style={{ width: 18, height: 18, padding: 0, fontSize: 10, lineHeight: 1, minWidth: 18, borderRadius: 4 }}
+                              style={{ width: 18, height: 18, padding: 0, fontSize: 10, lineHeight: 1, minWidth: 18, borderRadius: 4, color: "var(--muted)", borderColor: "rgba(255,255,255,0.08)" }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const next = [...new Set([...watchlist, s])];
@@ -3975,17 +3906,17 @@ export default function ChartSnapshotsPage() {
                 alignItems: "center",
               }}
             >
-              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                {/* Global Browser TF label removed per user request */}
+              <div style={{ display: "flex", gap: 12, alignItems: "center", flex: 1 }}>
+                {!isSymbolPanelOpen && (
+                  <button className="secondary-button" type="button" onClick={() => setIsSymbolPanelOpen(true)} title="Expand symbols panel" style={{ width: 28, height: 28, padding: 0, fontSize: 12, fontWeight: 700 }}>{">>"}</button>
+                )}
+                <div style={{ position: "relative", flex: 1, maxWidth: 320 }}>
+                  <input list="tv-symbol-options" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && searchTerm.trim()) { setCfgField("symbol", normalizeWatchSymbol(searchTerm.trim())); } }} placeholder="Search symbol..." style={{ width: "100%", padding: "6px 10px", fontSize: 13 }} />
+                  <datalist id="tv-symbol-options">{[...new Set([...symbolSelectOptions, ...apiSymbolOptions])].map((opt) => (<option key={opt} value={opt} />))}</datalist>
+                </div>
                 <div className="tf-pills">
                   {["1m", "5m", "15m", "1h", "4h", "D"].map((tf) => (
-                    <button
-                      key={tf}
-                      className={`tf-pill ${browserTf === tf ? "active" : ""}`}
-                      onClick={() => setBrowserTf(tf)}
-                    >
-                      {tf.toUpperCase()}
-                    </button>
+                    <button key={tf} className={`tf-pill ${browserTfs.includes(tf) ? "active" : ""}`} onClick={() => { setBrowserTfs((prev) => { if (prev.includes(tf)) { if (prev.length <= 1) return prev; return prev.filter((t) => t !== tf); } return [...prev, tf]; }); setBrowserTf(tf); }}>{tf.toUpperCase()}</button>
                   ))}
                 </div>
               </div>
@@ -4033,21 +3964,36 @@ export default function ChartSnapshotsPage() {
                         alignItems: "center",
                       }}
                     >
-                      <div style={{ fontWeight: 800, fontSize: 14 }}>{sym}</div>
-                      <button
-                        className="secondary-button"
-                        style={{ padding: "2px 8px", fontSize: 10 }}
-                        onClick={() => setCfgField("symbol", sym)}
-                      >
-                        SELECT
-                      </button>
+                      <div style={{ fontWeight: 800, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
+                        {sym}
+                        {watchlist.includes(sym) ? (
+                          <button type="button" className="secondary-button" style={{ width: 18, height: 18, padding: 0, fontSize: 10, lineHeight: 1, minWidth: 18, borderRadius: 4, color: "rgba(239,68,68,0.5)", borderColor: "rgba(239,68,68,0.25)" }} onClick={(e) => { e.stopPropagation(); removeFromWatchlist(sym); }} title={`Remove ${sym}`}>-</button>
+                        ) : (
+                          <button type="button" className="secondary-button" style={{ width: 18, height: 18, padding: 0, fontSize: 10, lineHeight: 1, minWidth: 18, borderRadius: 4, color: "var(--muted)", borderColor: "rgba(255,255,255,0.08)" }} onClick={(e) => { e.stopPropagation(); const next = [...new Set([...watchlist, sym])]; saveWatchlistToDb(next).then(() => setWatchlist(next)); }} title={`Add ${sym} to watchlist`}>+</button>
+                        )}
+                        <button className="secondary-button" style={{ padding: "2px 8px", fontSize: 10, marginLeft: "auto" }} onClick={() => setCfgField("symbol", sym)}>SELECT</button>
+                      </div>
                     </div>
 
-                    <iframe
-                      title={`browser-chart-${sym}`}
-                      className="browser-chart-v1"
-                      src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(liveTfToTradingViewInterval(browserTf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-                    />
+                    {browserTfs.length <= 1 ? (
+                      <iframe
+                        title={`browser-chart-${sym}`}
+                        className="browser-chart-v1"
+                        src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(liveTfToTradingViewInterval(browserTf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+                      />
+                    ) : (
+                      <div style={{ display: "flex", gap: 4, overflowX: "auto" }}>
+                        {browserTfs.map((tf) => (
+                          <iframe
+                            key={tf}
+                            title={`browser-chart-${sym}-${tf}`}
+                            className="browser-chart-v1"
+                            style={{ minWidth: 200, flex: 1, height: 200 }}
+                            src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(liveTfToTradingViewInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
             </div>
