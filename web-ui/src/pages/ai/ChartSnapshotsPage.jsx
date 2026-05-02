@@ -3560,9 +3560,7 @@ export default function ChartSnapshotsPage() {
                     <div className="snapshot-symbol-row-inline-v4" style={{ gap: 6 }}>
             <button className="secondary-button" type="button" onClick={() => setIsSymbolPanelOpen(false)} title="Collapse symbols panel" style={{ width: 32, minWidth: 32, padding: "4px 0", fontSize: 12, fontWeight: 700 }}>{"<<"}</button>
             <span className="minor-text" style={{ fontSize: 11 }}>{symbolsByTab.length} symbols</span>
-            {cfg.symbol && (
-              <button className="secondary-button" type="button" onClick={() => setCfgField("symbol", "")} style={{ fontSize: 11, padding: "4px 8px" }}>{"<"} Back</button>
-            )}
+
           </div>
           {isSymbolPanelOpen && (
             <>
@@ -3837,6 +3835,7 @@ export default function ChartSnapshotsPage() {
               )}
             </div>
 
+            {cfg.symbol && (<button className="secondary-button" type="button" onClick={() => setCfgField("symbol", "")} style={{ fontSize: 11, padding: "4px 8px" }}>{"<"} Back</button>)}
             {/* Row 2 */}
             <div
               style={{
@@ -3963,7 +3962,7 @@ export default function ChartSnapshotsPage() {
                 </button>
               </div>
             </div>
-            <div className="browser-grid-v1" style={{ gridTemplateColumns: browserTfs.length > 3 ? "1fr" : "repeat(2, 1fr)" }}>
+            <div className="browser-grid-v1" style={{ gridTemplateColumns: browserTfs.length === 1 ? "repeat(4, 1fr)" : browserTfs.length <= 3 ? "repeat(2, 1fr)" : "1fr" }}>
               {symbolsByTab
                 .slice(
                   (browserPage - 1) * browserPageSize,
