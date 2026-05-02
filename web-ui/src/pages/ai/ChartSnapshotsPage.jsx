@@ -3933,8 +3933,7 @@ export default function ChartSnapshotsPage() {
                 </span>
               )}
             </div>
-            <div ref={sentinelRef} style={{ height: 1 }} />
-          </div>
+                      </div>
         )}
 
         {!hasResponse && !cfg.symbol && (
@@ -4180,8 +4179,7 @@ export default function ChartSnapshotsPage() {
                   </div>
                 ))}
             </div>
-            <div ref={sentinelRef} style={{ height: 1 }} />
-          </div>
+                      </div>
         )}
 
         {!hasResponse && cfg.symbol && (
