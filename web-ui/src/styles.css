@@ -862,7 +862,7 @@ button:disabled {
     align-items: start;
 }
 .snapshot-builder-ai-v4 {
-    grid-template-columns: minmax(300px, 0.95fr) minmax(860px, 2.05fr);
+    grid-template-columns: minmax(200px, 0.45fr) minmax(860px, 2.05fr);
 }
 .snapshot-col-v3 {
     min-height: 80vh;
@@ -1785,7 +1785,7 @@ button:disabled {
 
 .browser-grid-v1 {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    grid-template-columns: repeat(4, 1fr);
     gap: 16px;
     margin-top: 16px;
 }
