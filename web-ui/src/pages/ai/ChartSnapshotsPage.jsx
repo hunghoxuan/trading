@@ -5,6 +5,7 @@ import { showDateTime, isSameDay } from "../../utils/format";
 import { api } from "../../api";
 import { SignalDetailCard } from "../../components/SignalDetailCard";
 import TradeSignalChart from "../../components/TradeSignalChart";
+import { ChartTile } from "../../components/charts/ChartTile";
 
 const STORAGE_KEY = "chart_prompt_builder_templates_v2";
 
@@ -2992,7 +2993,10 @@ export default function ChartSnapshotsPage() {
   // Infinite scroll: load more on scroll near bottom
   useEffect(() => {
     const handler = () => {
-      if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 400) {
+      if (
+        window.innerHeight + window.scrollY >=
+        document.body.offsetHeight - 400
+      ) {
         setVisibleCount((prev) => prev + 8);
       }
     };
@@ -3933,7 +3937,7 @@ export default function ChartSnapshotsPage() {
                 </span>
               )}
             </div>
-                      </div>
+          </div>
         )}
 
         {!hasResponse && !cfg.symbol && (
@@ -3975,7 +3979,10 @@ export default function ChartSnapshotsPage() {
                 <select
                   className="secondary-button"
                   value={symbolFilterTab}
-                  onChange={(e) => { setSymbolFilterTab(e.target.value); setVisibleCount(8); }}
+                  onChange={(e) => {
+                    setSymbolFilterTab(e.target.value);
+                    setVisibleCount(8);
+                  }}
                   style={{ padding: "6px 8px", fontSize: 12, height: 34 }}
                 >
                   <option value="FAVOURITE">Watchlist</option>
@@ -4057,7 +4064,6 @@ export default function ChartSnapshotsPage() {
                   ))}
                 </div>
               </div>
-              
             </div>
             <div
               className="browser-grid-v1"
@@ -4070,116 +4076,112 @@ export default function ChartSnapshotsPage() {
                       : "1fr",
               }}
             >
-              {symbolsByTab
-                .slice(0, visibleCount)
-                .map((sym) => (
-                  <div key={sym} className="browser-card-v1">
+              {symbolsByTab.slice(0, visibleCount).map((sym) => (
+                <div key={sym} className="browser-card-v1">
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
                     <div
                       style={{
+                        fontWeight: 800,
+                        fontSize: 14,
                         display: "flex",
-                        justifyContent: "space-between",
                         alignItems: "center",
+                        gap: 6,
                       }}
                     >
-                      <div
-                        style={{
-                          fontWeight: 800,
-                          fontSize: 14,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                        }}
-                      >
-                        {sym}
-                        {watchlist.includes(sym) ? (
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            style={{
-                              width: 18,
-                              height: 18,
-                              padding: 0,
-                              fontSize: 10,
-                              lineHeight: 1,
-                              minWidth: 18,
-                              borderRadius: 4,
-                              color: "rgba(239,68,68,0.5)",
-                              borderColor: "rgba(239,68,68,0.25)",
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeFromWatchlist(sym);
-                            }}
-                            title={`Remove ${sym}`}
-                          >
-                            -
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            style={{
-                              width: 18,
-                              height: 18,
-                              padding: 0,
-                              fontSize: 10,
-                              lineHeight: 1,
-                              minWidth: 18,
-                              borderRadius: 4,
-                              color: "var(--muted)",
-                              borderColor: "rgba(255,255,255,0.08)",
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const next = [...new Set([...watchlist, sym])];
-                              saveWatchlistToDb(next).then(() =>
-                                setWatchlist(next),
-                              );
-                            }}
-                            title={`Add ${sym} to watchlist`}
-                          >
-                            +
-                          </button>
-                        )}
+                      {sym}
+                      {watchlist.includes(sym) ? (
                         <button
+                          type="button"
                           className="secondary-button"
                           style={{
-                            padding: "2px 8px",
+                            width: 18,
+                            height: 18,
+                            padding: 0,
                             fontSize: 10,
-                            marginLeft: "auto",
+                            lineHeight: 1,
+                            minWidth: 18,
+                            borderRadius: 4,
+                            color: "rgba(239,68,68,0.5)",
+                            borderColor: "rgba(239,68,68,0.25)",
                           }}
-                          onClick={() => setCfgField("symbol", sym)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeFromWatchlist(sym);
+                          }}
+                          title={`Remove ${sym}`}
                         >
-                          SELECT
+                          -
                         </button>
-                      </div>
-                    </div>
-
-                    {browserTfs.length <= 1 ? (
-                      <iframe
-                        title={`browser-chart-${sym}`}
-                        className="browser-chart-v1"
-                        src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(liveTfToTradingViewInterval(browserTf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-                      />
-                    ) : (
-                      <div
-                        style={{ display: "flex", gap: 4, overflowX: "auto" }}
+                      ) : (
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          style={{
+                            width: 18,
+                            height: 18,
+                            padding: 0,
+                            fontSize: 10,
+                            lineHeight: 1,
+                            minWidth: 18,
+                            borderRadius: 4,
+                            color: "var(--muted)",
+                            borderColor: "rgba(255,255,255,0.08)",
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const next = [...new Set([...watchlist, sym])];
+                            saveWatchlistToDb(next).then(() =>
+                              setWatchlist(next),
+                            );
+                          }}
+                          title={`Add ${sym} to watchlist`}
+                        >
+                          +
+                        </button>
+                      )}
+                      <button
+                        className="secondary-button"
+                        style={{
+                          padding: "2px 8px",
+                          fontSize: 10,
+                          marginLeft: "auto",
+                        }}
+                        onClick={() => setCfgField("symbol", sym)}
                       >
-                        {browserTfs.map((tf) => (
-                          <iframe
-                            key={tf}
-                            title={`browser-chart-${sym}-${tf}`}
-                            className="browser-chart-v1"
-                            style={{ minWidth: 200, flex: 1, height: 200 }}
-                            src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(liveTfToTradingViewInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-                          />
-                        ))}
-                      </div>
-                    )}
+                        SELECT
+                      </button>
+                    </div>
                   </div>
-                ))}
+
+                  {browserTfs.length <= 1 ? (
+                    <iframe
+                      title={`browser-chart-${sym}`}
+                      className="browser-chart-v1"
+                      src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(liveTfToTradingViewInterval(browserTf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+                    />
+                  ) : (
+                    <div style={{ display: "flex", gap: 4, overflowX: "auto" }}>
+                      {browserTfs.map((tf) => (
+                        <iframe
+                          key={tf}
+                          title={`browser-chart-${sym}-${tf}`}
+                          className="browser-chart-v1"
+                          style={{ minWidth: 200, flex: 1, height: 200 }}
+                          src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(liveTfToTradingViewInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
-                      </div>
+          </div>
         )}
 
         {!hasResponse && cfg.symbol && (
@@ -4370,23 +4372,110 @@ export default function ChartSnapshotsPage() {
               style={{ flexWrap: "wrap", gap: 8, alignItems: "center" }}
             >
               <div className="snapshot-tabs-v2" style={{ margin: 0 }}>
-                <button type="button" className={`secondary-button ${settingsTab === "settings" ? "active" : ""}`} onClick={() => setSettingsTab("settings")} style={{ fontSize: 11, padding: "4px 10px" }}>Settings</button>
-                <button type="button" className={`secondary-button ${settingsTab === "prompt" ? "active" : ""}`} onClick={() => setSettingsTab("prompt")} style={{ fontSize: 11, padding: "4px 10px" }}>Prompt</button>
-                <button type="button" className={`secondary-button ${settingsTab === "json" ? "active" : ""}`} onClick={() => setSettingsTab("json")} style={{ fontSize: 11, padding: "4px 10px" }}>JSON</button>
-                <button type="button" className={`secondary-button ${settingsTab === "guide" ? "active" : ""}`} onClick={() => setSettingsTab("guide")} style={{ fontSize: 11, padding: "4px 10px" }}>Guide</button>
+                <button
+                  type="button"
+                  className={`secondary-button ${settingsTab === "settings" ? "active" : ""}`}
+                  onClick={() => setSettingsTab("settings")}
+                  style={{ fontSize: 11, padding: "4px 10px" }}
+                >
+                  Settings
+                </button>
+                <button
+                  type="button"
+                  className={`secondary-button ${settingsTab === "prompt" ? "active" : ""}`}
+                  onClick={() => setSettingsTab("prompt")}
+                  style={{ fontSize: 11, padding: "4px 10px" }}
+                >
+                  Prompt
+                </button>
+                <button
+                  type="button"
+                  className={`secondary-button ${settingsTab === "json" ? "active" : ""}`}
+                  onClick={() => setSettingsTab("json")}
+                  style={{ fontSize: 11, padding: "4px 10px" }}
+                >
+                  JSON
+                </button>
+                <button
+                  type="button"
+                  className={`secondary-button ${settingsTab === "guide" ? "active" : ""}`}
+                  onClick={() => setSettingsTab("guide")}
+                  style={{ fontSize: 11, padding: "4px 10px" }}
+                >
+                  Guide
+                </button>
               </div>
-              <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
-                <select className="secondary-button" value={templateId} onChange={(e) => handleSelectTemplate(e.target.value)} style={{ height: 28, padding: "0 6px", fontSize: 11 }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 4,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  marginLeft: "auto",
+                }}
+              >
+                <select
+                  className="secondary-button"
+                  value={templateId}
+                  onChange={(e) => handleSelectTemplate(e.target.value)}
+                  style={{ height: 28, padding: "0 6px", fontSize: 11 }}
+                >
                   <option value="">New</option>
                   <option value={DEFAULT_TEMPLATE_ID}>Default</option>
-                  {templates.map((t) => (<option key={t.id} value={t.id}>{t.name}</option>))}
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
                 </select>
-                <input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Name" style={{ width: 100, height: 28, padding: "0 6px", fontSize: 11 }} />
-                <button className="primary-button" type="button" onClick={saveTemplate} style={{ height: 28, fontSize: 11, padding: "0 8px" }}>Save</button>
+                <input
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  placeholder="Name"
+                  style={{
+                    width: 100,
+                    height: 28,
+                    padding: "0 6px",
+                    fontSize: 11,
+                  }}
+                />
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={saveTemplate}
+                  style={{ height: 28, fontSize: 11, padding: "0 8px" }}
+                >
+                  Save
+                </button>
                 {templateId && templateId !== DEFAULT_TEMPLATE_ID && (
-                  <button className="secondary-button" type="button" onClick={deleteTemplate} style={{ color: "var(--bearish)", height: 28, fontSize: 11, padding: "0 6px" }}>Del</button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={deleteTemplate}
+                    style={{
+                      color: "var(--bearish)",
+                      height: 28,
+                      fontSize: 11,
+                      padding: "0 6px",
+                    }}
+                  >
+                    Del
+                  </button>
                 )}
-                <button type="button" className="secondary-button" onClick={() => setSettingsModalOpen(false)} style={{ height: 28, fontSize: 12, padding: "0 6px", color: "var(--muted)", borderColor: "var(--border)" }}>X</button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setSettingsModalOpen(false)}
+                  style={{
+                    height: 28,
+                    fontSize: 12,
+                    padding: "0 6px",
+                    color: "var(--muted)",
+                    borderColor: "var(--border)",
+                  }}
+                >
+                  X
+                </button>
               </div>
             </div>
             {settingsTabContentNode}
