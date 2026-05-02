@@ -3560,7 +3560,9 @@ export default function ChartSnapshotsPage() {
                     <div className="snapshot-symbol-row-inline-v4" style={{ gap: 6 }}>
             <button className="secondary-button" type="button" onClick={() => setIsSymbolPanelOpen(false)} title="Collapse symbols panel" style={{ width: 32, minWidth: 32, padding: "4px 0", fontSize: 12, fontWeight: 700 }}>{"<<"}</button>
             <span className="minor-text" style={{ fontSize: 11 }}>{symbolsByTab.length} symbols</span>
-            <button className="secondary-button snapshot-plus-btn-v2" type="button" style={{ width: 32, minWidth: 32, padding: "4px 0", fontSize: 14 }} onClick={() => { if (searchTerm.trim()) { const s = normalizeWatchSymbol(searchTerm.trim()); setCfgField("symbol", s); const next = [...new Set([...watchlist, s])]; saveWatchlistToDb(next).then(() => setWatchlist(next)); } }} title="Add current symbol">+</button>
+            {cfg.symbol && (
+              <button className="secondary-button" type="button" onClick={() => setCfgField("symbol", "")} style={{ fontSize: 11, padding: "4px 8px" }}>{"<"} Back</button>
+            )}
           </div>
           {isSymbolPanelOpen && (
             <>
@@ -3604,7 +3606,7 @@ export default function ChartSnapshotsPage() {
                           <button
                             type="button"
                             className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
-                            onClick={() => setCfgField("symbol", s)}
+                            onClick={() => setCfgField("symbol", normalizeWatchSymbol(cfg.symbol) === s ? "" : s)}
                           >
                             {s}
                           </button>
@@ -3910,8 +3912,20 @@ export default function ChartSnapshotsPage() {
                 {!isSymbolPanelOpen && (
                   <button className="secondary-button" type="button" onClick={() => setIsSymbolPanelOpen(true)} title="Expand symbols panel" style={{ width: 28, height: 28, padding: 0, fontSize: 12, fontWeight: 700 }}>{">>"}</button>
                 )}
-                <div style={{ position: "relative", flex: 1, maxWidth: 320 }}>
-                  <input list="tv-symbol-options" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && searchTerm.trim()) { setCfgField("symbol", normalizeWatchSymbol(searchTerm.trim())); } }} placeholder="Search symbol..." style={{ width: "100%", padding: "6px 10px", fontSize: 13 }} />
+                <select
+                  className="secondary-button"
+                  value={symbolFilterTab}
+                  onChange={(e) => setSymbolFilterTab(e.target.value)}
+                  style={{ padding: "6px 8px", fontSize: 12, height: 34 }}
+                >
+                  <option value="FAVOURITE">Watchlist</option>
+                  <option value="ALL">All</option>
+                  <option value="CRYPTO">Crypto</option>
+                  <option value="FOREX">Forex</option>
+                </select>
+                <div style={{ position: "relative", flex: 1, maxWidth: 320, display: "flex", gap: 4 }}>
+                  <input list="tv-symbol-options" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && searchTerm.trim()) { setCfgField("symbol", normalizeWatchSymbol(searchTerm.trim())); } }} placeholder="Search symbol..." style={{ flex: 1, padding: "6px 10px", fontSize: 13 }} />
+                  <button className="secondary-button" type="button" style={{ width: 28, minWidth: 28, padding: "4px 0", fontSize: 14 }} onClick={() => { if (searchTerm.trim()) { const s = normalizeWatchSymbol(searchTerm.trim()); setCfgField("symbol", s); const next = [...new Set([...watchlist, s])]; saveWatchlistToDb(next).then(() => setWatchlist(next)); } }} title="Add current symbol">+</button>
                   <datalist id="tv-symbol-options">{[...new Set([...symbolSelectOptions, ...apiSymbolOptions])].map((opt) => (<option key={opt} value={opt} />))}</datalist>
                 </div>
                 <div className="tf-pills">
@@ -3949,7 +3963,7 @@ export default function ChartSnapshotsPage() {
                 </button>
               </div>
             </div>
-            <div className="browser-grid-v1">
+            <div className="browser-grid-v1" style={{ gridTemplateColumns: browserTfs.length > 3 ? "1fr" : "repeat(2, 1fr)" }}>
               {symbolsByTab
                 .slice(
                   (browserPage - 1) * browserPageSize,
