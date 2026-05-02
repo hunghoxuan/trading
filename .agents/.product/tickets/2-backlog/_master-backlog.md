@@ -25,6 +25,7 @@
 - [x] [2026-04-20 13:35] [Scripts/AI] [Author: Gemini] Feature: Implement Multi-Model AI CLI Gateway. -> MOVED TO SPRINT.
 - [ ] [2026-04-20 13:58] [Web-UI/AI] [Author: User] Feature: AI Agent Hub Page. -> MOVED TO SPRINT.
 - [ ] [2026-05-02 10:49] [Web-UI/AI] [Author: User] Feature: Chart Snapshots symbols panel update with `Favourite | All | Crypto | Forex` filters, panel open/close toggle, and favorites from user settings. Spec: `2-backlog/2026-05-02-chart-snapshots-symbol-panel-filters-favorites.md`.
+- [ ] [2026-05-02 13:35] [Web-UI/AI/Architecture] [Author: User] Feature: Chart Sync cards with per-card refresh/status and mode-aware pipeline (`Live TV`/`Fixed Data`/`Snapshot`), using canonical process `api.chartRefresh` (`POST /v2/chart/refresh`) and persisted cache contract `MARKET_DATA:SYMBOL`. Spec: `2-backlog/2026-05-02-chart-snapshots-componentized-async-chart-tiles.md`.
 
 ## Low Priority (`P2`)
 - [ ] [2026-04-14 15:00] [Architecture] [Author: User] Feature: Define HTF1-priority trend/bias direction policy.

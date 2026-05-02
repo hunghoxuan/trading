@@ -1471,7 +1471,6 @@ export default function ChartSnapshotsPage() {
   const [browserTf, setBrowserTf] = useState("4h");
   const [browserTfs, setBrowserTfs] = useState(["4h"]);
   const [visibleCount, setVisibleCount] = useState(8);
-  const sentinelRef = useRef(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [apiSymbolOptions, setApiSymbolOptions] = useState([]);
   const [symbolActivity, setSymbolActivity] = useState({
@@ -2990,18 +2989,16 @@ export default function ChartSnapshotsPage() {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Infinite scroll: load more when sentinel is visible
+  // Infinite scroll: load more on scroll near bottom
   useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
-    const obs = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) {
+    const handler = () => {
+      if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 400) {
         setVisibleCount((prev) => prev + 8);
       }
-    }, { rootMargin: "200px" });
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [symbolsByTab.length]);
+    };
+    window.addEventListener("scroll", handler, { passive: true });
+    return () => window.removeEventListener("scroll", handler);
+  }, []);
 
   useEffect(() => {
     const q = String(searchTerm || "").trim();
