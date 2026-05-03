@@ -4174,76 +4174,14 @@ export default function ChartSnapshotsPage() {
         )}
 
         {!hasResponse && cfg.symbol && (
-          <div className="snapshot-live-grid-v4">
-            {widgetTfs.map((tf) => (
-              <div key={tf} className="snapshot-live-card-v3">
-                <div className="minor-text" style={{ marginBottom: 6 }}>
-                  {tf}
-                  {(() => {
-                    const ctx = contextByTf.get(String(tf).toUpperCase());
-                    if (!ctx)
-                      return contextLoading ? " | loading context..." : "";
-                    const price = Number(ctx?.last_price);
-                    const change = Number(ctx?.summary?.close_change_20);
-                    const previousClose =
-                      Number.isFinite(price) && Number.isFinite(change)
-                        ? price - change
-                        : null;
-                    const pct =
-                      Number.isFinite(previousClose) &&
-                      Math.abs(previousClose) > 0
-                        ? change / previousClose
-                        : null;
-                    const barEndMs =
-                      Number(ctx?.bar_end) > 0
-                        ? Number(ctx.bar_end) * 1000
-                        : null;
-                    const cachedAt =
-                      ctx?.freshness?.updated_time ||
-                      ctx?.fetched_at ||
-                      barEndMs ||
-                      null;
-                    const trendText = String(
-                      ctx?.analysis?.trend || ctx?.analysis?.bias || "",
-                    ).trim();
-                    const pctLabel =
-                      Number.isFinite(pct) && Math.abs(pct) < 1
-                        ? `${pct > 0 ? "+" : ""}${(pct * 100).toFixed(2)}%`
-                        : "";
-                    const pctColor = Number.isFinite(pct)
-                      ? pct > 0
-                        ? "#26a69a"
-                        : pct < 0
-                          ? "#ef5350"
-                          : "var(--muted)"
-                      : "inherit";
-                    return (
-                      <>
-                        {cachedAt ? (
-                          <span>{` | cached ${showDateTime(cachedAt)}`}</span>
-                        ) : (
-                          <span>{" | cached time n/a"}</span>
-                        )}
-                        {Number.isFinite(price) ? (
-                          <span>{` | ${price}`}</span>
-                        ) : null}
-                        {pctLabel ? (
-                          <span
-                            style={{ color: pctColor }}
-                          >{` | ${pctLabel}`}</span>
-                        ) : null}
-                        {trendText ? <span>{` | ${trendText}`}</span> : null}
-                      </>
-                    );
-                  })()}
-                </div>
-                <iframe
-                  title={`live-chart-${tf}`}
-                  className="snapshot-live-iframe-v3"
-                  src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol || cfg.symbol || "EURUSD")}&interval=${encodeURIComponent(liveTfToTradingViewInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-                />
-              </div>
-            ))}
+          <div style={{ marginBottom: 20 }}>
+            <SymbolChart
+              symbol={cfg.symbol}
+              timeframes={widgetTfs}
+              defaultMode="live"
+              onAnalyze={() => handleAnalyze()}
+              onRemove={null}
+            />
           </div>
         )}
 

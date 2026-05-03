@@ -107,14 +107,10 @@ function TfHeader({ tf, context, master, mode }) {
           {isLongBias ? "↑" : isShortBias ? "↓" : ""}
         </span>
       )}
-      {mode !== "live" && (
+      {cachedAt && (
         <>
           <span style={{ opacity: 0.3 }}>|</span>
-          {cachedAt ? (
-            <span>{`cached ${showDateTime(cachedAt)}`}</span>
-          ) : (
-            <span>{"cached time n/a"}</span>
-          )}
+          <span>{`cached ${showDateTime(cachedAt)}`}</span>
         </>
       )}
       {Number.isFinite(price) && (
