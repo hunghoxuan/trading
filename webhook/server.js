@@ -5421,6 +5421,8 @@ async function _mt5InitBackendInternal() {
     -- DDL Migrations
     ALTER TABLE signals ADD COLUMN IF NOT EXISTS order_type TEXT NULL;
     ALTER TABLE trades ADD COLUMN IF NOT EXISTS order_type TEXT NULL;
+    ALTER TABLE logs ADD COLUMN IF NOT EXISTS symbol TEXT NULL;
+    ALTER TABLE logs ADD COLUMN IF NOT EXISTS event_type TEXT NULL;
   `);
 
   await pool.query(
@@ -5895,6 +5897,10 @@ async function _mt5InitBackendInternal() {
     `CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_logs_object ON logs(object_id, object_table)`,
     `CREATE INDEX IF NOT EXISTS idx_logs_user ON logs(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_logs_symbol ON logs(symbol)`,
+    `CREATE INDEX IF NOT EXISTS idx_logs_event_type ON logs(event_type)`,
+    `CREATE INDEX IF NOT EXISTS idx_signals_user ON signals(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_trades_user ON trades(user_id)`,
   ];
   for (const sql of idxSql) {
     await pool
@@ -6149,22 +6155,23 @@ async function _mt5InitBackendInternal() {
     query: (q, p) => pool.query(q, p),
     info: { url: CFG.mt5PostgresUrl.replace(/:[^:@/]+@/, ":***@") },
     async log(objectId, objectTable, metadata = {}, userId = null) {
-      const eventName = String(
+      const eventType = String(
         metadata.event || metadata.event_type || "INFO",
       ).toUpperCase();
+      const symbol = String(metadata.symbol || "").toUpperCase() || null;
+
       const isEnabled = LOG_ENABLED_PREFIXES.some((p) =>
-        eventName.startsWith(p),
+        eventType.startsWith(p),
       );
       if (!isEnabled) {
-        // console.log(`[LOG_SKIPPED] ${eventName}`); // Debug
         return;
       }
       await pool.query(
         `
-        INSERT INTO logs (object_id, object_table, metadata, user_id, created_at)
-        VALUES ($1, $2, $3, $4, NOW())
+        INSERT INTO logs (object_id, object_table, symbol, event_type, metadata, user_id, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
       `,
-        [objectId, objectTable, JSON.stringify(metadata), userId],
+        [objectId, objectTable, symbol, eventType, JSON.stringify(metadata), userId],
       );
     },
     refreshLogConfig: loadLoggingConfig,
@@ -7673,6 +7680,14 @@ async function _mt5InitBackendInternal() {
       if (filters.object_table) {
         params.push(filters.object_table);
         clauses.push(`object_table = $${params.length}`);
+      }
+      if (filters.symbol) {
+        params.push(String(filters.symbol).toUpperCase());
+        clauses.push(`symbol = $${params.length}`);
+      }
+      if (filters.event_type) {
+        params.push(String(filters.event_type).toUpperCase());
+        clauses.push(`event_type = $${params.length}`);
       }
       const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
       params.push(limit, offset);
