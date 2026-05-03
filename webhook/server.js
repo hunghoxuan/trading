@@ -927,12 +927,9 @@ async function repoUpsertUnifiedMarketData(symbol, tf, dataUpdate) {
         : null),
   };
 
-  // Update or Add timeframe
-  const dataIdx = current.data.findIndex(
-    (d) => normalizeMarketDataTf(d.tf) === tfNorm,
-  );
-  if (dataIdx >= 0) {
-    current.data[dataIdx] = timeframeData;
+  // Update or Add timeframe (reuse existingIdx from above)
+  if (existingIdx >= 0) {
+    current.data[existingIdx] = timeframeData;
   } else {
     current.data.push(timeframeData);
   }
@@ -1369,7 +1366,7 @@ function marketDataMemoryWrite(symbolNorm, tfNorm, data) {
   }
 
   // Update or Add TF
-  const existingIdx = root.data.findIndex((d) => d.tf === tfNorm);
+  const existingIdx = Array.isArray(root.data) ? root.data.findIndex((d) => d.tf === tfNorm) : -1;
   const tfEntry = {
     ...data,
     tf: tfNorm,
@@ -1417,7 +1414,7 @@ async function marketDataRedisWrite(symbolNorm, tfNorm, snapshot) {
     source: snapshot.source || "remote_api",
   };
 
-  const existingIdx = root.data.findIndex((d) => d.tf === tfNorm);
+  const existingIdx = Array.isArray(root.data) ? root.data.findIndex((d) => d.tf === tfNorm) : -1;
   if (existingIdx >= 0) {
     root.data[existingIdx] = tfEntry;
   } else {
@@ -2708,7 +2705,7 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
   const symbolToken = sanitizeSnapshotFileToken(symbol);
   const tfToken = sanitizeSnapshotFileToken(interval, "TF");
   const userId = sanitizeSnapshotFileToken(opts.userId || "default");
-  
+
   // Unified naming: UID_{user}_{symbol}_{tf}_{timestamp}_snapshot.ext
   const stamp = snapshotTimestampToken(ts);
   const fileName = `UID_${userId}_${symbolToken}_${tfToken}_${stamp}_snapshot.${outFormat}`;
