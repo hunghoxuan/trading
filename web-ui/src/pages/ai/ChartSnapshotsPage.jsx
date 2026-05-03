@@ -1717,14 +1717,14 @@ export default function ChartSnapshotsPage() {
   const canAddSignal = useMemo(() => {
     const fromAi =
       extractSignalsFromAnalysis(effectiveParsed, {
-        symbol: tvSymbol,
+        symbol: String(tvSymbol || "").split(":").pop(),
         timeframe,
         strategy: cfg.strategies.join("+") || "ai",
         source: analysisSource,
       }).length > 0;
     if (fromAi) return true;
     const err = validatePosition(position);
-    return Boolean(normalizeSignalSymbol(tvSymbol || cfg.symbol || "")) && !err;
+    return Boolean(normalizeSignalSymbol(String(tvSymbol || cfg.symbol || "").split(":").pop())) && !err;
   }, [
     effectiveParsed,
     tvSymbol,
@@ -1989,7 +1989,7 @@ export default function ChartSnapshotsPage() {
         return initial;
       }
       const out = await api.chartRefresh({
-        symbols: [tvSymbol],
+        symbols: [String(tvSymbol || "").split(":").pop()],
         provider,
         timeframes: initial.missingTfs,
         types: ["snapshots"],
@@ -2295,7 +2295,7 @@ export default function ChartSnapshotsPage() {
 
       const basePrompt = String(promptDraft || promptText || "").trim();
       const runtimeConfig = JSON.stringify({
-        symbol: tvSymbol || cfg.symbol,
+        symbol: String(tvSymbol || cfg.symbol || "").split(":").pop(),
         assetClass: cfg.asset,
         timeframes: [
           ...tfConfig.htf_tfs,
@@ -2431,7 +2431,7 @@ export default function ChartSnapshotsPage() {
     if (!sessionPrefix) setSessionPrefix(activeSessionPrefix);
     try {
       const out = await api.chartSnapshotCreateBatch({
-        symbol: tvSymbol,
+        symbol: String(tvSymbol || "").split(":").pop(),
         provider,
         session_prefix: activeSessionPrefix,
         timeframes: tfs,
@@ -2667,7 +2667,7 @@ export default function ChartSnapshotsPage() {
       const signals = overridePosition
         ? []
         : extractSignalsFromAnalysis(parsed, {
-            symbol: tvSymbol,
+            symbol: String(tvSymbol || "").split(":").pop(),
             timeframe,
             strategy: cfg.strategies.join("+") || "ai",
             source: analysisSource,
@@ -2675,7 +2675,7 @@ export default function ChartSnapshotsPage() {
 
       if (!signals.length) {
         const symbolManual = normalizeSignalSymbol(
-          tvSymbol || cfg.symbol || "",
+          String(tvSymbol || cfg.symbol || "").split(":").pop(),
         );
         const entry = parseNum(activePosition.entry);
         const sl = parseNum(activePosition.sl);
