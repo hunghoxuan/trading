@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useSymbolChartData } from "../../hooks/useChartTileData";
 import TradeSignalChart from "../TradeSignalChart";
 
@@ -19,14 +19,12 @@ function liveTfToTvInterval(tf) {
   return s.toUpperCase();
 }
 function normSym(s) {
-  // Strip provider prefix: ICMARKETS:EURUSD → EURUSD
   const raw = String(s || "")
     .trim()
     .toUpperCase();
   if (raw.includes(":")) return raw.split(":").pop().trim().toUpperCase();
   return raw;
 }
-
 function timeAgo(ms) {
   if (!ms) return null;
   const diff = Date.now() - ms;
@@ -34,87 +32,6 @@ function timeAgo(ms) {
   if (diff < 3600000) return Math.floor(diff / 60000) + "m ago";
   if (diff < 86400000) return Math.floor(diff / 3600000) + "h ago";
   return Math.floor(diff / 86400000) + "d ago";
-}
-
-// Status modal
-function StatusModal({ open, onClose, status, error, master }) {
-  if (!open) return null;
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.6)",
-        zIndex: 999,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 12,
-          padding: 20,
-          maxWidth: 500,
-          maxHeight: "80vh",
-          overflow: "auto",
-          minWidth: 320,
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginBottom: 12,
-          }}
-        >
-          <span style={{ fontWeight: 700 }}>Status: {status}</span>
-          <button
-            className="secondary-button"
-            onClick={onClose}
-            style={{ padding: "2px 8px" }}
-          >
-            X
-          </button>
-        </div>
-        {error && (
-          <div
-            style={{
-              color: "#ef4444",
-              fontSize: 12,
-              marginBottom: 8,
-              padding: 8,
-              background: "rgba(239,68,68,0.1)",
-              borderRadius: 6,
-            }}
-          >
-            {error}
-          </div>
-        )}
-        {master && (
-          <pre
-            style={{
-              fontSize: 10,
-              color: "var(--muted)",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-all",
-              maxHeight: 400,
-              overflow: "auto",
-            }}
-          >
-            {JSON.stringify(master, null, 2)}
-          </pre>
-        )}
-        {!error && !master && (
-          <span className="minor-text">No cached data</span>
-        )}
-      </div>
-    </div>
-  );
 }
 
 export function SymbolChart({
@@ -125,11 +42,16 @@ export function SymbolChart({
   onRemove,
 }) {
   const [mode, setMode] = useState(defaultMode);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [pendingMode, setPendingMode] = useState(null); // mode we're loading
+  const [lastError, setLastError] = useState(null);
   const cleanSym = useMemo(() => normSym(symbol), [symbol]);
 
   const { status, master, error, cachedAt, refresh, liveKey, snapshotState } =
-    useSymbolChartData({ symbol: cleanSym, timeframes, mode });
+    useSymbolChartData({
+      symbol: cleanSym,
+      timeframes,
+      mode: pendingMode || mode,
+    });
 
   const sortedTfs = useMemo(
     () =>
@@ -151,53 +73,96 @@ export function SymbolChart({
     [timeframes],
   );
 
-  // Per-mode status for button colors
-  const modeStatus = useMemo(() => {
-    if (mode === "live") return "IDLE"; // Live never errors
-    if (status === "LOADING") return "LOADING";
-    if (error) return "ERROR";
+  // Track per-mode cached time (bars vs snapshots)
+  const barsCachedAt = useMemo(() => {
     const hasBars = Object.values(master?.bars || {}).some(
       (b) => Array.isArray(b) && b.length > 0,
     );
-    if (hasBars) return "READY";
-    return "IDLE"; // no data yet
-  }, [mode, status, error, master]);
+    return hasBars ? master?.cached_at || cachedAt : null;
+  }, [master, cachedAt]);
 
-  const hasAnyData = useMemo(() => {
-    return Object.values(master?.bars || {}).some(
-      (b) => Array.isArray(b) && b.length > 0,
+  const snapsCachedAt = useMemo(() => {
+    const hasSnaps = Object.values(master?.snapshots || {}).some(
+      (s) => s?.uploaded_at,
     );
+    if (!hasSnaps) return null;
+    // Find latest uploaded_at among all snapshots
+    let latest = 0;
+    for (const s of Object.values(master?.snapshots || {})) {
+      if (s?.uploaded_at && s.uploaded_at > latest) latest = s.uploaded_at;
+    }
+    return latest || null;
   }, [master]);
 
-  const handleRefresh = useCallback(
-    (newMode) => {
-      setMode(newMode);
-      if (newMode === "live") return; // no fetch
-      refresh({ force: true });
-    },
-    [refresh],
+  // When loading finishes, either switch to pending mode or record error
+  const prevStatus = useRef(status);
+  useEffect(() => {
+    if (prevStatus.current === "LOADING" && status !== "LOADING") {
+      if (status === "READY" || status === "STALE") {
+        // Data loaded — switch to pending mode
+        if (pendingMode) {
+          setMode(pendingMode);
+          setPendingMode(null);
+        }
+        setLastError(null);
+      } else if (status === "ERROR") {
+        setLastError(error || "Fetch failed");
+        setPendingMode(null);
+      }
+    }
+    prevStatus.current = status;
+  }, [status, error, pendingMode]);
+
+  const hasAnyBars = useMemo(
+    () =>
+      Object.values(master?.bars || {}).some(
+        (b) => Array.isArray(b) && b.length > 0,
+      ),
+    [master],
   );
 
+  const needsFallback = mode !== "live" && !hasAnyBars && status !== "LOADING";
+
+  const handleModeClick = useCallback((newMode) => {
+    if (newMode === "live") {
+      setMode("live");
+      setPendingMode(null);
+      setLastError(null);
+      return;
+    }
+    // Just set pending — hook detects mode change, checks cache, fetches if needed
+    setPendingMode(newMode);
+    setLastError(null);
+  }, []);
+
   const btnColor = (m) => {
-    if (m !== mode) return "var(--muted)"; // inactive mode
-    const c = STATUS_COLORS[modeStatus] || "var(--muted)";
-    return c;
+    const active = pendingMode || mode;
+    if (m !== active) return "var(--muted)";
+    if (m === "live") return "var(--muted)";
+    if (status === "LOADING") return STATUS_COLORS.LOADING;
+    if (lastError || error) return STATUS_COLORS.ERROR;
+    if (m === "cache" && barsCachedAt) return STATUS_COLORS.READY;
+    if (m === "snapshots" && snapsCachedAt) return STATUS_COLORS.READY;
+    return "var(--muted)";
   };
 
   const btnTitle = (m) => {
-    if (m !== mode) return MODE_LABELS[m];
-    if (error) return error;
-    if (cachedAt && hasAnyData) return "Cached " + timeAgo(cachedAt);
+    const active = pendingMode || mode;
+    if (m !== active) return MODE_LABELS[m];
+    if (lastError || error) return lastError || error;
+    if (m === "cache" && barsCachedAt)
+      return "Bars cached " + timeAgo(barsCachedAt);
+    if (m === "snapshots" && snapsCachedAt)
+      return "Snapshots cached " + timeAgo(snapsCachedAt);
     if (status === "LOADING") return "Loading...";
-    return MODE_LABELS[m];
+    return MODE_LABELS[m] + " (no data)";
   };
 
   const chartHeight = 180;
-  const needsFallback = mode !== "live" && !hasAnyData && status !== "LOADING";
 
   return (
     <div className="browser-card-v1" style={{ position: "relative" }}>
-      {/* ── Header: Symbol | Live Cache Snapshots | Analyze ── */}
+      {/* ── Header ── */}
       <div
         style={{
           display: "flex",
@@ -235,13 +200,12 @@ export function SymbolChart({
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {/* Mode buttons: Live | Cache | Snapshots */}
           {MODES.map((m) => (
             <button
               key={m}
               className="secondary-button"
-              onClick={() => handleRefresh(m)}
-              disabled={status === "LOADING" && m === mode}
+              onClick={() => handleModeClick(m)}
+              disabled={status === "LOADING"}
               title={btnTitle(m)}
               style={{
                 fontSize: 10,
@@ -249,15 +213,20 @@ export function SymbolChart({
                 padding: "3px 8px",
                 borderRadius: 4,
                 color: btnColor(m),
-                borderColor: mode === m ? btnColor(m) + "60" : "var(--border)",
-                background: mode === m ? btnColor(m) + "12" : "transparent",
+                borderColor:
+                  (pendingMode || mode) === m
+                    ? btnColor(m) + "60"
+                    : "var(--border)",
+                background:
+                  (pendingMode || mode) === m
+                    ? btnColor(m) + "12"
+                    : "transparent",
               }}
             >
               {MODE_LABELS[m]}
-              {mode === m && status === "LOADING" && " \u23F3"}
+              {(pendingMode || mode) === m && status === "LOADING" && " \u23F3"}
             </button>
           ))}
-          {/* Refresh */}
           <button
             className="secondary-button"
             style={{
@@ -274,7 +243,6 @@ export function SymbolChart({
           >
             {status === "LOADING" ? "\u23F3" : "\u21BB"}
           </button>
-          {/* Analyze */}
           <button
             className="primary-button"
             style={{ padding: "2px 8px", fontSize: 10 }}
@@ -286,7 +254,7 @@ export function SymbolChart({
       </div>
 
       {/* Snapshot pipeline message */}
-      {mode === "snapshots" &&
+      {(pendingMode || mode) === "snapshots" &&
         snapshotState?.message &&
         snapshotState.stage !== "idle" && (
           <div
@@ -347,27 +315,12 @@ export function SymbolChart({
           ))}
       </div>
 
-      {/* Cached time footer */}
-      {cachedAt && hasAnyData && (
-        <div
-          style={{
-            marginTop: 6,
-            fontSize: 9,
-            color: "var(--muted)",
-            textAlign: "right",
-          }}
-        >
-          Cached {timeAgo(cachedAt)}
+      {/* Error display */}
+      {(lastError || error) && (
+        <div style={{ marginTop: 4, fontSize: 9, color: "#ef4444" }}>
+          {lastError || error}
         </div>
       )}
-
-      <StatusModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        status={status}
-        error={error}
-        master={master}
-      />
     </div>
   );
 }
