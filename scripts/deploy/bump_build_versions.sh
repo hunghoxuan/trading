@@ -7,7 +7,7 @@ cd "$ROOT_DIR"
 GIT_ID="${BUILD_GIT_ID:-$(git rev-parse --short HEAD 2>/dev/null || echo nogit)}"
 VERSION="$(date -u '+v%Y.%m.%d %H:%M') - ${GIT_ID}"
 
-perl -0777 -i -pe "s/const SERVER_VERSION = envStr\(process\.env\.WEBHOOK_SERVER_VERSION, \"[^\"]+\"\);/const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, \"${VERSION}\");/g" webhook/server.js
+perl -0777 -i -pe "s/const SERVER_VERSION = envStr\(\s*process\.env\.WEBHOOK_SERVER_VERSION,\s*\"[^\"]+\"\s*\);/const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, \"${VERSION}\");/g" webhook/server.js
 perl -0777 -i -pe "s/string EA_BUILD_VERSION = \"[^\"]+\";/string EA_BUILD_VERSION = \"${VERSION}\";/g" mql5/TVBridgeEA.mq5
 
 echo "[build-version] server=${VERSION}"
