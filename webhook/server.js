@@ -100,7 +100,10 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.03 09:31 - 61df06f"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(
+  process.env.WEBHOOK_SERVER_VERSION,
+  "v2026.05.03 09:31 - 61df06f",
+); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(
   CHART_SNAPSHOT_DIR,
@@ -906,6 +909,9 @@ async function repoUpsertUnifiedMarketData(symbol, tf, dataUpdate) {
       dataUpdate.metadata ||
       dataUpdate.summary ||
       null,
+    snapshot: dataUpdate.snapshot
+      ? { ...(current.data[dataIdx]?.snapshot || {}), ...dataUpdate.snapshot }
+      : current.data[dataIdx]?.snapshot || null,
     bars: Array.isArray(dataUpdate.bars) ? dataUpdate.bars : [],
     last_price:
       dataUpdate.last_price ??
@@ -15641,7 +15647,9 @@ const appHandler = async (req, res) => {
           });
         }
       }
-      return json(res, 200, {
+      
+      for (const u of uploaded) { try { const fname = String(u?.filename || u?.local_file || ""); const parts = fname.split("_"); if (parts.length >= 2) { const sym = parts[0]?.toUpperCase?.() || ""; const tf = parts[1]?.toLowerCase?.() || ""; if (sym && tf && u?.id) { await repoUpsertUnifiedMarketData(sym, tf, { snapshot: { file_id: String(u.id), file_name: fname, uploaded_at: new Date().toISOString() } }); } } } catch (_) {} }
+return json(res, 200, {
         ok: true,
         uploaded_count: uploaded.length,
         failed_count: failed.length,

@@ -4108,39 +4108,17 @@ export default function ChartSnapshotsPage() {
                       : "1fr",
               }}
             >
-              {symbolsByTab.slice(0, visibleCount).map((sym) =>
-                browserTfs.length <= 1 ? (
+              {symbolsByTab.slice(0, visibleCount).map((sym) => (
                   <SymbolChart
                     key={sym}
                     symbol={sym}
-                    timeframe={browserTf}
-                    defaultMode="Fixed Data"
-                    onSelect={(s) => setCfgField("symbol", s)}
-                    onAddWatchlist={(s) => {
-                      const next = [...new Set([...watchlist, s])];
-                      saveWatchlistToDb(next).then(() => setWatchlist(next));
-                    }}
-                    onRemoveWatchlist={(s) => removeFromWatchlist(s)}
+                    timeframes={browserTfs}
+                    defaultMode="Live TV"
+                    onAnalyze={(s) => setCfgField("symbol", s)}
+                    onRemove={(s) => removeFromWatchlist(s)}
                     inWatchlist={watchlist.includes(sym)}
                   />
-                ) : (
-                  browserTfs.map((tf) => (
-                    <SymbolChart
-                      key={`${sym}-${tf}`}
-                      symbol={sym}
-                      timeframe={tf}
-                      defaultMode="Fixed Data"
-                      onSelect={(s) => setCfgField("symbol", s)}
-                      onAddWatchlist={(s) => {
-                        const next = [...new Set([...watchlist, s])];
-                        saveWatchlistToDb(next).then(() => setWatchlist(next));
-                      }}
-                      onRemoveWatchlist={(s) => removeFromWatchlist(s)}
-                      inWatchlist={watchlist.includes(sym)}
-                    />
-                  ))
-                )
-              )}
+                ))}
             </div>
           </div>
         )}

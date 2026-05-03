@@ -11,7 +11,6 @@ const STATUS_COLORS = {
   STALE: "#f59e0b",
   ERROR: "#ef4444",
 };
-
 const STATUS_LABELS = {
   IDLE: "IDLE",
   LOADING: "LOADING",
@@ -19,93 +18,139 @@ const STATUS_LABELS = {
   STALE: "STALE",
   ERROR: "ERROR",
 };
-
 const MODES = ["Live TV", "Fixed Data", "Snapshot"];
-
-// ── helpers ────────────────────────────────────────────────────────
 
 function liveTfToTvInterval(tf) {
   const s = String(tf || "4h").toLowerCase();
   if (s === "d" || s === "1d") return "D";
   if (s === "w" || s === "1w") return "W";
-  if (s === "m" || s === "1mth" || s === "1mo") return "M";
   return s.toUpperCase();
 }
-
-function toModeKey(uiMode) {
-  const m = String(uiMode || "").toLowerCase();
-  if (m === "live" || m === "live tv") return "live";
-  if (m === "snapshot") return "snapshot";
+function toModeKey(m) {
+  const s = String(m || "").toLowerCase();
+  if (s === "live" || s === "live tv") return "live";
+  if (s === "snapshot") return "snapshot";
   return "fixed";
 }
 
-// ── SymbolChart component ──────────────────────────────────────────
+function timeAgo(ms) {
+  if (!ms) return null;
+  const diff = Date.now() - ms;
+  if (diff < 60000) return "just now";
+  if (diff < 3600000) return Math.floor(diff / 60000) + "m ago";
+  if (diff < 86400000) return Math.floor(diff / 3600000) + "h ago";
+  return Math.floor(diff / 86400000) + "d ago";
+}
 
-/**
- * SymbolChart — independent per-symbol per-TF chart card.
- *
- * Props:
- *  symbol             (required)  instrument symbol
- *  timeframe          (required)  e.g. "4h", "15m", "D"
- *  allTfs             (optional)  TFs to fetch on refresh (default: ["D","4h","15m","5m"])
- *  bars               (optional)  pre-supplied OHLCV bars (from outside)
- *  snapshot_file_id   (optional)  Claude file_id
- *  snapshot_file_name (optional)  VPS file name
- *  cached_time        (optional)  last cache timestamp
- *  defaultMode        (optional)  "Live TV" | "Fixed Data" | "Snapshot"
- *  onSelect           (optional)  called when SELECT clicked
- *  onAddWatchlist     (optional)
- *  onRemoveWatchlist  (optional)
- *  inWatchlist        (optional)
- */
+// ── StatusModal ────────────────────────────────────────────────────
+
+function StatusModal({ open, onClose, status, error, master }) {
+  if (!open) return null;
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        zIndex: 999,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 12,
+          padding: 20,
+          maxWidth: 500,
+          maxHeight: "80vh",
+          overflow: "auto",
+          minWidth: 320,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: 12,
+          }}
+        >
+          <span style={{ fontWeight: 700 }}>
+            Status: {STATUS_LABELS[status] || status}
+          </span>
+          <button
+            className="secondary-button"
+            onClick={onClose}
+            style={{ padding: "2px 8px" }}
+          >
+            X
+          </button>
+        </div>
+        {error && (
+          <div
+            style={{
+              color: "#ef4444",
+              fontSize: 12,
+              marginBottom: 8,
+              padding: 8,
+              background: "rgba(239,68,68,0.1)",
+              borderRadius: 6,
+            }}
+          >
+            {error}
+          </div>
+        )}
+        {master && (
+          <pre
+            style={{
+              fontSize: 10,
+              color: "var(--muted)",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-all",
+              maxHeight: 400,
+              overflow: "auto",
+            }}
+          >
+            {JSON.stringify(master, null, 2)}
+          </pre>
+        )}
+        {!error && !master && (
+          <span className="minor-text">No cached data</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── SymbolChart ────────────────────────────────────────────────────
+
 export function SymbolChart({
   symbol,
-  timeframe,
-  allTfs = ["D", "4h", "15m", "5m"],
-  bars: externalBars,
-  snapshot_file_id: externalFileId,
-  snapshot_file_name: externalFileName,
-  cached_time: externalCachedTime,
-  defaultMode = "Fixed Data",
-  onSelect,
-  onAddWatchlist,
-  onRemoveWatchlist,
+  timeframes = ["D", "4h", "15m", "5m"],
+  defaultMode = "Live TV",
+  onAnalyze,
+  onRemove,
   inWatchlist = false,
 }) {
   const [mode, setMode] = useState(defaultMode);
   const modeKey = toModeKey(mode);
-  const hasExternalData = externalBars != null || externalFileName != null;
+  const [modalOpen, setModalOpen] = useState(false);
 
-  const {
-    status,
-    bars: fetchedBars,
-    snapshot: fetchedSnapshot,
-    cachedTime: fetchedCachedTime,
-    error,
-    refresh,
-    liveKey,
-    snapshotState,
-  } = useSymbolChartData({
-    symbol,
-    timeframe,
-    allTfs,
-    mode: modeKey,
-  });
+  const { status, master, error, cachedAt, refresh, liveKey, snapshotState } =
+    useSymbolChartData({ symbol, timeframes, mode: modeKey });
 
-  // ── derived data ───────────────────────────────────────────────
-
-  const displayBars = hasExternalData ? externalBars || [] : fetchedBars || [];
-  const displaySnapshot = hasExternalData
-    ? { file_id: externalFileId, file_name: externalFileName }
-    : fetchedSnapshot;
-  const displayCachedTime = hasExternalData
-    ? externalCachedTime
-    : fetchedCachedTime;
   const color = STATUS_COLORS[status] || STATUS_COLORS.IDLE;
-
-  const handleModeChange = useCallback((newMode) => {
-    setMode(newMode);
-  }, []);
+  const sortedTfs = [...timeframes].sort((a, b) => {
+    const order = { d: 0, w: 0, "4h": 1, "1h": 2, "15m": 3, "5m": 4, "1m": 5 };
+    return (
+      (order[String(a).toLowerCase()] ?? 9) -
+      (order[String(b).toLowerCase()] ?? 9)
+    );
+  });
 
   const handleRefresh = useCallback(
     (e) => {
@@ -119,107 +164,25 @@ export function SymbolChart({
     [modeKey, refresh],
   );
 
-  // ── render helpers ──────────────────────────────────────────────
-
-  const renderStatusBadge = () => (
-    <span
-      style={{
-        fontSize: 9,
-        fontWeight: 700,
-        padding: "2px 6px",
-        borderRadius: 4,
-        background: color + "20",
-        color,
-        border: `1px solid ${color}40`,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {STATUS_LABELS[status] || status}
-    </span>
-  );
-
-  const renderSnapshotStage = () => {
-    if (modeKey !== "snapshot" || !snapshotState) return null;
-    const { stage, message } = snapshotState;
-    const stageColors = {
-      idle: "var(--muted)",
-      bars: "#f59e0b",
-      uploading: "#3b82f6",
-      ready: "#10b981",
-      error: "#ef4444",
-    };
-    const sc = stageColors[stage] || "var(--muted)";
-    if (!message && stage === "idle") return null;
-    return (
-      <div
-        className="minor-text"
-        style={{
-          fontSize: 9,
-          color: sc,
-          marginBottom: 4,
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-        }}
-      >
-        <span
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: sc,
-            display: "inline-block",
-          }}
-        />
-        {message}
-      </div>
-    );
-  };
-
-  // ── main render ────────────────────────────────────────────────
+  // ── render ──────────────────────────────────────────────────────
 
   return (
     <div className="browser-card-v1" style={{ position: "relative" }}>
-      {/* Header */}
+      {/* ── Control Bar ──────────────────────────────────── */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: 4,
-          gap: 4,
+          marginBottom: 8,
+          gap: 6,
+          flexWrap: "wrap",
         }}
       >
-        <div
-          style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}
-        >
-          <span style={{ fontWeight: 800, fontSize: 14, whiteSpace: "nowrap" }}>
-            {symbol}
-          </span>
-          <span
-            style={{
-              fontSize: 10,
-              color: "var(--muted)",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {timeframe}
-          </span>
-          {renderStatusBadge()}
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 4,
-            alignItems: "center",
-            flexShrink: 0,
-          }}
-        >
-          {/* Watchlist */}
-          {inWatchlist ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontWeight: 800, fontSize: 14 }}>{symbol}</span>
+          {onRemove && (
             <button
-              type="button"
               className="secondary-button"
               style={{
                 width: 18,
@@ -234,42 +197,17 @@ export function SymbolChart({
               }}
               onClick={(e) => {
                 e.stopPropagation();
-                onRemoveWatchlist?.(symbol);
+                onRemove(symbol);
               }}
-              title={"Remove " + symbol}
+              title="Remove"
             >
               -
             </button>
-          ) : (
-            <button
-              type="button"
-              className="secondary-button"
-              style={{
-                width: 18,
-                height: 18,
-                padding: 0,
-                fontSize: 10,
-                lineHeight: 1,
-                minWidth: 18,
-                borderRadius: 4,
-                color: "var(--muted)",
-                borderColor: "rgba(255,255,255,0.08)",
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onAddWatchlist?.(symbol);
-              }}
-              title={"Add " + symbol + " to watchlist"}
-            >
-              +
-            </button>
           )}
-
-          {/* Mode */}
           <select
             className="secondary-button"
             value={mode}
-            onChange={(e) => handleModeChange(e.target.value)}
+            onChange={(e) => setMode(e.target.value)}
             style={{ padding: "2px 4px", fontSize: 10, height: 22 }}
           >
             {MODES.map((m) => (
@@ -278,10 +216,33 @@ export function SymbolChart({
               </option>
             ))}
           </select>
-
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {/* Status button */}
+          <button
+            className="secondary-button"
+            onClick={() => setModalOpen(true)}
+            style={{
+              fontSize: 9,
+              fontWeight: 700,
+              padding: "2px 6px",
+              borderRadius: 4,
+              background: color + "20",
+              color,
+              border: `1px solid ${color}40`,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {STATUS_LABELS[status] || status}
+          </button>
+          {/* Cached time */}
+          {cachedAt && (
+            <span style={{ fontSize: 9, color: "var(--muted)" }}>
+              {timeAgo(cachedAt)}
+            </span>
+          )}
           {/* Refresh */}
           <button
-            type="button"
             className="secondary-button"
             style={{
               width: 22,
@@ -293,24 +254,36 @@ export function SymbolChart({
             }}
             onClick={handleRefresh}
             disabled={status === "LOADING"}
-            title={`Chart Sync${modeKey === "snapshot" ? " + Claude upload" : ""}`}
+            title="Refresh"
           >
             {status === "LOADING" ? "\u23F3" : "\u21BB"}
           </button>
-
-          {/* Select */}
+          {/* Analyze */}
           <button
-            className="secondary-button"
-            style={{ padding: "2px 6px", fontSize: 10 }}
-            onClick={() => onSelect?.(symbol)}
+            className="primary-button"
+            style={{ padding: "2px 8px", fontSize: 10 }}
+            onClick={() => onAnalyze?.(symbol, timeframes)}
           >
-            SELECT
+            Analyze
           </button>
         </div>
       </div>
 
-      {/* Snapshot stage */}
-      {renderSnapshotStage()}
+      {/* Snapshot pipeline stage */}
+      {modeKey === "snapshot" &&
+        snapshotState?.message &&
+        snapshotState.stage !== "idle" && (
+          <div
+            className="minor-text"
+            style={{
+              fontSize: 9,
+              color: snapshotState.stage === "error" ? "#ef4444" : "#f59e0b",
+              marginBottom: 4,
+            }}
+          >
+            {snapshotState.message}
+          </div>
+        )}
 
       {/* Error */}
       {error && (
@@ -322,84 +295,75 @@ export function SymbolChart({
         </div>
       )}
 
-      {/* Chart */}
+      {/* Charts — one per TF, higher TF first */}
       {mode === "Live TV" ? (
-        <iframe
-          key={`tv-${symbol}-${timeframe}-${liveKey}`}
-          title={`tv-${symbol}-${timeframe}`}
-          className="browser-chart-v1"
-          style={{ height: 200 }}
-          src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(liveTfToTvInterval(timeframe))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-        />
+        sortedTfs.map((tf) => (
+          <div key={tf} style={{ marginBottom: 8 }}>
+            <div
+              style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}
+            >
+              {tf.toUpperCase()}
+            </div>
+            <iframe
+              key={`tv-${symbol}-${tf}-${liveKey}`}
+              title={`tv-${symbol}-${tf}`}
+              className="browser-chart-v1"
+              style={{ height: 160 }}
+              src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(liveTfToTvInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+            />
+          </div>
+        ))
       ) : (
-        <div style={{ position: "relative", minHeight: 200 }}>
+        <>
           {status === "LOADING" && (
             <div
               style={{
-                position: "absolute",
-                inset: 0,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                background: "rgba(0,0,0,0.3)",
-                zIndex: 2,
-                borderRadius: 8,
+                padding: 20,
               }}
+              className="minor-text"
             >
-              <span className="minor-text">Loading...</span>
+              Loading...
             </div>
           )}
-          <TradeSignalChart
-            symbol={symbol}
-            interval={timeframe}
-            analysisSnapshot={null}
-            entryPrice={null}
-            slPrice={null}
-            tpPrice={null}
-          />
-        </div>
+          {sortedTfs.map((tf) => (
+            <div key={tf} style={{ marginBottom: 8 }}>
+              <div
+                style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}
+              >
+                {tf.toUpperCase()}
+                {master?.snapshots?.[tf.toLowerCase()] && (
+                  <span
+                    style={{ marginLeft: 8, color: "#10b981", fontSize: 9 }}
+                  >
+                    📷{" "}
+                    {master.snapshots[tf.toLowerCase()].file_name || "snapshot"}
+                  </span>
+                )}
+              </div>
+              <TradeSignalChart
+                symbol={symbol}
+                interval={tf}
+                analysisSnapshot={null}
+                entryPrice={null}
+                slPrice={null}
+                tpPrice={null}
+              />
+            </div>
+          ))}
+        </>
       )}
 
-      {/* Snapshot info bar */}
-      {displaySnapshot &&
-        (displaySnapshot.file_id || displaySnapshot.file_name) && (
-          <div
-            style={{
-              marginTop: 4,
-              padding: "4px 6px",
-              background: "rgba(16,185,129,0.06)",
-              border: "1px solid rgba(16,185,129,0.15)",
-              borderRadius: 4,
-              fontSize: 9,
-              color: "#10b981",
-              display: "flex",
-              justifyContent: "space-between",
-            }}
-          >
-            <span title={displaySnapshot.file_id || ""}>
-              {displaySnapshot.file_name || "Snapshot ready"}
-            </span>
-            {displayCachedTime && (
-              <span>{new Date(displayCachedTime).toLocaleTimeString()}</span>
-            )}
-          </div>
-        )}
-
-      {/* Footer */}
-      {displayCachedTime && (
-        <div
-          style={{
-            marginTop: 4,
-            fontSize: 10,
-            color: "var(--muted)",
-            display: "flex",
-            justifyContent: "space-between",
-          }}
-        >
-          <span>Cached</span>
-          <span>{new Date(displayCachedTime).toLocaleTimeString()}</span>
-        </div>
-      )}
+      {/* Status Modal */}
+      <StatusModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        status={status}
+        error={error}
+        master={master}
+      />
     </div>
   );
 }
