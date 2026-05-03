@@ -172,13 +172,23 @@
               "icon": "links-going-out",
               "title": "Outgoing links from worklog"
             }
+          },
+          {
+            "id": "4e5ed5df4e33a39b",
+            "type": "leaf",
+            "state": {
+              "type": "calendar",
+              "state": {},
+              "icon": "calendar-with-checkmark",
+              "title": "Calendar"
+            }
           }
-        ]
+        ],
+        "currentTab": 6
       }
     ],
     "direction": "horizontal",
-    "width": 300,
-    "collapsed": true
+    "width": 300
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -195,8 +205,9 @@
       "zk-prefixer:Create new unique note": false
     }
   },
-  "active": "336f84509bfb892c",
+  "active": "4bf2b34a6a4ef4d8",
   "lastOpenFiles": [
+    "2026-05-03.md",
     "rules/memory-governance.md",
     "wiki/entry_models/index.md",
     "wiki/entry_models",
@@ -228,7 +239,6 @@
     "wiki",
     "rules/cli.md",
     "knowledge/token-efficient-toolchain.md",
-    "rules/token.md",
     "features",
     "handoff",
     "communication",

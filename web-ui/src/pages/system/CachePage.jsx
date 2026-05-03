@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { api } from "../../api";
+import { showDateTime } from "../../utils/format";
 
 function CsvTable({ content }) {
   const rows = useMemo(() => {
@@ -149,6 +150,7 @@ export default function CachePage() {
               <tr>
                 <th>KEY</th>
                 <th style={{ width: 80 }}>SOURCE</th>
+                <th style={{ width: 140 }}>UPDATED</th>
                 <th style={{ width: 40 }}></th>
               </tr>
             </thead>
@@ -175,6 +177,11 @@ export default function CachePage() {
                       <span className={`badge ${item.source === 'memory' ? 'FILLED' : 'OTHER'}`} style={{ fontSize: 9 }}>
                         {item.source.toUpperCase()}
                       </span>
+                    </td>
+                    <td>
+                      <div className="minor-text" style={{ fontSize: 9 }}>
+                        {item.data?.updated_at ? showDateTime(item.data.updated_at) : 'n/a'}
+                      </div>
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <button 

@@ -1,3 +1,13 @@
+# Session Log: 2026-05-03 06:25
+## FEAT-20260502-ASYNC-CHART-TILES — Implementation
+- Built chartFetchManager, useSymbolChartData hook, SymbolChart component
+- Renamed ChartTile → SymbolChart, removed provider from cache key
+- Single {SYMBOL} master cache key aligning with backend MARKET_DATA:SYMBOL
+- Parallel pipelines: bars + snapshots in one api.chartRefresh call
+- Page imports SymbolChart for browser grid
+- Build passes, deployed to VPS
+- Updated feature plan + ticket with final architecture
+
 # Session Log: 2026-05-03 11:11
 - **Starting Task**:
   - Remove legacy lowercase cron keys (`market_data`, `ai_analysis`) and unified schema enforcement.

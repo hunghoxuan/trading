@@ -3089,6 +3089,7 @@ export default function ChartSnapshotsPage() {
             kind: "TRADE",
             status: String(x?.execution_status || "").toUpperCase(),
             side: String(x?.action || x?.side || "").toUpperCase(),
+            type: "market",
             symbol: normalizeSignalSymbol(x?.symbol || symbol),
             entry: x?.entry,
             tp: x?.tp,
@@ -3102,6 +3103,7 @@ export default function ChartSnapshotsPage() {
             kind: "SIGNAL",
             status: String(x?.status || "").toUpperCase(),
             side: String(x?.action || x?.side || "").toUpperCase(),
+            type: String(x?.type || "limit").toLowerCase(),
             symbol: normalizeSignalSymbol(x?.symbol || symbol),
             entry: x?.entry || x?.target_price || x?.entry_price,
             tp: x?.tp || x?.tp_price,
@@ -3745,18 +3747,32 @@ export default function ChartSnapshotsPage() {
                     key={`${x.kind}_${x.id}`}
                     className="snapshot-activity-card-v4"
                   >
-                    <div className="snapshot-activity-top-v4">
+                    <div
+                      className="snapshot-activity-top-v4"
+                      style={{ alignItems: "center", gap: 6 }}
+                    >
                       <span
-                        className={x.side === "SELL" ? "side-sell" : "side-buy"}
+                        className={`side-badge ${x.side === "SELL" ? "side-sell" : "side-buy"}`}
                       >
-                        {x.side || "-"}
+                        {x.side === "SELL" ? "S" : "B"}
                       </span>
-                      <span className="cell-major">{x.symbol || "-"}</span>
-                      <span className="minor-text">
-                        {x.kind} · {x.status === "OPEN" ? "FILLED" : x.status}
+                      <span className="mini-name" style={{ margin: 0 }}>
+                        {x.symbol || "-"}
+                      </span>
+                      <span
+                        className="minor-text"
+                        style={{ fontSize: 10, textTransform: "lowercase" }}
+                      >
+                        {x.type}
+                      </span>
+                      <span
+                        style={{ marginLeft: "auto" }}
+                        className={`badge ${x.status === "OPEN" ? "FILLED" : x.status}`}
+                      >
+                        {x.status === "OPEN" ? "FILLED" : x.status}
                       </span>
                     </div>
-                    <div className="minor-text">
+                    <div className="minor-text" style={{ paddingLeft: 24 }}>
                       {x.entry ?? "-"} → {x.tp ?? "-"} / {x.sl ?? "-"}
                     </div>
                   </article>
