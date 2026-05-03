@@ -162,7 +162,7 @@ export function SymbolChart({
   const [pendingMode, setPendingMode] = useState(null); // mode we're loading
   const [lastError, setLastError] = useState(null);
   const cleanSym = useMemo(() => normSym(symbol), [symbol]);
-  const [gridCols, setGridCols] = useState(4);
+  const [gridCols, setGridCols] = useState(timeframes?.length || 4);
 
   const { status, master, error, cachedAt, refresh, liveKey, snapshotState } =
     useSymbolChartData({
@@ -276,7 +276,7 @@ export function SymbolChart({
     return MODE_LABELS[m] + " (no data)";
   };
 
-  const chartHeight = Math.max(250, (4 / gridCols) * 250);
+  const chartHeight = gridCols >= (timeframes?.length || 4) ? 250 : Math.max(250, ((timeframes?.length || 4) / gridCols) * 250);
 
   const showControls = !(hasTradePlan && hasAnalysis);
 
