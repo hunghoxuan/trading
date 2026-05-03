@@ -71,9 +71,10 @@ export function useSymbolChartData({
         force: opts.force === true,
       });
 
-      const symbolData = out?.symbols?.[0] || out?.context || out || {};
-      const tfRows = Array.isArray(symbolData?.timeframes)
-        ? symbolData.timeframes
+      const symbolData = out?.symbols?.[0] || out || {};
+      const contextData = symbolData?.context || out?.context || {};
+      const tfRows = Array.isArray(contextData?.timeframes)
+        ? contextData.timeframes
         : [];
 
       const barsMap = {},
@@ -148,8 +149,9 @@ export function useSymbolChartData({
 
       if (mode === "live") {
         setLiveKey((prev) => prev + 1);
-        setStatus("READY");
-        setCachedAt(Date.now());
+        // Live TV: no data, no status, no cache time
+        setMaster(null);
+        setCachedAt(null);
         setError(null);
         return null;
       }
@@ -221,8 +223,9 @@ export function useSymbolChartData({
     }
 
     if (mode === "live") {
-      setStatus("READY");
-      setCachedAt(Date.now());
+      // Live TV: no API, no cache — just iframe
+      setMaster(null);
+      setCachedAt(null);
       setError(null);
       return;
     }

@@ -218,25 +218,27 @@ export function SymbolChart({
           </select>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {/* Status button */}
-          <button
-            className="secondary-button"
-            onClick={() => setModalOpen(true)}
-            style={{
-              fontSize: 9,
-              fontWeight: 700,
-              padding: "2px 6px",
-              borderRadius: 4,
-              background: color + "20",
-              color,
-              border: `1px solid ${color}40`,
-              whiteSpace: "nowrap",
-            }}
-          >
-            {STATUS_LABELS[status] || status}
-          </button>
-          {/* Cached time */}
-          {cachedAt && (
+          {/* Status button — only if we have data */}
+          {(master || status === "LOADING" || status === "ERROR") && (
+            <button
+              className="secondary-button"
+              onClick={() => setModalOpen(true)}
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                padding: "2px 6px",
+                borderRadius: 4,
+                background: color + "20",
+                color,
+                border: `1px solid ${color}40`,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {STATUS_LABELS[status] || status}
+            </button>
+          )}
+          {/* Cached time — only if cache has data */}
+          {cachedAt && master && (
             <span style={{ fontSize: 9, color: "var(--muted)" }}>
               {timeAgo(cachedAt)}
             </span>
