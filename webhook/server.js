@@ -100,7 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.03 16:46 - 17993d0"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.03 17:10 - 1eada45"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(
   CHART_SNAPSHOT_DIR,
@@ -3214,6 +3214,21 @@ function removeMappedClaudeSnapshotFiles(fileNames = []) {
   if (changed) writeClaudeSnapshotFileMap(map);
 }
 
+let _claudeFilesCache = { data: [], expiresAt: 0 };
+async function anthropicListFiles(apiKey) {
+  if (!apiKey) return [];
+  if (Date.now() < _claudeFilesCache.expiresAt) return _claudeFilesCache.data;
+  try {
+    const res = await anthropicFilesRequest({ apiKey, pathName: "/v1/files" });
+    const list = Array.isArray(res.data) ? res.data : [];
+    _claudeFilesCache = { data: list, expiresAt: Date.now() + 60000 };
+    return list;
+  } catch (e) {
+    console.error("[anthropic] Failed to list files:", e.message);
+    return _claudeFilesCache.data || [];
+  }
+}
+
 async function loadClaudeApiKeyForUser(userId) {
   const cfgRows = await (
     await mt5InitBackend()
@@ -3997,6 +4012,21 @@ async function buildAiContextBundle({
     }
   }
   const okItems = items.filter((x) => x?.status === "ok");
+  const allClaudeFiles = await anthropicListFiles(apiKey);
+  const validIds = new Set(allClaudeFiles.map((f) => f.id));
+
+  for (const item of items) {
+    if (item.files) {
+      for (const type of Object.keys(item.files)) {
+        const fid = item.files[type]?.file_id;
+        if (fid && !validIds.has(fid)) {
+          console.log(`[context] Removing stale file reference: ${fid} (${type})`);
+          delete item.files[type].file_id;
+        }
+      }
+    }
+  }
+
   return {
     symbol: normalizeMarketDataSymbol(symbol),
     generated_at: new Date().toISOString(),
@@ -4013,7 +4043,7 @@ async function buildAiContextBundle({
           filename: file?.filename || file?.vps_file || "",
           reused: file?.reused === true,
         }))
-        .filter((x) => x.file_id),
+        .filter((x) => x.file_id && validIds.has(x.file_id)),
     ),
   };
 }
@@ -4297,6 +4327,34 @@ async function anthropicMessagesWithFallback({
         return { ok: false, response: fake, modelUsed: useModel };
       }
     } else {
+      const isFileNotFound =
+        String(errText || "").includes("not_found_error") &&
+        String(errText || "").includes("file_");
+
+      if (isFileNotFound && (_retryCount || 0) < 3) {
+        const match = String(errText || "").match(/file_[a-zA-Z0-9]+/);
+        if (match) {
+          const missingId = match[0];
+          console.log(`[anthropic] File ${missingId} not found. Retrying without it...`);
+          const filteredMessages = (messages || []).map((m) => {
+            if (!Array.isArray(m.content)) return m;
+            return {
+              ...m,
+              content: m.content.filter((c) => c.source?.file_id !== missingId),
+            };
+          });
+          return await anthropicMessagesWithFallback({
+            apiKey,
+            model,
+            messages: filteredMessages,
+            maxTokens,
+            timeoutMs,
+            beta,
+            _retryCount: (_retryCount || 0) + 1,
+          });
+        }
+      }
+
       const fake = new Response(errText, {
         status: res.status,
         statusText: res.statusText,

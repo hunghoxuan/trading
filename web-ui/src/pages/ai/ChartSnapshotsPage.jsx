@@ -2352,6 +2352,7 @@ export default function ChartSnapshotsPage() {
         ) {
           payload.context_files = [];
           payload.use_context_files = false;
+          payload.context_mode = "none";
           out = await api.chartSnapshotsAnalyze(payload);
         } else {
           throw firstErr;
