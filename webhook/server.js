@@ -902,6 +902,12 @@ async function repoUpsertUnifiedMarketData(symbol, tf, dataUpdate) {
   };
 
   const tfNorm = normalizeMarketDataTf(tf);
+  const existingIdx = current.data.findIndex(
+    (d) => normalizeMarketDataTf(d.tf) === tfNorm,
+  );
+  const existingSnapshot =
+    existingIdx >= 0 ? current.data[existingIdx]?.snapshot : null;
+
   const timeframeData = {
     tf: tfNorm,
     market_analysis:
@@ -910,8 +916,8 @@ async function repoUpsertUnifiedMarketData(symbol, tf, dataUpdate) {
       dataUpdate.summary ||
       null,
     snapshot: dataUpdate.snapshot
-      ? { ...(current.data[dataIdx]?.snapshot || {}), ...dataUpdate.snapshot }
-      : current.data[dataIdx]?.snapshot || null,
+      ? { ...(existingSnapshot || {}), ...dataUpdate.snapshot }
+      : existingSnapshot || null,
     bars: Array.isArray(dataUpdate.bars) ? dataUpdate.bars : [],
     last_price:
       dataUpdate.last_price ??
@@ -15647,9 +15653,27 @@ const appHandler = async (req, res) => {
           });
         }
       }
-      
-      for (const u of uploaded) { try { const fname = String(u?.filename || u?.local_file || ""); const parts = fname.split("_"); if (parts.length >= 2) { const sym = parts[0]?.toUpperCase?.() || ""; const tf = parts[1]?.toLowerCase?.() || ""; if (sym && tf && u?.id) { await repoUpsertUnifiedMarketData(sym, tf, { snapshot: { file_id: String(u.id), file_name: fname, uploaded_at: new Date().toISOString() } }); } } } catch (_) {} }
-return json(res, 200, {
+
+      for (const u of uploaded) {
+        try {
+          const fname = String(u?.filename || u?.local_file || "");
+          const parts = fname.split("_");
+          if (parts.length >= 2) {
+            const sym = parts[0]?.toUpperCase?.() || "";
+            const tf = parts[1]?.toLowerCase?.() || "";
+            if (sym && tf && u?.id) {
+              await repoUpsertUnifiedMarketData(sym, tf, {
+                snapshot: {
+                  file_id: String(u.id),
+                  file_name: fname,
+                  uploaded_at: new Date().toISOString(),
+                },
+              });
+            }
+          }
+        } catch (_) {}
+      }
+      return json(res, 200, {
         ok: true,
         uploaded_count: uploaded.length,
         failed_count: failed.length,

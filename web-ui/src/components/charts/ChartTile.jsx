@@ -253,20 +253,19 @@ export function SymbolChart({
         </div>
       </div>
 
-      {/* Snapshot pipeline message */}
+      {/* Snapshot pipeline message — inline with TF */}
       {(pendingMode || mode) === "snapshots" &&
         snapshotState?.message &&
         snapshotState.stage !== "idle" && (
-          <div
+          <span
             className="minor-text"
             style={{
               fontSize: 9,
               color: snapshotState.stage === "error" ? "#ef4444" : "#f59e0b",
-              marginBottom: 4,
             }}
           >
-            {snapshotState.message}
-          </div>
+            {" " + snapshotState.message}
+          </span>
         )}
 
       {/* ── Charts row ── */}

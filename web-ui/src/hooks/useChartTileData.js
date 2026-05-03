@@ -195,13 +195,25 @@ export function useSymbolChartData({
         }
 
         let uploadedSnapshots = data?.snapshots || {};
-        if (mode === "snapshots" && Object.keys(uploadedSnapshots).length > 0) {
+        const hasVpsSnaps = Object.keys(uploadedSnapshots).length > 0;
+
+        // Claude upload is optional — VPS files are sufficient for readiness
+        if (mode === "snapshots" && hasVpsSnaps) {
           setSnapshotState({
             stage: "uploading",
             message: "Uploading to Claude...",
           });
-          uploadedSnapshots = await uploadToClaude(data.snapshots);
-          if (data) data.snapshots = uploadedSnapshots;
+          try {
+            const uploaded = await uploadToClaude(data.snapshots);
+            // Merge uploaded_at timestamps back
+            for (const [tfKey, snap] of Object.entries(uploadedSnapshots)) {
+              if (uploaded[tfKey]?.uploaded_at)
+                uploadedSnapshots[tfKey] = { ...snap, ...uploaded[tfKey] };
+            }
+            if (data) data.snapshots = uploadedSnapshots;
+          } catch {
+            // Claude upload failed — VPS snapshots still valid
+          }
         }
 
         // Only set master + cached_at if we have bars (snapshots alone don't count for cache time)
@@ -225,10 +237,9 @@ export function useSymbolChartData({
         } else setStatus("READY");
 
         if (mode === "snapshots") {
-          const hasSnap = Object.keys(uploadedSnapshots).length > 0;
           setSnapshotState({
-            stage: hasSnap ? "ready" : "error",
-            message: hasSnap ? "Snapshots ready" : "Snapshot failed",
+            stage: hasVpsSnaps ? "ready" : "error",
+            message: hasVpsSnaps ? "Snapshots ready" : "Snapshots unavailable",
           });
         }
         return result;
