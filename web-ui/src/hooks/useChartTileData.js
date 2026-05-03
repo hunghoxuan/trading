@@ -79,10 +79,13 @@ export function useSymbolChartData({
 
       const barsMap = {},
         contextMap = {};
+      let hasAnyBars = false;
       for (const row of tfRows) {
         const key = tfNorm(row?.tf || row?.timeframe || "");
         if (!key) continue;
-        barsMap[key] = Array.isArray(row?.bars) ? row.bars : [];
+        const b = Array.isArray(row?.bars) ? row.bars : [];
+        barsMap[key] = b;
+        if (b.length > 0) hasAnyBars = true;
         contextMap[key] = {
           last_price: row?.last_price ?? null,
           summary: row?.summary || null,
@@ -103,6 +106,15 @@ export function useSymbolChartData({
           file_path: item?.file_path || item?.path || "",
           created_at: item?.created_at || item?.createdAt || Date.now(),
         };
+      }
+
+      const hasAnySnapshots = Object.keys(snapshotsMap).length > 0;
+
+      // If no bars AND no snapshots, treat as data failure
+      if (!hasAnyBars && !hasAnySnapshots) {
+        throw new Error(
+          "No data returned from provider (Twelve Data may be unavailable)",
+        );
       }
 
       return {
@@ -170,8 +182,19 @@ export function useSymbolChartData({
         if (!mountedRef.current) return null;
 
         const data = result.data;
-        let uploadedSnapshots = data?.snapshots || {};
+        const hasBars = Object.values(data?.bars || {}).some(
+          (b) => Array.isArray(b) && b.length > 0,
+        );
+        const hasSnapshots = Object.keys(data?.snapshots || {}).length > 0;
 
+        // Only cache if we have actual data
+        if (!hasBars && !hasSnapshots) {
+          setStatus("ERROR");
+          setError("No data from provider");
+          return null;
+        }
+
+        let uploadedSnapshots = data?.snapshots || {};
         if (mode === "snapshot" && Object.keys(uploadedSnapshots).length > 0) {
           setSnapshotState({
             stage: "uploading",
@@ -181,18 +204,24 @@ export function useSymbolChartData({
           if (data) data.snapshots = uploadedSnapshots;
         }
 
-        const merged = {
-          ...data,
-          snapshots: uploadedSnapshots,
-          cached_at: Date.now(),
-        };
-        setMaster(merged);
-        setCachedAt(Date.now());
+        // Only set master + cached_at if we have bars (snapshots alone don't count for cache time)
+        if (hasBars) {
+          const merged = {
+            ...data,
+            snapshots: uploadedSnapshots,
+            cached_at: Date.now(),
+          };
+          setMaster(merged);
+          setCachedAt(Date.now());
+        }
 
         if (result.stale) setStatus("STALE");
         else if (result.error) {
           setStatus(result.data ? "STALE" : "ERROR");
           setError(result.error);
+        } else if (!hasBars) {
+          // Has snapshots but no bars — partial data
+          setStatus("STALE");
         } else setStatus("READY");
 
         if (mode === "snapshot") {
