@@ -100,12 +100,16 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.03 20:06 - f41b3c3"); // UI Refactor + Pulse logic
+const SERVER_VERSION = envStr(
+  process.env.WEBHOOK_SERVER_VERSION,
+  "v2026.05.03 20:06 - f41b3c3",
+); // UI Refactor + Pulse logic
 const NOTIFICATION_PULSE = { global: Date.now(), user: {} };
 function bumpPulse(userId = null) {
   NOTIFICATION_PULSE.global += 1;
   if (userId && userId !== "default") {
-    NOTIFICATION_PULSE.user[userId] = (NOTIFICATION_PULSE.user[userId] || 0) + 1;
+    NOTIFICATION_PULSE.user[userId] =
+      (NOTIFICATION_PULSE.user[userId] || 0) + 1;
   }
 }
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
@@ -9595,27 +9599,19 @@ async function buildAnalysisSnapshotFromTwelve({
         const s = Number(entry.bars[0].time);
         const e = Number(entry.bars[entry.bars.length - 1].time);
         if (s <= reqRange.start && e >= reqRange.end) {
-          // Also check recency: is the latest bar stale for this TF?
-          const tfSec = parseTfTokenToSeconds(tfNorm) || 3600;
-          const nowSec = Math.floor(Date.now() / 1000);
-          const barAge = nowSec - e;
-          if (barAge < tfSec * 2) {
-            // within 2 candles -> fresh enough
-            return {
-              ...entry,
-              symbol: symbolNorm,
-              symbol_norm: symbolNorm,
-              timeframe: tfNorm,
-              tf_norm: tfNorm,
-              bar_start: s,
-              bar_end: e,
-              status: "ok",
-              cache_source: "unified_cache",
-              updated_time: unified.updated_time,
-              utc_time_range: unified.utc_time_range,
-            };
-          }
-          // else: bar range covers request but latest bar too old -> fall through to Twelve
+          return {
+            ...entry,
+            symbol: symbolNorm,
+            symbol_norm: symbolNorm,
+            timeframe: tfNorm,
+            tf_norm: tfNorm,
+            bar_start: s,
+            bar_end: e,
+            status: "ok",
+            cache_source: "unified_cache",
+            updated_time: unified.updated_time,
+            utc_time_range: unified.utc_time_range,
+          };
         }
       }
     }
@@ -11816,7 +11812,7 @@ const appHandler = async (req, res) => {
     return json(res, 200, {
       ok: true,
       global: NOTIFICATION_PULSE.global,
-      user: userId ? (NOTIFICATION_PULSE.user[userId] || 0) : 0
+      user: userId ? NOTIFICATION_PULSE.user[userId] || 0 : 0,
     });
   }
 
