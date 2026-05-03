@@ -17719,12 +17719,12 @@ function bullConnectionFromRedisUrl(redisUrl) {
 }
 
 function marketDataCronSettingEnabled(data = {}) {
-  return asBool(data.enabled ?? data.market_data_cron_enabled ?? true, true);
+  return asBool(data.enabled ?? true, true);
 }
 
 function marketDataCronTimezone(data = {}) {
   return normalizeMarketDataTimezone(
-    data.timezone || data.market_data_timezone || CFG.marketDataDefaultTimezone,
+    data.timezone || CFG.marketDataDefaultTimezone,
   );
 }
 

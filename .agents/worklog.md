@@ -1,3 +1,22 @@
+# Session Log: 2026-05-03 11:11
+- **Starting Task**:
+  - Remove legacy lowercase cron keys (`market_data`, `ai_analysis`) and unified schema enforcement.
+- **Work Accomplished**:
+  - Ran `webhook/delete_duplicates.js` to remove lowercase keys from `user_settings` table.
+  - Cleaned up `web-ui/src/pages/settings/SettingsPage.jsx` to remove references to legacy keys and types (`market_data_cron`, `ai_analysis_cron`).
+  - Removed legacy fallback logic in `webhook/server.js` (`market_data_cron_enabled`, `market_data_timezone`).
+  - Bumped build versions to `v2026.05.03 09:11 - 61df06f`.
+- **Changed Files**:
+  - `web-ui/src/pages/settings/SettingsPage.jsx`
+  - `webhook/server.js`
+  - `mql5/TVBridgeEA.mq5`
+  - `.agents/worklog.md`
+- **Verification**:
+  - `node --check webhook/server.js` ✅
+  - `npm --prefix web-ui run build` ✅
+- **Deploy Status**:
+  - Not deployed (ready for VPS push).
+
 # Session Log: 2026-05-02 13:00
 - **Starting Task**:
   - Fix bugs: watchlist source from user_settings, UI sizing, panel collapse, Favourite->Watchlist.

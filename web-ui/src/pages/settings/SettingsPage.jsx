@@ -555,8 +555,7 @@ export default function SettingsPage({
     () =>
       settings.find(
         (s) =>
-          (s.type === "cron" && s.name === "market_data") ||
-          s.type === "market_data_cron",
+          s.type === "cron" && s.name === "MARKET_DATA_CRON",
       ),
     [settings],
   );
@@ -564,8 +563,7 @@ export default function SettingsPage({
     () =>
       settings.find(
         (s) =>
-          (s.type === "cron" && s.name === "ai_analysis") ||
-          s.type === "ai_analysis_cron",
+          s.type === "cron" && s.name === "ANALYSIS_CRON",
       ),
     [settings],
   );
@@ -595,11 +593,7 @@ export default function SettingsPage({
       setSymbolsDetailText("");
       return;
     }
-    if (
-      type === "cron" ||
-      type === "market_data_cron" ||
-      type === "ai_analysis_cron"
-    ) {
+    if (type === "cron") {
       const d = selectedSetting?.data || {};
       setCronForm({
         symbols: Array.isArray(d.symbols) ? d.symbols.join(", ") : "",
@@ -1225,11 +1219,7 @@ export default function SettingsPage({
                   <button
                     className="primary-button"
                     onClick={() => {
-                      if (
-                        selectedSetting.type === "cron" ||
-                        selectedSetting.type === "market_data_cron" ||
-                        selectedSetting.type === "ai_analysis_cron"
-                      ) {
+                      if (selectedSetting.type === "cron") {
                         const nextData = {
                           ...selectedSetting.data,
                           provider: cronForm.provider,
@@ -1278,18 +1268,13 @@ export default function SettingsPage({
                 </div>
               </div>
 
-              {selectedSetting.type === "cron" ||
-              selectedSetting.type === "market_data_cron" ||
-              selectedSetting.type === "ai_analysis_cron" ? (
+              {selectedSetting.type === "cron" ? (
                 <div
                   className="stack-layout fadeIn"
                   style={{ gap: 20, maxWidth: 600 }}
                 >
-                  {(selectedSetting.type === "market_data_cron" ||
-                    (selectedSetting.type === "cron" &&
-                      selectedSetting.name === "MARKET_DATA_CRON") ||
-                    (selectedSetting.type === "cron" &&
-                      selectedSetting.name === "market_data")) && (
+                  {selectedSetting.type === "cron" &&
+                    selectedSetting.name === "MARKET_DATA_CRON" && (
                     <div
                       style={{
                         display: "grid",
@@ -1392,9 +1377,8 @@ export default function SettingsPage({
                     </div>
                   </div>
 
-                  {(selectedSetting.type === "ai_analysis_cron" ||
-                    (selectedSetting.type === "cron" &&
-                      selectedSetting.name === "ai_analysis")) && (
+                  {selectedSetting.type === "cron" &&
+                    selectedSetting.name === "ANALYSIS_CRON" && (
                     <>
                       <div
                         style={{
