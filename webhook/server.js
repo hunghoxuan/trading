@@ -892,14 +892,10 @@ async function repoUpsertUnifiedMarketData(symbol, tf, dataUpdate) {
   if (!symbolNorm) return null;
 
   // Read-Modify-Write pattern
-  let current = (await StateRepo.get("MARKET_DATA_UNIFIED", symbolNorm)) || {
-    symbol: symbolNorm,
-    updated_time: 0,
-    utc_time_range: "",
-    bar_start: 0,
-    bar_end: 0,
-    data: [],
-  };
+  let current = (await StateRepo.get("MARKET_DATA_UNIFIED", symbolNorm)) || {};
+  if (!current.symbol) current.symbol = symbolNorm;
+  if (!Array.isArray(current.data)) current.data = [];
+  if (!current.updated_time) current.updated_time = 0;
 
   const tfNorm = normalizeMarketDataTf(tf);
   const existingIdx = current.data.findIndex(
