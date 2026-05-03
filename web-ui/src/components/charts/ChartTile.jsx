@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { useChartTileData } from "../../hooks/useChartTileData";
+import TradeSignalChart from "../TradeSignalChart";
 
 // ── constants ──────────────────────────────────────────────────────
 
@@ -82,12 +83,6 @@ export function ChartTile({
 
   // ── derived data ───────────────────────────────────────────────
 
-  const displayBars = useMemo(() => {
-    if (data?.bars?.length) return data.bars;
-    if (Array.isArray(initialBars) && initialBars.length) return initialBars;
-    return [];
-  }, [data, initialBars]);
-
   const lastPrice = data?.last_price ?? null;
   const color = STATUS_COLORS[status] || STATUS_COLORS.IDLE;
 
@@ -101,7 +96,7 @@ export function ChartTile({
     (e) => {
       e.stopPropagation();
       if (modeKey === "live") {
-        // Live TV: just bump liveKey to trigger iframe rebind
+        // Live TV: bump liveKey to trigger iframe rebind
         refresh();
         return;
       }
@@ -137,7 +132,6 @@ export function ChartTile({
       bars: "#f59e0b",
       snapshots: "#f59e0b",
       uploading: "#3b82f6",
-      analyzing: "#8b5cf6",
       ready: "#10b981",
       error: "#ef4444",
     };
@@ -284,7 +278,7 @@ export function ChartTile({
             }}
             onClick={handleRefresh}
             disabled={status === "LOADING"}
-            title={`Chart Sync refresh${modeKey === "snapshot" ? " (full pipeline)" : ""}`}
+            title={`Chart Sync refresh${modeKey === "snapshot" ? " (bars + snapshots + Claude upload)" : ""}`}
           >
             {status === "LOADING" ? "\u23F3" : "\u21BB"}
           </button>
@@ -346,35 +340,18 @@ export function ChartTile({
             </div>
           )}
 
-          {/* Bars chart */}
-          {displayBars.length > 0 ? (
-            <MiniBarsChart
-              bars={displayBars}
-              lastPrice={lastPrice}
-              entries={entries}
-            />
-          ) : (
-            <div
-              style={{
-                height: 200,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexDirection: "column",
-                gap: 4,
-              }}
-              className="minor-text"
-            >
-              {status === "IDLE"
-                ? "Chart Sync pending..."
-                : status === "ERROR"
-                  ? "Chart Sync failed"
-                  : "No data"}
-            </div>
-          )}
+          {/* Reuse existing TradeSignalChart for Fixed Data / Snapshot modes */}
+          <TradeSignalChart
+            symbol={symbol}
+            interval={timeframe}
+            analysisSnapshot={data?.context || null}
+            entryPrice={null}
+            slPrice={null}
+            tpPrice={null}
+          />
 
-          {/* Snapshot analysis summary (collapsed) */}
-          {modeKey === "snapshot" && snapshotState?.analysisReady && (
+          {/* Snapshot completion indicator */}
+          {modeKey === "snapshot" && snapshotState?.stage === "ready" && (
             <div
               style={{
                 marginTop: 6,
@@ -386,8 +363,8 @@ export function ChartTile({
                 color: "#10b981",
               }}
             >
-              Analysis ready &mdash;{" "}
-              {snapshotState.analysisResult?.source || "Claude"}
+              Snapshot uploaded to Claude &mdash;{" "}
+              {snapshotState.filesUploaded || 0} file(s)
             </div>
           )}
         </div>
@@ -410,102 +387,5 @@ export function ChartTile({
         </div>
       )}
     </div>
-  );
-}
-
-// ── MiniBarsChart (inline SVG for Fixed Data / Snapshot) ──────────
-
-/**
- * Minimal SVG price-line chart for Fixed Data / Snapshot mode.
- * Props:
- *  bars      — array of { close, time, ... }
- *  lastPrice — horizontal reference line
- *  entries   — optional [{ price, color, label }]
- */
-function MiniBarsChart({ bars, lastPrice, entries }) {
-  if (!bars.length) return null;
-
-  const w = 280;
-  const h = 180;
-  const pad = 4;
-
-  const closes = bars
-    .map((b) => Number(b?.close ?? b?.c ?? null))
-    .filter(Number.isFinite);
-  if (!closes.length) return null;
-
-  const min = Math.min(...closes);
-  const max = Math.max(...closes);
-  const range = max - min || 1;
-  const barW = Math.max(1, (w - pad * 2) / closes.length - 1);
-
-  // Polyline points
-  const points = closes
-    .map((c, i) => {
-      const x = pad + i * (barW + 1);
-      const y = h - pad - ((c - min) / range) * (h - pad * 2);
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  // Helper: price → y
-  const priceToY = (price) =>
-    h - pad - ((Number(price) - min) / range) * (h - pad * 2);
-
-  return (
-    <svg
-      width={w}
-      height={h}
-      style={{ display: "block", background: "transparent" }}
-    >
-      {/* Price line */}
-      <polyline points={points} fill="none" stroke="#22d3ee" strokeWidth={1} />
-
-      {/* Data dots */}
-      {closes.map((c, i) => {
-        const x = pad + i * (barW + 1);
-        const y = priceToY(c);
-        return <circle key={i} cx={x} cy={y} r={1} fill="#22d3ee" />;
-      })}
-
-      {/* Last price reference line */}
-      {lastPrice != null &&
-        Number.isFinite(Number(lastPrice)) &&
-        (() => {
-          const y = priceToY(Number(lastPrice));
-          return (
-            <line
-              x1={pad}
-              y1={y}
-              x2={w - pad}
-              y2={y}
-              stroke="rgba(255,255,255,0.2)"
-              strokeWidth={1}
-              strokeDasharray="4 2"
-            />
-          );
-        })()}
-
-      {/* Entry markers */}
-      {Array.isArray(entries) &&
-        entries.map((entry, i) => {
-          const price = Number(entry?.price ?? entry?.entry ?? null);
-          if (!Number.isFinite(price)) return null;
-          const y = priceToY(price);
-          const entryColor = entry?.color || "#33a0ff";
-          return (
-            <line
-              key={`entry-${i}`}
-              x1={pad}
-              y1={y}
-              x2={w - pad}
-              y2={y}
-              stroke={entryColor}
-              strokeWidth={1}
-              strokeDasharray="3 3"
-            />
-          );
-        })}
-    </svg>
   );
 }
