@@ -419,7 +419,51 @@ export function SignalDetailCard({
                  </div>
                  {analysis && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Analysis</div><div style={{ whiteSpace: 'pre-wrap', marginBottom: 12, color: 'var(--foreground)', fontSize: '14px', lineHeight: 1.6 }}>{analysis}</div></div>}
                  {confluence && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Confluence</div><div style={{ whiteSpace: 'pre-wrap', marginBottom: 12 }}>{confluence}</div></div>}
-                 {Array.isArray(checklist) && checklist.length > 0 && <div style={{ marginBottom: 20 }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Checklist</div><ul style={{ margin: 0, paddingLeft: 18, listStyleType: 'disc', color: 'var(--muted)', fontSize: '13px' }}>{checklist.map((item, idx) => <li key={idx} style={{ marginBottom: 6 }}>{typeof item === 'object' ? `${item.side ? `${item.side}: ` : ''}${item.item || item.condition || ''}${item.weight ? ` [${item.weight}]` : ''}${item.checked ? ' yes' : ''}${item.pd_array_ref ? ` #${item.pd_array_ref}` : ''}${item.note ? `: ${item.note}` : ''}` : String(item)}</li>)}</ul></div>}
+                 {Array.isArray(checklist) && checklist.length > 0 && (
+                    <div style={{ marginBottom: 20 }}>
+                      <div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Checklist</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+                        {/* BUY COLUMN */}
+                        <div>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: '#26a69a', marginBottom: 8, borderBottom: '1px solid rgba(38, 166, 154, 0.2)', paddingBottom: 4 }}>BUY</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {checklist.filter(item => {
+                              const side = typeof item === 'object' ? item.side : String(item).split(':')[0];
+                              return String(side || "").toLowerCase().includes('buy');
+                            }).map((item, idx) => {
+                              const label = typeof item === 'object' ? (item.item || item.condition || "") : String(item).split(':').slice(1).join(':').trim();
+                              const isChecked = typeof item === 'object' ? item.checked : true;
+                              return (
+                                <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '12.5px' }}>
+                                  <input type="checkbox" checked={isChecked} readOnly style={{ marginTop: 3, pointerEvents: 'none' }} />
+                                  <span style={{ color: isChecked ? 'var(--foreground)' : 'var(--muted)' }}>{label}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        {/* SELL COLUMN */}
+                        <div>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: '#ef5350', marginBottom: 8, borderBottom: '1px solid rgba(239, 83, 80, 0.2)', paddingBottom: 4 }}>SELL</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {checklist.filter(item => {
+                              const side = typeof item === 'object' ? item.side : String(item).split(':')[0];
+                              return String(side || "").toLowerCase().includes('sell');
+                            }).map((item, idx) => {
+                              const label = typeof item === 'object' ? (item.item || item.condition || "") : String(item).split(':').slice(1).join(':').trim();
+                              const isChecked = typeof item === 'object' ? item.checked : true;
+                              return (
+                                <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '12.5px' }}>
+                                  <input type="checkbox" checked={isChecked} readOnly style={{ marginTop: 3, pointerEvents: 'none' }} />
+                                  <span style={{ color: isChecked ? 'var(--foreground)' : 'var(--muted)' }}>{label}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                  {verdictText && <div style={{ marginBottom: 20, padding: 12, background: 'rgba(38, 166, 154, 0.05)', borderRadius: 8, border: '1px solid rgba(38, 166, 154, 0.2)' }}><div className="minor-text" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Final Verdict</div><div style={{ fontWeight: 600, color: '#26a69a', fontSize: '15px' }}>{verdictText}</div></div>}
                  {note && <div style={{ marginTop: 24, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8, borderLeft: '3px solid var(--accent)' }}><div className="minor-text" style={{ fontSize: '10px', marginBottom: 4 }}>NOTE</div><div style={{ fontStyle: 'italic', color: 'var(--muted)' }} dangerouslySetInnerHTML={{ __html: formatNote(note) }} /></div>}
                </div>

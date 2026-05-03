@@ -59,29 +59,26 @@ export function TradePlanEditor({
 
   return (
     <div className={`trade-plan-editor-v5 ${className}`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div className="snapshot-footer-row0-v3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-        <div className="snapshot-direction-field-v4" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label className="minor-text" style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.02em' }}>Direction</label>
-          <select value={value.direction || "BUY"} onChange={(e) => update("direction", String(e.target.value || ""))} disabled={controlsDisabled}>
+      <div className="snapshot-footer-row-combined" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px' }}>
+        <div className="snapshot-field-mini" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label className="minor-text" style={{ fontWeight: 'bold', fontSize: '10px', textTransform: 'uppercase' }}>Direction</label>
+          <select style={{ height: '28px', fontSize: '12px', padding: '2px 4px' }} value={value.direction || "BUY"} onChange={(e) => update("direction", String(e.target.value || ""))} disabled={controlsDisabled}>
             {directionOptions.map((x) => (
               <option key={x} value={x}>{x === "BUY" ? "Buy" : "Sell"}</option>
             ))}
           </select>
         </div>
-        <div className="snapshot-direction-field-v4" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label className="minor-text" style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.02em' }}>Trade Type</label>
-          <select value={value.trade_type || "limit"} onChange={(e) => update("trade_type", String(e.target.value || "limit"))} disabled={controlsDisabled}>
+        <div className="snapshot-field-mini" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label className="minor-text" style={{ fontWeight: 'bold', fontSize: '10px', textTransform: 'uppercase' }}>Trade Type</label>
+          <select style={{ height: '28px', fontSize: '12px', padding: '2px 4px' }} value={value.trade_type || "limit"} onChange={(e) => update("trade_type", String(e.target.value || "limit"))} disabled={controlsDisabled}>
             <option value="limit">limit</option>
             <option value="market">market</option>
             <option value="stop">stop</option>
           </select>
         </div>
-      </div>
-
-      <div className="snapshot-footer-row1-v3" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
-        <div className="snapshot-footer-field-v3" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label className="minor-text" style={{ fontWeight: 'bold' }}>Entry</label>
-          <input type="number" step="0.001" inputMode="decimal" value={value.entry || ""} onChange={(e) => update("entry", e.target.value)} disabled={controlsDisabled} />
+        <div className="snapshot-field-mini" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label className="minor-text" style={{ fontWeight: 'bold', fontSize: '10px', textTransform: 'uppercase' }}>Entry</label>
+          <input style={{ height: '28px', fontSize: '12px' }} type="number" step="0.001" inputMode="decimal" value={value.entry || ""} onChange={(e) => update("entry", e.target.value)} disabled={controlsDisabled} />
           {(() => {
             const m = calcSliderMeta(value.entry);
             return (
@@ -92,15 +89,16 @@ export function TradePlanEditor({
                 max={m.max}
                 step={m.step}
                 value={m.value}
+                style={{ height: '14px', margin: '0' }}
                 disabled={!m.enabled || controlsDisabled}
                 onChange={(e) => update("entry", formatNum3(Number(e.target.value)))}
               />
             );
           })()}
         </div>
-        <div className="snapshot-footer-field-v3" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label className="minor-text" style={{ fontWeight: 'bold' }}>TP</label>
-          <input type="number" step="0.001" inputMode="decimal" value={value.tp || ""} onChange={(e) => update("tp", e.target.value)} disabled={controlsDisabled} />
+        <div className="snapshot-field-mini" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label className="minor-text" style={{ fontWeight: 'bold', fontSize: '10px', textTransform: 'uppercase' }}>TP</label>
+          <input style={{ height: '28px', fontSize: '12px' }} type="number" step="0.001" inputMode="decimal" value={value.tp || ""} onChange={(e) => update("tp", e.target.value)} disabled={controlsDisabled} />
           {(() => {
             const m = calcSliderMeta(value.tp);
             return (
@@ -111,15 +109,16 @@ export function TradePlanEditor({
                 max={m.max}
                 step={m.step}
                 value={m.value}
+                style={{ height: '14px', margin: '0' }}
                 disabled={!m.enabled || controlsDisabled}
                 onChange={(e) => update("tp", formatNum3(Number(e.target.value)))}
               />
             );
           })()}
         </div>
-        <div className="snapshot-footer-field-v3" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label className="minor-text" style={{ fontWeight: 'bold' }}>SL</label>
-          <input type="number" step="0.001" inputMode="decimal" value={value.sl || ""} onChange={(e) => update("sl", e.target.value)} disabled={controlsDisabled} />
+        <div className="snapshot-field-mini" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label className="minor-text" style={{ fontWeight: 'bold', fontSize: '10px', textTransform: 'uppercase' }}>SL</label>
+          <input style={{ height: '28px', fontSize: '12px' }} type="number" step="0.001" inputMode="decimal" value={value.sl || ""} onChange={(e) => update("sl", e.target.value)} disabled={controlsDisabled} />
           {(() => {
             const m = calcSliderMeta(value.sl);
             return (
@@ -130,15 +129,16 @@ export function TradePlanEditor({
                 max={m.max}
                 step={m.step}
                 value={m.value}
+                style={{ height: '14px', margin: '0' }}
                 disabled={!m.enabled || controlsDisabled}
                 onChange={(e) => update("sl", formatNum3(Number(e.target.value)))}
               />
             );
           })()}
         </div>
-        <div className="snapshot-footer-field-v3" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label className="minor-text" style={{ fontWeight: 'bold' }}>RR</label>
-          <input type="number" step="0.001" inputMode="decimal" min="0.3" max="5" value={value.rr || ""} onChange={(e) => update("rr", e.target.value)} disabled={controlsDisabled} readOnly={rrReadOnly} />
+        <div className="snapshot-field-mini" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label className="minor-text" style={{ fontWeight: 'bold', fontSize: '10px', textTransform: 'uppercase' }}>RR</label>
+          <input style={{ height: '28px', fontSize: '12px' }} type="number" step="0.001" inputMode="decimal" min="0.3" max="5" value={value.rr || ""} onChange={(e) => update("rr", e.target.value)} disabled={controlsDisabled} readOnly={rrReadOnly} />
           {(() => {
             const m = calcSliderMeta(value.rr);
             return (
@@ -149,6 +149,7 @@ export function TradePlanEditor({
                 max={m.max}
                 step={m.step}
                 value={m.value}
+                style={{ height: '14px', margin: '0' }}
                 disabled={!m.enabled || controlsDisabled}
                 onChange={(e) => update("rr", formatNum3(Number(e.target.value)))}
               />

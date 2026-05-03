@@ -162,6 +162,7 @@ export function SymbolChart({
   const [pendingMode, setPendingMode] = useState(null); // mode we're loading
   const [lastError, setLastError] = useState(null);
   const cleanSym = useMemo(() => normSym(symbol), [symbol]);
+  const [gridCols, setGridCols] = useState(4);
 
   const { status, master, error, cachedAt, refresh, liveKey, snapshotState } =
     useSymbolChartData({
@@ -275,7 +276,7 @@ export function SymbolChart({
     return MODE_LABELS[m] + " (no data)";
   };
 
-  const chartHeight = 250;
+  const chartHeight = Math.max(250, (4 / gridCols) * 250);
 
   const showControls = !(hasTradePlan && hasAnalysis);
 
@@ -367,6 +368,38 @@ export function SymbolChart({
               width: 22,
               height: 22,
               padding: 0,
+              fontSize: 14,
+              lineHeight: 1,
+              minWidth: 22,
+              fontWeight: 700,
+            }}
+            onClick={() => setGridCols((prev) => Math.max(1, prev - 1))}
+            title="Larger charts (fewer columns)"
+          >
+            +
+          </button>
+          <button
+            className="secondary-button"
+            style={{
+              width: 22,
+              height: 22,
+              padding: 0,
+              fontSize: 14,
+              lineHeight: 1,
+              minWidth: 22,
+              fontWeight: 700,
+            }}
+            onClick={() => setGridCols((prev) => Math.min(6, prev + 1))}
+            title="Smaller charts (more columns)"
+          >
+            -
+          </button>
+          <button
+            className="secondary-button"
+            style={{
+              width: 22,
+              height: 22,
+              padding: 0,
               fontSize: 11,
               lineHeight: 1,
               minWidth: 22,
@@ -397,13 +430,17 @@ export function SymbolChart({
         </div>
 
       {/* ── Charts row ── */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div style={{ 
+        display: "grid", 
+        gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+        gap: 8 
+      }}>
         {sortedTfs.map((tf) => {
           const isLive = mode === "live" || needsFallback;
           const context = master?.context?.[tf.toLowerCase()];
 
           return (
-            <div key={`${mode}-${tf}`} style={{ flex: "1 1 0", minWidth: 140 }}>
+            <div key={`${mode}-${tf}`} style={{ minWidth: 100 }}>
               <TfHeader
                 tf={tf}
                 context={context}
