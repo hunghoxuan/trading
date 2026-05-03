@@ -2707,15 +2707,11 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
   const ts = Date.now();
   const symbolToken = sanitizeSnapshotFileToken(symbol);
   const tfToken = sanitizeSnapshotFileToken(interval, "TF");
-  const sessionPrefix = sanitizeSessionPrefix(
-    opts.session_prefix || opts.sessionPrefix || "",
-  );
-  const userId = String(opts.userId || "").trim();
-  const userPrefix = userId ? `UID_${userId}_` : "";
-  const baseName = sessionPrefix
-    ? `${userPrefix}${symbolToken}_${sessionPrefix}_${tfToken}`
-    : `${userPrefix}${snapshotTimestampToken(ts)}_${symbolToken}_${tfToken}`;
-  let fileName = `${baseName}.${outFormat}`;
+  const userId = sanitizeSnapshotFileToken(opts.userId || "default");
+  
+  // Unified naming: UID_{user}_{symbol}_{tf}_{timestamp}_snapshot.ext
+  const stamp = snapshotTimestampToken(ts);
+  const fileName = `UID_${userId}_${symbolToken}_${tfToken}_${stamp}_snapshot.${outFormat}`;
   let outPath = path.join(CHART_SNAPSHOT_DIR, fileName);
   let dupIdx = 1;
   while (fs.existsSync(outPath) && dupIdx < 100) {
@@ -3492,9 +3488,10 @@ function aiContextToken(value, fallback = "CTX") {
   );
 }
 
-function aiContextFileName({ symbol, tf, barEnd, type, ext = "json" }) {
-  const sym = aiContextToken(normalizeMarketDataSymbol(symbol), "SYMBOL");
-  const tfToken = aiContextToken(displayTfFromNorm(tf), "TF");
+function aiContextFileName({ userId, symbol, tf, barEnd, type, ext = "json" }) {
+  const u = sanitizeSnapshotFileToken(userId || "default");
+  const s = sanitizeSnapshotFileToken(symbol);
+  const t = sanitizeSnapshotFileToken(tf, "TF");
   const end = Number(barEnd || 0);
   const stamp =
     Number.isFinite(end) && end > 0
@@ -3506,7 +3503,7 @@ function aiContextFileName({ symbol, tf, barEnd, type, ext = "json" }) {
           .toISOString()
           .replace(/[-:]/g, "")
           .replace(/\.\d{3}Z$/, "Z");
-  return `${sym}_${tfToken}_${stamp}_${aiContextToken(type, "context").toLowerCase()}.${ext}`;
+  return `UID_${u}_${s}_${t}_${stamp}_${type.toLowerCase()}.${ext}`;
 }
 
 function displayTfFromNorm(tfNorm) {
@@ -3796,18 +3793,21 @@ async function ensureAiTfContext({
   const contextKey = `${symbolNorm}:${displayTfFromNorm(tfNorm)}:${barEnd || "latest"}`;
   const lastPrice = Number(snapshot.last_price ?? summary.last_price);
   const barsFileName = aiContextFileName({
+    userId,
     symbol: symbolNorm,
     tf: tfNorm,
     barEnd,
     type: "bars",
   });
   const analysisFileName = aiContextFileName({
+    userId,
     symbol: symbolNorm,
     tf: tfNorm,
     barEnd,
     type: "analysis",
   });
   const tradePlansFileName = aiContextFileName({
+    userId,
     symbol: symbolNorm,
     tf: tfNorm,
     barEnd,
@@ -3897,6 +3897,7 @@ async function ensureAiTfContext({
       type: "snapshot",
       absPath: shotAbs,
       fileName: aiContextFileName({
+        userId,
         symbol: symbolNorm,
         tf: tfNorm,
         barEnd,
@@ -15136,6 +15137,7 @@ const appHandler = async (req, res) => {
             (x) => x.status === "ok",
           );
           const analysisFileName = aiContextFileName({
+            userId,
             symbol: contextBundle.symbol,
             tf: "ALL",
             barEnd: firstOk?.bar_end || nowUnixSec(),

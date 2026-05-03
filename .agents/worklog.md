@@ -8,6 +8,30 @@
 - Build passes, deployed to VPS
 - Updated feature plan + ticket with final architecture
 
+# Session Log: 2026-05-03 16:12
+- **Starting Task**:
+  - Improve AI Trades preview aesthetics and add cache time display to CachePage.
+- **Work Accomplished**:
+  - Refactored `ChartSnapshotsPage.jsx` activity cards:
+    - Added `side-badge` (S/B square badges) for trade side.
+    - Added `mini-name` and lowercase order type labels.
+    - Implemented `FILLED` status badge mapping for `OPEN` status.
+  - Updated `CachePage.jsx`:
+    - Imported `showDateTime` utility.
+    - Added "UPDATED" column to the cache list table.
+    - Displayed formatted timestamp from `item.data.updated_at`.
+  - Bumped build versions to `v2026.05.03 14:12 - f69d9e9`.
+- **Changed Files**:
+  - `web-ui/src/pages/ai/ChartSnapshotsPage.jsx`
+  - `web-ui/src/pages/system/CachePage.jsx`
+  - `webhook/server.js`
+  - `mql5/TVBridgeEA.mq5`
+  - `.agents/worklog.md`
+- **Verification**:
+  - `npm --prefix web-ui run build` ✅
+- **Deploy Status**:
+  - Not deployed (ready for VPS push).
+
 # Session Log: 2026-05-03 11:11
 - **Starting Task**:
   - Remove legacy lowercase cron keys (`market_data`, `ai_analysis`) and unified schema enforcement.

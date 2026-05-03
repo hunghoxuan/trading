@@ -3765,26 +3765,43 @@ export default function ChartSnapshotsPage() {
                     key={`${x.kind}_${x.id}`}
                     className="snapshot-activity-card-v4"
                   >
-                    <div
-                      className="snapshot-activity-top-v4"
-                      style={{ alignItems: "center", gap: 6 }}
-                    >
+                    <div className="snapshot-activity-top-v4">
                       <span
                         className={`side-badge ${x.side === "SELL" ? "side-sell" : "side-buy"}`}
                       >
                         {x.side === "SELL" ? "S" : "B"}
                       </span>
-                      <span className="mini-name" style={{ margin: 0 }}>
-                        {x.symbol || "-"}
-                      </span>
-                      <span
-                        className="minor-text"
-                        style={{ fontSize: 10, textTransform: "lowercase" }}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "baseline",
+                          gap: 6,
+                          minWidth: 0,
+                        }}
                       >
-                        {x.type}
-                      </span>
+                        <span
+                          className="mini-name"
+                          style={{
+                            margin: 0,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {x.symbol || "-"}
+                        </span>
+                        <span
+                          className="minor-text"
+                          style={{
+                            fontSize: 10,
+                            textTransform: "lowercase",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {x.type}
+                        </span>
+                      </div>
                       <span
-                        style={{ marginLeft: "auto" }}
                         className={`badge ${x.status === "OPEN" ? "FILLED" : x.status}`}
                       >
                         {x.status === "OPEN" ? "FILLED" : x.status}

@@ -518,9 +518,7 @@ button:disabled {
 }
 .badge.TP,
 .badge.LIVE,
-.badge.SUCCESS,
-.badge.FILLED,
-.badge.OPEN {
+.badge.SUCCESS {
     color: #10b981 !important;
     border: 1px solid rgba(16, 185, 129, 0.3) !important;
     background: rgba(16, 185, 129, 0.1) !important;
@@ -542,7 +540,9 @@ button:disabled {
 .badge.OK,
 .badge.PLACED,
 .badge.ACTIVE,
-.badge.LOCKED {
+.badge.LOCKED,
+.badge.FILLED,
+.badge.OPEN {
     color: #f59e0b !important;
     border: 1px solid rgba(245, 158, 11, 0.3) !important;
     background: rgba(245, 158, 11, 0.1) !important;
