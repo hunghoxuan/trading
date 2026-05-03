@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback } from "react";
-import { useChartTileData } from "../../hooks/useChartTileData";
+import { useState, useCallback } from "react";
+import { useSymbolChartData } from "../../hooks/useChartTileData";
 import TradeSignalChart from "../TradeSignalChart";
 
 // ── constants ──────────────────────────────────────────────────────
@@ -24,7 +24,6 @@ const MODES = ["Live TV", "Fixed Data", "Snapshot"];
 
 // ── helpers ────────────────────────────────────────────────────────
 
-/** Map a local TF token to a TradingView interval string. */
 function liveTfToTvInterval(tf) {
   const s = String(tf || "4h").toLowerCase();
   if (s === "d" || s === "1d") return "D";
@@ -33,7 +32,6 @@ function liveTfToTvInterval(tf) {
   return s.toUpperCase();
 }
 
-/** Derive an internal mode key that the hook understands (normalizes both display and code forms). */
 function toModeKey(uiMode) {
   const m = String(uiMode || "").toLowerCase();
   if (m === "live" || m === "live tv") return "live";
@@ -41,29 +39,33 @@ function toModeKey(uiMode) {
   return "fixed";
 }
 
-// ── ChartTile component ────────────────────────────────────────────
+// ── SymbolChart component ──────────────────────────────────────────
 
 /**
- * ChartTile — independent per-chart card.
+ * SymbolChart — independent per-symbol per-TF chart card.
  *
  * Props:
- *  symbol           (required)  instrument symbol
- *  timeframe        (required)  e.g. "4h", "15m", "D"
- *  provider         (optional)  default "ICMARKETS"
- *  bars             (optional)  pre-supplied OHLCV bars
- *  entries          (optional)  trade entry markers
- *  defaultMode      (optional)  "Live TV" | "Fixed Data" | "Snapshot"  (default "Fixed Data")
- *  onSelect         (optional)  called when SELECT button is clicked
- *  onAddWatchlist   (optional)  called to add symbol to watchlist
- *  onRemoveWatchlist(optional)  called to remove symbol from watchlist
- *  inWatchlist      (optional)  whether symbol is currently watchlisted
+ *  symbol             (required)  instrument symbol
+ *  timeframe          (required)  e.g. "4h", "15m", "D"
+ *  allTfs             (optional)  TFs to fetch on refresh (default: ["D","4h","15m","5m"])
+ *  bars               (optional)  pre-supplied OHLCV bars (from outside)
+ *  snapshot_file_id   (optional)  Claude file_id
+ *  snapshot_file_name (optional)  VPS file name
+ *  cached_time        (optional)  last cache timestamp
+ *  defaultMode        (optional)  "Live TV" | "Fixed Data" | "Snapshot"
+ *  onSelect           (optional)  called when SELECT clicked
+ *  onAddWatchlist     (optional)
+ *  onRemoveWatchlist  (optional)
+ *  inWatchlist        (optional)
  */
-export function ChartTile({
+export function SymbolChart({
   symbol,
   timeframe,
-  provider = "ICMARKETS",
-  bars: initialBars,
-  entries,
+  allTfs = ["D", "4h", "15m", "5m"],
+  bars: externalBars,
+  snapshot_file_id: externalFileId,
+  snapshot_file_name: externalFileName,
+  cached_time: externalCachedTime,
   defaultMode = "Fixed Data",
   onSelect,
   onAddWatchlist,
@@ -72,31 +74,43 @@ export function ChartTile({
 }) {
   const [mode, setMode] = useState(defaultMode);
   const modeKey = toModeKey(mode);
+  const hasExternalData = externalBars != null || externalFileName != null;
 
-  const { status, data, error, updatedAt, refresh, liveKey, snapshotState } =
-    useChartTileData({
-      symbol,
-      timeframe,
-      provider,
-      mode: modeKey,
-    });
+  const {
+    status,
+    bars: fetchedBars,
+    snapshot: fetchedSnapshot,
+    cachedTime: fetchedCachedTime,
+    error,
+    refresh,
+    liveKey,
+    snapshotState,
+  } = useSymbolChartData({
+    symbol,
+    timeframe,
+    allTfs,
+    mode: modeKey,
+  });
 
   // ── derived data ───────────────────────────────────────────────
 
-  const lastPrice = data?.last_price ?? null;
+  const displayBars = hasExternalData ? externalBars || [] : fetchedBars || [];
+  const displaySnapshot = hasExternalData
+    ? { file_id: externalFileId, file_name: externalFileName }
+    : fetchedSnapshot;
+  const displayCachedTime = hasExternalData
+    ? externalCachedTime
+    : fetchedCachedTime;
   const color = STATUS_COLORS[status] || STATUS_COLORS.IDLE;
 
-  // Mode-change handler
   const handleModeChange = useCallback((newMode) => {
     setMode(newMode);
   }, []);
 
-  // Refresh handler
   const handleRefresh = useCallback(
     (e) => {
       e.stopPropagation();
       if (modeKey === "live") {
-        // Live TV: bump liveKey to trigger iframe rebind
         refresh();
         return;
       }
@@ -130,12 +144,12 @@ export function ChartTile({
     const stageColors = {
       idle: "var(--muted)",
       bars: "#f59e0b",
-      snapshots: "#f59e0b",
       uploading: "#3b82f6",
       ready: "#10b981",
       error: "#ef4444",
     };
     const sc = stageColors[stage] || "var(--muted)";
+    if (!message && stage === "idle") return null;
     return (
       <div
         className="minor-text"
@@ -157,7 +171,7 @@ export function ChartTile({
             display: "inline-block",
           }}
         />
-        {message || `Stage: ${stage}`}
+        {message}
       </div>
     );
   };
@@ -166,7 +180,7 @@ export function ChartTile({
 
   return (
     <div className="browser-card-v1" style={{ position: "relative" }}>
-      {/* ── Header row ─────────────────────────────────────── */}
+      {/* Header */}
       <div
         style={{
           display: "flex",
@@ -193,6 +207,7 @@ export function ChartTile({
           </span>
           {renderStatusBadge()}
         </div>
+
         <div
           style={{
             display: "flex",
@@ -201,7 +216,7 @@ export function ChartTile({
             flexShrink: 0,
           }}
         >
-          {/* Watchlist +/- */}
+          {/* Watchlist */}
           {inWatchlist ? (
             <button
               type="button"
@@ -250,7 +265,7 @@ export function ChartTile({
             </button>
           )}
 
-          {/* Mode toggle */}
+          {/* Mode */}
           <select
             className="secondary-button"
             value={mode}
@@ -278,7 +293,7 @@ export function ChartTile({
             }}
             onClick={handleRefresh}
             disabled={status === "LOADING"}
-            title={`Chart Sync refresh${modeKey === "snapshot" ? " (bars + snapshots + Claude upload)" : ""}`}
+            title={`Chart Sync${modeKey === "snapshot" ? " + Claude upload" : ""}`}
           >
             {status === "LOADING" ? "\u23F3" : "\u21BB"}
           </button>
@@ -294,10 +309,10 @@ export function ChartTile({
         </div>
       </div>
 
-      {/* ── Snapshot pipeline stage indicator ───────────────── */}
+      {/* Snapshot stage */}
       {renderSnapshotStage()}
 
-      {/* ── Error display ───────────────────────────────────── */}
+      {/* Error */}
       {error && (
         <div
           className="minor-text"
@@ -307,18 +322,17 @@ export function ChartTile({
         </div>
       )}
 
-      {/* ── Chart content area ──────────────────────────────── */}
+      {/* Chart */}
       {mode === "Live TV" ? (
         <iframe
           key={`tv-${symbol}-${timeframe}-${liveKey}`}
-          title={`tile-${symbol}-${timeframe}`}
+          title={`tv-${symbol}-${timeframe}`}
           className="browser-chart-v1"
           style={{ height: 200 }}
           src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(liveTfToTvInterval(timeframe))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
         />
       ) : (
         <div style={{ position: "relative", minHeight: 200 }}>
-          {/* Loading overlay */}
           {status === "LOADING" && (
             <div
               style={{
@@ -332,58 +346,58 @@ export function ChartTile({
                 borderRadius: 8,
               }}
             >
-              <span className="minor-text">
-                {modeKey === "snapshot"
-                  ? snapshotState?.message || "Chart Sync loading..."
-                  : "Chart Sync loading..."}
-              </span>
+              <span className="minor-text">Loading...</span>
             </div>
           )}
-
-          {/* Reuse existing TradeSignalChart for Fixed Data / Snapshot modes */}
           <TradeSignalChart
             symbol={symbol}
             interval={timeframe}
-            analysisSnapshot={data?.context || null}
+            analysisSnapshot={null}
             entryPrice={null}
             slPrice={null}
             tpPrice={null}
           />
-
-          {/* Snapshot completion indicator */}
-          {modeKey === "snapshot" && snapshotState?.stage === "ready" && (
-            <div
-              style={{
-                marginTop: 6,
-                padding: "6px 8px",
-                background: "rgba(16,185,129,0.06)",
-                border: "1px solid rgba(16,185,129,0.15)",
-                borderRadius: 6,
-                fontSize: 10,
-                color: "#10b981",
-              }}
-            >
-              Snapshot uploaded to Claude &mdash;{" "}
-              {snapshotState.filesUploaded || 0} file(s)
-            </div>
-          )}
         </div>
       )}
 
-      {/* ── Footer: price & timestamp ────────────────────────── */}
-      {lastPrice != null && (
+      {/* Snapshot info bar */}
+      {displaySnapshot &&
+        (displaySnapshot.file_id || displaySnapshot.file_name) && (
+          <div
+            style={{
+              marginTop: 4,
+              padding: "4px 6px",
+              background: "rgba(16,185,129,0.06)",
+              border: "1px solid rgba(16,185,129,0.15)",
+              borderRadius: 4,
+              fontSize: 9,
+              color: "#10b981",
+              display: "flex",
+              justifyContent: "space-between",
+            }}
+          >
+            <span title={displaySnapshot.file_id || ""}>
+              {displaySnapshot.file_name || "Snapshot ready"}
+            </span>
+            {displayCachedTime && (
+              <span>{new Date(displayCachedTime).toLocaleTimeString()}</span>
+            )}
+          </div>
+        )}
+
+      {/* Footer */}
+      {displayCachedTime && (
         <div
           style={{
             marginTop: 4,
-            fontSize: 11,
+            fontSize: 10,
             color: "var(--muted)",
             display: "flex",
             justifyContent: "space-between",
-            gap: 8,
           }}
         >
-          <span>Last: {Number(lastPrice).toFixed(5)}</span>
-          {updatedAt && <span>{new Date(updatedAt).toLocaleTimeString()}</span>}
+          <span>Cached</span>
+          <span>{new Date(displayCachedTime).toLocaleTimeString()}</span>
         </div>
       )}
     </div>

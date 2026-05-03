@@ -3,36 +3,21 @@ import { chartFetchManager } from "../services/chartFetchManager";
 import { api } from "../api";
 
 /**
- * Per-chart-tile data lifecycle hook.
+ * Per-symbol-chart data lifecycle hook.
  *
- * Uses the canonical Chart Sync family:
- *   api.chartRefresh(...)  →  POST /v2/chart/refresh
+ * Master cache key: {SYMBOL} — one entry per symbol, all TFs inside.
+ * Aligns with backend MARKET_DATA:{SYMBOL}.
  *
- * Persisted (backend) cache contract: MARKET_DATA:SYMBOL (symbol-centered).
- * Runtime dedupe key: {provider}:{symbol}:{timeframe}:{mode}
+ * Modes (display only — cache is shared):
+ *  live     — TradingView iframe; no API calls
+ *  fixed    — bars chart
+ *  snapshot — bars chart + snapshot pipeline
  *
- * Modes
- * ─────
- *  live     — TradingView iframe; no API calls. Refresh = iframe rebind.
- *  fixed    — Chart Sync bars/context branch only.
- *  snapshot — Chart Sync → snapshot creation → Claude upload (no analysis).
- *
- * Return shape
- * ────────────
- *  { status, data, error, updatedAt, refresh, liveKey, snapshotState }
+ * Return shape:
+ *  { status, bars, snapshot, cachedTime, error, refresh, liveKey, snapshotState }
  */
 
 // ── helpers ────────────────────────────────────────────────────────
-
-function toTradingViewInterval(tf) {
-  const s = String(tf || "4h")
-    .toLowerCase()
-    .trim();
-  if (s === "d" || s === "1d") return "D";
-  if (s === "w" || s === "1w") return "W";
-  if (s === "m" || s === "1mth" || s === "1mo") return "M";
-  return s.toUpperCase();
-}
 
 function makeSessionPrefix() {
   const now = new Date();
@@ -48,240 +33,151 @@ function makeSessionPrefix() {
   ].join("");
 }
 
+function tfNorm(tf) {
+  return String(tf || "")
+    .toLowerCase()
+    .trim();
+}
+
 // ── hook ───────────────────────────────────────────────────────────
 
-export function useChartTileData({
+export function useSymbolChartData({
   symbol,
   timeframe,
-  provider = "ICMARKETS",
+  allTfs = ["D", "4h", "15m", "5m"],
   mode = "fixed",
   lookbackBars = 300,
 }) {
   const [status, setStatus] = useState("IDLE");
-  const [data, setData] = useState(null);
+  const [bars, setBars] = useState([]);
+  const [snapshot, setSnapshot] = useState(null); // { file_id, file_name, uploaded_at }
+  const [cachedTime, setCachedTime] = useState(null);
   const [error, setError] = useState(null);
-  const [updatedAt, setUpdatedAt] = useState(null);
 
-  // Live-mode: iframe rebind counter
+  // Live mode: iframe rebind counter
   const [liveKey, setLiveKey] = useState(0);
 
-  // Snapshot-mode extended state
+  // Snapshot pipeline state
   const [snapshotState, setSnapshotState] = useState({
-    stage: "idle", // idle | bars | snapshots | uploading | ready | error
-    filesUploaded: 0,
+    stage: "idle",
     message: "",
   });
 
   const mountedRef = useRef(true);
   const sessionPrefixRef = useRef("");
-
-  const key = useMemo(
-    () => chartFetchManager.cacheKey(provider, symbol, timeframe, mode),
-    [provider, symbol, timeframe, mode],
+  const sym = useMemo(
+    () =>
+      String(symbol || "")
+        .trim()
+        .toUpperCase(),
+    [symbol],
   );
+  const tf = useMemo(() => tfNorm(timeframe), [timeframe]);
 
-  const tfInterval = useMemo(
-    () => toTradingViewInterval(timeframe),
-    [timeframe],
-  );
-
-  // ── Fixed Data mode fetcher (Chart Sync bars/context) ───────────
-  const fetchFixed = useCallback(
+  // ── Fetch all TFs (bars + context + snapshots) ──────────────────
+  const fetchAll = useCallback(
     async (opts = {}) => {
-      const sym = String(symbol || "").trim();
       if (!sym) throw new Error("Symbol required");
 
+      // Call chartRefresh for ALL TFs, ALL types — one API call
       const out = await api.chartRefresh({
         symbols: [sym],
-        provider,
-        timeframes: [tfInterval],
-        types: ["context", "bars"],
+        timeframes: allTfs,
+        types: ["context", "bars", "snapshots"],
         bars: Number(lookbackBars || 300) || 300,
         force: opts.force === true,
       });
 
-      // Extract from MARKET_DATA:SYMBOL contract — symbol-centered
       const symbolData = out?.symbols?.[0] || out?.context || out || {};
-
       const tfRows = Array.isArray(symbolData?.timeframes)
         ? symbolData.timeframes
         : [];
 
-      const tfData =
-        tfRows.find(
-          (t) =>
-            String(t?.tf || t?.timeframe || "").toLowerCase() ===
-            tfInterval.toLowerCase(),
-        ) || symbolData;
+      // Build master object: bars + context per TF
+      const barsMap = {};
+      const contextMap = {};
+      for (const row of tfRows) {
+        const key = tfNorm(row?.tf || row?.timeframe || "");
+        if (!key) continue;
+        barsMap[key] = Array.isArray(row?.bars) ? row.bars : [];
+        contextMap[key] = {
+          last_price: row?.last_price ?? null,
+          summary: row?.summary || null,
+          freshness: row?.freshness || null,
+        };
+      }
 
-      // Twelve Data fallback if stale/missing
-      let fallbackBars = null;
-      if (!Array.isArray(tfData?.bars) || tfData.bars.length === 0) {
-        try {
-          const twelve = await api.chartTwelveCandles(
-            sym,
-            tfInterval,
-            Number(lookbackBars || 300) || 300,
-            opts.force === true,
-          );
-          fallbackBars = twelve?.snapshot?.bars || twelve?.bars || null;
-        } catch {
-          /* swallow */
-        }
+      // Extract snapshot data from response
+      const snapshotsData = symbolData?.snapshots || out?.snapshots || {};
+      const snapItems = Array.isArray(snapshotsData?.items)
+        ? snapshotsData.items
+        : [];
+      const snapshotsMap = {};
+      for (const item of snapItems) {
+        const itemTf = tfNorm(item?.timeframe || item?.tf || "");
+        if (!itemTf) continue;
+        snapshotsMap[itemTf] = {
+          file_name: item?.file_name || item?.filename || item?.name || "",
+          file_path: item?.file_path || item?.path || "",
+          created_at: item?.created_at || item?.createdAt || Date.now(),
+        };
       }
 
       return {
-        bars: fallbackBars || tfData?.bars || [],
-        last_price: tfData?.last_price ?? symbolData?.last_price ?? null,
-        summary: tfData?.summary || symbolData?.summary || null,
-        freshness: tfData?.freshness || symbolData?.freshness || null,
-        context: symbolData,
+        symbol: sym,
+        bars: barsMap,
+        context: contextMap,
+        snapshots: snapshotsMap,
         source: out?.source || "chart_refresh",
-        updated_time: out?.updated_time || Date.now(),
       };
     },
-    [symbol, provider, tfInterval, lookbackBars],
+    [sym, allTfs, lookbackBars],
   );
 
-  // ── Snapshot mode fetcher (bars → snapshots → Claude upload) ──
-  const fetchSnapshot = useCallback(
-    async (opts = {}) => {
-      const sym = String(symbol || "").trim();
-      if (!sym) throw new Error("Symbol required");
-
-      // Stage 1: Chart Sync — bars/context
-      if (mountedRef.current) {
-        setSnapshotState((prev) => ({
-          ...prev,
-          stage: "bars",
-          message: "Fetching bars/context...",
-        }));
-      }
-
-      const out = await api.chartRefresh({
-        symbols: [sym],
-        provider,
-        timeframes: [tfInterval],
-        types: ["context", "bars"],
-        bars: Number(lookbackBars || 300) || 300,
-        force: opts.force === true,
-        include_snapshots: 1,
-      });
-
-      const symbolData = out?.symbols?.[0] || out?.context || out || {};
-      const tfRows = Array.isArray(symbolData?.timeframes)
-        ? symbolData.timeframes
-        : [];
-      const tfData =
-        tfRows.find(
-          (t) =>
-            String(t?.tf || t?.timeframe || "").toLowerCase() ===
-            tfInterval.toLowerCase(),
-        ) || symbolData;
-
-      // Fallback to Twelve if still missing
-      let bars = tfData?.bars || [];
-      if (!bars.length) {
-        try {
-          const twelve = await api.chartTwelveCandles(
-            sym,
-            tfInterval,
-            Number(lookbackBars || 300) || 300,
-            true,
-          );
-          bars = twelve?.snapshot?.bars || twelve?.bars || [];
-        } catch {
-          /* swallow */
-        }
-      }
-
-      // Stage 2: Create snapshots (reuse same API as page's captureSnapshots)
-      if (mountedRef.current) {
-        setSnapshotState((prev) => ({
-          ...prev,
-          stage: "snapshots",
-          message: "Creating chart snapshot...",
-        }));
-      }
+  // ── Upload snapshots to Claude ──────────────────────────────────
+  const uploadToClaude = useCallback(
+    async (snapshotsMap) => {
+      const items = Object.values(snapshotsMap || {}).filter(
+        (s) => s?.file_path,
+      );
+      if (!items.length) return {};
 
       const prefix = sessionPrefixRef.current || makeSessionPrefix();
       sessionPrefixRef.current = prefix;
 
-      let snapshotFiles = [];
       try {
-        const snapOut = await api.chartSnapshotCreateBatch({
+        await api.claudeUploadSnapshots({
           symbol: sym,
-          provider,
           session_prefix: prefix,
-          timeframes: [tfInterval],
-          lookbackBars: Number(lookbackBars || 300) || 300,
-          format: "jpg",
-          quality: 55,
+          files: items,
         });
-        snapshotFiles = Array.isArray(snapOut?.items) ? snapOut.items : [];
+        // After upload, we'd ideally get file_ids back. For now mark as uploaded.
+        const uploadedMap = {};
+        for (const [tfKey, snap] of Object.entries(snapshotsMap || {})) {
+          uploadedMap[tfKey] = {
+            ...snap,
+            uploaded_at: Date.now(),
+            // file_id would come from Claude response
+          };
+        }
+        return uploadedMap;
       } catch {
-        /* snapshots are optional */
+        return snapshotsMap; // return un-uploaded snapshots on failure
       }
-
-      // Stage 3: Upload to Claude server (not analysis — just file upload)
-      let filesUploaded = 0;
-      if (snapshotFiles.length > 0) {
-        if (mountedRef.current) {
-          setSnapshotState((prev) => ({
-            ...prev,
-            stage: "uploading",
-            message: "Uploading to Claude...",
-          }));
-        }
-        try {
-          await api.claudeUploadSnapshots({
-            symbol: sym,
-            session_prefix: prefix,
-            files: snapshotFiles,
-          });
-          filesUploaded = snapshotFiles.length;
-        } catch {
-          /* upload failure is non-fatal */
-        }
-      }
-
-      if (mountedRef.current) {
-        setSnapshotState((prev) => ({
-          ...prev,
-          stage: snapshotFiles.length > 0 ? "ready" : "error",
-          filesUploaded,
-          message:
-            snapshotFiles.length > 0
-              ? `Snapshot pipeline complete. ${filesUploaded} file(s) uploaded to Claude.`
-              : "Snapshot creation failed; bars/context are available.",
-        }));
-      }
-
-      return {
-        bars,
-        last_price: tfData?.last_price ?? symbolData?.last_price ?? null,
-        summary: tfData?.summary || symbolData?.summary || null,
-        freshness: tfData?.freshness || symbolData?.freshness || null,
-        context: symbolData,
-        snapshotFiles,
-        filesUploaded,
-        source: "snapshot_pipeline",
-        updated_time: Date.now(),
-      };
     },
-    [symbol, provider, tfInterval, lookbackBars],
+    [sym],
   );
 
-  // ── refresh orchestrator ─────────────────────────────────────────
+  // ── Refresh orchestrator ─────────────────────────────────────────
   const refresh = useCallback(
     async (opts = {}) => {
-      if (!symbol || !timeframe) return null;
+      if (!sym || !tf) return null;
 
-      // Live TV: just bump the key to force iframe rebind
+      // Live TV: bump key for iframe rebind
       if (mode === "live") {
         setLiveKey((prev) => prev + 1);
         setStatus("READY");
-        setUpdatedAt(Date.now());
+        setCachedTime(Date.now());
         setError(null);
         return null;
       }
@@ -289,42 +185,59 @@ export function useChartTileData({
       setStatus("LOADING");
       setError(null);
 
-      // Snapshot-mode pre-init
       if (mode === "snapshot") {
-        setSnapshotState({
-          stage: "bars",
-          filesUploaded: 0,
-          message: "Starting snapshot pipeline...",
-        });
+        setSnapshotState({ stage: "bars", message: "Fetching..." });
       }
 
       try {
-        const fetcher =
-          mode === "snapshot"
-            ? () => fetchSnapshot(opts)
-            : () => fetchFixed(opts);
-
-        const result = await chartFetchManager.enqueue(key, fetcher);
+        // 1) Fetch all TFs (bars + context + VPS snapshots) via chartRefresh
+        const result = await chartFetchManager.enqueue(sym, tf, () =>
+          fetchAll(opts),
+        );
 
         if (!mountedRef.current) return null;
 
-        if (result.error && !result.data) {
+        const master = result.data;
+
+        // 2) If snapshot mode, upload to Claude
+        let uploadedSnapshots = master?.snapshots || {};
+        if (mode === "snapshot" && Object.keys(uploadedSnapshots).length > 0) {
+          setSnapshotState({
+            stage: "uploading",
+            message: "Uploading to Claude...",
+          });
+          uploadedSnapshots = await uploadToClaude(master.snapshots);
+          // Merge uploaded snapshots back into master
+          if (master) master.snapshots = uploadedSnapshots;
+        }
+
+        // 3) Update local state for THIS TF
+        const tfBars = master?.bars?.[tf] || [];
+        const tfSnapshot = uploadedSnapshots?.[tf] || null;
+
+        setBars(tfBars);
+        setSnapshot(tfSnapshot);
+        setCachedTime(master?.cached_at || Date.now());
+
+        if (result.stale) {
+          setStatus("STALE");
+        } else if (result.error && tfBars.length === 0) {
           setStatus("ERROR");
           setError(result.error);
-        } else if (result.stale) {
-          setStatus("STALE");
-        } else if (result.error && result.data) {
-          // Stale-while-revalidate: show data with error note
+        } else if (result.error) {
           setStatus("STALE");
           setError(result.error);
         } else {
           setStatus("READY");
         }
 
-        if (result.data) {
-          setData(result.data);
-          setUpdatedAt(result.updatedAt);
+        if (mode === "snapshot") {
+          setSnapshotState({
+            stage: tfSnapshot ? "ready" : "error",
+            message: tfSnapshot ? "Snapshot ready" : "Snapshot creation failed",
+          });
         }
+
         return result;
       } catch (err) {
         if (!mountedRef.current) return null;
@@ -333,34 +246,35 @@ export function useChartTileData({
         return null;
       }
     },
-    [symbol, timeframe, mode, key, fetchFixed, fetchSnapshot],
+    [sym, tf, mode, fetchAll, uploadToClaude],
   );
 
-  // ── auto-fetch on mount ──────────────────────────────────────────
+  // ── Auto-fetch on mount ──────────────────────────────────────────
   useEffect(() => {
     mountedRef.current = true;
     sessionPrefixRef.current = "";
 
-    if (!symbol || !timeframe) {
+    if (!sym || !tf) {
       setStatus("IDLE");
-      setData(null);
+      setBars([]);
+      setSnapshot(null);
       return;
     }
 
     // Live mode: immediately ready
     if (mode === "live") {
       setStatus("READY");
-      setData(null);
+      setCachedTime(Date.now());
       setError(null);
-      setUpdatedAt(Date.now());
       return;
     }
 
-    // Fixed / Snapshot: check cache, then fetch
-    const cached = chartFetchManager.getCached(key);
-    if (cached?.data) {
-      setData(cached.data);
-      setUpdatedAt(cached.updatedAt);
+    // Check master cache for this TF
+    const cached = chartFetchManager.getTf(sym, tf);
+    if (cached) {
+      setBars(cached.bars || []);
+      setSnapshot(cached.snapshot || null);
+      setCachedTime(cached.cached_at || null);
       if (cached.stale) {
         setStatus("STALE");
         // stale-while-revalidate
@@ -369,7 +283,6 @@ export function useChartTileData({
         setStatus("READY");
       }
     } else {
-      // No cache — full fetch
       setStatus("LOADING");
       refresh({ force: false }).catch(() => null);
     }
@@ -377,13 +290,14 @@ export function useChartTileData({
     return () => {
       mountedRef.current = false;
     };
-  }, [symbol, timeframe, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sym, tf, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     status,
-    data,
+    bars,
+    snapshot, // { file_id, file_name, uploaded_at } | null
+    cachedTime,
     error,
-    updatedAt,
     refresh,
     liveKey,
     snapshotState,

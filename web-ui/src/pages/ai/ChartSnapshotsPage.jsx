@@ -5,7 +5,7 @@ import { showDateTime, isSameDay } from "../../utils/format";
 import { api } from "../../api";
 import { SignalDetailCard } from "../../components/SignalDetailCard";
 import TradeSignalChart from "../../components/TradeSignalChart";
-import { ChartTile } from "../../components/charts/ChartTile";
+import { SymbolChart } from "../../components/charts/ChartTile";
 
 const STORAGE_KEY = "chart_prompt_builder_templates_v2";
 
@@ -4078,11 +4078,10 @@ export default function ChartSnapshotsPage() {
             >
               {symbolsByTab.slice(0, visibleCount).map((sym) =>
                 browserTfs.length <= 1 ? (
-                  <ChartTile
+                  <SymbolChart
                     key={sym}
                     symbol={sym}
                     timeframe={browserTf}
-                    provider={provider}
                     defaultMode="Fixed Data"
                     onSelect={(s) => setCfgField("symbol", s)}
                     onAddWatchlist={(s) => {
@@ -4094,11 +4093,10 @@ export default function ChartSnapshotsPage() {
                   />
                 ) : (
                   browserTfs.map((tf) => (
-                    <ChartTile
+                    <SymbolChart
                       key={`${sym}-${tf}`}
                       symbol={sym}
                       timeframe={tf}
-                      provider={provider}
                       defaultMode="Fixed Data"
                       onSelect={(s) => setCfgField("symbol", s)}
                       onAddWatchlist={(s) => {

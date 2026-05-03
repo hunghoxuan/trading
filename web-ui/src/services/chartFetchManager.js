@@ -1,44 +1,45 @@
 /**
  * Chart Sync — shared fetch manager.
  *
- * Runtime in-flight dedupe key:
- *   {provider}:{symbol}:{timeframe}:{mode}
+ * Cache key: {SYMBOL}  (e.g. "EURUSD")
+ * Master object per symbol — all TFs, bars, context, snapshots in one entry.
+ * Aligns with backend MARKET_DATA:{SYMBOL} contract.
  *
- * Persisted cache contract (backend):
- *   MARKET_DATA:SYMBOL  (symbol-centered, all TFs grouped in one symbol object)
- *
- * Concurrency cap: 4. Cooldown per runtime key: 2.5 s. Stale-while-revalidate.
+ * Runtime dedupe: {symbol}:{tf}  (for in-flight coordination only)
+ * Concurrency cap: 4. Cooldown: 2.5 s. Stale-while-revalidate.
  */
 
 const CONCURRENCY_CAP = 4;
-const COOLDOWN_MS = 2500; // 2.5 s (within ticket's 2–3 s window)
-const STALE_THRESHOLD_MS = 60_000; // 1 min → stale flag
-const MAX_CACHE_AGE_MS = 5 * 60_000; // 5 min → eligible for eviction
+const COOLDOWN_MS = 2500;
+const STALE_THRESHOLD_MS = 60_000; // 1 min → stale
+const MAX_CACHE_AGE_MS = 10 * 60_000; // 10 min → eviction
 
 // ── internal state ────────────────────────────────────────────────
 let activeCount = 0;
-const queue = []; // { key, fetcher, resolve, reject }
-const inFlight = new Map(); // key → Promise
-const lastFetch = new Map(); // key → timestamp ms
-const memoryCache = new Map(); // key → { data, updatedAt }
+const queue = [];
+const inFlight = new Map(); // "{symbol}:{tf}" → Promise
+const lastFetch = new Map(); // "{symbol}:{tf}" → timestamp ms
+const masterCache = new Map(); // "{SYMBOL}" → master object
 
 // ── helpers ────────────────────────────────────────────────────────
 
-/** Build the runtime dedupe / cooldown key. */
-function cacheKey(provider, symbol, timeframe, mode) {
-  return [
-    String(provider || "ICMARKETS").toUpperCase(),
-    String(symbol || "").toUpperCase(),
-    String(timeframe || "4h").toLowerCase(),
-    String(mode || "fixed").toLowerCase(),
-  ].join(":");
+/** Normalize symbol to uppercase cache key. */
+function normSymbol(symbol) {
+  return String(symbol || "")
+    .trim()
+    .toUpperCase();
 }
 
-/** Evict entries older than MAX_CACHE_AGE_MS. */
-function evictStaleEntries() {
+/** Build runtime dedupe key (in-flight only, NOT cache key). */
+function flightKey(symbol, tf) {
+  return `${normSymbol(symbol)}:${String(tf || "").toLowerCase()}`;
+}
+
+/** Evict master entries older than MAX_CACHE_AGE_MS. */
+function evict() {
   const cutoff = Date.now() - MAX_CACHE_AGE_MS;
-  for (const [k, v] of memoryCache) {
-    if (v.updatedAt < cutoff) memoryCache.delete(k);
+  for (const [k, v] of masterCache) {
+    if ((v.cached_at || 0) < cutoff) masterCache.delete(k);
   }
 }
 
@@ -46,18 +47,36 @@ function evictStaleEntries() {
 
 function processQueue() {
   while (queue.length > 0 && activeCount < CONCURRENCY_CAP) {
-    const { key, fetcher, resolve, reject } = queue.shift();
-    startFetch(key, fetcher).then(resolve, reject);
+    const { fkey, fetcher, resolve, reject } = queue.shift();
+    startFetch(fkey, fetcher).then(resolve, reject);
   }
 }
 
-function startFetch(key, fetcher) {
+function startFetch(fkey, fetcher) {
   activeCount++;
   const promise = (async () => {
     try {
       const result = await fetcher();
-      lastFetch.set(key, Date.now());
-      memoryCache.set(key, { data: result, updatedAt: Date.now() });
+      lastFetch.set(fkey, Date.now());
+      // Merge into master (Read-Modify-Write)
+      if (result && result.symbol) {
+        const sym = normSymbol(result.symbol);
+        const prev = masterCache.get(sym) || {
+          symbol: sym,
+          bars: {},
+          context: {},
+          snapshots: {},
+        };
+        const merged = {
+          ...prev,
+          ...result,
+          cached_at: Date.now(),
+          bars: { ...prev.bars, ...(result.bars || {}) },
+          context: { ...prev.context, ...(result.context || {}) },
+          snapshots: { ...prev.snapshots, ...(result.snapshots || {}) },
+        };
+        masterCache.set(sym, merged);
+      }
       return {
         data: result,
         fromCache: false,
@@ -66,11 +85,15 @@ function startFetch(key, fetcher) {
         error: null,
       };
     } catch (err) {
-      const cached = memoryCache.get(key);
+      const cached = lastFetch.get(fkey)
+        ? masterCache.get(normSymbol(String(err?.symbol || "")))
+        : null;
       if (cached) {
         return {
-          ...cached,
+          data: cached,
+          fromCache: true,
           stale: true,
+          updatedAt: cached.cached_at,
           error: String(err?.message || err || "fetch failed"),
         };
       }
@@ -83,109 +106,98 @@ function startFetch(key, fetcher) {
       };
     } finally {
       activeCount--;
-      inFlight.delete(key);
+      inFlight.delete(fkey);
       processQueue();
     }
   })();
-
-  inFlight.set(key, promise);
+  inFlight.set(fkey, promise);
   return promise;
 }
 
 // ── public API ─────────────────────────────────────────────────────
 
-/**
- * Enqueue a fetch through the shared manager.
- *
- * - If the same key is already in-flight the existing promise is returned
- *   (runtime dedupe).
- * - If the key was fetched within COOLDOWN_MS the cached value is returned
- *   with stale=true.
- * - Otherwise the fetcher is run immediately (up to CONCURRENCY_CAP
- *   concurrent), queued otherwise.
- */
-function enqueue(key, fetcher) {
-  // 1) in-flight dedupe
-  if (inFlight.has(key)) return inFlight.get(key);
-
-  // 2) manual-refresh cooldown
+/** Enqueue a fetch through the shared manager (runtime dedupe + concurrency). */
+function enqueue(symbol, tf, fetcher) {
+  const fkey = flightKey(symbol, tf);
+  if (inFlight.has(fkey)) return inFlight.get(fkey);
   const now = Date.now();
-  const last = lastFetch.get(key) || 0;
+  const last = lastFetch.get(fkey) || 0;
   if (now - last < COOLDOWN_MS) {
-    const cached = memoryCache.get(key);
-    if (cached) {
+    const master = masterCache.get(normSymbol(symbol));
+    if (master)
       return Promise.resolve({
-        ...cached,
+        data: master,
         fromCache: true,
         stale: true,
+        updatedAt: master.cached_at,
         error: null,
       });
-    }
   }
-
-  // 3) concurrency gate
   if (activeCount >= CONCURRENCY_CAP) {
     return new Promise((resolve, reject) => {
-      queue.push({ key, fetcher, resolve, reject });
+      queue.push({ fkey, fetcher, resolve, reject });
     });
   }
-
-  return startFetch(key, fetcher);
+  return startFetch(fkey, fetcher);
 }
 
-/**
- * Read from the runtime memory cache.
- * Returns null if not present; returns `{ ..., stale: true }` if older
- * than `maxAgeMs`.
- */
-function getCached(key, maxAgeMs = STALE_THRESHOLD_MS) {
-  evictStaleEntries();
-  const entry = memoryCache.get(key);
+/** Get the master cache entry for a symbol. Returns null if not cached or too old. */
+function get(symbol, maxAgeMs = STALE_THRESHOLD_MS) {
+  evict();
+  const entry = masterCache.get(normSymbol(symbol));
   if (!entry) return null;
-  if (Date.now() - entry.updatedAt > maxAgeMs) {
-    return { ...entry, fromCache: true, stale: true };
-  }
-  return { ...entry, fromCache: true, stale: false };
+  return { ...entry, stale: Date.now() - (entry.cached_at || 0) > maxAgeMs };
 }
 
-/**
- * Drop all memory-cache entries whose key includes `pattern`.
- * Useful for invalidating a whole symbol after a force-refresh.
- */
+/** Get bars + snapshot metadata for a specific TF from the master cache. */
+function getTf(symbol, tf, maxAgeMs = STALE_THRESHOLD_MS) {
+  const master = get(symbol, maxAgeMs);
+  if (!master) return null;
+  const tfKey = String(tf || "").toLowerCase();
+  return {
+    bars: master.bars?.[tfKey] || [],
+    context: master.context?.[tfKey] || null,
+    snapshot: master.snapshots?.[tfKey] || null,
+    cached_at: master.cached_at || null,
+    stale: master.stale,
+  };
+}
+
+/** Check if a symbol has fresh cached data. */
+function isFresh(symbol, maxAgeMs = STALE_THRESHOLD_MS) {
+  const master = get(symbol, maxAgeMs);
+  return master && !master.stale;
+}
+
+/** Drop cached entries matching a pattern. */
 function invalidate(pattern = "") {
-  for (const key of memoryCache.keys()) {
-    if (!pattern || key.includes(pattern)) memoryCache.delete(key);
+  for (const key of masterCache.keys()) {
+    if (!pattern || key.includes(pattern.toUpperCase()))
+      masterCache.delete(key);
   }
-  // also cancel any queued fetches for the same pattern
   for (let i = queue.length - 1; i >= 0; i--) {
-    if (!pattern || queue[i].key.includes(pattern)) {
+    if (!pattern || queue[i].fkey.toUpperCase().includes(pattern.toUpperCase()))
       queue.splice(i, 1);
-    }
   }
 }
 
-/**
- * Check whether a key is currently in-flight.
- */
-function isInFlight(key) {
-  return inFlight.has(key);
+function isInFlight(symbol, tf) {
+  return inFlight.has(flightKey(symbol, tf));
 }
 
-/**
- * Reset all internal state (for testing / hard reset).
- */
 function reset() {
   activeCount = 0;
   queue.length = 0;
   inFlight.clear();
   lastFetch.clear();
-  memoryCache.clear();
+  masterCache.clear();
 }
 
 export const chartFetchManager = {
-  cacheKey,
+  get,
+  getTf,
+  isFresh,
   enqueue,
-  getCached,
   invalidate,
   isInFlight,
   reset,
