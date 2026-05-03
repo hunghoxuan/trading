@@ -4083,7 +4083,7 @@ export default function ChartSnapshotsPage() {
                     symbol={sym}
                     timeframe={browserTf}
                     provider={provider}
-                    defaultMode="fixed"
+                    defaultMode="Fixed Data"
                     onSelect={(s) => setCfgField("symbol", s)}
                     onAddWatchlist={(s) => {
                       const next = [...new Set([...watchlist, s])];
@@ -4099,7 +4099,7 @@ export default function ChartSnapshotsPage() {
                       symbol={sym}
                       timeframe={tf}
                       provider={provider}
-                      defaultMode="fixed"
+                      defaultMode="Fixed Data"
                       onSelect={(s) => setCfgField("symbol", s)}
                       onAddWatchlist={(s) => {
                         const next = [...new Set([...watchlist, s])];
@@ -4110,7 +4110,7 @@ export default function ChartSnapshotsPage() {
                     />
                   ))
                 )
-              )}              ))}
+              )}
             </div>
           </div>
         )}
