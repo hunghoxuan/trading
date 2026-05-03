@@ -102,8 +102,8 @@ loadEnvFile();
 
 const SERVER_VERSION = envStr(
   process.env.WEBHOOK_SERVER_VERSION,
-  "v2026.05.03 17:45 - 1bd278a",
-); // Infrastructure Refactor
+  "v2026.05.03 19:15 - 9b60d52",
+); // UI Refactor High-Density
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(
   CHART_SNAPSHOT_DIR,

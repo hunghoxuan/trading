@@ -13,6 +13,27 @@ export default function NotificationWatcher() {
     activeKillZone: null,
   });
 
+  const lastPulse = useRef({ global: 0, user: {} });
+
+  const checkPulse = async () => {
+    try {
+      const res = await api.notificationPulse();
+      if (!res.ok) return;
+
+      const hasGlobalChange = res.global > lastPulse.current.global;
+      const hasUserChange = Object.keys(res.user || {}).some(
+        k => (res.user[k] || 0) > (lastPulse.current.user[k] || 0)
+      );
+
+      if (hasGlobalChange || hasUserChange) {
+        lastPulse.current = { global: res.global, user: res.user };
+        await checkEvents();
+      }
+    } catch (err) {
+      console.warn("[NotificationWatcher] Pulse error:", err);
+    }
+  };
+
   const checkEvents = async () => {
     try {
       // 1. Check Signals & Trades
@@ -80,7 +101,7 @@ export default function NotificationWatcher() {
   };
 
   useEffect(() => {
-    // Initial load to avoid playing sounds for everything on first run
+    // Initial load
     api.trades({ page: 1, pageSize: 50 }).then(data => {
       data.trades?.forEach(t => {
         lastState.current.signalIds.add(t.sid || t.signal_id);
@@ -88,7 +109,10 @@ export default function NotificationWatcher() {
       });
     });
 
-    const timer = setInterval(checkEvents, 20000); // Check every 20s
+    // Check News once on load
+    fetch("/v2/calendar/today").then(r => r.json()).catch(() => null);
+
+    const timer = setInterval(checkPulse, 10000); // Check pulse every 10s (lightweight)
     return () => clearInterval(timer);
   }, []);
 

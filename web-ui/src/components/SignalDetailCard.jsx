@@ -54,41 +54,10 @@ function toTradingViewSymbol(raw) {
   return `OANDA:${s.replace(/[^A-Z0-9]/g, "")}`;
 }
 
-function PlanHeader({ plan, planLabel, symbol, isBuy, simplified = false, status = null, volume = null, pnl = null }) {
+function PlanHeader({ plan, symbol, isBuy, simplified = false, status = null, volume = null, pnl = null }) {
   const directionColor = isBuy ? '#26a69a' : '#ef5350';
+  const sideBg = isBuy ? 'rgba(38,166,154,0.1)' : 'rgba(239,83,80,0.1)';
   
-  const renderMeta = () => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '11px', color: 'var(--muted)' }}>
-      {volume && <span>{volume}</span>}
-      {pnl && pnl}
-      <span>{plan.rr || "0.0"} RR</span>
-      <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{plan.confidence || "0"}%</span>
-      {status && <span className={`badge ${status.cls} badge-mini`}>{status.label}</span>}
-    </div>
-  );
-
-  if (simplified) {
-    return (
-      <div style={{ 
-        display: "flex", 
-        justifyContent: "space-between", 
-        alignItems: "center", 
-        marginBottom: 8, 
-        borderBottom: '1px solid var(--accent-soft)', 
-        paddingBottom: 8,
-        gap: 12
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ color: directionColor, fontWeight: 700, fontSize: '13px' }}>{String(plan.direction || "BUY").toUpperCase()}</span>
-          <span style={{ fontWeight: 600, fontSize: '13px' }}>{symbol}</span>
-          <span style={{ fontSize: '13px', color: 'var(--foreground)' }}>
-            {plan.entry || "-"} → {plan.tp || "-"} / {plan.sl || "-"}
-          </span>
-        </div>
-        {renderMeta()}
-      </div>
-    );
-  }
   return (
     <div style={{ 
       display: "flex", 
@@ -96,26 +65,42 @@ function PlanHeader({ plan, planLabel, symbol, isBuy, simplified = false, status
       alignItems: "center", 
       marginBottom: 8, 
       borderBottom: '1px solid var(--accent-soft)', 
-      paddingBottom: 8,
-      flexWrap: 'nowrap',
-      gap: 12,
-      overflow: 'hidden'
+      paddingBottom: 6,
+      gap: 12
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-        <span style={{ color: directionColor, fontWeight: 700, fontSize: '13px' }}>{String(plan.direction || "BUY").toUpperCase()}</span>
-        <span style={{ color: 'var(--muted)', fontSize: '11px' }}>{planLabel}</span>
-        <span style={{ fontWeight: 600, fontSize: '13px' }}>{symbol}</span>
-        <span style={{ marginLeft: 4, fontSize: '13px', color: 'var(--foreground)', whiteSpace: 'nowrap' }}>
-          {plan.entry || "-"} → {plan.tp || "-"} / {plan.sl || "-"}
-        </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ 
+          background: sideBg, 
+          color: directionColor, 
+          width: 20, height: 20, 
+          display: 'flex', alignItems: 'center', justifyContent: 'center', 
+          borderRadius: 4, fontSize: '11px', fontWeight: 900,
+          border: `1px solid ${directionColor}44`,
+          flexShrink: 0
+        }}>
+          {isBuy ? 'B' : 'S'}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 800, fontSize: '13px', color: 'var(--foreground)' }}>{symbol}</span>
+            {!simplified && <span style={{ fontSize: '10px', color: 'var(--muted)', textTransform: 'lowercase', opacity: 0.8 }}>{plan.strategy || "market"}</span>}
+          </div>
+          <div style={{ fontSize: '12px', color: 'var(--foreground)', fontWeight: 500, letterSpacing: '0.01em', opacity: 0.9 }}>
+            {plan.entry || "-"} → <span style={{ color: 'var(--accent)' }}>{plan.tp || "-"}</span> / <span style={{ color: 'var(--bearish)' }}>{plan.sl || "-"}</span>
+          </div>
+        </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '11px', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        <span style={{ color: 'var(--muted-bright)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{plan.entryModel || plan.strategy || ""}</span>
-        {renderMeta()}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '11px', color: 'var(--muted)', textAlign: 'right' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1.1 }}>
+          <div style={{ fontWeight: 800, color: 'var(--foreground)', fontSize: '12px' }}>{plan.rr || "0.0"}R</div>
+          {plan.confidence && <div style={{ fontSize: '9px', opacity: 0.7 }}>{plan.confidence}% cf</div>}
+        </div>
+        {status && <span className={`badge ${status.cls} badge-mini`} style={{ padding: '2px 6px', fontSize: '9px' }}>{status.label}</span>}
       </div>
     </div>
   );
 }
+
 
 function ExtraPlanBlock({ planId, plan, onAddSignal, onAddTrade, busy, submittingPlanId, successMessage }) {
   const [localPos, setLocalPos] = useState({
@@ -266,7 +251,12 @@ export function SignalDetailCard({
 
       {/* Trade Plans */}
       {tradePlan?.enabled && (
-        <div className="stack-layout" style={{ gap: 16, marginBottom: 24 }}>
+        <div className="trade-plans-grid-v5" style={{ 
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
+          gap: 16, 
+          marginBottom: 20 
+        }}>
           {(response?.tradePlans || [{ direction: tradePlan.value.direction, entry: tradePlan.value.entry, sl: tradePlan.value.sl, tp: tradePlan.value.tp, rr: tradePlan.value.rr, strategy: tradePlan.value.strategy, entryModel: tradePlan.value.entry_model, confidence: tradePlan.value.confidence_pct }]).map((p, i) => {
             const isMain = i === 0;
             const planId = isMain ? "main" : `suggested_${i}`;
@@ -276,13 +266,12 @@ export function SignalDetailCard({
             return (
               <div key={planId} style={{ 
                 border: isMain ? '2px solid var(--accent-soft)' : '1px solid var(--accent-soft)', 
-                padding: '12px 16px', 
+                padding: '10px 14px', 
                 borderRadius: 10, 
                 background: isMain ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.015)' 
               }}>
                 <PlanHeader 
                   plan={p} 
-                  planLabel={`Plan ${i + 1}`} 
                   symbol={chart?.symbol || "Plan"} 
                   isBuy={isBuy} 
                   simplified={isSimplified}

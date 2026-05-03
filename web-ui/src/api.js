@@ -684,5 +684,6 @@ export const api = {
   getSettingSecret: (type, name, field = "value") =>
     get(`/v2/settings/secret?type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}&field=${encodeURIComponent(field)}`),
   upsertSetting: (payload = {}) => post("/v2/settings", payload),
+  notificationPulse: () => get("/v2/notifications/pulse"),
   deleteSetting: (type, name) => del(`/v2/settings/${encodeURIComponent(type)}/${encodeURIComponent(name)}`),
 };
