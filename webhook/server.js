@@ -100,7 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.03 16:00 - 8de9786"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.03 16:09 - 9b0314f"); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(
   CHART_SNAPSHOT_DIR,

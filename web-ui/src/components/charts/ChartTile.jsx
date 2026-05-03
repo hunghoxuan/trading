@@ -14,10 +14,16 @@ const STATUS_COLORS = {
 };
 
 function liveTfToTvInterval(tf) {
-  const s = String(tf || "4h").toLowerCase();
-  if (s === "d" || s === "1d") return "D";
-  if (s === "w" || s === "1w") return "W";
-  return s.toUpperCase();
+  const t = String(tf || "").toUpperCase();
+  if (t === "W" || t === "1W") return "W";
+  if (t === "D" || t === "1D") return "D";
+  if (t === "4H") return "240";
+  if (t === "1H") return "60";
+  if (t === "30M") return "30";
+  if (t === "15M") return "15";
+  if (t === "5M") return "5";
+  if (t === "1M") return "1";
+  return t; // fallback to original (D, W, etc)
 }
 function normSym(s) {
   const raw = String(s || "")
