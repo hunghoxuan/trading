@@ -170,7 +170,7 @@ export function useSymbolChartData({
 
       setStatus("LOADING");
       setError(null);
-      if (mode === "snapshot")
+      if (mode === "snapshots")
         setSnapshotState({ stage: "bars", message: "Fetching..." });
 
       try {
@@ -195,7 +195,7 @@ export function useSymbolChartData({
         }
 
         let uploadedSnapshots = data?.snapshots || {};
-        if (mode === "snapshot" && Object.keys(uploadedSnapshots).length > 0) {
+        if (mode === "snapshots" && Object.keys(uploadedSnapshots).length > 0) {
           setSnapshotState({
             stage: "uploading",
             message: "Uploading to Claude...",
@@ -224,7 +224,7 @@ export function useSymbolChartData({
           setStatus("STALE");
         } else setStatus("READY");
 
-        if (mode === "snapshot") {
+        if (mode === "snapshots") {
           const hasSnap = Object.keys(uploadedSnapshots).length > 0;
           setSnapshotState({
             stage: hasSnap ? "ready" : "error",

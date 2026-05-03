@@ -4103,7 +4103,9 @@ export default function ChartSnapshotsPage() {
                 gridTemplateColumns:
                   browserTfs.length === 1
                     ? "repeat(4, 1fr)"
-                    : browserTfs.length <= 3
+                    : browserTfs.length === 1
+                      ? "repeat(4, 1fr)"
+                    : browserTfs.length === 2
                       ? "repeat(2, 1fr)"
                       : "1fr",
               }}
@@ -4113,10 +4115,9 @@ export default function ChartSnapshotsPage() {
                     key={sym}
                     symbol={sym}
                     timeframes={browserTfs}
-                    defaultMode="Live TV"
+                    defaultMode="live"
                     onAnalyze={(s) => setCfgField("symbol", s)}
                     onRemove={(s) => removeFromWatchlist(s)}
-                    inWatchlist={watchlist.includes(sym)}
                   />
                 ))}
             </div>
