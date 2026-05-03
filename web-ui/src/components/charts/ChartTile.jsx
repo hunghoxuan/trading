@@ -297,66 +297,74 @@ export function SymbolChart({
         </div>
       )}
 
-      {/* Charts — one per TF, higher TF first */}
-      {mode === "Live TV" ? (
-        sortedTfs.map((tf) => (
-          <div key={tf} style={{ marginBottom: 8 }}>
-            <div
-              style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}
-            >
-              {tf.toUpperCase()}
-            </div>
-            <iframe
-              key={`tv-${symbol}-${tf}-${liveKey}`}
-              title={`tv-${symbol}-${tf}`}
-              className="browser-chart-v1"
-              style={{ height: 160 }}
-              src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(liveTfToTvInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-            />
-          </div>
-        ))
-      ) : (
-        <>
-          {status === "LOADING" && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: 20,
-              }}
-              className="minor-text"
-            >
-              Loading...
-            </div>
-          )}
-          {sortedTfs.map((tf) => (
-            <div key={tf} style={{ marginBottom: 8 }}>
+      {/* Charts — one per TF, higher TF first, in a row */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {mode === "Live TV" ? (
+          sortedTfs.map((tf) => (
+            <div key={tf} style={{ flex: "1 1 0", minWidth: 150 }}>
               <div
                 style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}
               >
                 {tf.toUpperCase()}
-                {master?.snapshots?.[tf.toLowerCase()] && (
-                  <span
-                    style={{ marginLeft: 8, color: "#10b981", fontSize: 9 }}
-                  >
-                    📷{" "}
-                    {master.snapshots[tf.toLowerCase()].file_name || "snapshot"}
-                  </span>
-                )}
               </div>
-              <TradeSignalChart
-                symbol={symbol}
-                interval={tf}
-                analysisSnapshot={null}
-                entryPrice={null}
-                slPrice={null}
-                tpPrice={null}
+              <iframe
+                key={`tv-${symbol}-${tf}-${liveKey}`}
+                title={`tv-${symbol}-${tf}`}
+                className="browser-chart-v1"
+                style={{ height: 160 }}
+                src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(liveTfToTvInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
               />
             </div>
-          ))}
-        </>
-      )}
+          ))
+        ) : (
+          <>
+            {status === "LOADING" && (
+              <div
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 20,
+                }}
+                className="minor-text"
+              >
+                Loading...
+              </div>
+            )}
+            {sortedTfs.map((tf) => (
+              <div key={tf} style={{ flex: "1 1 0", minWidth: 150 }}>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: "var(--muted)",
+                    marginBottom: 2,
+                  }}
+                >
+                  {tf.toUpperCase()}
+                  {master?.snapshots?.[tf.toLowerCase()] && (
+                    <span
+                      style={{ marginLeft: 8, color: "#10b981", fontSize: 9 }}
+                    >
+                      📷{" "}
+                      {master.snapshots[tf.toLowerCase()].file_name ||
+                        "snapshot"}
+                    </span>
+                  )}
+                </div>
+                <TradeSignalChart
+                  symbol={symbol}
+                  interval={tf}
+                  analysisSnapshot={null}
+                  entryPrice={null}
+                  slPrice={null}
+                  tpPrice={null}
+                />
+              </div>
+            ))}
+          </>
+        )}
+      </div>
 
       {/* Status Modal */}
       <StatusModal
