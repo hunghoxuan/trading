@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import TradeSignalChart from "./TradeSignalChart";
 import { TradePlanEditor } from "./TradePlanEditor";
 import { asNum, buildHeaderMeta, formatNote, renderHistoryItem, shouldShowPnl } from "../utils/signalDetailUtils";
+import { SymbolChart } from "./charts/ChartTile";
 
 const TF_WEIGHTS = {
   '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240, 'd': 1440, 'w': 10080, 'm': 43200
@@ -430,95 +430,17 @@ export function SignalDetailCard({
 
       {/* CHART TAB */}
       <div style={{ display: mainTab === "chart" ? 'block' : 'none' }}>
-        <div className="chart-tab-content">
-          <div className="chart-controls-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div className="tf-pills" style={{ display: 'flex', gap: 6 }}>
-              {['1m', '5m', '15m', '1h', '4h', 'd', 'w'].map(tf => {
-                const isSelected = selectedTfs.includes(tf.toLowerCase());
-                const analysisObj = rawData;
-                const tfData = (analysisObj?.market_analysis?.timeframes || []).find(x => String(x.tf || '').toLowerCase() === tf.toLowerCase());
-                const trend = tfData?.trend || '';
-                const bias = tfData?.bias || '';
-                const isBullishTrend = String(trend).toLowerCase().includes('bull');
-                const isBearishTrend = String(trend).toLowerCase().includes('bear');
-                const isLongBias = String(bias).toLowerCase().includes('long') || String(bias).toLowerCase().includes('buy');
-                const isShortBias = String(bias).toLowerCase().includes('short') || String(bias).toLowerCase().includes('sell');
-
-                let bg = isSelected ? 'var(--accent-soft)' : 'rgba(255,255,255,0.03)';
-                if (trend) bg = isBullishTrend ? 'rgba(38, 166, 154, 0.2)' : (isBearishTrend ? 'rgba(239, 83, 80, 0.2)' : bg);
-
-                return (
-                  <button key={tf} type="button" onClick={() => toggleTf(tf)}
-                    style={{ 
-                      padding: '4px 10px', fontSize: '11px', borderRadius: '4px', 
-                      border: isSelected ? '1.5px solid var(--accent)' : '1px solid var(--border)', 
-                      background: bg, backdropFilter: 'blur(4px)', color: isSelected ? 'var(--text)' : 'var(--muted)',
-                      transition: 'all 0.2s ease', fontWeight: isSelected ? 'bold' : 'normal',
-                      display: 'flex', alignItems: 'center', gap: 4
-                    }}
-                  >
-                    {tf.toUpperCase()}
-                    {bias && (
-                      <span style={{ color: isLongBias ? '#26a69a' : (isShortBias ? '#ef5350' : 'inherit'), fontWeight: 900 }}>
-                        {isLongBias ? '↑' : (isShortBias ? '↓' : '')}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="mode-toggles" style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.2)', padding: 2, borderRadius: '6px' }}>
-              <button type="button" className={`mode-btn ${chartModes.includes('static') ? 'active' : ''}`} onClick={() => toggleMode('static')} style={{ padding: '4px 12px', fontSize: '11px', border: 'none', background: chartModes.includes('static') ? 'var(--surface-light)' : 'transparent', borderRadius: '4px', color: chartModes.includes('static') ? 'var(--text)' : 'var(--muted)' }}>CHART</button>
-              <button type="button" className={`mode-btn ${chartModes.includes('live') ? 'active' : ''}`} onClick={() => toggleMode('live')} style={{ padding: '4px 12px', fontSize: '11px', border: 'none', background: chartModes.includes('live') ? 'var(--surface-light)' : 'transparent', borderRadius: '4px', color: chartModes.includes('live') ? 'var(--text)' : 'var(--muted)' }}>LIVE</button>
-            </div>
-          </div>
-
-          <div className="multi-chart-grid" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            {selectedTfs.map(tf => {
-              const isEntryTf = tf.toLowerCase() === (chart.interval || '').toLowerCase();
-              const snapshot = isEntryTf ? rawData : multiChartData[tf];
-              const analysisObj = rawData;
-              const tfData = (analysisObj?.market_analysis?.timeframes || []).find(x => String(x.tf || '').toLowerCase() === tf.toLowerCase());
-              const trend = tfData?.trend || '';
-              const bias = tfData?.bias || '';
-              const isBullishTrend = String(trend).toLowerCase().includes('bull');
-              const isBearishTrend = String(trend).toLowerCase().includes('bear');
-              const isLongBias = String(bias).toLowerCase().includes('long') || String(bias).toLowerCase().includes('buy');
-              const isShortBias = String(bias).toLowerCase().includes('short') || String(bias).toLowerCase().includes('sell');
-
-              return (
-                <div key={tf} className="tf-chart-row">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                    <h4 className="tf-row-label" style={{ margin: 0, minWidth: '40px', fontSize: '13px' }}>{tf.toUpperCase()}</h4>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      {trend && <span style={{ fontSize: '13px', fontWeight: 600, color: isBullishTrend ? '#26a69a' : (isBearishTrend ? '#ef5350' : 'var(--muted)') }}>{trend}</span>}
-                      {bias && <span style={{ fontSize: '14px', fontWeight: 700, color: isLongBias ? '#26a69a' : (isShortBias ? '#ef5350' : 'var(--muted)'), display: 'flex', alignItems: 'center' }}>{isLongBias ? '↑' : (isShortBias ? '↓' : '')}</span>}
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: chartModes.length > 1 ? '1fr 1fr' : '1fr', gap: 12 }}>
-                    {chartModes.includes('static') && (
-                      <div className="chart-wrapper static-wrapper">
-                        {loadingCharts && !snapshot ? (
-                          <div className="chart-loading" style={{ minHeight: 280, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', gap: 12 }}>
-                            <div className="spinner" style={{ width: 28, height: 28 }} />
-                            <span>LOADING {tf.toUpperCase()}...</span>
-                          </div>
-                        ) : (
-                          <TradeSignalChart symbol={chart?.symbol} interval={tf} analysisSnapshot={snapshot} entryPrice={chart?.entryPrice} slPrice={chart?.slPrice} tpPrice={chart?.tpPrice} />
-                        )}
-                      </div>
-                    )}
-                    {chartModes.includes('live') && (
-                      <div className="chart-wrapper live-wrapper">
-                        <iframe title={`TV-${tf}`} src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol)}&interval=${detailTabToTvInterval(tf)}&theme=dark&style=1`} width="100%" height="100%" style={{ aspectRatio: '3 / 2', borderRadius: '8px', border: '1px solid var(--border)' }} frameBorder="0" />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <SymbolChart
+          symbol={chart?.symbol}
+          timeframes={selectedTfs}
+          defaultMode={chart?.mode || "cache"}
+          entryPrice={chart?.entryPrice}
+          slPrice={chart?.slPrice}
+          tpPrice={chart?.tpPrice}
+          analysisSnapshot={rawData}
+          hasTradePlan={Boolean(tradePlan?.value?.entry || tradePlan?.value?.tp || tradePlan?.value?.sl)}
+          hasAnalysis={Boolean(rawData && Object.keys(rawData).length > 0)}
+        />
       </div>
 
       {/* JSON TAB */}

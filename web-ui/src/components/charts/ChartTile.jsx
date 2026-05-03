@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useSymbolChartData } from "../../hooks/useChartTileData";
 import TradeSignalChart from "../TradeSignalChart";
+import { showDateTime } from "../../utils/format";
 
 const MODES = ["live", "cache", "snapshots"];
 const MODE_LABELS = { live: "Live", cache: "Cache", snapshots: "Snapshots" };
@@ -34,12 +35,126 @@ function timeAgo(ms) {
   return Math.floor(diff / 86400000) + "d ago";
 }
 
+function TfHeader({ tf, context, master, mode }) {
+  const price = Number(context?.last_price);
+  const change = Number(context?.summary?.close_change_20);
+  const previousClose =
+    Number.isFinite(price) && Number.isFinite(change) ? price - change : null;
+  const pct =
+    Number.isFinite(previousClose) && Math.abs(previousClose) > 0
+      ? change / previousClose
+      : null;
+
+  const pctLabel =
+    Number.isFinite(pct) && Math.abs(pct) < 1
+      ? `${pct > 0 ? "+" : ""}${(pct * 100).toFixed(2)}%`
+      : "";
+  const pctColor = Number.isFinite(pct)
+    ? pct > 0
+      ? "#26a69a"
+      : pct < 0
+        ? "#ef5350"
+        : "var(--muted)"
+    : "inherit";
+
+  const cachedAt =
+    context?.freshness?.updated_time || context?.fetched_at || null;
+
+  const trend = context?.summary?.trend || "";
+  const bias = context?.summary?.bias || "";
+  const isBullishTrend = String(trend).toLowerCase().includes("bull");
+  const isBearishTrend = String(trend).toLowerCase().includes("bear");
+  const isLongBias =
+    String(bias).toLowerCase().includes("long") ||
+    String(bias).toLowerCase().includes("buy");
+  const isShortBias =
+    String(bias).toLowerCase().includes("short") ||
+    String(bias).toLowerCase().includes("sell");
+
+  return (
+    <div
+      style={{
+        fontSize: 10,
+        color: "var(--muted)",
+        marginBottom: 4,
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+      }}
+    >
+      <span style={{ fontWeight: 800, color: "var(--foreground)" }}>
+        {tf.toUpperCase()}
+      </span>
+      {trend && (
+        <span
+          style={{
+            fontWeight: 600,
+            fontSize: 9,
+            color: isBullishTrend ? "#26a69a" : isBearishTrend ? "#ef5350" : "inherit",
+          }}
+        >
+          {trend}
+        </span>
+      )}
+      {bias && (
+        <span
+          style={{
+            fontWeight: 800,
+            fontSize: 11,
+            color: isLongBias ? "#26a69a" : isShortBias ? "#ef5350" : "inherit",
+          }}
+        >
+          {isLongBias ? "↑" : isShortBias ? "↓" : ""}
+        </span>
+      )}
+      {mode !== "live" && (
+        <>
+          <span style={{ opacity: 0.3 }}>|</span>
+          {cachedAt ? (
+            <span>{`cached ${showDateTime(cachedAt)}`}</span>
+          ) : (
+            <span>{"cached time n/a"}</span>
+          )}
+        </>
+      )}
+      {Number.isFinite(price) && (
+        <>
+          <span style={{ opacity: 0.3 }}>|</span>
+          <span style={{ fontWeight: 600, color: "var(--foreground)" }}>
+            {price.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </span>
+        </>
+      )}
+      {pctLabel && (
+        <>
+          <span style={{ opacity: 0.3 }}>|</span>
+          <span style={{ color: pctColor, fontWeight: 700 }}>{pctLabel}</span>
+        </>
+      )}
+      {mode === "snapshots" && master?.snapshots?.[tf.toLowerCase()] && (
+        <span style={{ marginLeft: "auto", color: "#10b981", fontSize: 9 }}>
+          📷 {master.snapshots[tf.toLowerCase()].file_name || "snap"}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function SymbolChart({
   symbol,
   timeframes = ["D", "4h", "15m", "5m"],
   defaultMode = "live",
   onAnalyze,
   onRemove,
+  entryPrice = null,
+  tpPrice = null,
+  slPrice = null,
+  analysisSnapshot = null,
+  hasTradePlan = false,
+  hasAnalysis = false,
 }) {
   const [mode, setMode] = useState(defaultMode);
   const [pendingMode, setPendingMode] = useState(null); // mode we're loading
@@ -160,6 +275,8 @@ export function SymbolChart({
 
   const chartHeight = 250;
 
+  const showControls = !(hasTradePlan && hasAnalysis);
+
   return (
     <div className="browser-card-v1" style={{ position: "relative" }}>
       {/* ── Header ── */}
@@ -175,7 +292,7 @@ export function SymbolChart({
       >
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontWeight: 800, fontSize: 14 }}>{symbol}</span>
-          {onRemove && (
+          {onRemove && showControls && (
             <button
               className="secondary-button"
               style={{
@@ -258,60 +375,51 @@ export function SymbolChart({
           >
             {status === "LOADING" ? "\u23F3" : "\u21BB"}
           </button>
-          <button
-            className="primary-button"
-            style={{ padding: "2px 8px", fontSize: 10 }}
-            onClick={() => onAnalyze?.(symbol, timeframes)}
-          >
-            Analyze
-          </button>
+            <button
+              className="primary-button"
+              style={{ padding: "2px 8px", fontSize: 10, display: showControls ? 'block' : 'none' }}
+              onClick={() => onAnalyze?.(symbol, timeframes)}
+            >
+              Analyze
+            </button>
+          </div>
         </div>
-      </div>
 
       {/* ── Charts row ── */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {(mode === "live" || needsFallback ? sortedTfs : []).map((tf) => (
-          <div key={`live-${tf}`} style={{ flex: "1 1 0", minWidth: 140 }}>
-            <div
-              style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}
-            >
-              {tf.toUpperCase()}
-            </div>
-            <iframe
-              key={`tv-${symbol}-${tf}-${liveKey}`}
-              title={`tv-${symbol}-${tf}`}
-              className="browser-chart-v1"
-              style={{ height: chartHeight }}
-              src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(cleanSym)}&interval=${encodeURIComponent(liveTfToTvInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
-            />
-          </div>
-        ))}
-        {mode !== "live" &&
-          !needsFallback &&
-          sortedTfs.map((tf) => (
-            <div key={`cache-${tf}`} style={{ flex: "1 1 0", minWidth: 140 }}>
-              <div
-                style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}
-              >
-                {tf.toUpperCase()}
-                {master?.snapshots?.[tf.toLowerCase()] && (
-                  <span
-                    style={{ marginLeft: 6, color: "#10b981", fontSize: 9 }}
-                  >
-                    📷 {master.snapshots[tf.toLowerCase()].file_name || "snap"}
-                  </span>
-                )}
-              </div>
-              <TradeSignalChart
-                symbol={cleanSym}
-                interval={tf}
-                analysisSnapshot={null}
-                entryPrice={null}
-                slPrice={null}
-                tpPrice={null}
+        {sortedTfs.map((tf) => {
+          const isLive = mode === "live" || needsFallback;
+          const context = master?.context?.[tf.toLowerCase()];
+
+          return (
+            <div key={`${mode}-${tf}`} style={{ flex: "1 1 0", minWidth: 140 }}>
+              <TfHeader
+                tf={tf}
+                context={context}
+                master={master}
+                mode={mode}
               />
+              {isLive ? (
+                <iframe
+                  key={`tv-${symbol}-${tf}-${liveKey}`}
+                  title={`tv-${symbol}-${tf}`}
+                  className="browser-chart-v1"
+                  style={{ height: chartHeight }}
+                  src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(cleanSym)}&interval=${encodeURIComponent(liveTfToTvInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+                />
+              ) : (
+                <TradeSignalChart
+                  symbol={cleanSym}
+                  interval={tf}
+                  analysisSnapshot={analysisSnapshot || null}
+                  entryPrice={entryPrice}
+                  slPrice={slPrice}
+                  tpPrice={tpPrice}
+                />
+              )}
             </div>
-          ))}
+          );
+        })}
       </div>
 
       {/* Error display */}

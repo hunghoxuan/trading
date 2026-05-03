@@ -8,6 +8,31 @@
 - Build passes, deployed to VPS
 - Updated feature plan + ticket with final architecture
 
+# Session Log: 2026-05-03 16:44
+- **Starting Task**:
+  - Review and unify file naming (snapshots, bars, analysis).
+  - Fix AI Trades preview alignment and status badge colors.
+- **Work Accomplished**:
+  - **Naming Unification**:
+    - Implemented a standard pattern: `UID_{userId}_{symbol}_{tf}_{timestamp}_{type}.{ext}`.
+    - Updated `aiContextFileName` to include `userId` and use standard tokens.
+    - Standardized `captureTradingViewSnapshotWithBrowser` filename generation.
+    - Ensures all uploaded files (bars, analysis, snapshots) follow the same identifying structure.
+  - **UI/UX Fixes**:
+    - **Alignment**: Wrapped symbol and order type in a `flex` container in `ChartSnapshotsPage.jsx` to fix grid layout (Correcting Screen 2 vs Screen 3).
+    - **Color**: Moved `FILLED` and `OPEN` statuses from green to orange badge group in `styles.css` (Correcting Screen 2 vs Screen 4).
+  - Bumped build versions to `v2026.05.03 14:44 - e6e851f`.
+- **Changed Files**:
+  - `webhook/server.js`
+  - `web-ui/src/pages/ai/ChartSnapshotsPage.jsx`
+  - `web-ui/src/styles.css`
+  - `mql5/TVBridgeEA.mq5`
+  - `.agents/worklog.md`
+- **Verification**:
+  - `npm --prefix web-ui run build` ✅
+- **Deploy Status**:
+  - Not deployed (ready for VPS push).
+
 # Session Log: 2026-05-03 16:12
 - **Starting Task**:
   - Improve AI Trades preview aesthetics and add cache time display to CachePage.
