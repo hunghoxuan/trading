@@ -6,6 +6,7 @@ import { api } from "../../api";
 import { SignalDetailCard } from "../../components/SignalDetailCard";
 import TradeSignalChart from "../../components/TradeSignalChart";
 import { SymbolChart } from "../../components/charts/ChartTile";
+import { chartFetchManager } from "../../services/chartFetchManager";
 
 const STORAGE_KEY = "chart_prompt_builder_templates_v2";
 
@@ -1875,7 +1876,24 @@ export default function ChartSnapshotsPage() {
     };
   };
 
-  const startContextWarmup = async (opts = {}) => {
+  const buildContextFromCache = (symbol) => {
+    if (!symbol) return null;
+    const master = chartFetchManager.get(symbol, 120_000);
+    if (!master || master.stale) return null;
+    const tfRows = Object.entries(master.context || {}).map(([tf, ctx]) => ({
+      tf,
+      ...ctx,
+    }));
+    if (!tfRows.length) return null;
+    return {
+      timeframes: tfRows,
+      generated_at: new Date(master.cached_at).toISOString(),
+      source: master.source || 'chart_refresh_cache',
+      context_files: [],
+    };
+  };
+
+    const startContextWarmup = async (opts = {}) => {
     const symbol = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
     const warmupKey = `${symbol}|${String(provider || "").toUpperCase()}|${snapshotTfs.join(",")}|${Number(cfg.lookbackBars || 300) || 300}`;
     if (!symbol) return null;
@@ -2168,12 +2186,26 @@ export default function ChartSnapshotsPage() {
 
     const runOnce = async (isInterval = false) => {
       const currentRunId = autoFlowRef.current.runId;
+
+      // If SymbolChart already cached fresh data, build context from cache
+      const cachedCtx = buildContextFromCache(symbol);
+      const ctxPromise = cachedCtx
+        ? Promise.resolve(cachedCtx)
+        : startContextWarmup({
+            includeSnapshots: false,
+            runId: currentRunId,
+            refresh: isInterval,
+          });
+
+      // If cache hit, update states immediately
+      if (cachedCtx && isCurrentFlowRun(currentRunId)) {
+        setAiContext(cachedCtx);
+        setWarmupState((prev) => ({ ...prev, contextReady: true }));
+        setAutoFlowForRun(currentRunId, { context: "ready" });
+      }
+
       const [ctxSettled, snapSettled] = await Promise.allSettled([
-        startContextWarmup({
-          includeSnapshots: false,
-          runId: currentRunId,
-          refresh: isInterval,
-        }),
+        ctxPromise,
         startSnapshotWarmup({
           captureMissing: true,
           sessionPrefix: activeSessionPrefix,
