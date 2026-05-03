@@ -261,14 +261,15 @@ export function SignalDetailCard({
             const isMain = i === 0;
             const planId = isMain ? "main" : `suggested_${i}`;
             const isBuy = String(p.direction).toUpperCase() === "BUY";
-            // User requested to remove Plan 1, Secondary labels in Signal Detail
-            const isSimplified = mode === "signal" && isMain;
+            // Always hide Plan 1, Secondary labels to maximize density
+            const isSimplified = true;
             return (
               <div key={planId} style={{ 
                 border: isMain ? '2px solid var(--accent-soft)' : '1px solid var(--accent-soft)', 
-                padding: '10px 14px', 
+                padding: '8px 12px', 
                 borderRadius: 10, 
-                background: isMain ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.015)' 
+                background: isMain ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.015)',
+                boxShadow: isMain ? '0 4px 12px rgba(0,0,0,0.1)' : 'none'
               }}>
                 <PlanHeader 
                   plan={p} 

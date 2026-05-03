@@ -64,7 +64,9 @@ export function TradePlanEditor({
       gap: '12px',
       marginTop: '10px',
       paddingTop: '8px',
-      borderTop: '1px solid rgba(255,255,255,0.05)'
+      borderTop: '1px solid rgba(255,255,255,0.05)',
+      minWidth: 0,
+      overflow: 'hidden'
     }}>
       {/* Left Column: Inputs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px 12px' }}>

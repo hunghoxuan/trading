@@ -100,7 +100,14 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.03 19:15 - 9b60d52"); // UI Refactor High-Density
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.03 19:45 - b9c3867"); // UI Refactor + Pulse logic
+const NOTIFICATION_PULSE = { global: Date.now(), user: {} };
+function bumpPulse(userId = null) {
+  NOTIFICATION_PULSE.global += 1;
+  if (userId && userId !== "default") {
+    NOTIFICATION_PULSE.user[userId] = (NOTIFICATION_PULSE.user[userId] || 0) + 1;
+  }
+}
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(
   CHART_SNAPSHOT_DIR,
@@ -6199,6 +6206,7 @@ async function _mt5InitBackendInternal() {
           signal.status || "NEW",
         ],
       );
+      bumpPulse(signal.user_id);
       return { inserted: (r.rowCount || 0) > 0 };
     },
     async findSignalById(signalId) {
@@ -6513,6 +6521,7 @@ async function _mt5InitBackendInternal() {
           }
         }
         await client.query("COMMIT");
+        bumpPulse(userId);
         return { created, account_ids: accountIds };
       } catch (e) {
         await client.query("ROLLBACK");
@@ -11802,6 +11811,14 @@ const appHandler = async (req, res) => {
   console.log(
     `[REQUEST] ${req.method} ${req.url} -> ${url.pathname} (IP: ${ip})`,
   );
+
+  if (req.method === "GET" && url.pathname === "/v2/notifications/pulse") {
+    return json(res, 200, {
+      ok: true,
+      global: NOTIFICATION_PULSE.global,
+      user: userId ? (NOTIFICATION_PULSE.user[userId] || 0) : 0
+    });
+  }
 
   if (req.method === "GET" && url.pathname === "/api/proxy/binance") {
     const target =

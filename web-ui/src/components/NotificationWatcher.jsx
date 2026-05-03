@@ -13,7 +13,7 @@ export default function NotificationWatcher() {
     activeKillZone: null,
   });
 
-  const lastPulse = useRef({ global: 0, user: {} });
+  const lastPulse = useRef({ global: 0, user: 0 });
 
   const checkPulse = async () => {
     try {
@@ -21,9 +21,7 @@ export default function NotificationWatcher() {
       if (!res.ok) return;
 
       const hasGlobalChange = res.global > lastPulse.current.global;
-      const hasUserChange = Object.keys(res.user || {}).some(
-        k => (res.user[k] || 0) > (lastPulse.current.user[k] || 0)
-      );
+      const hasUserChange = (res.user || 0) > (lastPulse.current.user || 0);
 
       if (hasGlobalChange || hasUserChange) {
         lastPulse.current = { global: res.global, user: res.user };
