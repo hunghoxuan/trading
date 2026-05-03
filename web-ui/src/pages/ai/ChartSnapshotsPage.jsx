@@ -2325,7 +2325,7 @@ export default function ChartSnapshotsPage() {
         prompt: composedPrompt,
         session_prefix: activeSessionPrefix,
         max_tokens: 4500,
-        symbol: tvSymbol || cfg.symbol,
+        symbol: String(tvSymbol || cfg.symbol || "").split(":").pop(),
         timeframe,
         provider,
         timeframes: snapshotTfs,
