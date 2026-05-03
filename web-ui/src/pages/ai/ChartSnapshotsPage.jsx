@@ -1888,12 +1888,12 @@ export default function ChartSnapshotsPage() {
     return {
       timeframes: tfRows,
       generated_at: new Date(master.cached_at).toISOString(),
-      source: master.source || 'chart_refresh_cache',
+      source: master.source || "chart_refresh_cache",
       context_files: [],
     };
   };
 
-    const startContextWarmup = async (opts = {}) => {
+  const startContextWarmup = async (opts = {}) => {
     const symbol = normalizeSignalSymbol(tvSymbol || cfg.symbol || "");
     const warmupKey = `${symbol}|${String(provider || "").toUpperCase()}|${snapshotTfs.join(",")}|${Number(cfg.lookbackBars || 300) || 300}`;
     if (!symbol) return null;
@@ -2338,7 +2338,25 @@ export default function ChartSnapshotsPage() {
       };
 
       if (Array.isArray(files) && files.length) payload.files = files;
-      const out = await api.chartSnapshotsAnalyze(payload);
+
+      let out;
+      try {
+        out = await api.chartSnapshotsAnalyze(payload);
+      } catch (firstErr) {
+        // If Claude file references are stale, retry without them
+        const msg = String(firstErr?.message || firstErr || "");
+        if (
+          msg.includes("not_found_error") ||
+          msg.includes("not found") ||
+          msg.includes("404")
+        ) {
+          payload.context_files = [];
+          payload.use_context_files = false;
+          out = await api.chartSnapshotsAnalyze(payload);
+        } else {
+          throw firstErr;
+        }
+      }
       if (opts.runId && !isCurrentFlowRun(opts.runId)) return out;
       if (out?.source || out?.updated_time) {
         setMarketMetadata({
@@ -4119,23 +4137,21 @@ export default function ChartSnapshotsPage() {
                 gridTemplateColumns:
                   browserTfs.length === 1
                     ? "repeat(4, 1fr)"
-                    : browserTfs.length === 1
-                      ? "repeat(4, 1fr)"
-                    : browserTfs.length === 2
-                      ? "repeat(2, 1fr)"
-                      : "1fr",
+                      : browserTfs.length === 2
+                        ? "repeat(2, 1fr)"
+                        : "1fr",
               }}
             >
               {symbolsByTab.slice(0, visibleCount).map((sym) => (
-                  <SymbolChart
-                    key={sym}
-                    symbol={sym}
-                    timeframes={browserTfs}
-                    defaultMode="live"
-                    onAnalyze={(s) => setCfgField("symbol", s)}
-                    onRemove={(s) => removeFromWatchlist(s)}
-                  />
-                ))}
+                <SymbolChart
+                  key={sym}
+                  symbol={sym}
+                  timeframes={browserTfs}
+                  defaultMode="live"
+                  onAnalyze={(s) => setCfgField("symbol", s)}
+                  onRemove={(s) => removeFromWatchlist(s)}
+                />
+              ))}
             </div>
           </div>
         )}
