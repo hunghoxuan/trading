@@ -100,10 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(
-  process.env.WEBHOOK_SERVER_VERSION,
-  "v2026.05.03 20:06 - f41b3c3",
-); // UI Refactor + Pulse logic
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.03 20:21 - 2c42a7b"); // DB Index Update
 const NOTIFICATION_PULSE = { global: Date.now(), user: {} };
 function bumpPulse(userId = null) {
   NOTIFICATION_PULSE.global += 1;
