@@ -164,6 +164,10 @@ export function SymbolChart({
   const cleanSym = useMemo(() => normSym(symbol), [symbol]);
   const [gridCols, setGridCols] = useState(timeframes?.length || 4);
 
+  useEffect(() => {
+    setGridCols(timeframes?.length || 4);
+  }, [timeframes?.length]);
+
   const { status, master, error, cachedAt, refresh, liveKey, snapshotState } =
     useSymbolChartData({
       symbol: cleanSym,
