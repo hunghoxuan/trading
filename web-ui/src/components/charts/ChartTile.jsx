@@ -158,7 +158,7 @@ export function SymbolChart({
     return MODE_LABELS[m] + " (no data)";
   };
 
-  const chartHeight = 180;
+  const chartHeight = 250;
 
   return (
     <div className="browser-card-v1" style={{ position: "relative" }}>
@@ -198,6 +198,21 @@ export function SymbolChart({
               -
             </button>
           )}
+          {/* Status inline */}
+          {(pendingMode || mode) === "snapshots" &&
+            snapshotState?.message &&
+            snapshotState.stage !== "idle" && (
+              <span
+                className="minor-text"
+                style={{
+                  fontSize: 9,
+                  color:
+                    snapshotState.stage === "error" ? "#ef4444" : "#f59e0b",
+                }}
+              >
+                {snapshotState.message}
+              </span>
+            )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {MODES.map((m) => (
@@ -252,21 +267,6 @@ export function SymbolChart({
           </button>
         </div>
       </div>
-
-      {/* Snapshot pipeline message — inline with TF */}
-      {(pendingMode || mode) === "snapshots" &&
-        snapshotState?.message &&
-        snapshotState.stage !== "idle" && (
-          <span
-            className="minor-text"
-            style={{
-              fontSize: 9,
-              color: snapshotState.stage === "error" ? "#ef4444" : "#f59e0b",
-            }}
-          >
-            {" " + snapshotState.message}
-          </span>
-        )}
 
       {/* ── Charts row ── */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
