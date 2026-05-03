@@ -378,11 +378,20 @@ export function SymbolChart({
             {status === "LOADING" ? "\u23F3" : "\u21BB"}
           </button>
             <button
-              className="primary-button"
-              style={{ padding: "2px 8px", fontSize: 10, display: showControls ? 'block' : 'none' }}
+              className="secondary-button"
+              style={{
+                width: 22,
+                height: 22,
+                padding: 0,
+                fontSize: 11,
+                lineHeight: 1,
+                minWidth: 22,
+                display: showControls ? 'block' : 'none'
+              }}
               onClick={() => onAnalyze?.(symbol, timeframes)}
+              title="Analyze"
             >
-              Analyze
+              &gt;
             </button>
           </div>
         </div>
