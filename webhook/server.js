@@ -102,7 +102,7 @@ loadEnvFile();
 
 const SERVER_VERSION = envStr(
   process.env.WEBHOOK_SERVER_VERSION,
-  "v2026.05.02 14:22 - 5699eca",
+  "v2026.05.03 09:31 - 61df06f",
 ); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(
