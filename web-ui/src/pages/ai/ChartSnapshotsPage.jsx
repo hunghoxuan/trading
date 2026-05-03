@@ -281,6 +281,64 @@ const DEFAULT_CONFIG = {
   notes: "",
 };
 
+const AI_RESPONSE_SCHEMA = {
+  symbol: "",
+  timeframes: [
+    {
+      tf: "MN|W|D|4H|1H|15M|5M|1M",
+      trend: "Bullish|Bearish|Ranging",
+      structure: "BOS|CHoCH|MSB|Continuation|Ranging",
+      phase: "Trending|Retracement|Reversal|Consolidation|Breakout|Breakdown|Distribution|Accumulation",
+      bias: "Long|Short|Neutral",
+      poiAlign: true,
+      did: "",
+      next: "",
+      keyBreaks: [{ event: "BOS|CHoCH|MSB|Retest|Sweep|Rejection", price: null, direction: "Bull|Bear" }],
+      path: [{ step: 1, action: "Retrace|Continue|Sweep|Reverse|Consolidate|Break", target: null, condition: "" }],
+    },
+  ],
+  pdArrays: [
+    {
+      id: 1,
+      tf: "",
+      type: "OB|FVG|Breaker|Mitigation Block|Void|Rejection Block|Propulsion Block",
+      dir: "Bull|Bear",
+      strength: "Strong|Weak",
+      top: null,
+      bot: null,
+      status: "Fresh|Tested|Mitigated|Broken",
+      touched: 0,
+      note: "",
+    },
+  ],
+  keyLevels: [{ name: "PDH|PDL|PWH|PWL|PMH|PML|WeeklyOpen|DailyOpen|MidnightOpen|NYOpen|EQH|EQL|BSL|SSL", price: null, swept: false }],
+  dol: { target: "", price: null, type: "BSL|SSL|FVG|OB|Void", tf: "" },
+  checklist: {
+    buy: { score: 0, highPassed: 0, highTotal: 0, items: [{ category: "Structure|PD_Arrays|Liquidity|Session|Correlation|VWAP|Fibonacci|Candle_Patterns|Indicators|Risk", item: "", weight: "High|Medium|Low", passed: false, pdRef: null, note: "" }] },
+    sell: { score: 0, highPassed: 0, highTotal: 0, items: [{ category: "Structure|PD_Arrays|Liquidity|Session|Correlation|VWAP|Fibonacci|Candle_Patterns|Indicators|Risk", item: "", weight: "High|Medium|Low", passed: false, pdRef: null, note: "" }] },
+  },
+  tradePlan: [
+    {
+      dir: "BUY|SELL",
+      profile: "Position|Swing|Intraday|Scalp",
+      type: "Limit|Stop Limit|Market",
+      session: "Asian|London|NewYork|LondonClose|Overlap",
+      model: "",
+      entry: null,
+      sl: null,
+      be: null,
+      tps: [{ price: null, pct: null, rr: null }],
+      riskPct: null,
+      rr: null,
+      skipReasons: [{ reason: "", severity: "High|Medium|Low" }],
+      skip: "Skip|Reduce|Proceed|Wait",
+      confidence: 0,
+      note: "",
+    },
+  ],
+  verdict: { action: "BUY|SELL|WAIT", tier: "A|B|C|NoTrade", confidence: 0, invalidation: "", nextPoi: { price: null, tf: "", type: "" }, note: "" },
+};
+
 const GUIDE_TEXT = `Compact ICT guide:
 - Analyze HTF to LTF. did=factual past move, next=likely path.
 - Keep only relevant PD arrays near current price and swept/key liquidity.
@@ -3300,6 +3358,19 @@ export default function ChartSnapshotsPage() {
           />
         </>
       ) : null}
+      {settingsTab === "schema" ? (
+        <>
+          <div className="minor-text">
+            Expected AI Response Schema (JSON format required for parsing).
+          </div>
+          <textarea
+            className="snapshot-mono-v2"
+            rows={30}
+            value={JSON.stringify(AI_RESPONSE_SCHEMA, null, 2)}
+            readOnly
+          />
+        </>
+      ) : null}
       {settingsTab === "guide" ? (
         <>
           <div className="minor-text">
@@ -4323,6 +4394,14 @@ export default function ChartSnapshotsPage() {
                   style={{ fontSize: 11, padding: "4px 10px" }}
                 >
                   JSON
+                </button>
+                <button
+                  type="button"
+                  className={`secondary-button ${settingsTab === "schema" ? "active" : ""}`}
+                  onClick={() => setSettingsTab("schema")}
+                  style={{ fontSize: 11, padding: "4px 10px" }}
+                >
+                  Schema
                 </button>
                 <button
                   type="button"
