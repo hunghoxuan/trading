@@ -11,7 +11,7 @@
 
 const CONCURRENCY_CAP = 4;
 const COOLDOWN_MS = 2500;
-const STALE_THRESHOLD_MS = 60_000; // 1 min → stale
+const STALE_THRESHOLD_MS = 120_000; // 2 min → stale (was 60s, now matches page warmup)
 const MAX_CACHE_AGE_MS = 10 * 60_000; // 10 min → eviction
 
 // ── internal state ────────────────────────────────────────────────

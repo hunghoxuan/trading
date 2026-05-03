@@ -63,10 +63,15 @@ export function useSymbolChartData({
       if (!sym) throw new Error("Symbol required");
       const tfs = [...new Set(timeframes.map(tfNorm).filter(Boolean))];
 
+      const types =
+        mode === "snapshots"
+          ? ["context", "bars", "snapshots"]
+          : ["context", "bars"];
+
       const out = await api.chartRefresh({
         symbols: [sym],
         timeframes: tfs,
-        types: ["context", "bars", "snapshots"],
+        types,
         bars: Number(lookbackBars || 300) || 300,
         force: opts.force === true,
       });

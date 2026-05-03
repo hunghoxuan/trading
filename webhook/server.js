@@ -100,7 +100,10 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.03 17:45 - 1bd278a"); // Infrastructure Refactor
+const SERVER_VERSION = envStr(
+  process.env.WEBHOOK_SERVER_VERSION,
+  "v2026.05.03 17:45 - 1bd278a",
+); // Infrastructure Refactor
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(
   CHART_SNAPSHOT_DIR,
@@ -1288,6 +1291,19 @@ async function marketDataDbWrite(symbolNorm, tfNorm, data) {
   );
 }
 
+async function notifyPulse(userId, type = "general") {
+  if (!CFG.redisEnabled) return;
+  try {
+    const client = await getRedisClient();
+    if (!client) return;
+    const now = Date.now();
+    const key = `NOTIF_PULSE:${userId || "global"}`;
+    await client.hSet(key, type, String(now));
+    await client.expire(key, 3600); // 1 hour is enough for pulse
+    await client.set("NOTIF_PULSE:GLOBAL", String(now), { EX: 3600 });
+  } catch (err) {}
+}
+
 async function getRedisClient() {
   if (!CFG.redisEnabled || !createRedisClient || !CFG.redisUrl) return null;
   if (REDIS_CLIENT?.isOpen) return REDIS_CLIENT;
@@ -1363,7 +1379,9 @@ function marketDataMemoryWrite(symbolNorm, tfNorm, data) {
   }
 
   // Update or Add TF
-  const existingIdx = Array.isArray(root.data) ? root.data.findIndex((d) => d.tf === tfNorm) : -1;
+  const existingIdx = Array.isArray(root.data)
+    ? root.data.findIndex((d) => d.tf === tfNorm)
+    : -1;
   const tfEntry = {
     ...data,
     tf: tfNorm,
@@ -1411,7 +1429,9 @@ async function marketDataRedisWrite(symbolNorm, tfNorm, snapshot) {
     source: snapshot.source || "remote_api",
   };
 
-  const existingIdx = Array.isArray(root.data) ? root.data.findIndex((d) => d.tf === tfNorm) : -1;
+  const existingIdx = Array.isArray(root.data)
+    ? root.data.findIndex((d) => d.tf === tfNorm)
+    : -1;
   if (existingIdx >= 0) {
     root.data[existingIdx] = tfEntry;
   } else {
@@ -4020,7 +4040,9 @@ async function buildAiContextBundle({
       for (const type of Object.keys(item.files)) {
         const fid = item.files[type]?.file_id;
         if (fid && !validIds.has(fid)) {
-          console.log(`[context] Removing stale file reference: ${fid} (${type})`);
+          console.log(
+            `[context] Removing stale file reference: ${fid} (${type})`,
+          );
           delete item.files[type].file_id;
         }
       }
@@ -4335,7 +4357,9 @@ async function anthropicMessagesWithFallback({
         const match = String(errText || "").match(/file_[a-zA-Z0-9]+/);
         if (match) {
           const missingId = match[0];
-          console.log(`[anthropic] File ${missingId} not found. Retrying without it...`);
+          console.log(
+            `[anthropic] File ${missingId} not found. Retrying without it...`,
+          );
           const filteredMessages = (messages || []).map((m) => {
             if (!Array.isArray(m.content)) return m;
             return {
@@ -8622,15 +8646,17 @@ async function _mt5InitBackendInternal() {
     },
     async uiListCache() {
       const items = [];
-      // 1. Memory Cache (Market Data)
+      const now = Date.now();
+      // 1. Memory Cache (Market Data + Unified)
       for (const [key, val] of MARKET_DATA_MEMORY_CACHE.entries()) {
         const root = val?.data;
         if (!root) continue;
+        const expired = Number(val?.expires_at_ms || 0) < now;
         const tfSummary = Array.isArray(root.data)
-          ? root.data.map((d) => d.tf).join(", ")
-          : root.tf || "n/a";
+          ? root.data.map((d) => d?.tf || d?.timeframe || "?").join(", ")
+          : root.tf || root.timeframe || "n/a";
         const barTotal = Array.isArray(root.data)
-          ? root.data.reduce((sum, d) => sum + (d.bars?.length || 0), 0)
+          ? root.data.reduce((sum, d) => sum + (d?.bars?.length || 0), 0)
           : root.bars?.length || 0;
         items.push({
           key,
@@ -8639,6 +8665,12 @@ async function _mt5InitBackendInternal() {
             symbol: root.symbol || key,
             tf: tfSummary,
             bars: barTotal,
+            snapshots: Array.isArray(root.data)
+              ? root.data
+                  .filter((d) => d?.snapshot?.file_id)
+                  .map((d) => d.tf)
+                  .join(", ")
+              : "",
             updated_at: root.updated_time
               ? new Date(root.updated_time * 1000).toISOString()
               : null,
@@ -8646,6 +8678,7 @@ async function _mt5InitBackendInternal() {
           expires_at: val.expires_at_ms
             ? new Date(val.expires_at_ms).toISOString()
             : null,
+          expired,
         });
       }
 
@@ -9556,19 +9589,27 @@ async function buildAnalysisSnapshotFromTwelve({
         const s = Number(entry.bars[0].time);
         const e = Number(entry.bars[entry.bars.length - 1].time);
         if (s <= reqRange.start && e >= reqRange.end) {
-          return {
-            ...entry,
-            symbol: symbolNorm,
-            symbol_norm: symbolNorm,
-            timeframe: tfNorm,
-            tf_norm: tfNorm,
-            bar_start: s,
-            bar_end: e,
-            status: "ok",
-            cache_source: "unified_cache",
-            updated_time: unified.updated_time,
-            utc_time_range: unified.utc_time_range,
-          };
+          // Also check recency: is the latest bar stale for this TF?
+          const tfSec = parseTfTokenToSeconds(tfNorm) || 3600;
+          const nowSec = Math.floor(Date.now() / 1000);
+          const barAge = nowSec - e;
+          if (barAge < tfSec * 2) {
+            // within 2 candles -> fresh enough
+            return {
+              ...entry,
+              symbol: symbolNorm,
+              symbol_norm: symbolNorm,
+              timeframe: tfNorm,
+              tf_norm: tfNorm,
+              bar_start: s,
+              bar_end: e,
+              status: "ok",
+              cache_source: "unified_cache",
+              updated_time: unified.updated_time,
+              utc_time_range: unified.utc_time_range,
+            };
+          }
+          // else: bar range covers request but latest bar too old -> fall through to Twelve
         }
       }
     }
@@ -11754,6 +11795,11 @@ const appHandler = async (req, res) => {
   } else if (incomingUrl.pathname === "/webhook") {
     incomingUrl.pathname = "/";
   }
+
+  // Optimization: Any incoming webhook/POST potentially changes state
+  if (req.method === "POST") {
+    notifyPulse(null, "webhook");
+  }
   const url = incomingUrl;
   const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
   console.log(
@@ -12891,6 +12937,9 @@ const appHandler = async (req, res) => {
           fallbackIdPrefix: "ui",
         },
       );
+
+      notifyPulse(effectiveUserId, "signals");
+
       return json(res, 200, { ok: true, trade: enqueue, signal: enqueue });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -15867,6 +15916,34 @@ const appHandler = async (req, res) => {
       return json(res, 500, {
         ok: false,
         error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/v2/notifications/pulse") {
+    const sess = getUiSessionFromReq(req);
+    // Pulse is low-sensitivity, but let's keep it scoped to user if possible
+    const userId = sess.user_id || CFG.mt5DefaultUserId || "global";
+    try {
+      const client = await getRedisClient();
+      let userPulse = {};
+      let globalPulse = 0;
+      if (client) {
+        userPulse = await client.hGetAll(`NOTIF_PULSE:${userId}`);
+        globalPulse = Number((await client.get("NOTIF_PULSE:GLOBAL")) || 0);
+      }
+      return json(res, 200, {
+        ok: true,
+        user: userPulse,
+        global: globalPulse,
+        timestamp: Date.now(),
+      });
+    } catch (e) {
+      return json(res, 200, {
+        ok: true,
+        user: {},
+        global: 0,
+        timestamp: Date.now(),
       });
     }
   }

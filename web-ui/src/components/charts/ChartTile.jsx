@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useSymbolChartData } from "../../hooks/useChartTileData";
 import TradeSignalChart from "../TradeSignalChart";
+import { chartFetchManager } from "../../services/chartFetchManager";
 import { showDateTime } from "../../utils/format";
 
 const MODES = ["live", "cache", "snapshots"];
@@ -96,7 +97,11 @@ function TfHeader({ tf, context, master, mode }) {
           style={{
             fontWeight: 600,
             fontSize: 9,
-            color: isBullishTrend ? "#26a69a" : isBearishTrend ? "#ef5350" : "inherit",
+            color: isBullishTrend
+              ? "#26a69a"
+              : isBearishTrend
+                ? "#ef5350"
+                : "inherit",
           }}
         >
           {trend}
@@ -280,7 +285,10 @@ export function SymbolChart({
     return MODE_LABELS[m] + " (no data)";
   };
 
-  const chartHeight = gridCols >= (timeframes?.length || 4) ? 250 : Math.max(250, ((timeframes?.length || 4) / gridCols) * 250);
+  const chartHeight =
+    gridCols >= (timeframes?.length || 4)
+      ? 250
+      : Math.max(250, ((timeframes?.length || 4) / gridCols) * 250);
 
   const showControls = !(hasTradePlan && hasAnalysis);
 
@@ -408,49 +416,50 @@ export function SymbolChart({
               lineHeight: 1,
               minWidth: 22,
             }}
-            onClick={() => mode !== "live" && refresh({ force: true })}
+            onClick={() => {
+              if (mode === "live") return;
+              const fresh = chartFetchManager.isFresh(cleanSym, 60000);
+              refresh({ force: !fresh });
+            }}
             disabled={status === "LOADING" || mode === "live"}
             title="Refresh"
           >
             {status === "LOADING" ? "\u23F3" : "\u21BB"}
           </button>
-            <button
-              className="secondary-button"
-              style={{
-                width: 22,
-                height: 22,
-                padding: 0,
-                fontSize: 11,
-                lineHeight: 1,
-                minWidth: 22,
-                display: showControls ? 'block' : 'none'
-              }}
-              onClick={() => onAnalyze?.(symbol, timeframes)}
-              title="Analyze"
-            >
-              &gt;
-            </button>
-          </div>
+          <button
+            className="secondary-button"
+            style={{
+              width: 22,
+              height: 22,
+              padding: 0,
+              fontSize: 11,
+              lineHeight: 1,
+              minWidth: 22,
+              display: showControls ? "block" : "none",
+            }}
+            onClick={() => onAnalyze?.(symbol, timeframes)}
+            title="Analyze"
+          >
+            &gt;
+          </button>
         </div>
+      </div>
 
       {/* ── Charts row ── */}
-      <div style={{ 
-        display: "grid", 
-        gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
-        gap: 8 
-      }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+          gap: 8,
+        }}
+      >
         {sortedTfs.map((tf) => {
           const isLive = mode === "live" || needsFallback;
           const context = master?.context?.[tf.toLowerCase()];
 
           return (
             <div key={`${mode}-${tf}`} style={{ minWidth: 100 }}>
-              <TfHeader
-                tf={tf}
-                context={context}
-                master={master}
-                mode={mode}
-              />
+              <TfHeader tf={tf} context={context} master={master} mode={mode} />
               {isLive ? (
                 <iframe
                   key={`tv-${symbol}-${tf}-${liveKey}`}
