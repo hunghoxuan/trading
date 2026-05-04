@@ -100,7 +100,10 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.03 20:21 - 2c42a7b"); // DB Index Update
+const SERVER_VERSION = envStr(
+  process.env.WEBHOOK_SERVER_VERSION,
+  "v2026.05.03 20:21 - 2c42a7b",
+); // DB Index Update
 const NOTIFICATION_PULSE = { global: Date.now(), user: {} };
 function bumpPulse(userId = null) {
   NOTIFICATION_PULSE.global += 1;
@@ -658,6 +661,37 @@ function json(res, statusCode, data) {
 const UI_SESSIONS = new Map();
 const UI_ROLE_SYSTEM = "System";
 const MARKET_DATA_MEMORY_CACHE = new Map();
+const MARKET_DATA_TF_CACHE = new Map(); // key: "EURUSD_4H" → { bars, bar_start, bar_end, last_price, created_at, snapshot }
+
+function tfCacheKey(symbol, tf) {
+  return `${String(symbol).toUpperCase()}_${String(tf).toUpperCase()}`;
+}
+function tfToMs(tf) {
+  const s = {
+    D: 86400000,
+    W: 604800000,
+    "4H": 14400000,
+    "1H": 3600000,
+    "15M": 900000,
+    "5M": 300000,
+    "1M": 60000,
+  };
+  return s[String(tf).toUpperCase()] || 3600000;
+}
+function tfCacheGet(symbol, tf) {
+  const key = tfCacheKey(symbol, tf);
+  const e = MARKET_DATA_TF_CACHE.get(key);
+  if (!e) return null;
+  if (Date.now() - e.created_at > tfToMs(tf)) {
+    MARKET_DATA_TF_CACHE.delete(key);
+    return null;
+  }
+  return e;
+}
+function tfCacheSet(symbol, tf, data) {
+  const key = tfCacheKey(symbol, tf);
+  MARKET_DATA_TF_CACHE.set(key, { ...data, created_at: Date.now() });
+}
 
 /**
  * Multi-Tiered Cache Utility (Memory -> Redis -> Fallback)
@@ -2728,16 +2762,9 @@ async function captureTradingViewSnapshotWithBrowser(browser, opts = {}) {
   const tfToken = sanitizeSnapshotFileToken(interval, "TF");
   const userId = sanitizeSnapshotFileToken(opts.userId || "default");
 
-  // Unified naming: UID_{user}_{symbol}_{tf}_{timestamp}_snapshot.ext
-  const stamp = snapshotTimestampToken(ts);
-  const fileName = `UID_${userId}_${symbolToken}_${tfToken}_${stamp}_snapshot.${outFormat}`;
-  let outPath = path.join(CHART_SNAPSHOT_DIR, fileName);
-  let dupIdx = 1;
-  while (fs.existsSync(outPath) && dupIdx < 100) {
-    fileName = `${baseName}_${dupIdx}.${outFormat}`;
-    outPath = path.join(CHART_SNAPSHOT_DIR, fileName);
-    dupIdx += 1;
-  }
+  // Simple naming: SYMBOL_TF.png — overwrites on re-capture
+  const fileName = `${symbolToken}_${tfToken}.${outFormat}`;
+  const outPath = path.join(CHART_SNAPSHOT_DIR, fileName);
   const context = await browser.newContext({
     viewport: { width: width + 24, height: height + 64 },
     deviceScaleFactor: 1,
@@ -6168,7 +6195,14 @@ async function _mt5InitBackendInternal() {
         INSERT INTO logs (object_id, object_table, symbol, event_type, metadata, user_id, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, NOW())
       `,
-        [objectId, objectTable, symbol, eventType, JSON.stringify(metadata), userId],
+        [
+          objectId,
+          objectTable,
+          symbol,
+          eventType,
+          JSON.stringify(metadata),
+          userId,
+        ],
       );
     },
     refreshLogConfig: loadLoggingConfig,
@@ -8669,98 +8703,32 @@ async function _mt5InitBackendInternal() {
     async uiListCache() {
       const items = [];
       const now = Date.now();
-      // 1. Memory Cache (Market Data + Unified)
-      for (const [key, val] of MARKET_DATA_MEMORY_CACHE.entries()) {
-        const root = val?.data;
-        if (!root) continue;
-        const expired = Number(val?.expires_at_ms || 0) < now;
-        const tfSummary = Array.isArray(root.data)
-          ? root.data.map((d) => d?.tf || d?.timeframe || "?").join(", ")
-          : root.tf || root.timeframe || "n/a";
-        const barTotal = Array.isArray(root.data)
-          ? root.data.reduce((sum, d) => sum + (d?.bars?.length || 0), 0)
-          : root.bars?.length || 0;
+      // 1. Per-TF Market Data Cache
+      for (const [key, entry] of MARKET_DATA_TF_CACHE.entries()) {
+        const ttlMs = tfToMs(entry.tf || key.split("_").pop() || "4H");
+        const expired = now - entry.created_at > ttlMs;
         items.push({
           key,
           source: "memory",
           data: {
-            symbol: root.symbol || key,
-            tf: tfSummary,
-            bars: barTotal,
-            snapshots: Array.isArray(root.data)
-              ? root.data
-                  .filter((d) => d?.snapshot?.file_id)
-                  .map((d) => d.tf)
-                  .join(", ")
-              : "",
-            updated_at: root.updated_time
-              ? new Date(root.updated_time * 1000).toISOString()
-              : null,
+            symbol: key.split("_")[0] || key,
+            tf: entry.tf || key.split("_").pop() || "?",
+            bars: entry.bars?.length || 0,
+            snapshots: entry.snapshot?.file_id ? entry.snapshot.file_name : "",
           },
-          expires_at: val.expires_at_ms
-            ? new Date(val.expires_at_ms).toISOString()
+          created_at: entry.created_at
+            ? new Date(entry.created_at).toISOString()
             : null,
+          ttl_ms: ttlMs,
           expired,
         });
-      }
-
-      // 2. Memory Cache (Misc/Settings/Calendar)
-      const calendar = MARKET_DATA_MEMORY_CACHE.get("economic_calendar:today");
-      if (calendar) {
-        items.push({
-          key: "economic_calendar:today",
-          source: "memory",
-          data: {
-            label: "Economic News Today",
-            events: calendar.data?.length || 0,
-          },
-          expires_at: calendar.expires_at_ms
-            ? new Date(calendar.expires_at_ms).toISOString()
-            : null,
-        });
-      }
-
-      // 3. Redis Cache
-      if (CFG.redisEnabled) {
-        const client = await getRedisClient();
-        if (client) {
-          const allKeys = await client.keys("*");
-          for (const k of allKeys) {
-            // Market Data
-            if (k.startsWith("market_data:")) {
-              items.push({
-                key: k,
-                source: "redis",
-                data: { type: "market_data" },
-              });
-            }
-            // Settings / User Accounts
-            else if (
-              k.startsWith("SYSTEM:SETTINGS") ||
-              k.startsWith("USER_ACCOUNTS:")
-            ) {
-              items.push({
-                key: k,
-                source: "redis",
-                data: { type: "configuration" },
-              });
-            }
-            // Calendar
-            else if (k === "economic_calendar:today") {
-              items.push({
-                key: k,
-                source: "redis",
-                data: { type: "calendar" },
-              });
-            }
-          }
-        }
       }
       return items;
     },
     async uiGetCacheDetail(key, source) {
       if (source === "memory") {
-        const val = MARKET_DATA_MEMORY_CACHE.get(key);
+        const val =
+          MARKET_DATA_TF_CACHE.get(key) || MARKET_DATA_MEMORY_CACHE.get(key);
         return { ok: true, data: val };
       }
       if (source === "redis" && CFG.redisEnabled) {
@@ -8778,6 +8746,7 @@ async function _mt5InitBackendInternal() {
     },
     async uiDeleteCacheKey(key, source) {
       if (source === "memory") {
+        MARKET_DATA_TF_CACHE.delete(key);
         MARKET_DATA_MEMORY_CACHE.delete(key);
         return { ok: true };
       }
@@ -9601,77 +9570,36 @@ async function buildAnalysisSnapshotFromTwelve({
     };
 
   if (!forceRefresh) {
-    // Attempt Unified Cache First
-    const unified = await StateRepo.get("MARKET_DATA_UNIFIED", symbolNorm);
-    if (unified && Array.isArray(unified.data)) {
-      const entry = unified.data.find(
-        (d) => normalizeMarketDataTf(d.tf) === tfNorm,
+    // Check per-TF memory cache (TTL = TF duration)
+    const cached = tfCacheGet(symbolNorm, tfNorm);
+    if (cached && cached.bars && cached.bars.length) {
+      const s = Number(cached.bar_start || cached.bars[0].time);
+      const e = Number(
+        cached.bar_end || cached.bars[cached.bars.length - 1].time,
       );
-      if (entry && entry.bars && entry.bars.length) {
-        const s = Number(entry.bars[0].time);
-        const e = Number(entry.bars[entry.bars.length - 1].time);
-        if (s <= reqRange.start && e >= reqRange.end) {
-          return {
-            ...entry,
-            symbol: symbolNorm,
-            symbol_norm: symbolNorm,
-            timeframe: tfNorm,
-            tf_norm: tfNorm,
-            bar_start: s,
-            bar_end: e,
-            status: "ok",
-            cache_source: "unified_cache",
-            updated_time: unified.updated_time,
-            utc_time_range: unified.utc_time_range,
-          };
-        }
+      if (s <= reqRange.start && e >= reqRange.end) {
+        return {
+          ...cached,
+          symbol: symbolNorm,
+          symbol_norm: symbolNorm,
+          timeframe: tfNorm,
+          tf_norm: tfNorm,
+          bar_start: s,
+          bar_end: e,
+          status: "ok",
+          cache_source: "memory",
+        };
       }
     }
-
-    // Legacy Fallbacks (keeping for safety during transition)
-    const memHit = marketDataMemoryRead(
-      symbolNorm,
-      tfNorm,
-      reqRange.start,
-      reqRange.end,
-    );
-    if (memHit) {
-      return {
-        ...memHit,
-        cache_source: "memory",
-        symbol_norm: symbolNorm,
-        tf_norm: tfNorm,
-      };
-    }
-    const redisHit = await marketDataRedisRead(
-      symbolNorm,
-      tfNorm,
-      reqRange.start,
-      reqRange.end,
-    ).catch(() => null);
-    if (redisHit) {
-      marketDataMemoryWrite(symbolNorm, tfNorm, redisHit);
-      return {
-        ...redisHit,
-        cache_source: "redis",
-        symbol_norm: symbolNorm,
-        tf_norm: tfNorm,
-      };
-    }
+    // Fallback to DB
     const dbHit = await marketDataDbRead(
       symbolNorm,
       tfNorm,
       reqRange.start,
       reqRange.end,
     ).catch(() => null);
-    if (
-      dbHit &&
-      typeof dbHit === "object" &&
-      Array.isArray(dbHit.bars) &&
-      dbHit.bars.length
-    ) {
-      marketDataMemoryWrite(symbolNorm, tfNorm, dbHit);
-      await marketDataRedisWrite(symbolNorm, tfNorm, dbHit).catch(() => {});
+    if (dbHit && Array.isArray(dbHit.bars) && dbHit.bars.length) {
+      tfCacheSet(symbolNorm, tfNorm, dbHit);
       return {
         ...dbHit,
         cache_source: "db",
@@ -9854,11 +9782,7 @@ async function buildAnalysisSnapshotFromTwelve({
     };
 
     // Update Unified Cache
-    await repoUpsertUnifiedMarketData(symbolNorm, tfNorm, snapshot);
-
-    // Legacy support writes
-    marketDataMemoryWrite(symbolNorm, tfNorm, snapshot);
-    await marketDataRedisWrite(symbolNorm, tfNorm, snapshot).catch(() => {});
+    tfCacheSet(symbolNorm, tfNorm, snapshot);
     await marketDataDbUpsert(symbolNorm, tfNorm, snapshot).catch(() => {});
     return snapshot;
   } catch (error) {
@@ -15783,7 +15707,7 @@ const appHandler = async (req, res) => {
             const sym = parts[0]?.toUpperCase?.() || "";
             const tf = parts[1]?.toLowerCase?.() || "";
             if (sym && tf && u?.id) {
-              await repoUpsertUnifiedMarketData(sym, tf, {
+              tfCacheSet(sym, tf, {
                 snapshot: {
                   file_id: String(u.id),
                   file_name: fname,

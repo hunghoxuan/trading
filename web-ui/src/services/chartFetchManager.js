@@ -1,50 +1,48 @@
 /**
- * Chart Sync — shared fetch manager.
+ * Chart Sync — shared fetch manager (per-TF).
  *
- * Cache key: {SYMBOL}  (e.g. "EURUSD")
- * Master object per symbol — all TFs, bars, context, snapshots in one entry.
- * Aligns with backend MARKET_DATA:{SYMBOL} contract.
- *
- * Runtime dedupe: {symbol}:{tf}  (for in-flight coordination only)
- * Concurrency cap: 4. Cooldown: 2.5 s. Stale-while-revalidate.
+ * Cache key: {SYMBOL}_{TF}  (e.g. "EURUSD_4H")
+ * Value: { bars, bar_start, bar_end, last_price, created_at, snapshot }
+ * TTL: TF duration (e.g. 4H → 4 hours)
  */
 
 const CONCURRENCY_CAP = 4;
 const COOLDOWN_MS = 2500;
-const STALE_THRESHOLD_MS = 120_000; // 2 min → stale (was 60s, now matches page warmup)
-const MAX_CACHE_AGE_MS = 10 * 60_000; // 10 min → eviction
 
-// ── internal state ────────────────────────────────────────────────
+function tfToMs(tf) {
+  const s = {
+    D: 86400000,
+    W: 604800000,
+    "4H": 14400000,
+    "1H": 3600000,
+    "15M": 900000,
+    "5M": 300000,
+    "1M": 60000,
+  };
+  return s[String(tf).toUpperCase()] || 3600000;
+}
+
+// ── internal state ──
 let activeCount = 0;
 const queue = [];
-const inFlight = new Map(); // "{symbol}:{tf}" → Promise
-const lastFetch = new Map(); // "{symbol}:{tf}" → timestamp ms
-const masterCache = new Map(); // "{SYMBOL}" → master object
+const inFlight = new Map(); // "EURUSD:4H" → Promise
+const lastFetch = new Map(); // "EURUSD:4H" → timestamp ms
+const tfCache = new Map(); // "EURUSD_4H" → { bars, created_at, ... }
 
-// ── helpers ────────────────────────────────────────────────────────
-
-/** Normalize symbol to uppercase cache key. */
-function normSymbol(symbol) {
-  return String(symbol || "")
+// ── helpers ──
+function norm(s) {
+  return String(s || "")
     .trim()
     .toUpperCase();
 }
-
-/** Build runtime dedupe key (in-flight only, NOT cache key). */
+function cacheKey(symbol, tf) {
+  return `${norm(symbol)}_${String(tf).toUpperCase()}`;
+}
 function flightKey(symbol, tf) {
-  return `${normSymbol(symbol)}:${String(tf || "").toLowerCase()}`;
+  return `${norm(symbol)}:${String(tf).toLowerCase()}`;
 }
 
-/** Evict master entries older than MAX_CACHE_AGE_MS. */
-function evict() {
-  const cutoff = Date.now() - MAX_CACHE_AGE_MS;
-  for (const [k, v] of masterCache) {
-    if ((v.cached_at || 0) < cutoff) masterCache.delete(k);
-  }
-}
-
-// ── queue processor ────────────────────────────────────────────────
-
+// ── queue ──
 function processQueue() {
   while (queue.length > 0 && activeCount < CONCURRENCY_CAP) {
     const { fkey, fetcher, resolve, reject } = queue.shift();
@@ -58,24 +56,12 @@ function startFetch(fkey, fetcher) {
     try {
       const result = await fetcher();
       lastFetch.set(fkey, Date.now());
-      // Merge into master (Read-Modify-Write)
-      if (result && result.symbol) {
-        const sym = normSymbol(result.symbol);
-        const prev = masterCache.get(sym) || {
-          symbol: sym,
-          bars: {},
-          context: {},
-          snapshots: {},
-        };
-        const merged = {
-          ...prev,
-          ...result,
-          cached_at: Date.now(),
-          bars: { ...prev.bars, ...(result.bars || {}) },
-          context: { ...prev.context, ...(result.context || {}) },
-          snapshots: { ...prev.snapshots, ...(result.snapshots || {}) },
-        };
-        masterCache.set(sym, merged);
+      // Store each TF result separately
+      if (result && result.entries) {
+        for (const [tf, entry] of Object.entries(result.entries)) {
+          const ck = cacheKey(result.symbol, tf);
+          tfCache.set(ck, { ...entry, created_at: Date.now() });
+        }
       }
       return {
         data: result,
@@ -85,18 +71,6 @@ function startFetch(fkey, fetcher) {
         error: null,
       };
     } catch (err) {
-      const cached = lastFetch.get(fkey)
-        ? masterCache.get(normSymbol(String(err?.symbol || "")))
-        : null;
-      if (cached) {
-        return {
-          data: cached,
-          fromCache: true,
-          stale: true,
-          updatedAt: cached.cached_at,
-          error: String(err?.message || err || "fetch failed"),
-        };
-      }
       return {
         data: null,
         fromCache: false,
@@ -114,22 +88,21 @@ function startFetch(fkey, fetcher) {
   return promise;
 }
 
-// ── public API ─────────────────────────────────────────────────────
+// ── public API ──
 
-/** Enqueue a fetch through the shared manager (runtime dedupe + concurrency). */
 function enqueue(symbol, tf, fetcher) {
   const fkey = flightKey(symbol, tf);
   if (inFlight.has(fkey)) return inFlight.get(fkey);
   const now = Date.now();
   const last = lastFetch.get(fkey) || 0;
   if (now - last < COOLDOWN_MS) {
-    const master = masterCache.get(normSymbol(symbol));
-    if (master)
+    const cached = get(symbol, tf);
+    if (cached)
       return Promise.resolve({
-        data: master,
+        data: { symbol: norm(symbol), entries: { [tf]: cached } },
         fromCache: true,
         stale: true,
-        updatedAt: master.cached_at,
+        updatedAt: cached.created_at,
         error: null,
       });
   }
@@ -141,43 +114,39 @@ function enqueue(symbol, tf, fetcher) {
   return startFetch(fkey, fetcher);
 }
 
-/** Get the master cache entry for a symbol. Returns null if not cached or too old. */
-function get(symbol, maxAgeMs = STALE_THRESHOLD_MS) {
-  evict();
-  const entry = masterCache.get(normSymbol(symbol));
+/** Get cached entry for a symbol+TF. Returns null if missing or expired. */
+function get(symbol, tf) {
+  const key = cacheKey(symbol, tf);
+  const entry = tfCache.get(key);
   if (!entry) return null;
-  return { ...entry, stale: Date.now() - (entry.cached_at || 0) > maxAgeMs };
-}
-
-/** Get bars + snapshot metadata for a specific TF from the master cache. */
-function getTf(symbol, tf, maxAgeMs = STALE_THRESHOLD_MS) {
-  const master = get(symbol, maxAgeMs);
-  if (!master) return null;
-  const tfKey = String(tf || "").toLowerCase();
-  return {
-    bars: master.bars?.[tfKey] || [],
-    context: master.context?.[tfKey] || null,
-    snapshot: master.snapshots?.[tfKey] || null,
-    cached_at: master.cached_at || null,
-    stale: master.stale,
-  };
-}
-
-/** Check if a symbol has fresh cached data. */
-function isFresh(symbol, maxAgeMs = STALE_THRESHOLD_MS) {
-  const master = get(symbol, maxAgeMs);
-  return master && !master.stale;
-}
-
-/** Drop cached entries matching a pattern. */
-function invalidate(pattern = "") {
-  for (const key of masterCache.keys()) {
-    if (!pattern || key.includes(pattern.toUpperCase()))
-      masterCache.delete(key);
+  if (Date.now() - entry.created_at > tfToMs(tf)) {
+    tfCache.delete(key);
+    return null;
   }
-  for (let i = queue.length - 1; i >= 0; i--) {
-    if (!pattern || queue[i].fkey.toUpperCase().includes(pattern.toUpperCase()))
-      queue.splice(i, 1);
+  return { ...entry, stale: false };
+}
+
+/** Check if symbol+TF has fresh data. */
+function isFresh(symbol, tf) {
+  return get(symbol, tf) !== null;
+}
+
+/** Get bars for a specific TF from cache. */
+function getBars(symbol, tf) {
+  const entry = get(symbol, tf);
+  return entry?.bars || [];
+}
+
+/** Get snapshot info for a TF. */
+function getSnapshot(symbol, tf) {
+  const entry = get(symbol, tf);
+  return entry?.snapshot || null;
+}
+
+function invalidate(symbol = "") {
+  const prefix = norm(symbol) + "_";
+  for (const key of tfCache.keys()) {
+    if (!symbol || key.startsWith(prefix)) tfCache.delete(key);
   }
 }
 
@@ -190,12 +159,13 @@ function reset() {
   queue.length = 0;
   inFlight.clear();
   lastFetch.clear();
-  masterCache.clear();
+  tfCache.clear();
 }
 
 export const chartFetchManager = {
   get,
-  getTf,
+  getBars,
+  getSnapshot,
   isFresh,
   enqueue,
   invalidate,
