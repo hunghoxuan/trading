@@ -100,10 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(
-  process.env.WEBHOOK_SERVER_VERSION,
-  "v2026.05.04 19:04 - 01bc25b",
-); // DB Index Update
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.04 19:37 - c3bb80d"); // DB Index Update
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
@@ -7034,25 +7031,20 @@ async function _mt5InitBackendInternal() {
               reasonRaw === "MANUAL"
             )
               statusRaw = "CANCEL";
-            else if (pnl !== null) statusRaw = "CLOSED";
+            else if (raw.closed_at || raw.close_reason) statusRaw = "CLOSED";
+            else if (pnl !== null && raw.execution_status === "CLOSED") statusRaw = "CLOSED";
+            else statusRaw = "OPEN";
           }
           let executionStatus = "PENDING";
-          if (statusRaw === "START" || statusRaw === "OPEN")
+          const s = String(statusRaw || "").toUpperCase();
+
+          if (["START", "OPEN", "ACTIVE", "FILLED", "EXECUTED"].includes(s)) {
             executionStatus = "OPEN";
-          else if (
-            statusRaw === "PLACED" ||
-            statusRaw === "NEW" ||
-            statusRaw === "PENDING"
-          )
+          } else if (["PLACED", "NEW", "PENDING", "SUBMITTED", "PARTIAL"].includes(s)) {
             executionStatus = "PENDING";
-          else if (
-            statusRaw === "TP" ||
-            statusRaw === "SL" ||
-            statusRaw === "CANCEL" ||
-            statusRaw === "FAIL" ||
-            statusRaw === "CLOSED"
-          )
+          } else if (["TP", "SL", "CANCEL", "FAIL", "CLOSED", "EXPIRED", "REJECTED", "DELETED"].includes(s)) {
             executionStatus = "CLOSED";
+          }
           const commission = Number(raw.commission || 0);
           const swap = Number(raw.swap || 0);
           const netPnl = Number(raw.net_pnl || 0);

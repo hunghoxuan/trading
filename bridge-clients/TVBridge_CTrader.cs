@@ -34,7 +34,7 @@ namespace cAlgo.Robots
         [Parameter("Max Risk %", DefaultValue = 1.0, MinValue = 0.1, MaxValue = 10.0)]
         public double MaxRiskPct { get; set; }
 
-        private string BuildVersion = "v2026.05.04 19:04 - 01bc25b";
+        private string BuildVersion = "v2026.05.04 19:37 - c3bb80d";
         private string _lastStatus = "INITIALIZING";
         private string _lastSignalId = "None";
         private string _lastAction = "None";
@@ -124,7 +124,7 @@ namespace cAlgo.Robots
                             double pips = pos.Pips;
                             
                             posList.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                                "{{\"ticket\":\"{0}\",\"symbol\":\"{1}\",\"volume\":{2:F2},\"lots\":{3:F2},\"side\":\"{4}\",\"entry\":{5:F5},\"pnl\":{6:F2},\"net_pnl\":{7:F2},\"commission\":{8:F2},\"swap\":{9:F2},\"pips\":{10:F2},\"opened_at\":\"{11}\",\"comment\":\"{12}\"}}",
+                                "{{\"ticket\":\"{0}\",\"symbol\":\"{1}\",\"volume\":{2:F2},\"lots\":{3:F2},\"side\":\"{4}\",\"entry\":{5:F5},\"pnl\":{6:F2},\"net_pnl\":{7:F2},\"commission\":{8:F2},\"swap\":{9:F2},\"pips\":{10:F2},\"opened_at\":\"{11}\",\"comment\":\"{12}\",\"status\":\"OPEN\"}}",
                                 pos.Id, pos.SymbolName, pos.VolumeInUnits, pos.Quantity, pos.TradeType.ToString().ToUpper(), pos.EntryPrice, pos.GrossProfit, pos.NetProfit, pos.Commissions, pos.Swap, pips, pos.EntryTime.ToString("yyyy-MM-ddTHH:mm:ssZ"), sid));
                         }
                     }
