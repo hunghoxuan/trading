@@ -176,6 +176,14 @@ export function SymbolChart({
   const [lastError, setLastError] = useState(null);
   const cleanSym = useMemo(() => normSym(symbol), [symbol]);
   const [gridCols, setGridCols] = useState(timeframes?.length || 4);
+  const [overlays, setOverlays] = useState({
+    plan1: true,
+    plan2: false,
+    pdArrays: false,
+    keyLevels: false,
+  });
+
+  const toggleOverlay = (key) => setOverlays((p) => ({ ...p, [key]: !p[key] }));
 
   useEffect(() => {
     setGridCols(timeframes?.length || 4);
@@ -393,6 +401,14 @@ export function SymbolChart({
                 TradePlan
               </button>
             </>
+            {/* Overlay toggles for TradePlan chart */}
+            <span style={{ opacity: 0.3, fontSize: 8, margin: '0 2px' }}>|</span>
+            {['plan1','plan2','pdArrays','keyLevels'].map(k => (
+              <label key={k} style={{ display:'flex', alignItems:'center', gap:2, cursor:'pointer', fontSize:9 }}>
+                <input type="checkbox" checked={overlays[k]} onChange={() => toggleOverlay(k)} />
+                <span className="minor-text">{k==='plan1'?'P1':k==='plan2'?'P2':k==='pdArrays'?'PD':'KL'}</span>
+              </label>
+            ))}
           ) : (
             MODES.map((m) => (
               <button
