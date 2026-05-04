@@ -4090,19 +4090,35 @@ async function buildAiContextBundle({
       const idx = cursor;
       cursor += 1;
       const tf = wanted[idx];
+      console.log(`[context] worker start tf=${tf} idx=${idx}`);
+      const tStart = Date.now();
       try {
-        items[idx] = await ensureAiTfContext({
-          userId,
-          apiKey,
-          symbol,
-          tf,
-          bars,
-          provider,
-          forceRefresh,
-          forceSnapshot,
-          includeSnapshots,
-        });
+        items[idx] = await Promise.race([
+          ensureAiTfContext({
+            userId,
+            apiKey,
+            symbol,
+            tf,
+            bars,
+            provider,
+            forceRefresh,
+            forceSnapshot,
+            includeSnapshots,
+          }),
+          new Promise((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`ensureAiTfContext timeout tf=${tf}`)),
+              30000,
+            ),
+          ),
+        ]);
+        console.log(
+          `[context] worker done tf=${tf} idx=${idx} ms=${Date.now() - tStart}`,
+        );
       } catch (error) {
+        console.error(
+          `[context] worker fail tf=${tf} idx=${idx} ms=${Date.now() - tStart} err=${error.message}`,
+        );
         items[idx] = {
           tf: displayTfFromNorm(normalizeMarketDataTf(tf)),
           tf_norm: normalizeMarketDataTf(tf),
