@@ -34,7 +34,7 @@ namespace cAlgo.Robots
         [Parameter("Max Risk %", DefaultValue = 1.0, MinValue = 0.1, MaxValue = 10.0)]
         public double MaxRiskPct { get; set; }
 
-        private string BuildVersion = "v2026.05.04 14:46 - 8d1d33a";
+        private string BuildVersion = "v2026.05.04 15:19 - 166826f";
         private string _lastStatus = "INITIALIZING";
         private string _lastSignalId = "None";
         private string _lastAction = "None";
@@ -46,20 +46,20 @@ namespace cAlgo.Robots
         private string _lastError = "";
         private bool _isPolling = false;
 
-        private static readonly HttpClient _httpClient = new HttpClient();
+        private static readonly HttpClient _httpClient;
+
+        static TVBridgeCBot()
+        {
+            _httpClient = new HttpClient();
+            _httpClient.Timeout = TimeSpan.FromSeconds(10);
+            _httpClient.DefaultRequestHeaders.Add("User-Agent", "cTrader-TVBridge");
+        }
 
         protected override void OnStart()
         {
             try
             {
                 ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
-
-                if (!_httpClient.DefaultRequestHeaders.Contains("User-Agent"))
-                {
-                    _httpClient.DefaultRequestHeaders.Add("User-Agent", "cTrader-TVBridge");
-                }
-
-                _httpClient.Timeout = TimeSpan.FromSeconds(10);
 
                 Print("[Init] TVBridgeCBot Started. Magic: {0}", MagicNumber);
                 _lastStatus = "LIVE_READY";
@@ -104,6 +104,7 @@ namespace cAlgo.Robots
                     }
                     else
                     {
+                        _failCount++;
                         _lastStatus = "HTTP_ERR";
                         _lastError = response.StatusCode.ToString();
                     }
@@ -124,13 +125,13 @@ namespace cAlgo.Robots
 
         private void ProcessResponse(string json)
         {
-            if (string.IsNullOrEmpty(json) || !json.Contains("\"signals\"")) return;
+            if (string.IsNullOrEmpty(json) || !json.Contains("\"items\"")) return;
 
-            var signalsMatch = Regex.Match(json, "\"signals\"\\s*:\\s*\\[(.*?)\\]", RegexOptions.Singleline);
-            if (!signalsMatch.Success) return;
+            var itemsMatch = Regex.Match(json, "\"items\"\\s*:\\s*\\[(.*?)\\]", RegexOptions.Singleline);
+            if (!itemsMatch.Success) return;
 
-            var signalsContent = signalsMatch.Groups[1].Value;
-            var objects = Regex.Matches(signalsContent, "\\{(.*?)\\}", RegexOptions.Singleline);
+            var itemsContent = itemsMatch.Groups[1].Value;
+            var objects = Regex.Matches(itemsContent, "\\{(.*?)\\}", RegexOptions.Singleline);
 
             foreach (Match objMatch in objects)
             {
