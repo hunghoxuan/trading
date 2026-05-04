@@ -4132,7 +4132,7 @@ async function buildAiContextBundle({
     }
   }
   const okItems = items.filter((x) => x?.status === "ok");
-  const allClaudeFiles = await anthropicListFiles(apiKey);
+  const allClaudeFiles = await anthropicListFiles(apiKey).catch(() => []);
   const validIds = new Set(allClaudeFiles.map((f) => f.id));
 
   for (const item of items) {

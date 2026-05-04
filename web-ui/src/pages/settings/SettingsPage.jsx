@@ -1084,6 +1084,50 @@ export default function SettingsPage({
                         <span className="minor-text">AI Analysis Cron</span>
                       </label>
                     </div>
+
+                    <div className="panel-label" style={{ marginTop: 12 }}>
+                      LOG EVENT TYPES
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {[
+                        "CRON_MD",
+                        "FETCH_API",
+                        "CHART_API",
+                        "ANALYZE",
+                        "CACHE",
+                        "DB",
+                      ].map((lt) => (
+                        <label
+                          key={lt}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={logConfig.includes(lt)}
+                            onChange={(e) => {
+                              const next = e.target.checked
+                                ? [...logConfig, lt]
+                                : logConfig.filter((x) => x !== lt);
+                              setLogConfig(next);
+                            }}
+                          />
+                          <span className="minor-text">{lt}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <button
+                      className="secondary-button"
+                      onClick={() => saveLoggingConfig(logConfig)}
+                      disabled={logBusy}
+                      style={{ width: "fit-content" }}
+                    >
+                      {logBusy ? "SAVING..." : "SAVE LOG CONFIG"}
+                    </button>
                     <button
                       className="primary-button"
                       onClick={savePreferences}
