@@ -102,7 +102,7 @@ loadEnvFile();
 
 const SERVER_VERSION = envStr(
   process.env.WEBHOOK_SERVER_VERSION,
-  "v2026.05.04 13:12 - 4b17282",
+  "v2026.05.04 14:46 - 8d1d33a",
 ); // DB Index Update
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
@@ -1326,14 +1326,19 @@ function marketDataMemoryRead(symbolNorm, tfNorm, reqStart, reqEnd) {
 
 async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
   const db = await mt5InitBackend();
-  const res = await db.query(
-    `SELECT symbol, tf as timeframe, bar_start, bar_end, data, metadata, last_price, last_price_at
-     FROM market_data
-     WHERE symbol = $1 AND tf = $2 AND bar_start <= $3 AND bar_end >= $4
-     ORDER BY bar_end DESC
-     LIMIT 1`,
-    [symbolNorm, tfNorm, reqStart, reqEnd],
-  );
+  const res = await Promise.race([
+    db.query(
+      `SELECT symbol, tf as timeframe, bar_start, bar_end, data, metadata, last_price, last_price_at
+       FROM market_data
+       WHERE symbol = $1 AND tf = $2 AND bar_start <= $3 AND bar_end >= $4
+       ORDER BY bar_end DESC
+       LIMIT 1`,
+      [symbolNorm, tfNorm, reqStart, reqEnd],
+    ),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("marketDataDbRead timeout")), 10000),
+    ),
+  ]);
   if (!res.rows?.length) return null;
   const row = res.rows[0];
   let bars = [];
@@ -1551,17 +1556,20 @@ async function marketDataRedisWrite(symbolNorm, tfNorm, snapshot) {
 
 async function marketDataDbRead(symbolNorm, tfNorm, reqStart, reqEnd) {
   const db = await mt5InitBackend();
-  const tfSec = Math.max(60, parseTfTokenToSeconds(tfNorm));
-  // Find ANY overlapping rows
-  const res = await db.query(
-    `SELECT data
+  const res = await Promise.race([
+    db.query(
+      `SELECT data
        FROM market_data
       WHERE symbol = $1
         AND tf = $2
         AND NOT (bar_end < $3 OR bar_start > $4)
       ORDER BY bar_start ASC`,
-    [symbolNorm, tfNorm, reqStart, reqEnd],
-  );
+      [symbolNorm, tfNorm, reqStart, reqEnd],
+    ),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("marketDataDbRead timeout")), 10000),
+    ),
+  ]);
 
   if (!res.rows.length) return null;
 
@@ -4135,7 +4143,11 @@ async function buildAiContextBundle({
     { length: Math.max(1, Math.min(maxParallel, wanted.length)) },
     () => worker(),
   );
+  console.log(
+    `[context] buildAiContextBundle START symbol=${symbol} tfs=${wanted.join(",")} maxParallel=${maxParallel}`,
+  );
   await Promise.all(runners);
+  console.log(`[context] buildAiContextBundle runners DONE`);
   for (let i = 0; i < items.length; i += 1) {
     if (!items[i]) {
       const tf = wanted[i];
@@ -9648,6 +9660,9 @@ async function buildAnalysisSnapshotFromTwelve({
   const reqRange = estimateRequestedBarsRange({ tfNorm, bars: outputsize });
 
   const tid = traceId || genTraceId("twelve_");
+  console.log(
+    `[twelve] START sym=${symbolNorm} tf=${tfNorm} force=${forceRefresh}`,
+  );
   if (!symbolNorm)
     return {
       provider: "twelvedata",
@@ -9690,6 +9705,7 @@ async function buildAnalysisSnapshotFromTwelve({
       }
     }
     // Fallback to DB
+    console.log(`[twelve] DB_READ sym=${symbolNorm} tf=${tfNorm}`);
     const dbHit = await marketDataDbRead(
       symbolNorm,
       tfNorm,
