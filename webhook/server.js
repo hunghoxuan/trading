@@ -100,7 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.04 18:22 - 12503ef"); // DB Index Update
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.04 19:04 - 01bc25b"); // DB Index Update
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
@@ -7020,14 +7020,29 @@ async function _mt5InitBackendInternal() {
             statusRaw === "CLOSED"
           )
             executionStatus = "CLOSED";
-          const key = ticket ? `tk:${ticket}` : `sig:${signalId}`;
+          const commission = Number(raw.commission || 0);
+          const swap = Number(raw.swap || 0);
+          const netPnl = Number(raw.net_pnl || 0);
+          const pipsVal = Number(raw.pips || 0);
+          const lots = Number(raw.lots || 0);
+          const brokerComment = String(raw.comment || "").trim();
+          
+          // Use broker comment as signal_id if it looks like an ID
+          const effectiveSignalId = brokerComment || signalId;
+
+          const key = ticket ? `tk:${ticket}` : `sig:${effectiveSignalId}`;
           const prev = merged.get(key);
           if (!prev) {
             merged.set(key, {
-              signal_id: signalId || null,
+              signal_id: effectiveSignalId || null,
               ticket,
               ticket_candidates: ticketCandidates,
               pnl,
+              net_pnl: netPnl,
+              commission,
+              swap,
+              pips: pipsVal,
+              lots,
               volume,
               symbol,
               action,
@@ -7039,7 +7054,7 @@ async function _mt5InitBackendInternal() {
               closed_at: closedAt,
             });
           } else {
-            if (!prev.signal_id && signalId) prev.signal_id = signalId;
+            if (!prev.signal_id && effectiveSignalId) prev.signal_id = effectiveSignalId;
             prev.ticket_candidates = Array.from(
               new Set([...(prev.ticket_candidates || []), ...ticketCandidates]),
             );
@@ -7050,6 +7065,11 @@ async function _mt5InitBackendInternal() {
               prev.status_raw = statusRaw || prev.status_raw;
             }
             if (pnl !== null) prev.pnl = pnl;
+            if (netPnl !== 0) prev.net_pnl = netPnl;
+            if (commission !== 0) prev.commission = commission;
+            if (swap !== 0) prev.swap = swap;
+            if (pipsVal !== 0) prev.pips = pipsVal;
+            if (lots !== 0) prev.lots = lots;
             if (volume !== null) prev.volume = volume;
             if (symbol) prev.symbol = symbol;
             if (action) prev.action = action;
@@ -7080,6 +7100,11 @@ async function _mt5InitBackendInternal() {
         const syncMeta = JSON.stringify({
           broker_ticket_candidates: ticketCandidates,
           broker_position_id: ticketCandidates[0] || null,
+          broker_commission: it.commission || 0,
+          broker_swap: it.swap || 0,
+          broker_net_pnl: it.net_pnl || 0,
+          broker_pips: it.pips || 0,
+          broker_lots: it.lots || 0,
           close_reason: it.close_reason || null,
           last_sync_source: "broker_sync_v2",
         });
@@ -7192,7 +7217,7 @@ async function _mt5InitBackendInternal() {
               SELECT trade_id
               FROM trades
               WHERE account_id = $4
-                AND signal_id = $5
+                AND (signal_id = $5 OR trade_id = $5 OR sid = $5)
               ORDER BY
                 CASE WHEN broker_trade_id IS NULL OR broker_trade_id = '' THEN 0 ELSE 1 END,
                 created_at ASC
