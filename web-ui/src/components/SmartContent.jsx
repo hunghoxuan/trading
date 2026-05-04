@@ -2,8 +2,9 @@ import { useState, useCallback } from "react";
 
 /**
  * SmartContent — auto-detects format and renders appropriately.
- * Modes: readonly | editable
- * In editable mode: toggle between view/edit, copy to clipboard.
+ * Mode "readonly": display only.
+ * Mode "editable": click text → switches to textarea, blur → back to view.
+ * Light border in view mode.
  */
 export function SmartContent({
   content,
@@ -16,8 +17,6 @@ export function SmartContent({
 
   const raw = content ?? "";
   const isEmpty = !raw || (typeof raw === "string" && !raw.trim());
-
-  // Auto-detect format
   const isJson =
     typeof raw === "object" ||
     (typeof raw === "string" && raw.trim().startsWith("{"));
@@ -42,38 +41,40 @@ export function SmartContent({
     });
   };
 
-  // Readonly mode
+  const borderStyle = {
+    border: "1px solid var(--border)",
+    borderRadius: 6,
+    padding: 6,
+  };
+
   if (mode === "readonly") {
     if (isEmpty) return <span className="minor-text">—</span>;
-    if (isJson) {
+    if (isJson)
       return (
         <pre
           style={{
             margin: 0,
-            fontSize: 11,
+            fontSize: 10,
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
             maxHeight: 300,
             overflow: "auto",
             color: "var(--text)",
             opacity: 0.85,
+            ...borderStyle,
           }}
         >
           {displayText()}
         </pre>
       );
-    }
-    if (isHtml) {
-      return <div dangerouslySetInnerHTML={{ __html: raw }} />;
-    }
-    // Plain text: split by ". " or newline
+    if (isHtml) return <div dangerouslySetInnerHTML={{ __html: raw }} />;
     const lines = String(raw)
       .split(/\.\s+|\n/)
       .filter(Boolean);
     return (
-      <div style={{ lineHeight: 1.6 }}>
+      <div style={{ lineHeight: 1.5, fontSize: 11, ...borderStyle }}>
         {lines.map((line, i) => (
-          <div key={i} style={{ marginBottom: 4 }}>
+          <div key={i} style={{ marginBottom: 3 }}>
             {line.trim()}
             {i < lines.length - 1 ? "." : ""}
           </div>
@@ -82,85 +83,100 @@ export function SmartContent({
     );
   }
 
-  // Editable mode
   return (
-    <div style={{ position: "relative" }}>
-      <div
-        style={{
-          display: "flex",
-          gap: 4,
-          marginBottom: 4,
-          alignItems: "center",
-        }}
-      >
-        <button
-          className="secondary-button"
-          onClick={() => setEditing(!editing)}
-          style={{ padding: "2px 6px", fontSize: 9 }}
-          title={editing ? "View" : "Edit"}
-        >
-          {editing ? "👁" : "✏️"}
-        </button>
-        <button
-          className="secondary-button"
-          onClick={handleCopy}
-          style={{ padding: "2px 6px", fontSize: 9 }}
-          title="Copy"
-        >
-          {copied ? "✓" : "📋"}
-        </button>
-      </div>
+    <div>
       {editing ? (
         <textarea
+          autoFocus
           style={{
             width: "100%",
-            minHeight: rows * 20,
-            fontSize: 11,
+            minHeight: rows * 18,
+            fontSize: 10,
             padding: 6,
             background: "rgba(255,255,255,0.05)",
             color: "var(--text)",
-            border: "1px solid var(--border)",
+            border: "1px solid var(--accent)",
             borderRadius: 6,
             resize: "vertical",
           }}
           value={typeof raw === "string" ? raw : JSON.stringify(raw, null, 2)}
-          readOnly
+          onChange={(e) => onChange?.(e.target.value)}
+          onBlur={() => setEditing(false)}
         />
       ) : (
-        <>
+        <div style={{ position: "relative" }}>
           {isEmpty ? (
-            <span className="minor-text">—</span>
+            <div
+              onClick={() => setEditing(true)}
+              style={{
+                cursor: "text",
+                fontSize: 10,
+                ...borderStyle,
+                color: "var(--muted)",
+              }}
+            >
+              Click to edit...
+            </div>
           ) : isJson ? (
             <pre
+              onClick={() => setEditing(true)}
               style={{
+                cursor: "text",
                 margin: 0,
-                fontSize: 11,
+                fontSize: 10,
                 whiteSpace: "pre-wrap",
                 wordBreak: "break-word",
-                maxHeight: 300,
+                maxHeight: 250,
                 overflow: "auto",
                 color: "var(--text)",
                 opacity: 0.85,
+                ...borderStyle,
               }}
             >
               {displayText()}
             </pre>
           ) : isHtml ? (
-            <div dangerouslySetInnerHTML={{ __html: raw }} />
+            <div
+              onClick={() => setEditing(true)}
+              dangerouslySetInnerHTML={{ __html: raw }}
+              style={{ cursor: "text", ...borderStyle }}
+            />
           ) : (
-            <div style={{ lineHeight: 1.6 }}>
+            <div
+              onClick={() => setEditing(true)}
+              style={{
+                cursor: "text",
+                lineHeight: 1.5,
+                fontSize: 11,
+                ...borderStyle,
+              }}
+            >
               {String(raw)
                 .split(/\.\s+|\n/)
                 .filter(Boolean)
                 .map((line, i, arr) => (
-                  <div key={i} style={{ marginBottom: 4 }}>
+                  <div key={i} style={{ marginBottom: 3 }}>
                     {line.trim()}
                     {i < arr.length - 1 ? "." : ""}
                   </div>
                 ))}
             </div>
           )}
-        </>
+          <button
+            className="secondary-button"
+            onClick={handleCopy}
+            style={{
+              position: "absolute",
+              top: 4,
+              right: 4,
+              padding: "1px 5px",
+              fontSize: 8,
+              opacity: 0.6,
+            }}
+          >
+            {copied ? "✓" : "📋"}
+          </button>
+        </div>
       )}
     </div>
   );

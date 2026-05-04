@@ -189,7 +189,16 @@ export function TradePlanEditor({
             return (
               <input
                 className="snapshot-number-slider-v4"
-                style={{ accentColor: "var(--muted)", height: "10px", margin: "2px 0 0 0" }}
+                type="range"
+                min={m.min}
+                max={m.max}
+                step={m.step}
+                value={m.value}
+                style={{
+                  accentColor: "var(--muted)",
+                  height: "10px",
+                  margin: "2px 0 0 0",
+                }}
                 disabled={!m.enabled || controlsDisabled}
                 onChange={(e) =>
                   update("entry", formatNum3(Number(e.target.value)))
@@ -237,7 +246,16 @@ export function TradePlanEditor({
             return (
               <input
                 className="snapshot-number-slider-v4"
-                style={{ accentColor: "var(--muted)", height: "10px", margin: "2px 0 0 0" }}
+                type="range"
+                min={0.5}
+                max={8}
+                step={0.1}
+                value={Number(value.rr) || 2}
+                style={{
+                  accentColor: "var(--muted)",
+                  height: "10px",
+                  margin: "2px 0 0 0",
+                }}
                 disabled={controlsDisabled}
                 onChange={(e) =>
                   update("rr", formatNum3(Number(e.target.value)))
@@ -282,7 +300,16 @@ export function TradePlanEditor({
             return (
               <input
                 className="snapshot-number-slider-v4"
-                style={{ accentColor: "var(--muted)", height: "10px", margin: "2px 0 0 0" }}
+                type="range"
+                min={m.min}
+                max={m.max}
+                step={m.step}
+                value={m.value}
+                style={{
+                  accentColor: "var(--muted)",
+                  height: "10px",
+                  margin: "2px 0 0 0",
+                }}
                 disabled={!m.enabled || controlsDisabled}
                 onChange={(e) =>
                   update("tp", formatNum3(Number(e.target.value)))
@@ -327,7 +354,16 @@ export function TradePlanEditor({
             return (
               <input
                 className="snapshot-number-slider-v4"
-                style={{ accentColor: "var(--muted)", height: "10px", margin: "2px 0 0 0" }}
+                type="range"
+                min={m.min}
+                max={m.max}
+                step={m.step}
+                value={m.value}
+                style={{
+                  accentColor: "var(--muted)",
+                  height: "10px",
+                  margin: "2px 0 0 0",
+                }}
                 disabled={!m.enabled || controlsDisabled}
                 onChange={(e) =>
                   update("sl", formatNum3(Number(e.target.value)))
