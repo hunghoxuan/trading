@@ -201,7 +201,7 @@ function PlanHeader({
         )}
         {plan.skip && (
           <span style={{ fontSize: 9, color: "#ef5350", fontWeight: 700 }}>
-            SKIP
+            {typeof plan.skip === "string" ? plan.skip : "SKIP"}
           </span>
         )}
       </div>
