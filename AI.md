@@ -11,7 +11,7 @@ Before planning or coding, read these files in order:
 When changing code (backend, EA, UI, scripts), bump both versions before reporting done or deploying:
 
 - `webhook/server.js` -> `SERVER_VERSION`
-- `mql5/TVBridgeEA.mq5` -> `EA_BUILD_VERSION`
+- `bridge-clients/TVBridgeEA.mq5` -> `EA_BUILD_VERSION`
 
 Version format must use date, hour/minute, and latest git commit/push identifier:
 

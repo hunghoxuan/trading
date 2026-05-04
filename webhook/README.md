@@ -302,7 +302,7 @@ Open UI:
 - `https://<your-domain>/mt5/ui?apiKey=<SIGNAL_API_KEY>`
 
 EA file:
-- `/Users/macmini/Trade/Bot/trading/mql5/TVBridgeEA.mq5`
+- `/Users/macmini/Trade/Bot/trading/bridge-clients/TVBridgeEA.mq5`
 
 Backtest CSV columns:
 - `timestamp;signal_id;action;symbol;volume;sl;tp;note`

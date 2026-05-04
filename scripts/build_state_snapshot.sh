@@ -11,7 +11,7 @@ DECISIONS_DIR="$ROOT_DIR/.agents/wiki/decisions"
 now_utc="$(date -u +"%Y-%m-%d %H:%M:%S UTC")"
 
 server_ver="$(rg -n 'SERVER_VERSION' "$ROOT_DIR/webhook/server.js" | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || true)"
-ea_ver="$(rg -n 'EA_BUILD_VERSION' "$ROOT_DIR/mql5/TVBridgeEA.mq5" | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || true)"
+ea_ver="$(rg -n 'EA_BUILD_VERSION' "$ROOT_DIR/bridge-clients/TVBridgeEA.mq5" | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || true)"
 
 sprint_top="$(sed -n '1,30p' "$SPRINT_FILE" 2>/dev/null || echo 'n/a')"
 bugs_top="$(sed -n '1,20p' "$BUGS_FILE" 2>/dev/null || echo 'n/a')"

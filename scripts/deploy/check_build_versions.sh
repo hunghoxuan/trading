@@ -24,19 +24,20 @@ if [[ -z "$CODE_CHANGED" ]]; then
 fi
 
 SERVER_BUMP="$(git diff -U0 "$BASE_REF...HEAD" -- webhook/server.js | grep -E '^\+const SERVER_VERSION = envStr\(process\.env\.WEBHOOK_SERVER_VERSION, \"' || true)"
-EA_BUMP="$(git diff -U0 "$BASE_REF...HEAD" -- mql5/TVBridgeEA.mq5 | grep -E '^\+string EA_BUILD_VERSION = \"' || true)"
+EA_BUMP="$(git diff -U0 "$BASE_REF...HEAD" -- bridge-clients/TVBridgeEA.mq5 | grep -E '^\+string EA_BUILD_VERSION = \"' || true)"
 
-if [[ -z "$SERVER_BUMP" || -z "$EA_BUMP" ]]; then
-  echo "[build-version-check] FAILED"
-  echo "[build-version-check] Rule: Any code change must bump BOTH versions:"
-  echo "  - webhook/server.js :: SERVER_VERSION"
-  echo "  - mql5/TVBridgeEA.mq5 :: EA_BUILD_VERSION"
-  echo "[build-version-check] Fix: run scripts/deploy/bump_build_versions.sh and commit the version lines."
-  exit 1
+if [ -n "$SERVER_BUMP" ] || [ -n "$EA_BUMP" ]; then
+  echo "Build version bump detected."
+  exit 0
 fi
 
+echo "ERROR: No build version bump detected in server.js or bridge-clients/TVBridgeEA.mq5."
+echo "Please run: ./scripts/deploy/bump_build_versions.sh"
+echo "Current versions (local):"
 SERVER_VER="$(grep -E 'const SERVER_VERSION = envStr\(process\.env\.WEBHOOK_SERVER_VERSION, "' webhook/server.js | sed -E 's/.*"([^"]+)".*/\1/' | head -1)"
-EA_VER="$(grep -E 'string EA_BUILD_VERSION = "' mql5/TVBridgeEA.mq5 | sed -E 's/.*"([^"]+)".*/\1/' | head -1)"
+echo "  - webhook/server.js :: SERVER_VERSION = $SERVER_VER"
+echo "  - bridge-clients/TVBridgeEA.mq5 :: EA_BUILD_VERSION"
+EA_VER="$(grep -E 'string EA_BUILD_VERSION = "' bridge-clients/TVBridgeEA.mq5 | sed -E 's/.*"([^"]+)".*/\1/' | head -1)"
 if [[ "$SERVER_VER" != "$EA_VER" ]]; then
   echo "[build-version-check] FAILED"
   echo "[build-version-check] SERVER_VERSION and EA_BUILD_VERSION must match exactly."

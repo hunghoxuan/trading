@@ -38,7 +38,7 @@ else
 fi
 
 LOCAL_SERVER_VERSION="$(grep -E 'const SERVER_VERSION = envStr\(process\.env\.WEBHOOK_SERVER_VERSION, "' webhook/server.js | sed -E 's/.*"([^"]+)".*/\1/' | head -1 || true)"
-LOCAL_EA_BUILD_VERSION="$(grep -E 'string EA_BUILD_VERSION = "' mql5/TVBridgeEA.mq5 | sed -E 's/.*"([^"]+)".*/\1/' | head -1 || true)"
+LOCAL_EA_BUILD_VERSION="$(grep -E 'string EA_BUILD_VERSION = "' bridge-clients/TVBridgeEA.mq5 | sed -E 's/.*"([^"]+)".*/\1/' | head -1 || true)"
 
 echo "[deploy] skipping local syntax check (node missing in path)"
 

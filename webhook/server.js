@@ -15284,6 +15284,7 @@ const appHandler = async (req, res) => {
             provider: String(body.provider || "ICMARKETS"),
             forceRefresh: body.force_refresh === true,
             forceSnapshot: body.snapshot_refresh === true,
+            includeSnapshots: false, // skip Playwright snapshots during analyze
           }),
           new Promise((_, reject) =>
             setTimeout(
