@@ -15,14 +15,14 @@ n/a
 n/a
 
 ## Deploy / Version Status
-- SERVER_VERSION: 103:const SERVER_VERSION = envStr(
-- EA_BUILD_VERSION: v2026.05.04 04:32 - c9d1531
+- SERVER_VERSION: v2026.05.04 04:36 - b6c2a20
+- EA_BUILD_VERSION: v2026.05.04 04:36 - b6c2a20
 
 ## Open Risks
 - Check top open bugs and unresolved sprint TODOs.
 
 ## Last Build
-- Timestamp: 2026-05-04 04:33:14 UTC
+- Timestamp: 2026-05-04 04:36:36 UTC
 - Builder: scripts/build_state_snapshot.sh
 
 ## Recent Worklog Tail
