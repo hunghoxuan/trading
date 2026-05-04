@@ -100,7 +100,10 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.04 19:04 - 01bc25b"); // DB Index Update
+const SERVER_VERSION = envStr(
+  process.env.WEBHOOK_SERVER_VERSION,
+  "v2026.05.04 19:04 - 01bc25b",
+); // DB Index Update
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
@@ -743,19 +746,49 @@ function tfToMs(tf) {
   };
   return s[String(tf).toUpperCase()] || 3600000;
 }
-function tfCacheGet(symbol, tf) {
+async function tfCacheGet(symbol, tf) {
   const key = tfCacheKey(symbol, tf);
   const e = MARKET_DATA_TF_CACHE.get(key);
-  if (!e) return null;
-  if (Date.now() - e.created_at > tfToMs(tf)) {
-    MARKET_DATA_TF_CACHE.delete(key);
-    return null;
+  if (e) {
+    if (Date.now() - e.created_at > tfToMs(tf)) {
+      MARKET_DATA_TF_CACHE.delete(key);
+    } else {
+      return e;
+    }
   }
-  return e;
+  // Fallback to Redis
+  try {
+    if (CFG.redisEnabled) {
+      const client = await getRedisClient();
+      if (client) {
+        const raw = await client.get(`tf:${key}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Date.now() - parsed.created_at <= tfToMs(tf)) {
+            MARKET_DATA_TF_CACHE.set(key, parsed); // promote to L1
+            return parsed;
+          }
+        }
+      }
+    }
+  } catch (_) {}
+  return null;
 }
-function tfCacheSet(symbol, tf, data) {
+async function tfCacheSet(symbol, tf, data) {
   const key = tfCacheKey(symbol, tf);
-  MARKET_DATA_TF_CACHE.set(key, { ...data, created_at: Date.now() });
+  const entry = { ...data, created_at: Date.now() };
+  MARKET_DATA_TF_CACHE.set(key, entry);
+  // Write to Redis for persistence across restarts
+  try {
+    if (CFG.redisEnabled) {
+      const client = await getRedisClient();
+      if (client) {
+        await client.set(`tf:${key}`, JSON.stringify(entry), {
+          EX: Math.ceil(tfToMs(tf) / 1000),
+        });
+      }
+    }
+  } catch (_) {}
 }
 
 /**
@@ -7026,7 +7059,7 @@ async function _mt5InitBackendInternal() {
           const pipsVal = Number(raw.pips || 0);
           const lots = Number(raw.lots || 0);
           const brokerComment = String(raw.comment || "").trim();
-          
+
           // Use broker comment as signal_id if it looks like an ID
           const effectiveSignalId = brokerComment || signalId;
 
@@ -7054,7 +7087,8 @@ async function _mt5InitBackendInternal() {
               closed_at: closedAt,
             });
           } else {
-            if (!prev.signal_id && effectiveSignalId) prev.signal_id = effectiveSignalId;
+            if (!prev.signal_id && effectiveSignalId)
+              prev.signal_id = effectiveSignalId;
             prev.ticket_candidates = Array.from(
               new Set([...(prev.ticket_candidates || []), ...ticketCandidates]),
             );
@@ -8833,7 +8867,9 @@ async function _mt5InitBackendInternal() {
             symbol: key.split("_")[0] || key,
             tf: entry.tf || key.split("_").pop() || "?",
             bars: entry.bars?.length || 0,
-            updated_at: entry.created_at ? new Date(entry.created_at).toISOString() : null,
+            updated_at: entry.created_at
+              ? new Date(entry.created_at).toISOString()
+              : null,
           },
           ttl_ms: ttlMs,
           expired,
@@ -8845,21 +8881,30 @@ async function _mt5InitBackendInternal() {
         try {
           const client = await getRedisClient();
           if (client) {
-            const keys = await client.keys("market_data:*");
+            const keys = await client.keys("tf:*");
             for (const rKey of keys) {
-              // Avoid duplicates if also in memory
               if (items.some((it) => it.key === rKey)) continue;
-
+              const parts = rKey.replace("tf:", "").split("_");
+              const symbol = parts[0] || "?";
+              const tf = parts[1] || "?";
+              items.push({
+                key: rKey,
+                source: "redis",
+                data: { symbol, tf, bars: "?" },
+                ttl_ms: null,
+                expired: false,
+              });
+            }
+            // Also legacy market_data:* keys
+            const legacyKeys = await client.keys("market_data:*");
+            for (const rKey of legacyKeys) {
+              if (items.some((it) => it.key === rKey)) continue;
               const symbol = rKey.replace("market_data:", "");
               items.push({
                 key: rKey,
                 source: "redis",
-                data: {
-                  symbol,
-                  tf: "MULTI", // Redis root objects contain multiple timeframes
-                  updated_at: null,
-                },
-                ttl_ms: 3600000,
+                data: { symbol, tf: "MULTI" },
+                ttl_ms: null,
                 expired: false,
               });
             }
@@ -9728,7 +9773,7 @@ async function buildAnalysisSnapshotFromTwelve({
       forceRefresh,
     });
     // Check per-TF memory cache (TTL = TF duration)
-    const cached = tfCacheGet(symbolNorm, tfNorm);
+    const cached = await tfCacheGet(symbolNorm, tfNorm);
     if (cached && cached.bars && cached.bars.length) {
       const s = Number(cached.bar_start || cached.bars[0].time);
       const e = Number(
