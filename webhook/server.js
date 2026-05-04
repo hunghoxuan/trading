@@ -100,7 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.04 20:40 - 4d6a18d"); // DB Index Update
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.04 20:48 - 3984d9e"); // DB Index Update
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
@@ -6663,8 +6663,12 @@ async function _mt5InitBackendInternal() {
               payload.tp,
               payload.volume,
               payload.note,
-              JSON.stringify(payload.metadata || {}),
-              JSON.stringify(payload.metadata?.raw_json || {}),
+              JSON.stringify((() => {
+                const m = { ...(payload.metadata || {}) };
+                delete m.raw_json;
+                return m;
+              })()),
+              JSON.stringify(payload.metadata?.raw_json || payload.raw_json || {}),
               mt5NowIso(),
             ],
           );
