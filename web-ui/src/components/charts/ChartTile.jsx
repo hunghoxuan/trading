@@ -568,10 +568,16 @@ export function SymbolChart({
                   key={`tsc-${symbol}-${tf}-${gridCols}`}
                   symbol={cleanSym}
                   interval={tf}
-                  analysisSnapshot={analysisSnapshot || null}
-                  entryPrice={entryPrice}
-                  slPrice={slPrice}
-                  tpPrice={tpPrice}
+                  analysisSnapshot={
+                    hasTradePlan
+                      ? overlays.pdArrays || overlays.keyLevels
+                        ? analysisSnapshot
+                        : null
+                      : analysisSnapshot || null
+                  }
+                  entryPrice={overlays.plan1 ? entryPrice : null}
+                  slPrice={overlays.plan1 ? slPrice : null}
+                  tpPrice={overlays.plan1 ? tpPrice : null}
                 />
               )}
             </div>
