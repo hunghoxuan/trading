@@ -919,7 +919,10 @@ export default function TradesPage() {
                   { label: "Trade SID", value: selectedTrade.sid || selectedTrade.trade_id || "-" },
                   { label: "Account", value: accountById.get(String(selectedTrade.account_id || ""))?.name || selectedTrade.account_id || "-" },
                   { label: "Broker Ticket", value: brokerTicketOf(selectedTrade) },
-                  ...(meta ? [
+                  { label: "Broker Status", value: selectedTrade.metadata?.broker_data?.status || "-" },
+                  ...(selectedTrade.metadata && typeof selectedTrade.metadata === "object" ? (() => {
+                    const meta = selectedTrade.metadata;
+                    return [
                     { label: "Broker Volume", value: (meta.broker_data?.volume ?? meta.volume) != null ? `${asNum(meta.broker_data?.volume ?? meta.volume).toLocaleString()} units` : null },
                     { label: "Broker Lots", value: (meta.broker_data?.lots ?? meta.broker_lots ?? meta.lots) != null ? `${asNum(meta.broker_data?.lots ?? meta.broker_lots ?? meta.lots).toFixed(2)} lots` : null },
                     { label: "Broker Pips", value: (meta.broker_data?.pips ?? meta.broker_pips ?? meta.pips) != null ? `${asNum(meta.broker_data?.pips ?? meta.broker_pips ?? meta.pips).toFixed(1)} pips` : null },
@@ -927,7 +930,8 @@ export default function TradesPage() {
                     { label: "Commission", value: (meta.broker_data?.commission ?? meta.broker_commission ?? meta.commission) != null ? `$${asNum(meta.broker_data?.commission ?? meta.broker_commission ?? meta.commission).toFixed(2)}` : null },
                     { label: "Swap", value: (meta.broker_data?.swap ?? meta.broker_swap ?? meta.swap) != null ? `$${asNum(meta.broker_data?.swap ?? meta.broker_swap ?? meta.swap).toFixed(2)}` : null },
                     { label: "Position ID", value: meta.broker_data?.position_id || meta.broker_position_id || null },
-                  ].filter(x => x.value !== null) : []),
+                    ].filter(x => x.value !== null);
+                  })() : []),
                   { label: "Note", value: selectedTrade.note || "-", fullWidth: true },
                   { 
                     label: "Raw Metadata", 
