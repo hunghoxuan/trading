@@ -134,7 +134,7 @@ export function TradePlanEditor({
             </select>
             <select
               style={{
-                flex: 1.5,
+                flex: 1,
                 height: "24px",
                 fontSize: "11px",
                 padding: "0 2px",
@@ -187,7 +187,7 @@ export function TradePlanEditor({
             const m = calcSliderMeta(value.entry);
             return (
               <input
-                className="snapshot-number-slider-v4"
+                className="snapshot-number-slider-v4" style={{ accentColor: "var(--muted)" }}
                 type="range"
                 min={m.min}
                 max={m.max}
@@ -240,7 +240,7 @@ export function TradePlanEditor({
             const m = calcSliderMeta(value.rr);
             return (
               <input
-                className="snapshot-number-slider-v4"
+                className="snapshot-number-slider-v4" style={{ accentColor: "var(--muted)" }}
                 type="range"
                 min={0.5}
                 max={8}
@@ -290,7 +290,7 @@ export function TradePlanEditor({
             const m = calcSliderMeta(value.tp);
             return (
               <input
-                className="snapshot-number-slider-v4"
+                className="snapshot-number-slider-v4" style={{ accentColor: "var(--muted)" }}
                 type="range"
                 min={m.min}
                 max={m.max}
@@ -340,7 +340,7 @@ export function TradePlanEditor({
             const m = calcSliderMeta(value.sl);
             return (
               <input
-                className="snapshot-number-slider-v4"
+                className="snapshot-number-slider-v4" style={{ accentColor: "var(--muted)" }}
                 type="range"
                 min={m.min}
                 max={m.max}

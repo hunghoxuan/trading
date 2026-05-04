@@ -42,9 +42,16 @@ function timeAgo(ms) {
   return Math.floor(diff / 86400000) + "d ago";
 }
 
-function TfHeader({ tf, context, master, mode }) {
-  const price = Number(context?.last_price);
-  const change = Number(context?.summary?.close_change_20);
+function TfHeader({ tf, context, master, mode, analysisSnapshot }) {
+  // Get per-TF data from analysis snapshot when context is missing (skipFetch mode)
+  const tfData =
+    context ||
+    (analysisSnapshot?.timeframes || []).find(
+      (x) => String(x?.tf || "").toLowerCase() === String(tf).toLowerCase(),
+    ) ||
+    {};
+  const price = Number(tfData?.last_price);
+  const change = Number(tfData?.summary?.close_change_20);
   const previousClose =
     Number.isFinite(price) && Number.isFinite(change) ? price - change : null;
   const pct =
@@ -65,10 +72,10 @@ function TfHeader({ tf, context, master, mode }) {
     : "inherit";
 
   const cachedAt =
-    context?.freshness?.updated_time || context?.fetched_at || null;
+    tfData?.freshness?.updated_time || tfData?.fetched_at || null;
 
-  const trend = context?.summary?.trend || "";
-  const bias = context?.summary?.bias || "";
+  const trend = tfData?.summary?.trend || "";
+  const bias = tfData?.summary?.bias || "";
   const isBullishTrend = String(trend).toLowerCase().includes("bull");
   const isBearishTrend = String(trend).toLowerCase().includes("bear");
   const isLongBias =
@@ -501,7 +508,13 @@ export function SymbolChart({
 
           return (
             <div key={`${mode}-${tf}`} style={{ minWidth: 100 }}>
-              <TfHeader tf={tf} context={context} master={master} mode={mode} />
+              <TfHeader
+                tf={tf}
+                context={context}
+                master={master}
+                mode={mode}
+                analysisSnapshot={analysisSnapshot}
+              />
               {isLive ? (
                 <iframe
                   key={`tv-${symbol}-${tf}-${liveKey}`}

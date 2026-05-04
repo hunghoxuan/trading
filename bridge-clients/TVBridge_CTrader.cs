@@ -34,7 +34,7 @@ namespace cAlgo.Robots
         [Parameter("Max Risk %", DefaultValue = 1.0, MinValue = 0.1, MaxValue = 10.0)]
         public double MaxRiskPct { get; set; }
 
-        private string BuildVersion = "v2026.05.04 15:49 - 753bdf9";
+        private string BuildVersion = "v2026.05.04 18:06 - cd6ed13";
         private string _lastStatus = "INITIALIZING";
         private string _lastSignalId = "None";
         private string _lastAction = "None";
@@ -109,7 +109,8 @@ namespace cAlgo.Robots
                     {
                         // Signal ID is stored in Comment
                         string sid = string.IsNullOrEmpty(pos.Comment) ? pos.Label : pos.Comment;
-                        posList.Add(string.Format("{{\"signal_id\":\"{0}\",\"status\":\"START\",\"ticket\":\"{1}\",\"symbol\":\"{2}\",\"pnl\":{3},\"opened_at\":\"{4}\"}}",
+                        posList.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                            "{{\"signal_id\":\"{0}\",\"status\":\"START\",\"ticket\":\"{1}\",\"symbol\":\"{2}\",\"pnl\":{3:F2},\"opened_at\":\"{4}\"}}",
                             sid, pos.Id, pos.SymbolName, pos.GrossProfit, pos.EntryTime.ToString("yyyy-MM-ddTHH:mm:ssZ")));
                     }
                 }
@@ -123,8 +124,11 @@ namespace cAlgo.Robots
                 }
                 _lastStateHash = stateHash;
 
-                var body = string.Format("{{\"account_id\":\"{0}\",\"balance\":{1},\"equity\":{2},\"margin\":{3},\"free_margin\":{4},\"positions\":[{5}],\"orders\":[],\"closed\":[]}}",
-                    Account.UserId, Account.Balance, Account.Equity, Account.Margin, Account.FreeMargin, string.Join(",", posList));
+                var body = string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                    "{{\"account_id\":\"{0}\",\"balance\":{1:F2},\"equity\":{2:F2},\"margin\":{3:F2},\"free_margin\":{4:F2},\"positions\":[{5}],\"orders\":[],\"closed\":[]}}",
+                    Account.Number, Account.Balance, Account.Equity, Account.Margin, Account.FreeMargin, string.Join(",", posList));
+
+                Print("[Sync] Sending: {0}", body);
 
                 var url = ServerBaseUrl.TrimEnd('/') + "/mt5/ea/sync-v2";
                 var content = new StringContent(body, Encoding.UTF8, "application/json");
@@ -138,7 +142,12 @@ namespace cAlgo.Robots
                 }
                 else
                 {
-                    _lastSyncSummary = "FAIL " + response.StatusCode;
+                    var errorBody = await response.Content.ReadAsStringAsync();
+                    Print("[Sync] Server Error: {0}", errorBody);
+                    // Extract error message from json {"ok":false,"error":"..."}
+                    var errorMsg = GetJsonValue(errorBody, "error");
+                    if (string.IsNullOrEmpty(errorMsg)) errorMsg = response.StatusCode.ToString();
+                    _lastSyncSummary = "FAIL " + errorMsg;
                 }
             }
             catch (Exception ex)
@@ -314,6 +323,22 @@ namespace cAlgo.Robots
 
         private void RefreshDebugPanel()
         {
+            var statusColor = _lastStatus.Contains("ERR") || _lastStatus.Contains("FAIL") ? Color.Red : Color.Aqua;
+            var syncColor = _lastSyncSummary.Contains("FAIL") || _lastSyncSummary.Contains("ERR") ? Color.Red : Color.Aqua;
+
+            var activeTrades = new List<string>();
+            foreach (var pos in Positions)
+            {
+                if (pos.Label == MagicNumber.ToString())
+                {
+                    string side = pos.TradeType == TradeType.Buy ? "B" : "S";
+                    // Try to get signal_id from comment
+                    string sid = string.IsNullOrEmpty(pos.Comment) ? "Manual" : pos.Comment;
+                    if (sid.Length > 8) sid = sid.Substring(0, 8);
+                    activeTrades.Add(string.Format("{0} {1} {2}", sid, pos.SymbolName, side));
+                }
+            }
+
             var text = string.Format(
                 "--- TVBridge cTrader Pro ---\n" +
                 "Build: {0}\n" +
@@ -322,23 +347,22 @@ namespace cAlgo.Robots
                 "Polls: {4} (OK: {5} / ERR: {6})\n" +
                 "Last Poll: {7}\n" +
                 "------------------------\n" +
-                "Last ID: {8}\n" +
-                "Action: {9} {10}\n" +
-                "Error: {11}\n" +
+                "VPS Trades ({8}):\n{9}\n" +
                 "------------------------\n" +
-                "Balance: {12} {13}\n" +
-                "Equity: {14} {13}",
+                "Last ID: {10}\n" +
+                "Action: {11} {12}\n" +
+                "Error: {13}",
                 BuildVersion, _lastStatus,
                 _lastSyncSummary, _lastSyncTime == DateTime.MinValue ? "Never" : _lastSyncTime.ToString("HH:mm:ss"),
                 _pollCount, _successCount, _failCount,
                 _lastPollTime == DateTime.MinValue ? "Never" : _lastPollTime.ToString("HH:mm:ss"),
+                activeTrades.Count,
+                activeTrades.Count > 0 ? string.Join("\n", activeTrades.Take(5)) : "None",
                 _lastSignalId, _lastAction, _lastSymbol,
-                string.IsNullOrEmpty(_lastError) ? "None" : _lastError,
-                Account.Balance.ToString("N2"), Account.Asset.Name,
-                Account.Equity.ToString("N2")
+                string.IsNullOrEmpty(_lastError) ? "None" : _lastError
             );
 
-            Chart.DrawStaticText("DebugPanel", text, VerticalAlignment.Top, HorizontalAlignment.Left, Color.Aqua);
+            Chart.DrawStaticText("DebugPanel", text, VerticalAlignment.Top, HorizontalAlignment.Left, statusColor);
         }
 
         private string GetJsonValue(string json, string key)
