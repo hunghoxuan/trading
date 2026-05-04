@@ -175,11 +175,14 @@ const DEFAULT_INDICES_SYMBOLS = [
 ];
 
 const DEFAULT_SMT_GROUPS = [
-  { name: "EUR/GBP", symbols: ["EURUSD", "GBPUSD"] },
-  { name: "BTC/ETH", symbols: ["BTCUSD", "ETHUSD"] },
-  { name: "AUD/NZD", symbols: ["AUDUSD", "NZDUSD"] },
-  { name: "GOLD/SILVER", symbols: ["XAUUSD", "XAGUSD"] },
-  { name: "DXY/EUR", symbols: ["DXY", "EURUSD"] },
+  { name: "EUR / GBP", symbols: ["EURUSD", "GBPUSD"] },
+  { name: "BTC / ETH", symbols: ["BTCUSD", "ETHUSD"] },
+  { name: "AUD / NZD", symbols: ["AUDUSD", "NZDUSD"] },
+  { name: "GOLD / SILVER", symbols: ["XAUUSD", "XAGUSD"] },
+  { name: "DXY / EUR", symbols: ["DXY", "EURUSD"] },
+  { name: "Indices (US30 / NAS / SPX)", symbols: ["US30", "NAS100", "SPX500"] },
+  { name: "DXY / Indices", symbols: ["DXY", "SPX500"] },
+  { name: "Oil / CAD", symbols: ["USOIL", "USDCAD"] },
 ];
 const DEFAULT_SMT_SYMBOLS = [
   ...new Set(DEFAULT_SMT_GROUPS.flatMap((g) => g.symbols)),
@@ -3914,6 +3917,48 @@ export default function ChartSnapshotsPage() {
               </div>
               <div className="snapshot-watchlist-v2">
                 {(() => {
+                  if (symbolFilterTab === "SMT") {
+                    return (
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 12,
+                        }}
+                      >
+                        {DEFAULT_SMT_GROUPS.map((group) => (
+                          <div key={group.name}>
+                            <div
+                              className="minor-text"
+                              style={{
+                                fontSize: 10,
+                                marginBottom: 6,
+                                fontWeight: 700,
+                              }}
+                            >
+                              {group.name}
+                            </div>
+                            <div
+                              className="snapshot-tabs-v2"
+                              style={{ flexWrap: "wrap" }}
+                            >
+                              {group.symbols.map((s) => (
+                                <button
+                                  key={s}
+                                  type="button"
+                                  className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
+                                  onClick={() => setCfgField("symbol", s)}
+                                >
+                                  {s}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  }
+
                   const query = String(searchTerm || "")
                     .trim()
                     .toUpperCase();
