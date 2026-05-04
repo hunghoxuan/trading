@@ -257,7 +257,8 @@ export function SymbolChart({
     [master],
   );
 
-  const needsFallback = mode !== "live" && !hasAnyBars && status !== "LOADING";
+  const needsFallback =
+    mode !== "live" && !skipFetch && !hasAnyBars && status !== "LOADING";
 
   // Auto-switch to TradePlan mode when hasTradePlan and bars are ready
   useEffect(() => {

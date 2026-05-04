@@ -709,40 +709,86 @@ export function SignalDetailCard({
               "";
             return (
               <div className="analysis-summary-md">
-                <div style={{ marginBottom: 20 }}>
-                  <div
-                    className="minor-text"
-                    style={{
-                      fontSize: "11px",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
-                      marginBottom: 4,
-                    }}
-                  >
-                    Bias & Trend
-                  </div>
-                  <div
-                    style={{ display: "flex", gap: 12, alignItems: "center" }}
-                  >
+                {/* Per-TF Cards Row */}
+                {Array.isArray(compactTfs) && compactTfs.length > 0 && (
+                  <div style={{ marginBottom: 20 }}>
                     <div
+                      className="minor-text"
                       style={{
-                        fontSize: "18px",
-                        fontWeight: 600,
-                        color: bias.toLowerCase().includes("long")
-                          ? "#26a69a"
-                          : bias.toLowerCase().includes("short")
-                            ? "#ef5350"
-                            : "inherit",
+                        fontSize: "11px",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        marginBottom: 8,
                       }}
                     >
-                      {bias}
+                      Bias & Trend
                     </div>
-                    <div style={{ color: "var(--muted)" }}>•</div>
-                    <div style={{ fontSize: "16px", fontWeight: 500 }}>
-                      {trend}
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {compactTfs.map((tf) => {
+                        const b = tf.bias || "";
+                        const isLong = b.toLowerCase().includes("long");
+                        const isShort = b.toLowerCase().includes("short");
+                        const biasColor = isLong
+                          ? "#26a69a"
+                          : isShort
+                            ? "#ef5350"
+                            : "var(--muted)";
+                        return (
+                          <div
+                            key={tf.tf}
+                            style={{
+                              flex: "1 1 0",
+                              minWidth: 120,
+                              padding: 8,
+                              background: "rgba(255,255,255,0.03)",
+                              borderRadius: 8,
+                              border: `1px solid ${biasColor}30`,
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontWeight: 700,
+                                fontSize: 13,
+                                marginBottom: 4,
+                                display: "flex",
+                                justifyContent: "space-between",
+                              }}
+                            >
+                              <span>{tf.tf}</span>
+                              <span style={{ fontSize: 14, color: biasColor }}>
+                                {isLong ? "↑" : isShort ? "↓" : ""}
+                              </span>
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 10,
+                                color: biasColor,
+                                fontWeight: 600,
+                              }}
+                            >
+                              {bias || "—"}
+                            </div>
+                            <div className="minor-text" style={{ fontSize: 9 }}>
+                              {tf.trend || ""} · {tf.structure || ""}
+                            </div>
+                            <div className="minor-text" style={{ fontSize: 9 }}>
+                              {tf.phase || ""} · {tf.poiAlign || ""}
+                            </div>
+                            {tf.keyBreaks?.slice(0, 2).map((kb, i) => (
+                              <div
+                                key={i}
+                                className="minor-text"
+                                style={{ fontSize: 8, marginTop: 2 }}
+                              >
+                                {kb.event}: {kb.price} {kb.direction}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                </div>
+                )}
                 {analysis && (
                   <div style={{ marginBottom: 20 }}>
                     <div
@@ -1120,75 +1166,7 @@ export function SignalDetailCard({
                   </div>
                 )}
 
-                {/* Per-TF Details */}
-                {Array.isArray(compactTfs) && compactTfs.length > 0 && (
-                  <div style={{ marginTop: 20 }}>
-                    <div
-                      className="minor-text"
-                      style={{
-                        fontSize: "11px",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                        marginBottom: 8,
-                      }}
-                    >
-                      Per-TF Details
-                    </div>
-                    {compactTfs.map((tf) => (
-                      <div
-                        key={tf.tf}
-                        style={{
-                          marginBottom: 12,
-                          padding: 8,
-                          background: "rgba(255,255,255,0.02)",
-                          borderRadius: 6,
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontWeight: 700,
-                            fontSize: 12,
-                            marginBottom: 4,
-                          }}
-                        >
-                          {tf.tf}
-                          <span
-                            style={{
-                              marginLeft: 8,
-                              fontSize: 10,
-                              color: String(tf.bias || "")
-                                .toLowerCase()
-                                .includes("long")
-                                ? "#26a69a"
-                                : String(tf.bias || "")
-                                      .toLowerCase()
-                                      .includes("short")
-                                  ? "#ef5350"
-                                  : "var(--muted)",
-                            }}
-                          >
-                            {tf.bias}
-                          </span>
-                          <span
-                            className="minor-text"
-                            style={{ marginLeft: 6 }}
-                          >
-                            {tf.trend} · {tf.structure} · {tf.phase}
-                          </span>
-                        </div>
-                        {tf.keyBreaks?.map((kb, i) => (
-                          <div
-                            key={i}
-                            className="minor-text"
-                            style={{ fontSize: 10 }}
-                          >
-                            {kb.event}: {kb.price} {kb.direction}
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {/* Key Levels */}
               </div>
             );
           })()}

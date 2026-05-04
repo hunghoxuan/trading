@@ -82,7 +82,7 @@ namespace cAlgo.Robots
         protected override void OnTimer()
         {
             if (_isPolling) return;
-            
+
             // Alternating between Poll and Sync
             if (DateTime.Now - _lastSyncTime > TimeSpan.FromMinutes(1))
             {
@@ -92,37 +92,42 @@ namespace cAlgo.Robots
             {
                 _ = PollSignalsAsync();
             }
-            
+
             RefreshDebugPanel();
         }
 
         private async Task SyncWithVpsAsync()
         {
             _isPolling = true;
-            
+
             // Collect positions on main thread
             var posList = new List<string>();
             var accountId = "";
             double balance = 0, equity = 0, margin = 0, freeMargin = 0;
 
             var tcs = new TaskCompletionSource<bool>();
-            BeginInvokeOnMainThread(() => {
-                try {
+            BeginInvokeOnMainThread(() =>
+            {
+                try
+                {
                     accountId = Account.Number.ToString();
                     balance = Account.Balance;
                     equity = Account.Equity;
                     margin = Account.Margin;
                     freeMargin = Account.FreeMargin;
 
-                    foreach (var pos in Positions) {
-                        if (pos.Label == MagicNumber.ToString()) {
+                    foreach (var pos in Positions)
+                    {
+                        if (pos.Label == MagicNumber.ToString())
+                        {
                             string sid = string.IsNullOrEmpty(pos.Comment) ? pos.Label : pos.Comment;
                             posList.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture,
                                 "{{\"signal_id\":\"{0}\",\"status\":\"START\",\"ticket\":\"{1}\",\"symbol\":\"{2}\",\"pnl\":{3:F2},\"opened_at\":\"{4}\"}}",
                                 sid, pos.Id, pos.SymbolName, pos.GrossProfit, pos.EntryTime.ToString("yyyy-MM-ddTHH:mm:ssZ")));
                         }
                     }
-                } finally { tcs.SetResult(true); }
+                }
+                finally { tcs.SetResult(true); }
             });
             await tcs.Task;
 
@@ -191,7 +196,8 @@ namespace cAlgo.Robots
                         var json = await response.Content.ReadAsStringAsync();
                         _lastPollTime = DateTime.Now;
                         _lastStatus = "POLL_OK";
-                        BeginInvokeOnMainThread(() => {
+                        BeginInvokeOnMainThread(() =>
+                        {
                             ProcessResponse(json);
                         });
                     }
