@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { SmartContent } from "./SmartContent";
 
 function parseNum(v) {
   const n = Number(v);
@@ -187,7 +188,8 @@ export function TradePlanEditor({
             const m = calcSliderMeta(value.entry);
             return (
               <input
-                className="snapshot-number-slider-v4" style={{ accentColor: "var(--muted)" }}
+                className="snapshot-number-slider-v4"
+                style={{ accentColor: "var(--muted)" }}
                 type="range"
                 min={m.min}
                 max={m.max}
@@ -240,7 +242,8 @@ export function TradePlanEditor({
             const m = calcSliderMeta(value.rr);
             return (
               <input
-                className="snapshot-number-slider-v4" style={{ accentColor: "var(--muted)" }}
+                className="snapshot-number-slider-v4"
+                style={{ accentColor: "var(--muted)" }}
                 type="range"
                 min={0.5}
                 max={8}
@@ -290,7 +293,8 @@ export function TradePlanEditor({
             const m = calcSliderMeta(value.tp);
             return (
               <input
-                className="snapshot-number-slider-v4" style={{ accentColor: "var(--muted)" }}
+                className="snapshot-number-slider-v4"
+                style={{ accentColor: "var(--muted)" }}
                 type="range"
                 min={m.min}
                 max={m.max}
@@ -340,7 +344,8 @@ export function TradePlanEditor({
             const m = calcSliderMeta(value.sl);
             return (
               <input
-                className="snapshot-number-slider-v4" style={{ accentColor: "var(--muted)" }}
+                className="snapshot-number-slider-v4"
+                style={{ accentColor: "var(--muted)" }}
                 type="range"
                 min={m.min}
                 max={m.max}
@@ -379,23 +384,7 @@ export function TradePlanEditor({
           >
             Strategic Note
           </label>
-          <textarea
-            style={{
-              flex: 1,
-              minHeight: "64px",
-              fontSize: "11.5px",
-              padding: "6px 8px",
-              lineHeight: "1.4",
-              background: "rgba(255,255,255,0.02)",
-              borderRadius: "6px",
-              border: "1px solid var(--border)",
-              color: "var(--text)",
-            }}
-            value={value.note || ""}
-            onChange={(e) => update("note", e.target.value)}
-            disabled={controlsDisabled}
-            placeholder="Execution details..."
-          />
+          <SmartContent content={value.note || ""} mode="editable" />
           {(value.reasons_to_skip || value.skip_recommendation) && (
             <div
               style={{
