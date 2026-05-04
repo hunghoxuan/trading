@@ -515,7 +515,7 @@ export function SignalDetailCard({
                     disabled={Boolean(tradePlan.disabled)}
                     error={tradePlan.error || ""}
                   />
-                ) : (
+                ) : isSelected ? (
                   <ExtraPlanBlock
                     planId={planId}
                     plan={p}
@@ -525,7 +525,7 @@ export function SignalDetailCard({
                     submittingPlanId={tradePlan?.submittingPlanId}
                     successMessage={tradePlan?.successMessage}
                   />
-                )}
+                ) : null}
                 {isMain && tradePlan.successMessage && (
                   <div style={{ marginTop: 8 }}>
                     <span className="minor-text msg-success">
