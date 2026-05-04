@@ -2,6 +2,15 @@ import { useEffect, useState, useMemo } from "react";
 import { api } from "../../api";
 import { showDateTime } from "../../utils/format";
 
+const LOG_TYPES = [
+  "CRON_MD",
+  "FETCH_API",
+  "CHART_API",
+  "ANALYZE",
+  "CACHE",
+  "DB",
+];
+
 function fDateTime(v) {
   return showDateTime(v);
 }
@@ -27,23 +36,64 @@ export default function LogsPage() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
-  const [bulkAction, setBulkAction] = useState("");
-  const [filter, setFilter] = useState({ q: "", type: "", symbol: "", range: "all" });
+  const [logConfig, setLogConfig] = useState([]);
+  const [logBusy, setLogBusy] = useState(false);
 
-  const query = useMemo(() => ({ 
-    q: filter.q, 
-    type: filter.type, 
-    symbol: filter.symbol,
-    range: filter.range,
-    limit: pageSize, 
-    offset: page * pageSize 
-  }), [filter, page, pageSize]);
+  async function saveLoggingConfig(next) {
+    setLogBusy(true);
+    try {
+      await api.upsertSetting({
+        type: "system_config",
+        name: "enabled_log_prefixes",
+        value: next,
+        status: "active",
+      });
+      setLogConfig(next);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLogBusy(false);
+    }
+  }
+
+  async function loadLogConfig() {
+    try {
+      const res = await api.getSettings();
+      const list = Array.isArray(res?.settings) ? res.settings : [];
+      const logSet = list.find(
+        (x) =>
+          x?.type === "system_config" && x?.name === "enabled_log_prefixes",
+      );
+      setLogConfig(Array.isArray(logSet?.value) ? logSet.value : []);
+    } catch (_) {}
+  }
+  const [filter, setFilter] = useState({
+    q: "",
+    type: "",
+    symbol: "",
+    range: "all",
+  });
+  const [bulkAction, setBulkAction] = useState("");
+
+  const query = useMemo(
+    () => ({
+      q: filter.q,
+      type: filter.type,
+      symbol: filter.symbol,
+      range: filter.range,
+      limit: pageSize,
+      offset: page * pageSize,
+    }),
+    [filter, page, pageSize],
+  );
 
   async function loadSymbols() {
     try {
       const data = await api.symbols();
       setSymbols(data.symbols || []);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   async function loadEvents() {
@@ -61,54 +111,135 @@ export default function LogsPage() {
 
   async function onBulkOk() {
     if (bulkAction === "Delete All Log") {
-       if (!window.confirm("CRITICAL: DELETE ALL EVENTS/LOGS?")) return;
-       try {
-         setLoading(true);
-         await api.deleteEvents();
-         setPage(0);
-         await loadEvents();
-       } catch (err) {
-         setError(err.message);
-       } finally {
-         setLoading(false);
-       }
+      if (!window.confirm("CRITICAL: DELETE ALL EVENTS/LOGS?")) return;
+      try {
+        setLoading(true);
+        await api.deleteEvents();
+        setPage(0);
+        await loadEvents();
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
     }
   }
 
-  useEffect(() => { loadSymbols(); }, []);
-  useEffect(() => { loadEvents(); }, [query]);
+  useEffect(() => {
+    loadSymbols();
+    loadLogConfig();
+  }, []);
+  useEffect(() => {
+    loadEvents();
+  }, [query]);
 
   return (
     <section className="logs-page-container stack-layout">
       <h2 className="page-title">Logs</h2>
+
+      {/* Trace Log Filters */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <span className="minor-text" style={{ fontWeight: 600 }}>
+          TRACE:
+        </span>
+        {LOG_TYPES.map((lt) => (
+          <label
+            key={lt}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 3,
+              cursor: "pointer",
+              fontSize: 10,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={logConfig.includes(lt)}
+              onChange={(e) => {
+                const n = e.target.checked
+                  ? [...logConfig, lt]
+                  : logConfig.filter((x) => x !== lt);
+                setLogConfig(n);
+              }}
+            />
+            <span className="minor-text">{lt}</span>
+          </label>
+        ))}
+        <button
+          className="secondary-button"
+          onClick={() => saveLoggingConfig(logConfig)}
+          disabled={logBusy}
+          style={{ padding: "2px 6px", fontSize: 9 }}
+        >
+          {logBusy ? "..." : "SAVE"}
+        </button>
+      </div>
+
       <div className="toolbar-panel">
         <div className="toolbar-group toolbar-pagination">
           <div className="pager-area">
             <strong>{events.length}</strong>
             {!(page === 0 && events.length < pageSize) && (
               <div className="pager-mini">
-                <button className="secondary-button" disabled={page === 0} onClick={() => setPage(p => p - 1)}>&lt;</button>
+                <button
+                  className="secondary-button"
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  &lt;
+                </button>
                 <span className="minor-text">{page + 1}</span>
-                <button className="secondary-button" disabled={events.length < pageSize} onClick={() => setPage(p => p + 1)}>&gt;</button>
+                <button
+                  className="secondary-button"
+                  disabled={events.length < pageSize}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  &gt;
+                </button>
               </div>
             )}
             <select
               value={pageSize}
-              onChange={e => { setPageSize(Number(e.target.value)); setPage(0); }}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(0);
+              }}
             >
-              {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+              {PAGE_SIZE_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
             </select>
           </div>
         </div>
 
         <div className="toolbar-group toolbar-search-filter">
-          <input 
-            placeholder="SEARCH TICKET, ID..." 
+          <input
+            placeholder="SEARCH TICKET, ID..."
             value={filter.q}
-            onChange={e => { setFilter(f => ({ ...f, q: e.target.value })); setPage(0); }}
-            style={{ width: '180px' }}
+            onChange={(e) => {
+              setFilter((f) => ({ ...f, q: e.target.value }));
+              setPage(0);
+            }}
+            style={{ width: "180px" }}
           />
-          <select value={filter.type} onChange={e => { setFilter(f => ({ ...f, type: e.target.value })); setPage(0); }}>
+          <select
+            value={filter.type}
+            onChange={(e) => {
+              setFilter((f) => ({ ...f, type: e.target.value }));
+              setPage(0);
+            }}
+          >
             <option value="">ALL TYPES</option>
             <option value="ORDER">ORDER</option>
             <option value="SYNC">SYNC</option>
@@ -117,22 +248,55 @@ export default function LogsPage() {
             <option value="SIGNAL">SIGNAL</option>
             <option value="TRADE">TRADE</option>
           </select>
-          <select value={filter.symbol} onChange={e => { setFilter(f => ({ ...f, symbol: e.target.value })); setPage(0); }}>
+          <select
+            value={filter.symbol}
+            onChange={(e) => {
+              setFilter((f) => ({ ...f, symbol: e.target.value }));
+              setPage(0);
+            }}
+          >
             <option value="">ALL SYMBOLS</option>
-            {symbols.map(s => <option key={s} value={s}>{s}</option>)}
+            {symbols.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
           </select>
-          <select value={filter.range} onChange={e => { setFilter(f => ({ ...f, range: e.target.value })); setPage(0); }}>
-            {RANGE_OPTIONS.map(r => <option key={r.val} value={r.val}>{r.lab}</option>)}
+          <select
+            value={filter.range}
+            onChange={(e) => {
+              setFilter((f) => ({ ...f, range: e.target.value }));
+              setPage(0);
+            }}
+          >
+            {RANGE_OPTIONS.map((r) => (
+              <option key={r.val} value={r.val}>
+                {r.lab}
+              </option>
+            ))}
           </select>
         </div>
 
         <div className="toolbar-group toolbar-bulk-action">
-          <select value={bulkAction} onChange={e => setBulkAction(e.target.value)}>
-            {BULK_ACTIONS.map(a => <option key={a} value={a}>{a || "BULK ACTION..."}</option>)}
+          <select
+            value={bulkAction}
+            onChange={(e) => setBulkAction(e.target.value)}
+          >
+            {BULK_ACTIONS.map((a) => (
+              <option key={a} value={a}>
+                {a || "BULK ACTION..."}
+              </option>
+            ))}
           </select>
-          <button type="button" className="primary-button" onClick={onBulkOk} disabled={loading || !bulkAction}>APPLY</button>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={onBulkOk}
+            disabled={loading || !bulkAction}
+          >
+            APPLY
+          </button>
         </div>
-
       </div>
 
       <div className="logs-layout-split">
@@ -150,20 +314,42 @@ export default function LogsPage() {
               </thead>
               <tbody>
                 {events.map((ev) => (
-                  <tr 
-                    key={ev.id} 
+                  <tr
+                    key={ev.id}
                     className={selectedEvent?.id === ev.id ? "active" : ""}
-                    onClick={() => { setSelectedEvent(ev); }}
+                    onClick={() => {
+                      setSelectedEvent(ev);
+                    }}
                   >
-                    <td><strong className="minor-text" style={{ color: 'var(--text)' }}>{ev.symbol || 'N/A'}</strong></td>
-                    <td><span className="badge">{ev.event_type}</span></td>
                     <td>
-                       <div className="cell-wrap">
-                         <div className="minor-text">{ev.signal_id}</div>
-                          {ev.ack_ticket && <div className="minor-text" style={{ color: 'var(--accent)' }}># {ev.ack_ticket}</div>}
-                       </div>
+                      <strong
+                        className="minor-text"
+                        style={{ color: "var(--text)" }}
+                      >
+                        {ev.symbol || "N/A"}
+                      </strong>
                     </td>
-                    <td><span className="minor-text">{fDateTime(ev.event_time)}</span></td>
+                    <td>
+                      <span className="badge">{ev.event_type}</span>
+                    </td>
+                    <td>
+                      <div className="cell-wrap">
+                        <div className="minor-text">{ev.signal_id}</div>
+                        {ev.ack_ticket && (
+                          <div
+                            className="minor-text"
+                            style={{ color: "var(--accent)" }}
+                          >
+                            # {ev.ack_ticket}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <span className="minor-text">
+                        {fDateTime(ev.event_time)}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -174,19 +360,42 @@ export default function LogsPage() {
         <div className="logs-detail-pane">
           {selectedEvent ? (
             <div className="event-detail-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-                <div className="panel-label" style={{ margin: 0 }}>EVENT DETAILS #{selectedEvent.id}</div>
-                <div className="minor-text">{fDateTime(selectedEvent.event_time)}</div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  marginBottom: "16px",
+                }}
+              >
+                <div className="panel-label" style={{ margin: 0 }}>
+                  EVENT DETAILS #{selectedEvent.id}
+                </div>
+                <div className="minor-text">
+                  {fDateTime(selectedEvent.event_time)}
+                </div>
               </div>
               <div className="panel" style={{ margin: 0, padding: 12 }}>
-                <div className="panel-label" style={{ marginBottom: 8 }}>RAW JSON</div>
-                <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 12, lineHeight: 1.45 }}>
-{JSON.stringify(selectedEvent.payload_json || {}, null, 2)}
+                <div className="panel-label" style={{ marginBottom: 8 }}>
+                  RAW JSON
+                </div>
+                <pre
+                  style={{
+                    margin: 0,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    fontSize: 12,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {JSON.stringify(selectedEvent.payload_json || {}, null, 2)}
                 </pre>
               </div>
             </div>
           ) : (
-            <div className="empty-state minor-text">SELECT AN ENTRY TO INSPECT FULL PAYLOAD</div>
+            <div className="empty-state minor-text">
+              SELECT AN ENTRY TO INSPECT FULL PAYLOAD
+            </div>
           )}
         </div>
       </div>
