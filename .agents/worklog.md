@@ -1,12 +1,22 @@
-# Session Log: 2026-05-03 06:25
-## FEAT-20260502-ASYNC-CHART-TILES — Implementation
-- Built chartFetchManager, useSymbolChartData hook, SymbolChart component
-- Renamed ChartTile → SymbolChart, removed provider from cache key
-- Single {SYMBOL} master cache key aligning with backend MARKET_DATA:SYMBOL
-- Parallel pipelines: bars + snapshots in one api.chartRefresh call
-- Page imports SymbolChart for browser grid
-- Build passes, deployed to VPS
-- Updated feature plan + ticket with final architecture
+# Session Log: 2026-05-04 04:32
+- **Starting Task**:
+  - Enhance symbol search and add asset groups (GOLD, SILVER, SMT).
+- **Work Accomplished**:
+  - **API Fix**: Fixed `/v2/chart/symbols` backend response to return `symbols` array instead of `items`, matching frontend expectation.
+  - **Asset Groups**: Added `DEFAULT_GOLD_SYMBOLS`, `DEFAULT_SILVER_SYMBOLS`, and `DEFAULT_SMT_GROUPS` to `ChartSnapshotsPage.jsx`.
+  - **SMT View**: Implemented a specialized grouped SMT pairing view in the browser grid.
+  - **Classifiers**: Updated `classifySymbol` to handle Gold/Silver categorization.
+  - **Watchlist**: Added popular symbols (`XAUUSD`, `NAS100`, `SPX500`, `USOIL`, `DXY`) to the default watchlist.
+  - Bumped build versions to `v2026.05.04 04:32 - c9d1531`.
+- **Changed Files**:
+  - `webhook/server.js`
+  - `web-ui/src/pages/ai/ChartSnapshotsPage.jsx`
+  - `mql5/TVBridgeEA.mq5`
+  - `.agents/worklog.md`
+- **Verification**:
+  - `rtk bash scripts/deploy/check_build_versions.sh origin/main` ✅
+- **Deploy Status**:
+  - Deploying to production.
 
 # Session Log: 2026-05-03 16:44
 - **Starting Task**:

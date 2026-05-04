@@ -102,7 +102,7 @@ loadEnvFile();
 
 const SERVER_VERSION = envStr(
   process.env.WEBHOOK_SERVER_VERSION,
-  "v2026.05.03 20:21 - 2c42a7b",
+  "v2026.05.04 04:32 - c9d1531",
 ); // DB Index Update
 const NOTIFICATION_PULSE = { global: Date.now(), user: {} };
 function bumpPulse(userId = null) {
@@ -11745,6 +11745,8 @@ const appHandler = async (req, res) => {
   );
 
   if (req.method === "GET" && url.pathname === "/v2/notifications/pulse") {
+    const sess = getUiSessionFromReq(req);
+    const userId = sess.user_id;
     return json(res, 200, {
       ok: true,
       global: NOTIFICATION_PULSE.global,
@@ -15048,7 +15050,7 @@ const appHandler = async (req, res) => {
       );
       if (!q) return json(res, 200, { ok: true, items: [] });
       const items = await fetchTradingViewSymbolSearch(q, provider, limit);
-      return json(res, 200, { ok: true, items });
+      return json(res, 200, { ok: true, symbols: items });
     } catch (error) {
       return json(res, 500, {
         ok: false,

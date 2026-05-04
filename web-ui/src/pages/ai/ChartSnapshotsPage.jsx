@@ -123,6 +123,11 @@ const DEFAULT_WATCHLIST = [
   "XAUGBP",
   "XAUJPY",
   "XTIUSD",
+  "XAUUSD",
+  "NAS100",
+  "SPX500",
+  "USOIL",
+  "DXY",
 ];
 
 // Fixed default sets for asset-type filter tabs
@@ -138,6 +143,24 @@ const DEFAULT_FOREX_SYMBOLS = [
   "EURJPY",
   "GBPJPY",
   "AUDJPY",
+];
+const DEFAULT_GOLD_SYMBOLS = ["XAUUSD", "XAUEUR", "XAUGBP", "XAUJPY", "XAUAUD"];
+const DEFAULT_SILVER_SYMBOLS = [
+  "XAGUSD",
+  "XAGEUR",
+  "XAGGBP",
+  "XAGJPY",
+  "XAGAUD",
+];
+const DEFAULT_SMT_GROUPS = [
+  { name: "EUR/GBP", symbols: ["EURUSD", "GBPUSD"] },
+  { name: "BTC/ETH", symbols: ["BTCUSD", "ETHUSD"] },
+  { name: "AUD/NZD", symbols: ["AUDUSD", "NZDUSD"] },
+  { name: "GOLD/SILVER", symbols: ["XAUUSD", "XAGUSD"] },
+  { name: "DXY/EUR", symbols: ["DXY", "EURUSD"] },
+];
+const DEFAULT_SMT_SYMBOLS = [
+  ...new Set(DEFAULT_SMT_GROUPS.flatMap((g) => g.symbols)),
 ];
 
 // Classify a symbol as crypto/forex/other (deterministic, conservative)
@@ -218,6 +241,8 @@ const FOREX_PAIRS = new Set([
 const classifySymbol = (s) => {
   const upper = String(s || "").toUpperCase();
   if (!upper) return "other";
+  if (upper.startsWith("XAU")) return "gold";
+  if (upper.startsWith("XAG")) return "silver";
   const prefix = upper.replace(/USD$|USDT$/, "");
   if (
     CRYPTO_PREFIXES.has(prefix) &&
@@ -288,13 +313,27 @@ const AI_RESPONSE_SCHEMA = {
       tf: "MN|W|D|4H|1H|15M|5M|1M",
       trend: "Bullish|Bearish|Ranging",
       structure: "BOS|CHoCH|MSB|Continuation|Ranging",
-      phase: "Trending|Retracement|Reversal|Consolidation|Breakout|Breakdown|Distribution|Accumulation",
+      phase:
+        "Trending|Retracement|Reversal|Consolidation|Breakout|Breakdown|Distribution|Accumulation",
       bias: "Long|Short|Neutral",
       poiAlign: true,
       did: "",
       next: "",
-      keyBreaks: [{ event: "BOS|CHoCH|MSB|Retest|Sweep|Rejection", price: null, direction: "Bull|Bear" }],
-      path: [{ step: 1, action: "Retrace|Continue|Sweep|Reverse|Consolidate|Break", target: null, condition: "" }],
+      keyBreaks: [
+        {
+          event: "BOS|CHoCH|MSB|Retest|Sweep|Rejection",
+          price: null,
+          direction: "Bull|Bear",
+        },
+      ],
+      path: [
+        {
+          step: 1,
+          action: "Retrace|Continue|Sweep|Reverse|Consolidate|Break",
+          target: null,
+          condition: "",
+        },
+      ],
     },
   ],
   pdArrays: [
@@ -311,11 +350,47 @@ const AI_RESPONSE_SCHEMA = {
       note: "",
     },
   ],
-  keyLevels: [{ name: "PDH|PDL|PWH|PWL|PMH|PML|WeeklyOpen|DailyOpen|MidnightOpen|NYOpen|EQH|EQL|BSL|SSL", price: null, swept: false }],
+  keyLevels: [
+    {
+      name: "PDH|PDL|PWH|PWL|PMH|PML|WeeklyOpen|DailyOpen|MidnightOpen|NYOpen|EQH|EQL|BSL|SSL",
+      price: null,
+      swept: false,
+    },
+  ],
   dol: { target: "", price: null, type: "BSL|SSL|FVG|OB|Void", tf: "" },
   checklist: {
-    buy: { score: 0, highPassed: 0, highTotal: 0, items: [{ category: "Structure|PD_Arrays|Liquidity|Session|Correlation|VWAP|Fibonacci|Candle_Patterns|Indicators|Risk", item: "", weight: "High|Medium|Low", passed: false, pdRef: null, note: "" }] },
-    sell: { score: 0, highPassed: 0, highTotal: 0, items: [{ category: "Structure|PD_Arrays|Liquidity|Session|Correlation|VWAP|Fibonacci|Candle_Patterns|Indicators|Risk", item: "", weight: "High|Medium|Low", passed: false, pdRef: null, note: "" }] },
+    buy: {
+      score: 0,
+      highPassed: 0,
+      highTotal: 0,
+      items: [
+        {
+          category:
+            "Structure|PD_Arrays|Liquidity|Session|Correlation|VWAP|Fibonacci|Candle_Patterns|Indicators|Risk",
+          item: "",
+          weight: "High|Medium|Low",
+          passed: false,
+          pdRef: null,
+          note: "",
+        },
+      ],
+    },
+    sell: {
+      score: 0,
+      highPassed: 0,
+      highTotal: 0,
+      items: [
+        {
+          category:
+            "Structure|PD_Arrays|Liquidity|Session|Correlation|VWAP|Fibonacci|Candle_Patterns|Indicators|Risk",
+          item: "",
+          weight: "High|Medium|Low",
+          passed: false,
+          pdRef: null,
+          note: "",
+        },
+      ],
+    },
   },
   tradePlan: [
     {
@@ -336,7 +411,14 @@ const AI_RESPONSE_SCHEMA = {
       note: "",
     },
   ],
-  verdict: { action: "BUY|SELL|WAIT", tier: "A|B|C|NoTrade", confidence: 0, invalidation: "", nextPoi: { price: null, tf: "", type: "" }, note: "" },
+  verdict: {
+    action: "BUY|SELL|WAIT",
+    tier: "A|B|C|NoTrade",
+    confidence: 0,
+    invalidation: "",
+    nextPoi: { price: null, tf: "", type: "" },
+    note: "",
+  },
 };
 
 const GUIDE_TEXT = `Compact ICT guide:
@@ -1775,14 +1857,24 @@ export default function ChartSnapshotsPage() {
   const canAddSignal = useMemo(() => {
     const fromAi =
       extractSignalsFromAnalysis(effectiveParsed, {
-        symbol: String(tvSymbol || "").split(":").pop(),
+        symbol: String(tvSymbol || "")
+          .split(":")
+          .pop(),
         timeframe,
         strategy: cfg.strategies.join("+") || "ai",
         source: analysisSource,
       }).length > 0;
     if (fromAi) return true;
     const err = validatePosition(position);
-    return Boolean(normalizeSignalSymbol(String(tvSymbol || cfg.symbol || "").split(":").pop())) && !err;
+    return (
+      Boolean(
+        normalizeSignalSymbol(
+          String(tvSymbol || cfg.symbol || "")
+            .split(":")
+            .pop(),
+        ),
+      ) && !err
+    );
   }, [
     effectiveParsed,
     tvSymbol,
@@ -2047,7 +2139,11 @@ export default function ChartSnapshotsPage() {
         return initial;
       }
       const out = await api.chartRefresh({
-        symbols: [String(tvSymbol || "").split(":").pop()],
+        symbols: [
+          String(tvSymbol || "")
+            .split(":")
+            .pop(),
+        ],
         provider,
         timeframes: initial.missingTfs,
         types: ["snapshots"],
@@ -2353,7 +2449,9 @@ export default function ChartSnapshotsPage() {
 
       const basePrompt = String(promptDraft || promptText || "").trim();
       const runtimeConfig = JSON.stringify({
-        symbol: String(tvSymbol || cfg.symbol || "").split(":").pop(),
+        symbol: String(tvSymbol || cfg.symbol || "")
+          .split(":")
+          .pop(),
         assetClass: cfg.asset,
         timeframes: [
           ...tfConfig.htf_tfs,
@@ -2383,7 +2481,9 @@ export default function ChartSnapshotsPage() {
         prompt: composedPrompt,
         session_prefix: activeSessionPrefix,
         max_tokens: 4500,
-        symbol: String(tvSymbol || cfg.symbol || "").split(":").pop(),
+        symbol: String(tvSymbol || cfg.symbol || "")
+          .split(":")
+          .pop(),
         timeframe,
         provider,
         timeframes: snapshotTfs,
@@ -2490,7 +2590,9 @@ export default function ChartSnapshotsPage() {
     if (!sessionPrefix) setSessionPrefix(activeSessionPrefix);
     try {
       const out = await api.chartSnapshotCreateBatch({
-        symbol: String(tvSymbol || "").split(":").pop(),
+        symbol: String(tvSymbol || "")
+          .split(":")
+          .pop(),
         provider,
         session_prefix: activeSessionPrefix,
         timeframes: tfs,
@@ -2726,7 +2828,9 @@ export default function ChartSnapshotsPage() {
       const signals = overridePosition
         ? []
         : extractSignalsFromAnalysis(parsed, {
-            symbol: String(tvSymbol || "").split(":").pop(),
+            symbol: String(tvSymbol || "")
+              .split(":")
+              .pop(),
             timeframe,
             strategy: cfg.strategies.join("+") || "ai",
             source: analysisSource,
@@ -2734,7 +2838,9 @@ export default function ChartSnapshotsPage() {
 
       if (!signals.length) {
         const symbolManual = normalizeSignalSymbol(
-          String(tvSymbol || cfg.symbol || "").split(":").pop(),
+          String(tvSymbol || cfg.symbol || "")
+            .split(":")
+            .pop(),
         );
         const entry = parseNum(activePosition.entry);
         const sl = parseNum(activePosition.sl);
@@ -3634,6 +3740,34 @@ export default function ChartSnapshotsPage() {
     return merged.sort();
   }, [allSymbols]);
 
+  const goldSymbols = useMemo(() => {
+    const fromAll = allSymbols.filter((s) => classifySymbol(s) === "gold");
+    const merged = [
+      ...new Set(
+        [...DEFAULT_GOLD_SYMBOLS, ...fromAll]
+          .map(normalizeWatchSymbol)
+          .filter(Boolean),
+      ),
+    ];
+    return merged.sort();
+  }, [allSymbols]);
+
+  const silverSymbols = useMemo(() => {
+    const fromAll = allSymbols.filter((s) => classifySymbol(s) === "silver");
+    const merged = [
+      ...new Set(
+        [...DEFAULT_SILVER_SYMBOLS, ...fromAll]
+          .map(normalizeWatchSymbol)
+          .filter(Boolean),
+      ),
+    ];
+    return merged.sort();
+  }, [allSymbols]);
+
+  const smtSymbols = useMemo(() => {
+    return DEFAULT_SMT_SYMBOLS;
+  }, []);
+
   const symbolsByTab = useMemo(() => {
     switch (symbolFilterTab) {
       case "FAVOURITE":
@@ -3642,6 +3776,12 @@ export default function ChartSnapshotsPage() {
         return cryptoSymbols;
       case "FOREX":
         return forexSymbols;
+      case "GOLD":
+        return goldSymbols;
+      case "SILVER":
+        return silverSymbols;
+      case "SMT":
+        return smtSymbols;
       case "ALL":
       default:
         return allSymbols;
@@ -3652,6 +3792,9 @@ export default function ChartSnapshotsPage() {
     allSymbols,
     cryptoSymbols,
     forexSymbols,
+    goldSymbols,
+    silverSymbols,
+    smtSymbols,
   ]);
 
   return (
@@ -3691,7 +3834,15 @@ export default function ChartSnapshotsPage() {
           {isSymbolPanelOpen && (
             <>
               <div className="snapshot-tabs-v2" style={{ flexWrap: "wrap" }}>
-                {["FAVOURITE", "ALL", "CRYPTO", "FOREX"].map((tab) => (
+                {[
+                  "FAVOURITE",
+                  "ALL",
+                  "CRYPTO",
+                  "FOREX",
+                  "GOLD",
+                  "SILVER",
+                  "SMT",
+                ].map((tab) => (
                   <button
                     key={tab}
                     type="button"
@@ -3704,7 +3855,13 @@ export default function ChartSnapshotsPage() {
                         ? "All"
                         : tab === "CRYPTO"
                           ? "Crypto"
-                          : "Forex"}
+                          : tab === "FOREX"
+                            ? "Forex"
+                            : tab === "GOLD"
+                              ? "Gold"
+                              : tab === "SILVER"
+                                ? "Silver"
+                                : "SMT"}
                   </button>
                 ))}
               </div>
@@ -4144,6 +4301,9 @@ export default function ChartSnapshotsPage() {
                   <option value="ALL">All</option>
                   <option value="CRYPTO">Crypto</option>
                   <option value="FOREX">Forex</option>
+                  <option value="GOLD">Gold</option>
+                  <option value="SILVER">Silver</option>
+                  <option value="SMT">SMT</option>
                 </select>
                 <div
                   style={{
@@ -4224,24 +4384,75 @@ export default function ChartSnapshotsPage() {
               className="browser-grid-v1"
               style={{
                 gridTemplateColumns:
-                  browserTfs.length === 1
-                    ? "repeat(4, 1fr)"
+                  symbolFilterTab === "SMT"
+                    ? "1fr"
+                    : browserTfs.length === 1
+                      ? "repeat(4, 1fr)"
                       : browserTfs.length === 2
                         ? "repeat(2, 1fr)"
                         : "1fr",
               }}
             >
-              {symbolsByTab.slice(0, visibleCount).map((sym) => (
-                <SymbolChart
-                  key={sym}
-                  symbol={sym}
-                  timeframes={browserTfs}
-                  defaultMode="live"
-                  onAnalyze={(s) => setCfgField("symbol", s)}
-                  onRemove={(s) => removeFromWatchlist(s)}
-                />
-              ))}
-            </div>
+              {symbolFilterTab === "SMT"
+                ? DEFAULT_SMT_GROUPS.map((group) => (
+                    <div
+                      key={group.name}
+                      style={{
+                        marginBottom: 24,
+                        padding: 12,
+                        background: "rgba(255,255,255,0.02)",
+                        borderRadius: 8,
+                        border: "1px solid var(--border)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 800,
+                          marginBottom: 12,
+                          color: "var(--muted)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                        }}
+                      >
+                        SMT Group: {group.name}
+                      </div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            browserTfs.length === 1
+                              ? "repeat(2, 1fr)"
+                              : "repeat(2, 1fr)",
+                          gap: 12,
+                        }}
+                      >
+                        {group.symbols.map((sym) => (
+                          <SymbolChart
+                            key={sym}
+                            symbol={sym}
+                            timeframes={browserTfs}
+                            defaultMode="live"
+                            onAnalyze={(s) => setCfgField("symbol", s)}
+                            onRemove={null}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                : symbolsByTab
+                    .slice(0, visibleCount)
+                    .map((sym) => (
+                      <SymbolChart
+                        key={sym}
+                        symbol={sym}
+                        timeframes={browserTfs}
+                        defaultMode="live"
+                        onAnalyze={(s) => setCfgField("symbol", s)}
+                        onRemove={(s) => removeFromWatchlist(s)}
+                      />
+                    ))}
+            </div>{" "}
           </div>
         )}
 
