@@ -100,7 +100,10 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.04 04:36 - b6c2a20"); // DB Index Update
+const SERVER_VERSION = envStr(
+  process.env.WEBHOOK_SERVER_VERSION,
+  "v2026.05.04 04:36 - b6c2a20",
+); // DB Index Update
 const NOTIFICATION_PULSE = { global: Date.now(), user: {} };
 function bumpPulse(userId = null) {
   NOTIFICATION_PULSE.global += 1;
@@ -659,6 +662,71 @@ const UI_SESSIONS = new Map();
 const UI_ROLE_SYSTEM = "System";
 const MARKET_DATA_MEMORY_CACHE = new Map();
 const MARKET_DATA_TF_CACHE = new Map(); // key: "EURUSD_4H" → { bars, bar_start, bar_end, last_price, created_at, snapshot }
+
+// ── Trace logging ────────────────────────────────────────────────
+function genTraceId(prefix = "") {
+  return `${prefix}${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+async function logEvent(traceId, eventType, data = {}, userId = null) {
+  const b = mt5Backend();
+  const msg = `[${eventType}][${traceId}] ${JSON.stringify(data).slice(0, 500)}`;
+  console.log(msg);
+  try {
+    if (b?.log)
+      await b.log(
+        traceId,
+        "system",
+        { event: eventType, trace_id: traceId, ...data },
+        userId,
+      );
+  } catch (_) {
+    /* non-fatal */
+  }
+}
+
+/** Wrapper for external API calls — logs request + response + timing */
+async function logApiCall(
+  traceId,
+  eventType,
+  {
+    url,
+    method = "GET",
+    reqPayload,
+    resStatus,
+    resBody,
+    durationMs,
+    error,
+    symbol,
+    tf,
+  },
+) {
+  await logEvent(
+    traceId,
+    eventType,
+    {
+      api: {
+        url,
+        method,
+        req_payload:
+          typeof reqPayload === "string"
+            ? reqPayload.slice(0, 300)
+            : JSON.stringify(reqPayload || {}).slice(0, 300),
+      },
+      response: {
+        status: resStatus,
+        body:
+          typeof resBody === "string"
+            ? resBody.slice(0, 500)
+            : JSON.stringify(resBody || {}).slice(0, 500),
+      },
+      duration_ms: durationMs,
+      error: error || null,
+      symbol: symbol || null,
+      tf: tf || null,
+    },
+    null,
+  );
+}
 
 function tfCacheKey(symbol, tf) {
   return `${String(symbol).toUpperCase()}_${String(tf).toUpperCase()}`;
@@ -9549,6 +9617,7 @@ async function buildAnalysisSnapshotFromTwelve({
   payload = {},
   symbol,
   timeframe,
+  traceId,
 }) {
   const outputsize = parseSnapshotBarsLimit(payload);
   const forceRefresh = asBool(
@@ -9559,6 +9628,7 @@ async function buildAnalysisSnapshotFromTwelve({
   const tfNorm = normalizeMarketDataTf(timeframe);
   const reqRange = estimateRequestedBarsRange({ tfNorm, bars: outputsize });
 
+  const tid = traceId || genTraceId("twelve_");
   if (!symbolNorm)
     return {
       provider: "twelvedata",
@@ -9567,6 +9637,12 @@ async function buildAnalysisSnapshotFromTwelve({
     };
 
   if (!forceRefresh) {
+    await logEvent(tid, "FETCH_API", {
+      step: "cache_check",
+      symbol: symbolNorm,
+      tf: tfNorm,
+      forceRefresh,
+    });
     // Check per-TF memory cache (TTL = TF duration)
     const cached = tfCacheGet(symbolNorm, tfNorm);
     if (cached && cached.bars && cached.bars.length) {
@@ -9586,6 +9662,12 @@ async function buildAnalysisSnapshotFromTwelve({
           status: "ok",
           cache_source: "memory",
         };
+        await logEvent(tid, "FETCH_API", {
+          step: "cache_hit",
+          symbol: symbolNorm,
+          tf: tfNorm,
+          bars: cached.bars.length,
+        });
       }
     }
     // Fallback to DB
@@ -9657,6 +9739,7 @@ async function buildAnalysisSnapshotFromTwelve({
       `[twelve-fetch] symbol=${symbol} candidates=${primaryCandidates.join(",")} interval=${interval} bars=${outputsize}`,
     );
 
+    const t0 = Date.now();
     for (const candidate of primaryCandidates) {
       const endpoint = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(candidate)}&interval=${encodeURIComponent(interval)}&outputsize=${outputsize}&timezone=UTC&order=ASC&apikey=${encodeURIComponent(twelveKey)}`;
       const res = await fetch(endpoint, { signal: ctrl.signal });
@@ -9690,9 +9773,27 @@ async function buildAnalysisSnapshotFromTwelve({
       usedSymbol = candidate;
       lastError = "";
       console.log(`[twelve-success] candidate=${candidate}`);
+      await logApiCall(tid, "FETCH_API", {
+        url: endpoint,
+        method: "GET",
+        resStatus: 200,
+        resBody: `${vals.length} bars`,
+        durationMs: Date.now() - t0,
+        symbol: symbolNorm,
+        tf: tfNorm,
+      });
       break;
     }
     if (!data || !Array.isArray(data?.values) || !data.values.length) {
+      await logApiCall(tid, "FETCH_API", {
+        url: "twelvedata",
+        method: "GET",
+        resStatus: 0,
+        error: lastError || "provider error",
+        durationMs: Date.now() - t0,
+        symbol: symbolNorm,
+        tf: tfNorm,
+      });
       return {
         provider: "twelvedata",
         status: "error",
@@ -9781,6 +9882,13 @@ async function buildAnalysisSnapshotFromTwelve({
     // Update Unified Cache
     tfCacheSet(symbolNorm, tfNorm, snapshot);
     await marketDataDbUpsert(symbolNorm, tfNorm, snapshot).catch(() => {});
+    await logEvent(tid, "FETCH_API", {
+      step: "done",
+      symbol: symbolNorm,
+      tf: tfNorm,
+      bars: bars.length,
+      duration_ms: Date.now() - t0,
+    });
     return snapshot;
   } catch (error) {
     const reason =
@@ -14714,6 +14822,8 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/v2/chart/refresh") {
+    const chartTraceId = genTraceId("chart_");
+    const t0 = Date.now();
     const sess = getUiSessionFromReq(req);
     const isAdmin =
       (req.headers["x-api-key"] || url.searchParams.get("key")) ===
@@ -14890,6 +15000,12 @@ const appHandler = async (req, res) => {
         results.push(row);
       }
 
+      await logEvent(chartTraceId, "CHART_API", {
+        step: "done",
+        symbols: symbols.length,
+        timeframes: timeframes.length,
+        duration_ms: Date.now() - t0,
+      });
       return json(res, 200, {
         ok: true,
         generated_at: new Date().toISOString(),
@@ -15057,6 +15173,8 @@ const appHandler = async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/v2/chart/snapshots/analyze") {
+    const analyzeTraceId = genTraceId("analyze_");
+    const t0a = Date.now();
     const sess = getUiSessionFromReq(req);
     const isAdmin =
       (req.headers["x-api-key"] || url.searchParams.get("key")) ===
@@ -17865,6 +17983,8 @@ async function marketDataFetchJob({
   tf,
   timezone,
 }) {
+  const cronTraceId = genTraceId("cron_md_");
+  await logEvent(cronTraceId, "CRON_MD", { step: "start" });
   const symbolNorm = normalizeMarketDataSymbol(symbol);
   const tfNorm = normalizeMarketDataTf(tf);
   if (!symbolNorm || !tfNorm)
