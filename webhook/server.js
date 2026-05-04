@@ -18117,7 +18117,6 @@ async function mt5RunMarketDataCron() {
     WHERE s.type = 'cron' AND s.name = 'MARKET_DATA_CRON'
       AND UPPER(s.status) = 'ACTIVE'
       AND (u.metadata->'settings'->>'data_cron')::boolean = true
-      AND COALESCE(s.data->>'enabled', 'true') != 'false'
   `);
   const configs = res.rows || [];
   if (!configs.length) return;
