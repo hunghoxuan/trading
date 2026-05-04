@@ -100,7 +100,10 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.04 13:12 - 4b17282"); // DB Index Update
+const SERVER_VERSION = envStr(
+  process.env.WEBHOOK_SERVER_VERSION,
+  "v2026.05.04 13:12 - 4b17282",
+); // DB Index Update
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
@@ -15233,19 +15236,30 @@ const appHandler = async (req, res) => {
         const timeframes = Array.isArray(body.timeframes)
           ? body.timeframes
           : String(body.tfs || body.timeframes || "D,4H,1H,15M").split(",");
-        const contextBundle = await buildAiContextBundle({
-          userId,
-          apiKey: claudeKey,
-          symbol,
-          timeframes,
-          bars:
-            Number(
-              body.bars_count || body.lookbackBars || body.lookback_bars || 300,
-            ) || 300,
-          provider: String(body.provider || "ICMARKETS"),
-          forceRefresh: body.force_refresh === true,
-          forceSnapshot: body.snapshot_refresh === true,
-        });
+        const contextBundle = await Promise.race([
+          buildAiContextBundle({
+            userId,
+            apiKey: claudeKey,
+            symbol,
+            timeframes,
+            bars:
+              Number(
+                body.bars_count ||
+                  body.lookbackBars ||
+                  body.lookback_bars ||
+                  300,
+              ) || 300,
+            provider: String(body.provider || "ICMARKETS"),
+            forceRefresh: body.force_refresh === true,
+            forceSnapshot: body.snapshot_refresh === true,
+          }),
+          new Promise((_, reject) =>
+            setTimeout(
+              () => reject(new Error("Context build timeout (60s)")),
+              60000,
+            ),
+          ),
+        ]);
         let finalPrompt =
           String(body.prompt || "").trim() ||
           "Analyze this chart context and return only JSON.";
