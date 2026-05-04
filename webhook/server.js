@@ -100,13 +100,19 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.04 05:11 - 390a633"); // DB Index Update
-const NOTIFICATION_PULSE = { global: Date.now(), user: {} };
-function bumpPulse(userId = null) {
+const SERVER_VERSION = envStr(
+  process.env.WEBHOOK_SERVER_VERSION,
+  "v2026.05.04 05:11 - 390a633",
+); // DB Index Update
+const NOTIFICATION_PULSE = { global: 0, user: {} };
+function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
   if (userId && userId !== "default") {
-    NOTIFICATION_PULSE.user[userId] =
-      (NOTIFICATION_PULSE.user[userId] || 0) + 1;
+    if (!NOTIFICATION_PULSE.user[userId]) NOTIFICATION_PULSE.user[userId] = {};
+    NOTIFICATION_PULSE.user[userId].total =
+      (NOTIFICATION_PULSE.user[userId].total || 0) + 1;
+    const typeKey = `${itemType}_${action}`;
+    NOTIFICATION_PULSE.user[userId][typeKey] = Date.now();
   }
 }
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
@@ -18111,6 +18117,7 @@ async function mt5RunMarketDataCron() {
     WHERE s.type = 'cron' AND s.name = 'MARKET_DATA_CRON'
       AND UPPER(s.status) = 'ACTIVE'
       AND (u.metadata->'settings'->>'data_cron')::boolean = true
+      AND COALESCE(s.data->>'enabled', 'true') != 'false'
   `);
   const configs = res.rows || [];
   if (!configs.length) return;
@@ -18122,6 +18129,14 @@ async function mt5RunMarketDataCron() {
     const data = conf.data || {};
     if (!marketDataCronSettingEnabled(data)) continue;
     const symbols = Array.isArray(data.symbols) ? data.symbols : [];
+    const excludeSymbols = new Set(
+      (Array.isArray(data.exclude_symbols) ? data.exclude_symbols : [])
+        .map((s) => String(s).toUpperCase().trim())
+        .filter(Boolean),
+    );
+    const filteredSymbols = symbols.filter(
+      (s) => !excludeSymbols.has(String(s).toUpperCase().trim()),
+    );
     const tfs = Array.isArray(data.timeframes) ? data.timeframes : [];
     const timezone = marketDataCronTimezone(data);
 
@@ -18134,15 +18149,15 @@ async function mt5RunMarketDataCron() {
       if (now - lastRun >= tfSec * 1000 - 5000) {
         // 5s buffer
         console.log(
-          `[Cron][MarketData] Running userId=${userId} name=${conf.name} tf=${tf} symbols=${symbols.length}`,
+          `[Cron][MarketData] Running userId=${userId} name=${conf.name} tf=${tf} symbols=${filteredSymbols.length}`,
         );
         CRON_STATE.lastMarketDataRun[stateKey] = now;
 
         // Batch symbols to avoid hitting Twelve Data limits
         const batchSize =
           Number(data.batch_size || CFG.marketDataCronBatchSize) || 8;
-        for (let i = 0; i < symbols.length; i += batchSize) {
-          const batch = symbols.slice(i, i + batchSize);
+        for (let i = 0; i < filteredSymbols.length; i += batchSize) {
+          const batch = filteredSymbols.slice(i, i + batchSize);
           if (MARKET_DATA_QUEUE) {
             const bucket = Math.floor(now / (tfSec * 1000));
             await Promise.all(
@@ -18193,7 +18208,7 @@ async function mt5RunMarketDataCron() {
           patch: {
             timezone,
             queued_at: new Date().toISOString(),
-            symbols_count: symbols.length,
+            symbols_count: filteredSymbols.length,
             batch_size: batchSize,
             queue: MARKET_DATA_QUEUE ? "bullmq" : "inline",
           },
