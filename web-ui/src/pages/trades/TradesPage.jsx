@@ -928,6 +928,17 @@ export default function TradesPage() {
                     { label: "Swap", value: (selectedTrade.metadata.broker_swap ?? selectedTrade.metadata.swap) != null ? `$${asNum(selectedTrade.metadata.broker_swap ?? selectedTrade.metadata.swap).toFixed(2)}` : null },
                   ].filter(x => x.value !== null) : []),
                   { label: "Note", value: selectedTrade.note || "-", fullWidth: true },
+                  { 
+                    label: "Raw Metadata", 
+                    fullWidth: true,
+                    value: (
+                      <div className="bg-gray-900/50 rounded-lg p-3 border border-gray-800 overflow-hidden mt-2">
+                        <pre className="text-[10px] text-blue-300 font-mono overflow-auto max-h-[300px] whitespace-pre-wrap">
+                          {JSON.stringify(selectedTrade.metadata || {}, null, 2)}
+                        </pre>
+                      </div>
+                    )
+                  },
                 ]}
                 history={{
                   enabled: true,
