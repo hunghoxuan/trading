@@ -127,7 +127,7 @@ export default function SettingsPage({
   });
   const [logConfig, setLogConfig] = useState([]);
   const [logBusy, setLogBusy] = useState(false);
-  const LOG_GROUPS = ["TRADE_", "SIGNAL_", "ACCOUNT_", "AI_", "SYSTEM_"];
+  const LOG_GROUPS = ["OTHERS_", "SIGNAL_", "ACCOUNT_", "AI_", "SYSTEM_"];
 
   // Sidebar state
   const [activeTab, setActiveTab] = useState(
@@ -819,7 +819,7 @@ export default function SettingsPage({
               </div>
               <div className="stack-layout" style={{ gap: 0 }}>
                 {settings
-                  .filter((s) => s.type === "cron" || s.type.endsWith("_cron"))
+                  .filter((s) => (s.type === "cron" || s.type.endsWith("_cron")) && s.name !== "enabled_log_prefixes")
                   .map((s) => renderSidebarItem(s))}
               </div>
             </div>
@@ -837,13 +837,13 @@ export default function SettingsPage({
                   className="panel-label"
                   style={{ margin: 0, opacity: 0.8 }}
                 >
-                  TRADE
+                  OTHERS
                 </div>
                 <button
                   className="secondary-button"
                   style={{ padding: "2px 8px", fontSize: 10 }}
                   onClick={() => {
-                    setNewSettingForm({ type: "trade", name: "", value: "" });
+                    setNewSettingForm({ type: "others", name: "", value: "" });
                     setShowAddForm(true);
                   }}
                 >
@@ -860,7 +860,7 @@ export default function SettingsPage({
             {/* OTHERS GROUP */}
             {settings.filter(
               (s) =>
-                !["api_key", "cron", "trade", "symbols"].includes(s.type) &&
+                !["api_key", "cron", "trade", "symbols", "system_config"].includes(s.type) &&
                 !s.type.endsWith("_cron"),
             ).length > 0 && (
               <div className="stack-layout" style={{ gap: 8 }}>

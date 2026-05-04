@@ -135,53 +135,60 @@ export default function LogsPage() {
 
   return (
     <section className="logs-page-container stack-layout">
-      <h2 className="page-title">Logs</h2>
-
-      {/* Trace Log Filters */}
       <div
         style={{
           display: "flex",
+          justifyContent: "space-between",
           alignItems: "center",
-          gap: 8,
-          marginBottom: 12,
-          flexWrap: "wrap",
         }}
       >
-        <span className="minor-text" style={{ fontWeight: 600 }}>
-          TRACE:
-        </span>
-        {LOG_TYPES.map((lt) => (
-          <label
-            key={lt}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 3,
-              cursor: "pointer",
-              fontSize: 10,
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={logConfig.includes(lt)}
-              onChange={(e) => {
-                const n = e.target.checked
-                  ? [...logConfig, lt]
-                  : logConfig.filter((x) => x !== lt);
-                setLogConfig(n);
-              }}
-            />
-            <span className="minor-text">{lt}</span>
-          </label>
-        ))}
-        <button
-          className="secondary-button"
-          onClick={() => saveLoggingConfig(logConfig)}
-          disabled={logBusy}
-          style={{ padding: "2px 6px", fontSize: 9 }}
+        <h2 className="page-title" style={{ margin: 0 }}>
+          Logs
+        </h2>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            flexWrap: "wrap",
+          }}
         >
-          {logBusy ? "..." : "SAVE"}
-        </button>
+          <span className="minor-text" style={{ fontWeight: 600 }}>
+            TRACE:
+          </span>
+          {LOG_TYPES.map((lt) => (
+            <label
+              key={lt}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 3,
+                cursor: "pointer",
+                fontSize: 10,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={logConfig.includes(lt)}
+                onChange={(e) => {
+                  const n = e.target.checked
+                    ? [...logConfig, lt]
+                    : logConfig.filter((x) => x !== lt);
+                  setLogConfig(n);
+                }}
+              />
+              <span className="minor-text">{lt}</span>
+            </label>
+          ))}
+          <button
+            className="primary-button"
+            onClick={() => saveLoggingConfig(logConfig)}
+            disabled={logBusy}
+            style={{ padding: "3px 10px", fontSize: 10 }}
+          >
+            {logBusy ? "..." : "SAVE"}
+          </button>
+        </div>
       </div>
 
       <div className="toolbar-panel">
