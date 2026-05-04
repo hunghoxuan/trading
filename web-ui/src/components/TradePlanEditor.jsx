@@ -217,36 +217,6 @@ export function TradePlanEditor({
               opacity: 0.8,
             }}
           >
-            Entry Model
-          </label>
-          <input
-            style={{
-              height: "24px",
-              fontSize: "11px",
-              padding: "0 6px",
-              width: "100%",
-              color: "var(--text)",
-            }}
-            value={value.entry_model || value.entryModel || ""}
-            readOnly
-            disabled
-          />
-        </div>
-
-        <div
-          className="snapshot-field-mini"
-          style={{ display: "flex", flexDirection: "column", gap: "2px" }}
-        >
-          <label
-            className="minor-text"
-            style={{
-              fontWeight: "700",
-              fontSize: "9px",
-              textTransform: "uppercase",
-              color: "var(--muted-bright)",
-              opacity: 0.8,
-            }}
-          >
             Risk / Reward
           </label>
           <input

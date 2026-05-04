@@ -326,6 +326,7 @@ export function SignalDetailCard({
   const [chartModes, setChartModes] = useState(["static", "live"]);
   const [multiChartData, setMultiChartData] = useState({});
   const [loadingCharts, setLoadingCharts] = useState(false);
+  const [selectedPlanId, setSelectedPlanId] = useState("main");
 
   useEffect(() => {
     if (chart?.enabled) {
@@ -459,22 +460,26 @@ export function SignalDetailCard({
           ).map((p, i) => {
             const isMain = i === 0;
             const planId = isMain ? "main" : `suggested_${i}`;
+            const isSelected = selectedPlanId === planId;
             const isBuy = String(p.direction).toUpperCase() === "BUY";
-            // Always hide Plan 1, Secondary labels to maximize density
-            const isSimplified = true;
+            const isSimplified = !isSelected;
             return (
               <div
                 key={planId}
+                onClick={() => setSelectedPlanId(planId)}
                 style={{
-                  border: isMain
-                    ? "2px solid var(--accent-soft)"
+                  cursor: "pointer",
+                  border: isSelected
+                    ? "2px solid var(--accent)"
                     : "1px solid var(--accent-soft)",
                   padding: "8px 12px",
                   borderRadius: 10,
-                  background: isMain
-                    ? "rgba(255,255,255,0.03)"
+                  background: isSelected
+                    ? "rgba(255,255,255,0.05)"
                     : "rgba(255,255,255,0.015)",
-                  boxShadow: isMain ? "0 4px 12px rgba(0,0,0,0.1)" : "none",
+                  boxShadow: isSelected
+                    ? "0 4px 12px rgba(0,0,0,0.15)"
+                    : "none",
                 }}
               >
                 <PlanHeader
@@ -486,12 +491,12 @@ export function SignalDetailCard({
                   volume={tradePlan.volume}
                   pnl={tradePlan.pnl}
                 />
-                {isMain && !tradePlan.hideEditor ? (
+                {isSelected && !tradePlan.hideEditor ? (
                   <TradePlanEditor
                     signalId={tradePlan.signalId || null}
                     tradeId={tradePlan.tradeId || null}
-                    value={tradePlan.value || {}}
-                    onChange={tradePlan.onChange}
+                    value={isMain ? tradePlan.value : p}
+                    onChange={isMain ? tradePlan.onChange : undefined}
                     onReset={tradePlan.onReset}
                     onSave={tradePlan.onSave}
                     onAddSignal={(pos) =>
