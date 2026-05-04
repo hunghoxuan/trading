@@ -297,7 +297,13 @@ export default function SettingsPage({
           (x) =>
             x?.type === "system_config" && x?.name === "enabled_log_prefixes",
         );
-        setLogConfig(Array.isArray(logSet?.value) ? logSet.value : []);
+        let val = logSet?.value;
+        if (typeof val === "string") {
+          try {
+            val = JSON.parse(val);
+          } catch {}
+        }
+        setLogConfig(Array.isArray(val) ? val : []);
       }
       setMsg("");
     } catch (err) {
@@ -819,7 +825,11 @@ export default function SettingsPage({
               </div>
               <div className="stack-layout" style={{ gap: 0 }}>
                 {settings
-                  .filter((s) => (s.type === "cron" || s.type.endsWith("_cron")) && s.name !== "enabled_log_prefixes")
+                  .filter(
+                    (s) =>
+                      (s.type === "cron" || s.type.endsWith("_cron")) &&
+                      s.name !== "enabled_log_prefixes",
+                  )
                   .map((s) => renderSidebarItem(s))}
               </div>
             </div>
@@ -860,8 +870,13 @@ export default function SettingsPage({
             {/* OTHERS GROUP */}
             {settings.filter(
               (s) =>
-                !["api_key", "cron", "trade", "symbols", "system_config"].includes(s.type) &&
-                !s.type.endsWith("_cron"),
+                ![
+                  "api_key",
+                  "cron",
+                  "trade",
+                  "symbols",
+                  "system_config",
+                ].includes(s.type) && !s.type.endsWith("_cron"),
             ).length > 0 && (
               <div className="stack-layout" style={{ gap: 8 }}>
                 <div

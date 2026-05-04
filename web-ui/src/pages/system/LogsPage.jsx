@@ -78,7 +78,13 @@ export default function LogsPage() {
         (x) =>
           x?.type === "system_config" && x?.name === "enabled_log_prefixes",
       );
-      setLogConfig(Array.isArray(logSet?.value) ? logSet.value : []);
+      let val = logSet?.value;
+      if (typeof val === "string") {
+        try {
+          val = JSON.parse(val);
+        } catch {}
+      }
+      setLogConfig(Array.isArray(val) ? val : []);
     } catch (_) {}
   }
   const [filter, setFilter] = useState({
