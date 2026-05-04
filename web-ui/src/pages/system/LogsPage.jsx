@@ -2,14 +2,28 @@ import { useEffect, useState, useMemo } from "react";
 import { api } from "../../api";
 import { showDateTime } from "../../utils/format";
 
-const LOG_TYPES = [
+const ALL_LOG_TYPES = [
   "CRON_MD",
   "FETCH_API",
   "CHART_API",
   "ANALYZE",
   "CACHE",
   "DB",
+  "ORDER",
+  "SYNC",
+  "ERROR",
+  "EA",
+  "SIGNAL",
+  "TRADE",
 ];
+const TRACE_TYPES = new Set([
+  "CRON_MD",
+  "FETCH_API",
+  "CHART_API",
+  "ANALYZE",
+  "CACHE",
+  "DB",
+]);
 
 function fDateTime(v) {
   return showDateTime(v);
@@ -156,7 +170,7 @@ export default function LogsPage() {
           <span className="minor-text" style={{ fontWeight: 600 }}>
             TRACE:
           </span>
-          {LOG_TYPES.map((lt) => (
+          {ALL_LOG_TYPES.map((lt) => (
             <label
               key={lt}
               style={{
@@ -169,12 +183,24 @@ export default function LogsPage() {
             >
               <input
                 type="checkbox"
-                checked={logConfig.includes(lt)}
+                checked={
+                  TRACE_TYPES.has(lt)
+                    ? logConfig.includes(lt)
+                    : filter.type === lt
+                }
                 onChange={(e) => {
-                  const n = e.target.checked
-                    ? [...logConfig, lt]
-                    : logConfig.filter((x) => x !== lt);
-                  setLogConfig(n);
+                  if (TRACE_TYPES.has(lt)) {
+                    const n = e.target.checked
+                      ? [...logConfig, lt]
+                      : logConfig.filter((x) => x !== lt);
+                    setLogConfig(n);
+                  } else {
+                    setFilter((f) => ({
+                      ...f,
+                      type: e.target.checked ? lt : "",
+                    }));
+                    setPage(0);
+                  }
                 }}
               />
               <span className="minor-text">{lt}</span>
@@ -240,21 +266,6 @@ export default function LogsPage() {
             }}
             style={{ width: "180px" }}
           />
-          <select
-            value={filter.type}
-            onChange={(e) => {
-              setFilter((f) => ({ ...f, type: e.target.value }));
-              setPage(0);
-            }}
-          >
-            <option value="">ALL TYPES</option>
-            <option value="ORDER">ORDER</option>
-            <option value="SYNC">SYNC</option>
-            <option value="ERROR">ERROR</option>
-            <option value="EA">EA</option>
-            <option value="SIGNAL">SIGNAL</option>
-            <option value="TRADE">TRADE</option>
-          </select>
           <select
             value={filter.symbol}
             onChange={(e) => {
