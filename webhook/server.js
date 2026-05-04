@@ -1117,7 +1117,7 @@ async function repoListUserSettings(userId) {
   return await StateRepo.get("USER_SETTINGS", userId, async () => {
     const db = await mt5InitBackend();
     const { rows } = await db.query(
-      "SELECT type, name, data, status, created_at FROM user_settings WHERE user_id = $1 ORDER BY type ASC",
+      "SELECT type, name, data, value, status, created_at FROM user_settings WHERE user_id = $1 ORDER BY type ASC",
       [userId],
     );
     return rows;
