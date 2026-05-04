@@ -89,69 +89,91 @@ const DEFAULT_TEMPLATE_ID = "__default__";
 const SYMBOLS_SETTING_TYPE = "SYMBOLS";
 
 const DEFAULT_WATCHLIST = [
-  "ADAUSD",
-  "AUDCAD",
-  "AUDCHF",
-  "AUDJPY",
-  "AUDNZD",
-  "AUDUSD",
-  "BTCUSD",
-  "CADJPY",
-  "DE40",
-  "ETHUSD",
-  "EURAUD",
-  "EURCAD",
-  "EURGBP",
-  "EURJPY",
-  "EURSGD",
   "EURUSD",
-  "GBPAUD",
-  "GBPCAD",
-  "GBPJPY",
-  "GBPNZD",
   "GBPUSD",
-  "NZDCAD",
-  "NZDUSD",
-  "UK100",
-  "US30",
-  "USDCAD",
-  "USDCHF",
   "USDJPY",
-  "USDSGD",
-  "XAGUSD",
-  "XAUEUR",
-  "XAUGBP",
-  "XAUJPY",
-  "XTIUSD",
+  "BTCUSD",
+  "ETHUSD",
   "XAUUSD",
-  "NAS100",
-  "SPX500",
-  "USOIL",
+  "US30",
+  "US500",
+  "USTEC",
   "DXY",
 ];
 
 // Fixed default sets for asset-type filter tabs
-const DEFAULT_CRYPTO_SYMBOLS = ["BTCUSD", "ETHUSD", "ADAUSD"];
+const DEFAULT_CRYPTO_SYMBOLS = [
+  "BTCUSD",
+  "ETHUSD",
+  "BNBUSD",
+  "SOLUSD",
+  "XRPUSD",
+  "LINKUSD",
+  "NEARUSD",
+  "BCHUSD",
+  "LTCUSD",
+  "DOGEUSD",
+  "HBARUSD",
+  "AVAXUSD",
+  "ADAUSD",
+  "DOTUSD",
+  "1000XSHIBUSD",
+  "XLMUSD",
+  "XTZUSD",
+];
 const DEFAULT_FOREX_SYMBOLS = [
   "EURUSD",
-  "GBPUSD",
-  "USDJPY",
-  "AUDUSD",
-  "USDCAD",
-  "USDCHF",
-  "NZDUSD",
+  "EURGBP",
   "EURJPY",
+  "EURCAD",
+  "EURSGD",
+  "EURNZD",
+  "EURAUD",
+  "EURHKD",
+  "USDJPY",
+  "USDCAD",
+  "USDHKD",
+  "USDSGD",
   "GBPJPY",
+  "GBPUSD",
+  "GBPNZD",
+  "GBPCAD",
+  "GBPAUD",
+  "AUDCHF",
+  "AUDCAD",
+  "AUDNZD",
   "AUDJPY",
+  "AUDUSD",
+  "NZDUSD",
+  "NZDJPY",
 ];
-const DEFAULT_GOLD_SYMBOLS = ["XAUUSD", "XAUEUR", "XAUGBP", "XAUJPY", "XAUAUD"];
-const DEFAULT_SILVER_SYMBOLS = [
+const DEFAULT_COMMODITY_SYMBOLS = [
+  "XAUGBP",
+  "XAUUSD",
+  "XAUEUR",
+  "XAUJPY",
   "XAGUSD",
-  "XAGEUR",
-  "XAGGBP",
-  "XAGJPY",
-  "XAGAUD",
+  "XTIUSD",
+  "XPTUSD",
+  "XNGUSD",
+  "XBRUSD",
 ];
+const DEFAULT_INDICES_SYMBOLS = [
+  "US500",
+  "US30",
+  "USTEC",
+  "UK100",
+  "TECDE30",
+  "DE40",
+  "DE30",
+  "CA60",
+  "CHINAH",
+  "SWI20",
+  "AUS200",
+  "CHINA50",
+  "JP225",
+];
+
 const DEFAULT_SMT_GROUPS = [
   { name: "EUR/GBP", symbols: ["EURUSD", "GBPUSD"] },
   { name: "BTC/ETH", symbols: ["BTCUSD", "ETHUSD"] },
@@ -193,6 +215,10 @@ const CRYPTO_PREFIXES = new Set([
   "MANA",
   "AXS",
   "GALA",
+  "NEAR",
+  "HBAR",
+  "XLM",
+  "XTZ",
 ]);
 const FOREX_PAIRS = new Set([
   "EURUSD",
@@ -237,12 +263,33 @@ const FOREX_PAIRS = new Set([
   "EURDKK",
   "EURPLN",
   "EURSGD",
+  "EURHKD",
+  "USDHKD",
 ]);
+const COMMODITY_PREFIXES = new Set(["XAU", "XAG", "XTI", "XBR", "XNG", "XPT"]);
+const INDICES_SET = new Set([
+  "US500",
+  "US30",
+  "USTEC",
+  "UK100",
+  "TECDE30",
+  "DE40",
+  "DE30",
+  "CA60",
+  "CHINAH",
+  "SWI20",
+  "AUS200",
+  "CHINA50",
+  "JP225",
+  "NAS100",
+  "SPX500",
+]);
+
 const classifySymbol = (s) => {
   const upper = String(s || "").toUpperCase();
   if (!upper) return "other";
-  if (upper.startsWith("XAU")) return "gold";
-  if (upper.startsWith("XAG")) return "silver";
+  if (COMMODITY_PREFIXES.has(upper.substring(0, 3))) return "commodity";
+  if (INDICES_SET.has(upper)) return "indices";
   const prefix = upper.replace(/USD$|USDT$/, "");
   if (
     CRYPTO_PREFIXES.has(prefix) &&
@@ -3740,11 +3787,11 @@ export default function ChartSnapshotsPage() {
     return merged.sort();
   }, [allSymbols]);
 
-  const goldSymbols = useMemo(() => {
-    const fromAll = allSymbols.filter((s) => classifySymbol(s) === "gold");
+  const commoditySymbols = useMemo(() => {
+    const fromAll = allSymbols.filter((s) => classifySymbol(s) === "commodity");
     const merged = [
       ...new Set(
-        [...DEFAULT_GOLD_SYMBOLS, ...fromAll]
+        [...DEFAULT_COMMODITY_SYMBOLS, ...fromAll]
           .map(normalizeWatchSymbol)
           .filter(Boolean),
       ),
@@ -3752,11 +3799,11 @@ export default function ChartSnapshotsPage() {
     return merged.sort();
   }, [allSymbols]);
 
-  const silverSymbols = useMemo(() => {
-    const fromAll = allSymbols.filter((s) => classifySymbol(s) === "silver");
+  const indicesSymbols = useMemo(() => {
+    const fromAll = allSymbols.filter((s) => classifySymbol(s) === "indices");
     const merged = [
       ...new Set(
-        [...DEFAULT_SILVER_SYMBOLS, ...fromAll]
+        [...DEFAULT_INDICES_SYMBOLS, ...fromAll]
           .map(normalizeWatchSymbol)
           .filter(Boolean),
       ),
@@ -3776,10 +3823,10 @@ export default function ChartSnapshotsPage() {
         return cryptoSymbols;
       case "FOREX":
         return forexSymbols;
-      case "GOLD":
-        return goldSymbols;
-      case "SILVER":
-        return silverSymbols;
+      case "COMMODITY":
+        return commoditySymbols;
+      case "INDICES":
+        return indicesSymbols;
       case "SMT":
         return smtSymbols;
       case "ALL":
@@ -3792,8 +3839,8 @@ export default function ChartSnapshotsPage() {
     allSymbols,
     cryptoSymbols,
     forexSymbols,
-    goldSymbols,
-    silverSymbols,
+    commoditySymbols,
+    indicesSymbols,
     smtSymbols,
   ]);
 
@@ -3839,8 +3886,8 @@ export default function ChartSnapshotsPage() {
                   "ALL",
                   "CRYPTO",
                   "FOREX",
-                  "GOLD",
-                  "SILVER",
+                  "COMMODITY",
+                  "INDICES",
                   "SMT",
                 ].map((tab) => (
                   <button
@@ -3857,10 +3904,10 @@ export default function ChartSnapshotsPage() {
                           ? "Crypto"
                           : tab === "FOREX"
                             ? "Forex"
-                            : tab === "GOLD"
-                              ? "Gold"
-                              : tab === "SILVER"
-                                ? "Silver"
+                            : tab === "COMMODITY"
+                              ? "Commodity"
+                              : tab === "INDICES"
+                                ? "Indices"
                                 : "SMT"}
                   </button>
                 ))}
@@ -4301,8 +4348,8 @@ export default function ChartSnapshotsPage() {
                   <option value="ALL">All</option>
                   <option value="CRYPTO">Crypto</option>
                   <option value="FOREX">Forex</option>
-                  <option value="GOLD">Gold</option>
-                  <option value="SILVER">Silver</option>
+                  <option value="COMMODITY">Commodity</option>
+                  <option value="INDICES">Indices</option>
                   <option value="SMT">SMT</option>
                 </select>
                 <div
