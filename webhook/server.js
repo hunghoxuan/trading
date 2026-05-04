@@ -100,10 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(
-  process.env.WEBHOOK_SERVER_VERSION,
-  "v2026.05.04 05:11 - 390a633",
-); // DB Index Update
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.04 13:12 - 4b17282"); // DB Index Update
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
@@ -14278,10 +14275,18 @@ const appHandler = async (req, res) => {
         ],
       );
       const rows = await repoListUserSettings(userId);
-      const settings = rows.map((r) => ({
-        ...r,
-        data: r.data,
-      }));
+      const settings = rows.map((r) => {
+        let d = r.data;
+        if ((!d || Object.keys(d).length === 0) && r.value) {
+          try {
+            d = JSON.parse(r.value);
+            if (typeof d !== "object" || d === null) d = { value: r.value };
+          } catch {
+            d = { value: r.value };
+          }
+        }
+        return { ...r, data: d || {} };
+      });
       return json(res, 200, { ok: true, settings });
     } catch (e) {
       return json(res, 500, { ok: false, error: e.message });
@@ -14341,8 +14346,22 @@ const appHandler = async (req, res) => {
         return json(res, 400, { ok: false, error: "Missing type" });
       const db = await mt5InitBackend();
       const userId = sess.user_id || CFG.mt5DefaultUserId;
-      const payloadData =
-        body.data && typeof body.data === "object" ? body.data : {};
+      let payloadData = body.data;
+      if (!payloadData || typeof payloadData !== "object") {
+        if (body.value !== undefined && body.value !== null) {
+          try {
+            payloadData = JSON.parse(body.value);
+            if (typeof payloadData !== "object" || payloadData === null) {
+              payloadData = { value: body.value };
+            }
+          } catch {
+            payloadData = { value: body.value };
+          }
+        } else {
+          payloadData = {};
+        }
+      }
+
       let settingName = String(body.name || body.type || "").trim();
       let data = payloadData;
 
@@ -14368,10 +14387,10 @@ const appHandler = async (req, res) => {
 
       const res2 = await db.query(
         `
-        INSERT INTO user_settings (user_id, type, name, data, status, value)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO user_settings (user_id, type, name, data, status)
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (user_id, type, name)
-        DO UPDATE SET data = EXCLUDED.data, status = EXCLUDED.status, value = EXCLUDED.value, updated_at = NOW()
+        DO UPDATE SET data = EXCLUDED.data, status = EXCLUDED.status, updated_at = NOW()
         RETURNING *
       `,
         [
@@ -14380,7 +14399,6 @@ const appHandler = async (req, res) => {
           settingName || body.type,
           data,
           body.status || "active",
-          body.value || null,
         ],
       );
 

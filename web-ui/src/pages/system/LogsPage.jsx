@@ -16,14 +16,7 @@ const ALL_LOG_TYPES = [
   "SIGNAL",
   "TRADE",
 ];
-const TRACE_TYPES = new Set([
-  "CRON_MD",
-  "FETCH_API",
-  "CHART_API",
-  "ANALYZE",
-  "CACHE",
-  "DB",
-]);
+const TRACE_TYPES = new Set(ALL_LOG_TYPES);
 
 function fDateTime(v) {
   return showDateTime(v);
