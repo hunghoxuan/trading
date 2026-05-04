@@ -162,6 +162,7 @@ export function SymbolChart({
   analysisSnapshot = null,
   hasTradePlan = false,
   hasAnalysis = false,
+  skipFetch = false,
 }) {
   const [mode, setMode] = useState(defaultMode);
   const [pendingMode, setPendingMode] = useState(null); // mode we're loading
@@ -178,6 +179,7 @@ export function SymbolChart({
       symbol: cleanSym,
       timeframes,
       mode: pendingMode || mode,
+      skipFetch,
     });
 
   const sortedTfs = useMemo(

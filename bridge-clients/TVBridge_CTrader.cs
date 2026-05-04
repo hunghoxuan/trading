@@ -34,7 +34,7 @@ namespace cAlgo.Robots
         [Parameter("Max Risk %", DefaultValue = 1.0, MinValue = 0.1, MaxValue = 10.0)]
         public double MaxRiskPct { get; set; }
 
-        private string BuildVersion = "v2026.05.04 15:30 - 92e5915";
+        private string BuildVersion = "v2026.05.04 15:49 - 753bdf9";
         private string _lastStatus = "INITIALIZING";
         private string _lastSignalId = "None";
         private string _lastAction = "None";
@@ -123,8 +123,8 @@ namespace cAlgo.Robots
                 }
                 _lastStateHash = stateHash;
 
-                var body = string.Format("{{\"account_id\":\"{0}\",\"balance\":{1},\"equity\":{2},\"positions\":[{3}],\"orders\":[],\"closed\":[]}}",
-                    Account.UserId, Account.Balance, Account.Equity, string.Join(",", posList));
+                var body = string.Format("{{\"account_id\":\"{0}\",\"balance\":{1},\"equity\":{2},\"margin\":{3},\"free_margin\":{4},\"positions\":[{5}],\"orders\":[],\"closed\":[]}}",
+                    Account.UserId, Account.Balance, Account.Equity, Account.Margin, Account.FreeMargin, string.Join(",", posList));
 
                 var url = ServerBaseUrl.TrimEnd('/') + "/mt5/ea/sync-v2";
                 var content = new StringContent(body, Encoding.UTF8, "application/json");

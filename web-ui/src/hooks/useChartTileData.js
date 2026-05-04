@@ -18,6 +18,7 @@ export function useSymbolChartData({
   symbol,
   timeframes = ["D", "4H", "15M", "5M"],
   mode = "fixed",
+  skipFetch = false,
 }) {
   const [status, setStatus] = useState("IDLE");
   const [data, setData] = useState({}); // { "4h": { bars, snapshot, created_at }, ... }
@@ -89,6 +90,7 @@ export function useSymbolChartData({
         setError(null);
         return null;
       }
+      if (skipFetch) return null;
       setStatus("LOADING");
       setError(null);
       if (mode === "snapshots") setSnapMsg("Fetching...");
@@ -139,6 +141,12 @@ export function useSymbolChartData({
     if (mode === "live") {
       setData({});
       setError(null);
+      return;
+    }
+    if (skipFetch) {
+      // TradePlan mode: don't fetch, TradeSignalChart handles its own data
+      setStatus("READY");
+      setData({});
       return;
     }
     // Check all TFs in cache

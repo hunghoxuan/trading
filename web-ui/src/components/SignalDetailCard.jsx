@@ -1030,6 +1030,7 @@ export function SignalDetailCard({
             tradePlan?.value?.sl,
           )}
           hasAnalysis={Boolean(rawData && Object.keys(rawData).length > 0)}
+          skipFetch={true}
         />
       </div>
 
