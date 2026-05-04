@@ -824,6 +824,58 @@ export default function SettingsPage({
               </div>
             </div>
 
+            {/* LOGS GROUP */}
+            <div className="stack-layout" style={{ gap: 8 }}>
+              <div className="panel-label" style={{ margin: 0, opacity: 0.8 }}>
+                LOGS
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {[
+                  "CRON_MD",
+                  "FETCH_API",
+                  "CHART_API",
+                  "ANALYZE",
+                  "CACHE",
+                  "DB",
+                ].map((lt) => (
+                  <label
+                    key={lt}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      cursor: "pointer",
+                      fontSize: 10,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={logConfig.includes(lt)}
+                      onChange={(e) => {
+                        const next = e.target.checked
+                          ? [...logConfig, lt]
+                          : logConfig.filter((x) => x !== lt);
+                        setLogConfig(next);
+                      }}
+                    />
+                    <span className="minor-text">{lt}</span>
+                  </label>
+                ))}
+              </div>
+              <button
+                className="secondary-button"
+                onClick={() => saveLoggingConfig(logConfig)}
+                disabled={logBusy}
+                style={{
+                  padding: "2px 8px",
+                  fontSize: 10,
+                  width: "fit-content",
+                }}
+              >
+                {logBusy ? "SAVING..." : "SAVE"}
+              </button>
+            </div>
+
             {/* WATCHLISTS GROUP */}
             <div className="stack-layout" style={{ gap: 8 }}>
               <div
@@ -1084,50 +1136,6 @@ export default function SettingsPage({
                         <span className="minor-text">AI Analysis Cron</span>
                       </label>
                     </div>
-
-                    <div className="panel-label" style={{ marginTop: 12 }}>
-                      LOG EVENT TYPES
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {[
-                        "CRON_MD",
-                        "FETCH_API",
-                        "CHART_API",
-                        "ANALYZE",
-                        "CACHE",
-                        "DB",
-                      ].map((lt) => (
-                        <label
-                          key={lt}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                            cursor: "pointer",
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={logConfig.includes(lt)}
-                            onChange={(e) => {
-                              const next = e.target.checked
-                                ? [...logConfig, lt]
-                                : logConfig.filter((x) => x !== lt);
-                              setLogConfig(next);
-                            }}
-                          />
-                          <span className="minor-text">{lt}</span>
-                        </label>
-                      ))}
-                    </div>
-                    <button
-                      className="secondary-button"
-                      onClick={() => saveLoggingConfig(logConfig)}
-                      disabled={logBusy}
-                      style={{ width: "fit-content" }}
-                    >
-                      {logBusy ? "SAVING..." : "SAVE LOG CONFIG"}
-                    </button>
                     <button
                       className="primary-button"
                       onClick={savePreferences}
