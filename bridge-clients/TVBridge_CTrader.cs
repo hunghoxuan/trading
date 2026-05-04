@@ -34,7 +34,7 @@ namespace cAlgo.Robots
         [Parameter("Max Risk %", DefaultValue = 1.0, MinValue = 0.1, MaxValue = 10.0)]
         public double MaxRiskPct { get; set; }
 
-        private string BuildVersion = "v2026.05.04 18:06 - cd6ed13";
+        private string BuildVersion = "v2026.05.04 18:22 - 12503ef";
         private string _lastStatus = "INITIALIZING";
         private string _lastSignalId = "None";
         private string _lastAction = "None";
@@ -99,22 +99,35 @@ namespace cAlgo.Robots
         private async Task SyncWithVpsAsync()
         {
             _isPolling = true;
+            
+            // Collect positions on main thread
+            var posList = new List<string>();
+            var accountId = "";
+            double balance = 0, equity = 0, margin = 0, freeMargin = 0;
+
+            var tcs = new TaskCompletionSource<bool>();
+            BeginInvokeOnMainThread(() => {
+                try {
+                    accountId = Account.Number.ToString();
+                    balance = Account.Balance;
+                    equity = Account.Equity;
+                    margin = Account.Margin;
+                    freeMargin = Account.FreeMargin;
+
+                    foreach (var pos in Positions) {
+                        if (pos.Label == MagicNumber.ToString()) {
+                            string sid = string.IsNullOrEmpty(pos.Comment) ? pos.Label : pos.Comment;
+                            posList.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                                "{{\"signal_id\":\"{0}\",\"status\":\"START\",\"ticket\":\"{1}\",\"symbol\":\"{2}\",\"pnl\":{3:F2},\"opened_at\":\"{4}\"}}",
+                                sid, pos.Id, pos.SymbolName, pos.GrossProfit, pos.EntryTime.ToString("yyyy-MM-ddTHH:mm:ssZ")));
+                        }
+                    }
+                } finally { tcs.SetResult(true); }
+            });
+            await tcs.Task;
+
             try
             {
-                var posList = new List<string>();
-                foreach (var pos in Positions)
-                {
-                    // isolate by MagicNumber stored in Label
-                    if (pos.Label == MagicNumber.ToString())
-                    {
-                        // Signal ID is stored in Comment
-                        string sid = string.IsNullOrEmpty(pos.Comment) ? pos.Label : pos.Comment;
-                        posList.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                            "{{\"signal_id\":\"{0}\",\"status\":\"START\",\"ticket\":\"{1}\",\"symbol\":\"{2}\",\"pnl\":{3:F2},\"opened_at\":\"{4}\"}}",
-                            sid, pos.Id, pos.SymbolName, pos.GrossProfit, pos.EntryTime.ToString("yyyy-MM-ddTHH:mm:ssZ")));
-                    }
-                }
-
                 var stateHash = string.Join(",", posList);
                 if (stateHash == _lastStateHash && DateTime.Now - _lastSyncTime < TimeSpan.FromMinutes(5))
                 {
@@ -126,7 +139,7 @@ namespace cAlgo.Robots
 
                 var body = string.Format(System.Globalization.CultureInfo.InvariantCulture,
                     "{{\"account_id\":\"{0}\",\"balance\":{1:F2},\"equity\":{2:F2},\"margin\":{3:F2},\"free_margin\":{4:F2},\"positions\":[{5}],\"orders\":[],\"closed\":[]}}",
-                    Account.Number, Account.Balance, Account.Equity, Account.Margin, Account.FreeMargin, string.Join(",", posList));
+                    accountId, balance, equity, margin, freeMargin, string.Join(",", posList));
 
                 Print("[Sync] Sending: {0}", body);
 
@@ -178,7 +191,9 @@ namespace cAlgo.Robots
                         var json = await response.Content.ReadAsStringAsync();
                         _lastPollTime = DateTime.Now;
                         _lastStatus = "POLL_OK";
-                        ProcessResponse(json);
+                        BeginInvokeOnMainThread(() => {
+                            ProcessResponse(json);
+                        });
                     }
                     else
                     {
@@ -323,46 +338,51 @@ namespace cAlgo.Robots
 
         private void RefreshDebugPanel()
         {
-            var statusColor = _lastStatus.Contains("ERR") || _lastStatus.Contains("FAIL") ? Color.Red : Color.Aqua;
-            var syncColor = _lastSyncSummary.Contains("FAIL") || _lastSyncSummary.Contains("ERR") ? Color.Red : Color.Aqua;
-
-            var activeTrades = new List<string>();
-            foreach (var pos in Positions)
+            BeginInvokeOnMainThread(() =>
             {
-                if (pos.Label == MagicNumber.ToString())
+                var statusColor = _lastStatus.Contains("ERR") || _lastStatus.Contains("FAIL") ? Color.Red : Color.Aqua;
+
+                var activeTrades = new List<string>();
+                try
                 {
-                    string side = pos.TradeType == TradeType.Buy ? "B" : "S";
-                    // Try to get signal_id from comment
-                    string sid = string.IsNullOrEmpty(pos.Comment) ? "Manual" : pos.Comment;
-                    if (sid.Length > 8) sid = sid.Substring(0, 8);
-                    activeTrades.Add(string.Format("{0} {1} {2}", sid, pos.SymbolName, side));
+                    foreach (var pos in Positions)
+                    {
+                        if (pos.Label == MagicNumber.ToString())
+                        {
+                            string side = pos.TradeType == TradeType.Buy ? "B" : "S";
+                            string sid = string.IsNullOrEmpty(pos.Comment) ? "Manual" : pos.Comment;
+                            if (sid.Length > 8) sid = sid.Substring(0, 8);
+                            activeTrades.Add(string.Format("{0} {1} {2}", sid, pos.SymbolName, side));
+                        }
+                    }
                 }
-            }
+                catch { }
 
-            var text = string.Format(
-                "--- TVBridge cTrader Pro ---\n" +
-                "Build: {0}\n" +
-                "Status: {1}\n" +
-                "Sync: {2} [{3}]\n" +
-                "Polls: {4} (OK: {5} / ERR: {6})\n" +
-                "Last Poll: {7}\n" +
-                "------------------------\n" +
-                "VPS Trades ({8}):\n{9}\n" +
-                "------------------------\n" +
-                "Last ID: {10}\n" +
-                "Action: {11} {12}\n" +
-                "Error: {13}",
-                BuildVersion, _lastStatus,
-                _lastSyncSummary, _lastSyncTime == DateTime.MinValue ? "Never" : _lastSyncTime.ToString("HH:mm:ss"),
-                _pollCount, _successCount, _failCount,
-                _lastPollTime == DateTime.MinValue ? "Never" : _lastPollTime.ToString("HH:mm:ss"),
-                activeTrades.Count,
-                activeTrades.Count > 0 ? string.Join("\n", activeTrades.Take(5)) : "None",
-                _lastSignalId, _lastAction, _lastSymbol,
-                string.IsNullOrEmpty(_lastError) ? "None" : _lastError
-            );
+                var text = string.Format(
+                    "--- TVBridge cTrader Pro ---\n" +
+                    "Build: {0}\n" +
+                    "Status: {1}\n" +
+                    "Sync: {2} [{3}]\n" +
+                    "Polls: {4} (OK: {5} / ERR: {6})\n" +
+                    "Last Poll: {7}\n" +
+                    "------------------------\n" +
+                    "VPS Trades ({8}):\n{9}\n" +
+                    "------------------------\n" +
+                    "Last ID: {10}\n" +
+                    "Action: {11} {12}\n" +
+                    "Error: {13}",
+                    BuildVersion, _lastStatus,
+                    _lastSyncSummary, _lastSyncTime == DateTime.MinValue ? "Never" : _lastSyncTime.ToString("HH:mm:ss"),
+                    _pollCount, _successCount, _failCount,
+                    _lastPollTime == DateTime.MinValue ? "Never" : _lastPollTime.ToString("HH:mm:ss"),
+                    activeTrades.Count,
+                    activeTrades.Count > 0 ? string.Join("\n", activeTrades.Take(5)) : "None",
+                    _lastSignalId, _lastAction, _lastSymbol,
+                    string.IsNullOrEmpty(_lastError) ? "None" : _lastError
+                );
 
-            Chart.DrawStaticText("DebugPanel", text, VerticalAlignment.Top, HorizontalAlignment.Left, statusColor);
+                Chart.DrawStaticText("DebugPanel", text, VerticalAlignment.Top, HorizontalAlignment.Left, statusColor);
+            });
         }
 
         private string GetJsonValue(string json, string key)

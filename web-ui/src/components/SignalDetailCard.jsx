@@ -8,6 +8,7 @@ import {
   shouldShowPnl,
 } from "../utils/signalDetailUtils";
 import { SymbolChart } from "./charts/ChartTile";
+import { SmartContent } from "./SmartContent";
 
 const TF_WEIGHTS = {
   "1m": 1,
@@ -1007,10 +1008,185 @@ export function SignalDetailCard({
                     >
                       NOTE
                     </div>
+                    <SmartContent content={note} mode="readonly" />
+                  </div>
+                )}
+
+                {/* PD Arrays */}
+                {Array.isArray(raw.pdArrays) && raw.pdArrays.length > 0 && (
+                  <div style={{ marginTop: 20 }}>
                     <div
-                      style={{ fontStyle: "italic", color: "var(--muted)" }}
-                      dangerouslySetInnerHTML={{ __html: formatNote(note) }}
-                    />
+                      className="minor-text"
+                      style={{
+                        fontSize: "11px",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        marginBottom: 8,
+                      }}
+                    >
+                      PD Arrays
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 4,
+                      }}
+                    >
+                      {raw.pdArrays.map((pd, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            fontSize: 11,
+                            padding: "4px 8px",
+                            background: "rgba(255,255,255,0.03)",
+                            borderRadius: 4,
+                            display: "flex",
+                            gap: 8,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <span style={{ fontWeight: 600 }}>{pd.type}</span>
+                          <span
+                            style={{
+                              color:
+                                pd.dir?.toLowerCase() === "long"
+                                  ? "#26a69a"
+                                  : "#ef5350",
+                            }}
+                          >
+                            {pd.dir}
+                          </span>
+                          <span className="minor-text">{pd.tf}</span>
+                          <span className="minor-text">
+                            {pd.top}–{pd.bot}
+                          </span>
+                          <span className="minor-text">
+                            {pd.status}
+                            {pd.touched ? " (touched)" : ""}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Key Levels */}
+                {Array.isArray(raw.keyLevels) && raw.keyLevels.length > 0 && (
+                  <div style={{ marginTop: 20 }}>
+                    <div
+                      className="minor-text"
+                      style={{
+                        fontSize: "11px",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        marginBottom: 8,
+                      }}
+                    >
+                      Key Levels
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {raw.keyLevels.map((kl, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            fontSize: 11,
+                            padding: "3px 8px",
+                            background: "rgba(255,255,255,0.03)",
+                            borderRadius: 4,
+                          }}
+                        >
+                          <span style={{ fontWeight: 600 }}>{kl.name}</span>
+                          <span
+                            className="minor-text"
+                            style={{ marginLeft: 6 }}
+                          >
+                            {kl.price}
+                          </span>
+                          {kl.swept && (
+                            <span
+                              style={{
+                                marginLeft: 6,
+                                color: "#ef5350",
+                                fontSize: 9,
+                              }}
+                            >
+                              swept
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Per-TF Details */}
+                {Array.isArray(compactTfs) && compactTfs.length > 0 && (
+                  <div style={{ marginTop: 20 }}>
+                    <div
+                      className="minor-text"
+                      style={{
+                        fontSize: "11px",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        marginBottom: 8,
+                      }}
+                    >
+                      Per-TF Details
+                    </div>
+                    {compactTfs.map((tf) => (
+                      <div
+                        key={tf.tf}
+                        style={{
+                          marginBottom: 12,
+                          padding: 8,
+                          background: "rgba(255,255,255,0.02)",
+                          borderRadius: 6,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            fontSize: 12,
+                            marginBottom: 4,
+                          }}
+                        >
+                          {tf.tf}
+                          <span
+                            style={{
+                              marginLeft: 8,
+                              fontSize: 10,
+                              color: String(tf.bias || "")
+                                .toLowerCase()
+                                .includes("long")
+                                ? "#26a69a"
+                                : String(tf.bias || "")
+                                      .toLowerCase()
+                                      .includes("short")
+                                  ? "#ef5350"
+                                  : "var(--muted)",
+                            }}
+                          >
+                            {tf.bias}
+                          </span>
+                          <span
+                            className="minor-text"
+                            style={{ marginLeft: 6 }}
+                          >
+                            {tf.trend} · {tf.structure} · {tf.phase}
+                          </span>
+                        </div>
+                        {tf.keyBreaks?.map((kb, i) => (
+                          <div
+                            key={i}
+                            className="minor-text"
+                            style={{ fontSize: 10 }}
+                          >
+                            {kb.event}: {kb.price} {kb.direction}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -1041,18 +1217,15 @@ export function SignalDetailCard({
 
       {/* JSON TAB */}
       <div style={{ display: mainTab === "json" ? "block" : "none" }}>
-        <pre
-          className="snapshot-mono-v2"
+        <div
           style={{
             padding: 16,
             background: "rgba(0,0,0,0.3)",
             borderRadius: 12,
-            overflow: "auto",
-            fontSize: "12px",
           }}
         >
-          {JSON.stringify(rawData, null, 2)}
-        </pre>
+          <SmartContent content={rawData} mode="readonly" />
+        </div>
       </div>
 
       {/* HISTORY TAB */}
