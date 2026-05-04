@@ -131,7 +131,7 @@ function rangeBounds(range) {
 
 function moneyRiskReward(t) {
   const st = String(t?.execution_status || "").toUpperCase();
-  if (!["PENDING", "OPEN", "FILLED", "CLOSED"].includes(st)) return { risk: null, reward: null };
+  if (!["PENDING", "OPEN", "FILLED", "OPEN", "CLOSED"].includes(st)) return { risk: null, reward: null };
   const m = t?.metadata && typeof t.metadata === "object" ? t.metadata : {};
   const risk = asNum(m.risk_money_actual) ?? asNum(m.risk_money) ?? asNum(m.risk_money_planned);
   const rewardDirect = asNum(m.reward_money_planned);
@@ -756,9 +756,9 @@ export default function TradesPage() {
                             {(() => {
                               const mr = moneyRiskReward(t);
                               const meta = t?.metadata && typeof t.metadata === "object" ? t.metadata : {};
-                              const lots = asNum(meta.used_volume) ?? asNum(t.volume);
+                              const lots = asNum(meta.lots) ?? asNum(meta.used_volume) ?? asNum(t.volume);
                               const raw = t?.raw_json && typeof t.raw_json === "object" ? t.raw_json : {};
-                              const plannedVol = asNum(meta.requested_volume) ?? asNum(raw.volume) ?? asNum(t.volume);
+                              const plannedVol = asNum(meta.requested_lots) ?? asNum(meta.requested_volume) ?? asNum(raw.volume) ?? asNum(t.volume);
                               const riskPct = asNum(
                                 meta.riskPct ?? meta.risk_pct ?? meta.volumePct ?? meta.volume_pct
                                 ?? raw.riskPct ?? raw.risk_pct ?? raw.volumePct ?? raw.volume_pct
@@ -846,8 +846,8 @@ export default function TradesPage() {
                   const riskSize = tradeRiskSize(selectedTrade);
                   const meta = selectedTrade?.metadata && typeof selectedTrade.metadata === "object" ? selectedTrade.metadata : {};
                   const raw = selectedTrade?.raw_json && typeof selectedTrade.raw_json === "object" ? selectedTrade.raw_json : {};
-                  const vol = asNum(meta.used_volume) ?? asNum(selectedTrade.volume);
-                  const plannedVol = asNum(meta.requested_volume) ?? asNum(raw.volume) ?? asNum(selectedTrade.volume);
+                  const vol = asNum(meta.lots) ?? asNum(meta.used_volume) ?? asNum(selectedTrade.volume);
+                  const plannedVol = asNum(meta.requested_lots) ?? asNum(meta.requested_volume) ?? asNum(raw.volume) ?? asNum(selectedTrade.volume);
                   const riskPct = asNum(
                     meta.riskPct ?? meta.risk_pct ?? meta.volumePct ?? meta.volume_pct
                     ?? raw.riskPct ?? raw.risk_pct ?? raw.volumePct ?? raw.volume_pct
@@ -916,6 +916,14 @@ export default function TradesPage() {
                   { label: "Trade SID", value: selectedTrade.sid || selectedTrade.trade_id || "-" },
                   { label: "Account", value: accountById.get(String(selectedTrade.account_id || ""))?.name || selectedTrade.account_id || "-" },
                   { label: "Broker Ticket", value: brokerTicketOf(selectedTrade) },
+                  ...(selectedTrade.metadata && typeof selectedTrade.metadata === "object" ? [
+                    { label: "Broker Volume", value: selectedTrade.metadata.volume != null ? `${asNum(selectedTrade.metadata.volume).toLocaleString()} units` : null },
+                    { label: "Broker Lots", value: selectedTrade.metadata.lots != null ? `${asNum(selectedTrade.metadata.lots).toFixed(2)} lots` : null },
+                    { label: "Broker Pips", value: selectedTrade.metadata.pips != null ? `${asNum(selectedTrade.metadata.pips).toFixed(1)} pips` : null },
+                    { label: "Broker Net Profit", value: selectedTrade.metadata.net_pnl != null ? `$${asNum(selectedTrade.metadata.net_pnl).toFixed(2)}` : null },
+                    { label: "Commission", value: selectedTrade.metadata.commission != null ? `$${asNum(selectedTrade.metadata.commission).toFixed(2)}` : null },
+                    { label: "Swap", value: selectedTrade.metadata.swap != null ? `$${asNum(selectedTrade.metadata.swap).toFixed(2)}` : null },
+                  ].filter(x => x.value !== null) : []),
                   { label: "Note", value: selectedTrade.note || "-", fullWidth: true },
                 ]}
                 history={{
