@@ -3831,6 +3831,13 @@ export default function ChartSnapshotsPage() {
       case "INDICES":
         return indicesSymbols;
       case "SMT":
+        // If an SMT group is "active" (via cfg.symbol), show only symbols from that specific group
+        if (cfg.symbol) {
+          const activeGroup = DEFAULT_SMT_GROUPS.find((g) =>
+            g.symbols.includes(cfg.symbol),
+          );
+          if (activeGroup) return activeGroup.symbols;
+        }
         return smtSymbols;
       case "ALL":
       default:
@@ -3845,6 +3852,7 @@ export default function ChartSnapshotsPage() {
     commoditySymbols,
     indicesSymbols,
     smtSymbols,
+    cfg.symbol,
   ]);
 
   return (
@@ -3926,35 +3934,62 @@ export default function ChartSnapshotsPage() {
                           gap: 12,
                         }}
                       >
-                        {DEFAULT_SMT_GROUPS.map((group) => (
-                          <div key={group.name}>
-                            <div
-                              className="minor-text"
-                              style={{
-                                fontSize: 10,
-                                marginBottom: 6,
-                                fontWeight: 700,
-                              }}
-                            >
-                              {group.name}
+                        {DEFAULT_SMT_GROUPS.map((group) => {
+                          const allInGroupSelected = group.symbols.every(
+                            (s) => normalizeWatchSymbol(cfg.symbol) === s,
+                          );
+                          // For SMT we might want to support multiple selection eventually,
+                          // but currently cfg.symbol is a single value.
+                          // To support "showing both", we'd need to change how the grid filters.
+                          // However, the user specifically said "if i click EUR/GBP -> show both EUR, GBP in Symbols list".
+                          // In our current architecture, symbolsByTab determines what's in the grid.
+
+                          return (
+                            <div key={group.name}>
+                              <button
+                                type="button"
+                                className="minor-text"
+                                style={{
+                                  fontSize: 10,
+                                  marginBottom: 6,
+                                  fontWeight: 700,
+                                  background: "none",
+                                  border: "none",
+                                  padding: 0,
+                                  cursor: "pointer",
+                                  textAlign: "left",
+                                  color: "var(--accent)",
+                                  display: "block",
+                                  width: "100%",
+                                }}
+                                onClick={() => {
+                                  // Set the FIRST symbol in group to trigger the main view,
+                                  // but our SMT grid implementation already shows ALL symbols
+                                  // in the group when symbolFilterTab === "SMT".
+                                  // So clicking the header just acts as a navigation/focus anchor.
+                                  setCfgField("symbol", group.symbols[0]);
+                                }}
+                              >
+                                {group.name} (Select)
+                              </button>
+                              <div
+                                className="snapshot-tabs-v2"
+                                style={{ flexWrap: "wrap" }}
+                              >
+                                {group.symbols.map((s) => (
+                                  <button
+                                    key={s}
+                                    type="button"
+                                    className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
+                                    onClick={() => setCfgField("symbol", s)}
+                                  >
+                                    {s}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
-                            <div
-                              className="snapshot-tabs-v2"
-                              style={{ flexWrap: "wrap" }}
-                            >
-                              {group.symbols.map((s) => (
-                                <button
-                                  key={s}
-                                  type="button"
-                                  className={`secondary-button snapshot-tag-v2 ${normalizeWatchSymbol(cfg.symbol) === s ? "active" : ""}`}
-                                  onClick={() => setCfgField("symbol", s)}
-                                >
-                                  {s}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     );
                   }
