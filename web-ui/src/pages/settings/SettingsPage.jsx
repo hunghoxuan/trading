@@ -91,6 +91,7 @@ export default function SettingsPage({
   const [symbolsDetailText, setSymbolsDetailText] = useState("");
   const [cronForm, setCronForm] = useState({
     symbols: "",
+    exclude_symbols: "",
     timeframes: [],
     cadence_minutes: 60,
     provider: "twelvedata",
@@ -459,7 +460,10 @@ export default function SettingsPage({
     setSettingsLoading(true);
     try {
       let data = { value: String(value || "") };
-      if (String(type).toLowerCase() === "symbols" || String(type).toLowerCase() === "trade") {
+      if (
+        String(type).toLowerCase() === "symbols" ||
+        String(type).toLowerCase() === "trade"
+      ) {
         const symbols = String(value || "")
           .split(/[\n,]/)
           .map((x) =>
@@ -553,18 +557,11 @@ export default function SettingsPage({
   );
   const marketDataCronSetting = useMemo(
     () =>
-      settings.find(
-        (s) =>
-          s.type === "cron" && s.name === "MARKET_DATA_CRON",
-      ),
+      settings.find((s) => s.type === "cron" && s.name === "MARKET_DATA_CRON"),
     [settings],
   );
   const aiAnalysisCronSetting = useMemo(
-    () =>
-      settings.find(
-        (s) =>
-          s.type === "cron" && s.name === "ANALYSIS_CRON",
-      ),
+    () => settings.find((s) => s.type === "cron" && s.name === "ANALYSIS_CRON"),
     [settings],
   );
 
@@ -597,6 +594,9 @@ export default function SettingsPage({
       const d = selectedSetting?.data || {};
       setCronForm({
         symbols: Array.isArray(d.symbols) ? d.symbols.join(", ") : "",
+        exclude_symbols: Array.isArray(d.exclude_symbols)
+          ? d.exclude_symbols.join(", ")
+          : "",
         timeframes: Array.isArray(d.timeframes) ? d.timeframes : [],
         cadence_minutes: Number(d.cadence_minutes || 60),
         provider: String(d.provider || "twelvedata"),
@@ -1226,6 +1226,9 @@ export default function SettingsPage({
                           timezone: cronForm.timezone,
                           batch_size: cronForm.batch_size,
                           symbols: parseSymbolText(cronForm.symbols),
+                          exclude_symbols: parseSymbolText(
+                            cronForm.exclude_symbols,
+                          ),
                           timeframes: cronForm.timeframes,
                           cadence_minutes: cronForm.cadence_minutes,
                           model: cronForm.model,
@@ -1275,56 +1278,56 @@ export default function SettingsPage({
                 >
                   {selectedSetting.type === "cron" &&
                     selectedSetting.name === "MARKET_DATA_CRON" && (
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr 1fr",
-                        gap: 12,
-                      }}
-                    >
-                      <label className="stack-layout" style={{ gap: 6 }}>
-                        <span className="minor-text">Provider</span>
-                        <select
-                          value={cronForm.provider}
-                          onChange={(e) =>
-                            setCronForm((p) => ({
-                              ...p,
-                              provider: e.target.value,
-                            }))
-                          }
-                        >
-                          <option value="twelvedata">Twelve Data</option>
-                        </select>
-                      </label>
-                      <label className="stack-layout" style={{ gap: 6 }}>
-                        <span className="minor-text">Display Timezone</span>
-                        <input
-                          value={cronForm.timezone}
-                          onChange={(e) =>
-                            setCronForm((p) => ({
-                              ...p,
-                              timezone: e.target.value,
-                            }))
-                          }
-                        />
-                      </label>
-                      <label className="stack-layout" style={{ gap: 6 }}>
-                        <span className="minor-text">Batch Size</span>
-                        <input
-                          type="number"
-                          min="1"
-                          max="50"
-                          value={cronForm.batch_size}
-                          onChange={(e) =>
-                            setCronForm((p) => ({
-                              ...p,
-                              batch_size: Number(e.target.value),
-                            }))
-                          }
-                        />
-                      </label>
-                    </div>
-                  )}
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr 1fr",
+                          gap: 12,
+                        }}
+                      >
+                        <label className="stack-layout" style={{ gap: 6 }}>
+                          <span className="minor-text">Provider</span>
+                          <select
+                            value={cronForm.provider}
+                            onChange={(e) =>
+                              setCronForm((p) => ({
+                                ...p,
+                                provider: e.target.value,
+                              }))
+                            }
+                          >
+                            <option value="twelvedata">Twelve Data</option>
+                          </select>
+                        </label>
+                        <label className="stack-layout" style={{ gap: 6 }}>
+                          <span className="minor-text">Display Timezone</span>
+                          <input
+                            value={cronForm.timezone}
+                            onChange={(e) =>
+                              setCronForm((p) => ({
+                                ...p,
+                                timezone: e.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className="stack-layout" style={{ gap: 6 }}>
+                          <span className="minor-text">Batch Size</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="50"
+                            value={cronForm.batch_size}
+                            onChange={(e) =>
+                              setCronForm((p) => ({
+                                ...p,
+                                batch_size: Number(e.target.value),
+                              }))
+                            }
+                          />
+                        </label>
+                      </div>
+                    )}
 
                   <div className="stack-layout" style={{ gap: 8 }}>
                     <span
@@ -1340,6 +1343,26 @@ export default function SettingsPage({
                         setCronForm((p) => ({ ...p, symbols: e.target.value }))
                       }
                       placeholder="e.g. XAUUSD, EURUSD, BTCUSD"
+                    />
+                  </div>
+
+                  <div className="stack-layout" style={{ gap: 8 }}>
+                    <span
+                      className="panel-label"
+                      style={{ fontSize: 10, marginBottom: 0 }}
+                    >
+                      EXCLUDE SYMBOLS (COMMA OR NEWLINE)
+                    </span>
+                    <textarea
+                      rows={2}
+                      value={cronForm.exclude_symbols}
+                      onChange={(e) =>
+                        setCronForm((p) => ({
+                          ...p,
+                          exclude_symbols: e.target.value,
+                        }))
+                      }
+                      placeholder="e.g. XAUUSD (skip these)"
                     />
                   </div>
 
@@ -1379,201 +1402,201 @@ export default function SettingsPage({
 
                   {selectedSetting.type === "cron" &&
                     selectedSetting.name === "ANALYSIS_CRON" && (
-                    <>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr",
-                          gap: 12,
-                        }}
-                      >
-                        <label className="stack-layout" style={{ gap: 8 }}>
-                          <span
-                            className="panel-label"
-                            style={{ fontSize: 10, marginBottom: 0 }}
-                          >
-                            DIRECTIONS
-                          </span>
-                          <div style={{ display: "flex", gap: 12 }}>
-                            {["BUY", "SELL"].map((direction) => (
-                              <label
-                                key={direction}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 6,
-                                }}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={cronForm.directions.includes(
-                                    direction,
-                                  )}
-                                  onChange={(e) => {
-                                    const next = e.target.checked
-                                      ? [...cronForm.directions, direction]
-                                      : cronForm.directions.filter(
-                                          (x) => x !== direction,
-                                        );
-                                    setCronForm((p) => ({
-                                      ...p,
-                                      directions: next,
-                                    }));
-                                  }}
-                                />
-                                <span style={{ fontSize: 13 }}>
-                                  {direction}
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </label>
-                        <label className="stack-layout" style={{ gap: 8 }}>
-                          <span
-                            className="panel-label"
-                            style={{ fontSize: 10, marginBottom: 0 }}
-                          >
-                            ORDER TYPES
-                          </span>
-                          <div style={{ display: "flex", gap: 12 }}>
-                            {["market", "limit", "stop"].map((orderType) => (
-                              <label
-                                key={orderType}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 6,
-                                }}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={cronForm.order_types.includes(
-                                    orderType,
-                                  )}
-                                  onChange={(e) => {
-                                    const next = e.target.checked
-                                      ? [...cronForm.order_types, orderType]
-                                      : cronForm.order_types.filter(
-                                          (x) => x !== orderType,
-                                        );
-                                    setCronForm((p) => ({
-                                      ...p,
-                                      order_types: next,
-                                    }));
-                                  }}
-                                />
-                                <span style={{ fontSize: 13 }}>
-                                  {orderType}
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </label>
-                      </div>
-                      <div className="stack-layout" style={{ gap: 8 }}>
-                        <span
-                          className="panel-label"
-                          style={{ fontSize: 10, marginBottom: 0 }}
+                      <>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: 12,
+                          }}
                         >
-                          CADENCE (MINUTES)
-                        </span>
-                        <input
-                          type="number"
-                          value={cronForm.cadence_minutes}
-                          onChange={(e) =>
-                            setCronForm((p) => ({
-                              ...p,
-                              cadence_minutes: Number(e.target.value),
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="stack-layout" style={{ gap: 8 }}>
-                        <span
-                          className="panel-label"
-                          style={{ fontSize: 10, marginBottom: 0 }}
-                        >
-                          MODEL
-                        </span>
-                        <select
-                          value={cronForm.model}
-                          onChange={(e) =>
-                            setCronForm((p) => ({
-                              ...p,
-                              model: e.target.value,
-                            }))
-                          }
-                        >
-                          {API_KEY_NAME_OPTIONS.map((opt) => (
-                            <option
-                              key={opt.value}
-                              value={opt.value
-                                .replace("_API_KEY", "")
-                                .toLowerCase()}
+                          <label className="stack-layout" style={{ gap: 8 }}>
+                            <span
+                              className="panel-label"
+                              style={{ fontSize: 10, marginBottom: 0 }}
                             >
-                              {opt.label.replace(" API Key", "")}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="stack-layout" style={{ gap: 8 }}>
-                        <span
-                          className="panel-label"
-                          style={{ fontSize: 10, marginBottom: 0 }}
-                        >
-                          PROFILE
-                        </span>
-                        <input
-                          value={cronForm.profile}
-                          onChange={(e) =>
-                            setCronForm((p) => ({
-                              ...p,
-                              profile: e.target.value,
-                            }))
-                          }
-                          placeholder="Optional AI/profile name"
-                        />
-                      </div>
-                      <div className="stack-layout" style={{ gap: 8 }}>
-                        <span
-                          className="panel-label"
-                          style={{ fontSize: 10, marginBottom: 0 }}
-                        >
-                          ENTRY MODELS (COMMA OR NEWLINE)
-                        </span>
-                        <textarea
-                          rows={3}
-                          value={cronForm.entry_models}
-                          onChange={(e) =>
-                            setCronForm((p) => ({
-                              ...p,
-                              entry_models: e.target.value,
-                            }))
-                          }
-                          placeholder="Order Block, FVG, ICT..."
-                        />
-                      </div>
-                      <div className="stack-layout" style={{ gap: 8 }}>
-                        <span
-                          className="panel-label"
-                          style={{ fontSize: 10, marginBottom: 0 }}
-                        >
-                          PROMPT
-                        </span>
-                        <textarea
-                          rows={6}
-                          value={cronForm.prompt}
-                          onChange={(e) =>
-                            setCronForm((p) => ({
-                              ...p,
-                              prompt: e.target.value,
-                            }))
-                          }
-                          placeholder="Instructions for AI setup detection..."
-                        />
-                      </div>
-                    </>
-                  )}
+                              DIRECTIONS
+                            </span>
+                            <div style={{ display: "flex", gap: 12 }}>
+                              {["BUY", "SELL"].map((direction) => (
+                                <label
+                                  key={direction}
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={cronForm.directions.includes(
+                                      direction,
+                                    )}
+                                    onChange={(e) => {
+                                      const next = e.target.checked
+                                        ? [...cronForm.directions, direction]
+                                        : cronForm.directions.filter(
+                                            (x) => x !== direction,
+                                          );
+                                      setCronForm((p) => ({
+                                        ...p,
+                                        directions: next,
+                                      }));
+                                    }}
+                                  />
+                                  <span style={{ fontSize: 13 }}>
+                                    {direction}
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          </label>
+                          <label className="stack-layout" style={{ gap: 8 }}>
+                            <span
+                              className="panel-label"
+                              style={{ fontSize: 10, marginBottom: 0 }}
+                            >
+                              ORDER TYPES
+                            </span>
+                            <div style={{ display: "flex", gap: 12 }}>
+                              {["market", "limit", "stop"].map((orderType) => (
+                                <label
+                                  key={orderType}
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={cronForm.order_types.includes(
+                                      orderType,
+                                    )}
+                                    onChange={(e) => {
+                                      const next = e.target.checked
+                                        ? [...cronForm.order_types, orderType]
+                                        : cronForm.order_types.filter(
+                                            (x) => x !== orderType,
+                                          );
+                                      setCronForm((p) => ({
+                                        ...p,
+                                        order_types: next,
+                                      }));
+                                    }}
+                                  />
+                                  <span style={{ fontSize: 13 }}>
+                                    {orderType}
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          </label>
+                        </div>
+                        <div className="stack-layout" style={{ gap: 8 }}>
+                          <span
+                            className="panel-label"
+                            style={{ fontSize: 10, marginBottom: 0 }}
+                          >
+                            CADENCE (MINUTES)
+                          </span>
+                          <input
+                            type="number"
+                            value={cronForm.cadence_minutes}
+                            onChange={(e) =>
+                              setCronForm((p) => ({
+                                ...p,
+                                cadence_minutes: Number(e.target.value),
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="stack-layout" style={{ gap: 8 }}>
+                          <span
+                            className="panel-label"
+                            style={{ fontSize: 10, marginBottom: 0 }}
+                          >
+                            MODEL
+                          </span>
+                          <select
+                            value={cronForm.model}
+                            onChange={(e) =>
+                              setCronForm((p) => ({
+                                ...p,
+                                model: e.target.value,
+                              }))
+                            }
+                          >
+                            {API_KEY_NAME_OPTIONS.map((opt) => (
+                              <option
+                                key={opt.value}
+                                value={opt.value
+                                  .replace("_API_KEY", "")
+                                  .toLowerCase()}
+                              >
+                                {opt.label.replace(" API Key", "")}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="stack-layout" style={{ gap: 8 }}>
+                          <span
+                            className="panel-label"
+                            style={{ fontSize: 10, marginBottom: 0 }}
+                          >
+                            PROFILE
+                          </span>
+                          <input
+                            value={cronForm.profile}
+                            onChange={(e) =>
+                              setCronForm((p) => ({
+                                ...p,
+                                profile: e.target.value,
+                              }))
+                            }
+                            placeholder="Optional AI/profile name"
+                          />
+                        </div>
+                        <div className="stack-layout" style={{ gap: 8 }}>
+                          <span
+                            className="panel-label"
+                            style={{ fontSize: 10, marginBottom: 0 }}
+                          >
+                            ENTRY MODELS (COMMA OR NEWLINE)
+                          </span>
+                          <textarea
+                            rows={3}
+                            value={cronForm.entry_models}
+                            onChange={(e) =>
+                              setCronForm((p) => ({
+                                ...p,
+                                entry_models: e.target.value,
+                              }))
+                            }
+                            placeholder="Order Block, FVG, ICT..."
+                          />
+                        </div>
+                        <div className="stack-layout" style={{ gap: 8 }}>
+                          <span
+                            className="panel-label"
+                            style={{ fontSize: 10, marginBottom: 0 }}
+                          >
+                            PROMPT
+                          </span>
+                          <textarea
+                            rows={6}
+                            value={cronForm.prompt}
+                            onChange={(e) =>
+                              setCronForm((p) => ({
+                                ...p,
+                                prompt: e.target.value,
+                              }))
+                            }
+                            placeholder="Instructions for AI setup detection..."
+                          />
+                        </div>
+                      </>
+                    )}
 
                   <div
                     style={{
@@ -1594,6 +1617,9 @@ export default function SettingsPage({
                           timezone: cronForm.timezone,
                           batch_size: cronForm.batch_size,
                           symbols: parseSymbolText(cronForm.symbols),
+                          exclude_symbols: parseSymbolText(
+                            cronForm.exclude_symbols,
+                          ),
                           timeframes: cronForm.timeframes,
                           cadence_minutes: cronForm.cadence_minutes,
                           model: cronForm.model,
@@ -1720,8 +1746,9 @@ export default function SettingsPage({
                     },
                   )}
                 </div>
-              ) : (String(selectedSetting.type || "").toLowerCase() === "symbols" ||
-                String(selectedSetting.type || "").toLowerCase() === "trade") ? (
+              ) : String(selectedSetting.type || "").toLowerCase() ===
+                  "symbols" ||
+                String(selectedSetting.type || "").toLowerCase() === "trade" ? (
                 <div className="stack-layout" style={{ gap: 10 }}>
                   <label className="stack-layout" style={{ gap: 6 }}>
                     <span className="minor-text">Symbols (one per line)</span>
