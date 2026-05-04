@@ -100,7 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.04 20:48 - 3984d9e"); // DB Index Update
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.04 21:03 - 4161baa"); // DB Index Update
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
@@ -6966,6 +6966,8 @@ async function _mt5InitBackendInternal() {
         free_margin: Number(
           payload.free_margin || existingMeta.free_margin || 0,
         ),
+        leverage: Number(payload.leverage || existingMeta.leverage || 0),
+        broker_name: String(payload.broker_name || existingMeta.broker_name || ""),
         health_updated_at: new Date().toISOString(),
       };
 
@@ -7063,6 +7065,7 @@ async function _mt5InitBackendInternal() {
           const prev = merged.get(key);
           if (!prev) {
             merged.set(key, {
+              ...raw, // Capture all raw fields from broker (pip_value, leverage, etc.)
               signal_id: effectiveSignalId || null,
               ticket,
               ticket_candidates: ticketCandidates,
@@ -7083,6 +7086,8 @@ async function _mt5InitBackendInternal() {
               closed_at: closedAt,
             });
           } else {
+            // Keep existing fields and merge new ones
+            Object.assign(prev, raw);
             if (!prev.signal_id && effectiveSignalId)
               prev.signal_id = effectiveSignalId;
             prev.ticket_candidates = Array.from(
@@ -7128,14 +7133,13 @@ async function _mt5InitBackendInternal() {
               ? [it.ticket]
               : [];
         const syncMeta = JSON.stringify({
-          broker_ticket_candidates: ticketCandidates,
-          broker_position_id: ticketCandidates[0] || null,
-          broker_commission: it.commission || 0,
-          broker_swap: it.swap || 0,
-          broker_net_pnl: it.net_pnl || 0,
-          broker_pips: it.pips || 0,
-          broker_lots: it.lots || 0,
-          close_reason: it.close_reason || null,
+          broker_data: {
+            ...it, // Spread all processed fields (pips, lots, commission, etc.)
+            position_id: ticketCandidates[0] || null,
+            ticket_candidates: ticketCandidates,
+            status: it.status_raw || null,
+            last_sync_at: new Date().toISOString(),
+          },
           last_sync_source: "broker_sync_v2",
         });
         const syncSymbol = String(it.symbol || "")

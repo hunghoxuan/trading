@@ -762,7 +762,7 @@ export default function TradesPage() {
                                 ?? raw.riskPct ?? raw.risk_pct ?? raw.volumePct ?? raw.volume_pct
                               );
                               // IMPORTANT: lots should prefer broker_lots if it exists
-                              const lots = asNum(meta.broker_lots) ?? asNum(meta.lots) ?? asNum(meta.used_volume) ?? asNum(t.volume);
+                              const lots = asNum(meta.broker_data?.lots) ?? asNum(meta.broker_lots) ?? asNum(meta.lots) ?? asNum(meta.used_volume) ?? asNum(t.volume);
                               // plannedVol (the risk %) should NOT fall back to raw volume
                               const plannedVol = asNum(meta.requested_lots) ?? asNum(meta.requested_volume) ?? asNum(raw.riskPct) ?? asNum(raw.risk_pct);
 
@@ -849,7 +849,7 @@ export default function TradesPage() {
                   const riskSize = tradeRiskSize(selectedTrade);
                   const meta = selectedTrade?.metadata && typeof selectedTrade.metadata === "object" ? selectedTrade.metadata : {};
                   const raw = selectedTrade?.raw_json && typeof selectedTrade.raw_json === "object" ? selectedTrade.raw_json : {};
-                  const vol = asNum(meta.broker_lots) ?? asNum(meta.lots) ?? asNum(meta.used_volume) ?? asNum(selectedTrade.volume);
+                  const vol = asNum(meta.broker_data?.lots) ?? asNum(meta.broker_lots) ?? asNum(meta.lots) ?? asNum(meta.used_volume) ?? asNum(selectedTrade.volume);
                   const plannedVol = asNum(meta.requested_lots) ?? asNum(meta.requested_volume) ?? asNum(raw.riskPct) ?? asNum(raw.risk_pct);
                   const riskPct = asNum(
                     meta.riskPct ?? meta.risk_pct ?? meta.volumePct ?? meta.volume_pct
@@ -919,13 +919,14 @@ export default function TradesPage() {
                   { label: "Trade SID", value: selectedTrade.sid || selectedTrade.trade_id || "-" },
                   { label: "Account", value: accountById.get(String(selectedTrade.account_id || ""))?.name || selectedTrade.account_id || "-" },
                   { label: "Broker Ticket", value: brokerTicketOf(selectedTrade) },
-                  ...(selectedTrade.metadata && typeof selectedTrade.metadata === "object" ? [
-                    { label: "Broker Volume", value: selectedTrade.metadata.volume != null ? `${asNum(selectedTrade.metadata.volume).toLocaleString()} units` : null },
-                    { label: "Broker Lots", value: (selectedTrade.metadata.broker_lots ?? selectedTrade.metadata.lots) != null ? `${asNum(selectedTrade.metadata.broker_lots ?? selectedTrade.metadata.lots).toFixed(2)} lots` : null },
-                    { label: "Broker Pips", value: (selectedTrade.metadata.broker_pips ?? selectedTrade.metadata.pips) != null ? `${asNum(selectedTrade.metadata.broker_pips ?? selectedTrade.metadata.pips).toFixed(1)} pips` : null },
-                    { label: "Broker Net Profit", value: (selectedTrade.metadata.broker_net_pnl ?? selectedTrade.metadata.net_pnl) != null ? `$${asNum(selectedTrade.metadata.broker_net_pnl ?? selectedTrade.metadata.net_pnl).toFixed(2)}` : null },
-                    { label: "Commission", value: (selectedTrade.metadata.broker_commission ?? selectedTrade.metadata.commission) != null ? `$${asNum(selectedTrade.metadata.broker_commission ?? selectedTrade.metadata.commission).toFixed(2)}` : null },
-                    { label: "Swap", value: (selectedTrade.metadata.broker_swap ?? selectedTrade.metadata.swap) != null ? `$${asNum(selectedTrade.metadata.broker_swap ?? selectedTrade.metadata.swap).toFixed(2)}` : null },
+                  ...(meta ? [
+                    { label: "Broker Volume", value: (meta.broker_data?.volume ?? meta.volume) != null ? `${asNum(meta.broker_data?.volume ?? meta.volume).toLocaleString()} units` : null },
+                    { label: "Broker Lots", value: (meta.broker_data?.lots ?? meta.broker_lots ?? meta.lots) != null ? `${asNum(meta.broker_data?.lots ?? meta.broker_lots ?? meta.lots).toFixed(2)} lots` : null },
+                    { label: "Broker Pips", value: (meta.broker_data?.pips ?? meta.broker_pips ?? meta.pips) != null ? `${asNum(meta.broker_data?.pips ?? meta.broker_pips ?? meta.pips).toFixed(1)} pips` : null },
+                    { label: "Broker Net Profit", value: (meta.broker_data?.net_pnl ?? meta.broker_net_pnl ?? meta.net_pnl) != null ? `$${asNum(meta.broker_data?.net_pnl ?? meta.broker_net_pnl ?? meta.net_pnl).toFixed(2)}` : null },
+                    { label: "Commission", value: (meta.broker_data?.commission ?? meta.broker_commission ?? meta.commission) != null ? `$${asNum(meta.broker_data?.commission ?? meta.broker_commission ?? meta.commission).toFixed(2)}` : null },
+                    { label: "Swap", value: (meta.broker_data?.swap ?? meta.broker_swap ?? meta.swap) != null ? `$${asNum(meta.broker_data?.swap ?? meta.broker_swap ?? meta.swap).toFixed(2)}` : null },
+                    { label: "Position ID", value: meta.broker_data?.position_id || meta.broker_position_id || null },
                   ].filter(x => x.value !== null) : []),
                   { label: "Note", value: selectedTrade.note || "-", fullWidth: true },
                   { 

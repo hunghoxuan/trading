@@ -34,7 +34,7 @@ namespace cAlgo.Robots
         [Parameter("Max Risk %", DefaultValue = 1.0, MinValue = 0.1, MaxValue = 10.0)]
         public double MaxRiskPct { get; set; }
 
-        private string BuildVersion = "v2026.05.04 20:48 - 3984d9e";
+        private string BuildVersion = "v2026.05.04 21:03 - 4161baa";
         private string _lastStatus = "INITIALIZING";
         private string _lastSignalId = "None";
         private string _lastAction = "None";
@@ -115,6 +115,8 @@ namespace cAlgo.Robots
                     equity = Account.Equity;
                     margin = Account.Margin;
                     freeMargin = Account.FreeMargin;
+                    double leverage = Account.PreciseLeverage;
+                    string brokerName = Account.BrokerName;
 
                     foreach (var pos in Positions)
                     {
@@ -122,10 +124,12 @@ namespace cAlgo.Robots
                         {
                             string sid = string.IsNullOrEmpty(pos.Comment) ? pos.Label : pos.Comment;
                             double pips = pos.Pips;
+                            var symbol = Symbols.GetSymbol(pos.SymbolName);
                             
                             posList.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                                "{{\"ticket\":\"{0}\",\"symbol\":\"{1}\",\"volume\":{2:F2},\"lots\":{3:F2},\"side\":\"{4}\",\"entry\":{5:F5},\"pnl\":{6:F2},\"net_pnl\":{7:F2},\"commission\":{8:F2},\"swap\":{9:F2},\"pips\":{10:F2},\"opened_at\":\"{11}\",\"comment\":\"{12}\",\"status\":\"OPEN\"}}",
-                                pos.Id, pos.SymbolName, pos.VolumeInUnits, pos.Quantity, pos.TradeType.ToString().ToUpper(), pos.EntryPrice, pos.GrossProfit, pos.NetProfit, pos.Commissions, pos.Swap, pips, pos.EntryTime.ToString("yyyy-MM-ddTHH:mm:ssZ"), sid));
+                                "{{\"ticket\":\"{0}\",\"symbol\":\"{1}\",\"volume\":{2:F2},\"lots\":{3:F2},\"side\":\"{4}\",\"entry\":{5:F5},\"pnl\":{6:F2},\"net_pnl\":{7:F2},\"commission\":{8:F2},\"swap\":{9:F2},\"pips\":{10:F2},\"opened_at\":\"{11}\",\"comment\":\"{12}\",\"status\":\"OPEN\",\"digits\":{13},\"pip_size\":{14:F5},\"pip_value\":{15:F5},\"base_asset\":\"{16}\",\"quote_asset\":\"{17}\"}}",
+                                pos.Id, pos.SymbolName, pos.VolumeInUnits, pos.Quantity, pos.TradeType.ToString().ToUpper(), pos.EntryPrice, pos.GrossProfit, pos.NetProfit, pos.Commissions, pos.Swap, pips, pos.EntryTime.ToString("yyyy-MM-ddTHH:mm:ssZ"), sid,
+                                symbol.Digits, symbol.PipSize, symbol.PipValue, symbol.BaseAsset, symbol.QuoteAsset));
                         }
                     }
                 }
@@ -145,8 +149,8 @@ namespace cAlgo.Robots
                 _lastStateHash = stateHash;
 
                 var body = string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                    "{{\"account_id\":\"{0}\",\"balance\":{1:F2},\"equity\":{2:F2},\"margin\":{3:F2},\"free_margin\":{4:F2},\"positions\":[{5}],\"orders\":[],\"closed\":[]}}",
-                    accountId, balance, equity, margin, freeMargin, string.Join(",", posList));
+                    "{{\"account_id\":\"{0}\",\"balance\":{1:F2},\"equity\":{2:F2},\"margin\":{3:F2},\"free_margin\":{4:F2},\"leverage\":{5:F2},\"broker_name\":\"{6}\",\"positions\":[{7}],\"orders\":[],\"closed\":[]}}",
+                    accountId, Account.Balance, Account.Equity, Account.Margin, Account.FreeMargin, Account.PreciseLeverage, Account.BrokerName, string.Join(",", posList));
 
                 Print("[Sync] Sending: {0}", body);
 
