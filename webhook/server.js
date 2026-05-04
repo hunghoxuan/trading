@@ -8799,7 +8799,8 @@ async function _mt5InitBackendInternal() {
     async uiListCache() {
       const items = [];
       const now = Date.now();
-      // 1. Per-TF Market Data Cache
+
+      // 1. Memory Cache (Market Data)
       for (const [key, entry] of MARKET_DATA_TF_CACHE.entries()) {
         const ttlMs = tfToMs(entry.tf || key.split("_").pop() || "4H");
         const expired = now - entry.created_at > ttlMs;
@@ -8810,15 +8811,42 @@ async function _mt5InitBackendInternal() {
             symbol: key.split("_")[0] || key,
             tf: entry.tf || key.split("_").pop() || "?",
             bars: entry.bars?.length || 0,
-            snapshots: entry.snapshot?.file_id ? entry.snapshot.file_name : "",
+            updated_at: entry.created_at ? new Date(entry.created_at).toISOString() : null,
           },
-          created_at: entry.created_at
-            ? new Date(entry.created_at).toISOString()
-            : null,
           ttl_ms: ttlMs,
           expired,
         });
       }
+
+      // 2. Redis Cache (Market Data)
+      if (CFG.redisEnabled) {
+        try {
+          const client = await getRedisClient();
+          if (client) {
+            const keys = await client.keys("market_data:*");
+            for (const rKey of keys) {
+              // Avoid duplicates if also in memory
+              if (items.some((it) => it.key === rKey)) continue;
+
+              const symbol = rKey.replace("market_data:", "");
+              items.push({
+                key: rKey,
+                source: "redis",
+                data: {
+                  symbol,
+                  tf: "MULTI", // Redis root objects contain multiple timeframes
+                  updated_at: null,
+                },
+                ttl_ms: 3600000,
+                expired: false,
+              });
+            }
+          }
+        } catch (e) {
+          console.warn("[Cache] Failed to list redis keys:", e.message);
+        }
+      }
+
       return items;
     },
     async uiGetCacheDetail(key, source) {

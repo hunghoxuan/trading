@@ -347,33 +347,66 @@ export function SymbolChart({
             )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {MODES.map((m) => (
-            <button
-              key={m}
-              className="secondary-button"
-              onClick={() => handleModeClick(m)}
-              disabled={status === "LOADING"}
-              title={btnTitle(m)}
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                padding: "3px 8px",
-                borderRadius: 4,
-                color: btnColor(m),
-                borderColor:
-                  (pendingMode || mode) === m
-                    ? btnColor(m) + "60"
-                    : "var(--border)",
-                background:
-                  (pendingMode || mode) === m
-                    ? btnColor(m) + "12"
-                    : "transparent",
-              }}
-            >
-              {MODE_LABELS[m]}
-              {(pendingMode || mode) === m && status === "LOADING" && " \u23F3"}
-            </button>
-          ))}
+          {hasTradePlan ? (
+            <>
+              <button
+                className="secondary-button"
+                onClick={() => setMode("live")}
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: "3px 8px",
+                  borderRadius: 4,
+                  color: mode === "live" ? "#10b981" : "var(--muted)",
+                  borderColor: mode === "live" ? "#10b98160" : "var(--border)",
+                }}
+              >
+                Live
+              </button>
+              <button
+                className="primary-button"
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: "3px 8px",
+                  borderRadius: 4,
+                }}
+                onClick={() => setMode("cache")}
+              >
+                TradePlan
+              </button>
+            </>
+          ) : (
+            MODES.map((m) => (
+              <button
+                key={m}
+                className="secondary-button"
+                onClick={() => handleModeClick(m)}
+                disabled={status === "LOADING"}
+                title={btnTitle(m)}
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: "3px 8px",
+                  borderRadius: 4,
+                  color: btnColor(m),
+                  borderColor:
+                    (pendingMode || mode) === m
+                      ? btnColor(m) + "60"
+                      : "var(--border)",
+                  background:
+                    (pendingMode || mode) === m
+                      ? btnColor(m) + "12"
+                      : "transparent",
+                }}
+              >
+                {MODE_LABELS[m]}
+                {(pendingMode || mode) === m &&
+                  status === "LOADING" &&
+                  " \u23F3"}
+              </button>
+            ))
+          )}
           <button
             className="secondary-button"
             style={{
