@@ -34,7 +34,7 @@ namespace cAlgo.Robots
         [Parameter("Max Risk %", DefaultValue = 1.0, MinValue = 0.1, MaxValue = 10.0)]
         public double MaxRiskPct { get; set; }
 
-        private string BuildVersion = "v2026.05.04 15:19 - 166826f";
+        private string BuildVersion = "v2026.05.04 15:30 - 92e5915";
         private string _lastStatus = "INITIALIZING";
         private string _lastSignalId = "None";
         private string _lastAction = "None";
@@ -54,6 +54,10 @@ namespace cAlgo.Robots
             _httpClient.Timeout = TimeSpan.FromSeconds(10);
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "cTrader-TVBridge");
         }
+
+        private DateTime _lastSyncTime = DateTime.MinValue;
+        private string _lastSyncSummary = "INIT";
+        private string _lastStateHash = "";
 
         protected override void OnStart()
         {
@@ -78,8 +82,73 @@ namespace cAlgo.Robots
         protected override void OnTimer()
         {
             if (_isPolling) return;
-            _ = PollSignalsAsync();
+            
+            // Alternating between Poll and Sync
+            if (DateTime.Now - _lastSyncTime > TimeSpan.FromMinutes(1))
+            {
+                _ = SyncWithVpsAsync();
+            }
+            else
+            {
+                _ = PollSignalsAsync();
+            }
+            
             RefreshDebugPanel();
+        }
+
+        private async Task SyncWithVpsAsync()
+        {
+            _isPolling = true;
+            try
+            {
+                var posList = new List<string>();
+                foreach (var pos in Positions)
+                {
+                    // isolate by MagicNumber stored in Label
+                    if (pos.Label == MagicNumber.ToString())
+                    {
+                        // Signal ID is stored in Comment
+                        string sid = string.IsNullOrEmpty(pos.Comment) ? pos.Label : pos.Comment;
+                        posList.Add(string.Format("{{\"signal_id\":\"{0}\",\"status\":\"START\",\"ticket\":\"{1}\",\"symbol\":\"{2}\",\"pnl\":{3},\"opened_at\":\"{4}\"}}",
+                            sid, pos.Id, pos.SymbolName, pos.GrossProfit, pos.EntryTime.ToString("yyyy-MM-ddTHH:mm:ssZ")));
+                    }
+                }
+
+                var stateHash = string.Join(",", posList);
+                if (stateHash == _lastStateHash && DateTime.Now - _lastSyncTime < TimeSpan.FromMinutes(5))
+                {
+                    _lastSyncSummary = "STABLE";
+                    _isPolling = false;
+                    return;
+                }
+                _lastStateHash = stateHash;
+
+                var body = string.Format("{{\"account_id\":\"{0}\",\"balance\":{1},\"equity\":{2},\"positions\":[{3}],\"orders\":[],\"closed\":[]}}",
+                    Account.UserId, Account.Balance, Account.Equity, string.Join(",", posList));
+
+                var url = ServerBaseUrl.TrimEnd('/') + "/mt5/ea/sync-v2";
+                var content = new StringContent(body, Encoding.UTF8, "application/json");
+                content.Headers.Add("x-api-key", EaApiKey);
+
+                var response = await _httpClient.PostAsync(url, content);
+                if (response.IsSuccessStatusCode)
+                {
+                    _lastSyncTime = DateTime.Now;
+                    _lastSyncSummary = "OK " + posList.Count + " pos";
+                }
+                else
+                {
+                    _lastSyncSummary = "FAIL " + response.StatusCode;
+                }
+            }
+            catch (Exception ex)
+            {
+                _lastSyncSummary = "ERR " + ex.Message;
+            }
+            finally
+            {
+                _isPolling = false;
+            }
         }
 
         private async Task PollSignalsAsync()
@@ -194,7 +263,9 @@ namespace cAlgo.Robots
                     }
                 }
 
-                var result = ExecuteMarketOrder(type.Value, symbol.Name, volumeUnits, id, sl, tp);
+                // Label = MagicNumber (for isolation)
+                // Comment = id (signal_id for tracking)
+                var result = ExecuteMarketOrder(type.Value, symbol.Name, volumeUnits, MagicNumber.ToString(), sl, tp, id);
                 if (result.IsSuccessful)
                 {
                     _successCount++;
@@ -215,7 +286,7 @@ namespace cAlgo.Robots
         {
             foreach (var position in Positions)
             {
-                if (position.SymbolName == symbolCode)
+                if (position.SymbolName == symbolCode && position.Label == MagicNumber.ToString())
                 {
                     ClosePosition(position);
                 }
@@ -247,16 +318,18 @@ namespace cAlgo.Robots
                 "--- TVBridge cTrader Pro ---\n" +
                 "Build: {0}\n" +
                 "Status: {1}\n" +
-                "Polls: {2} (OK: {3} / ERR: {4})\n" +
-                "Last Poll: {5}\n" +
+                "Sync: {2} [{3}]\n" +
+                "Polls: {4} (OK: {5} / ERR: {6})\n" +
+                "Last Poll: {7}\n" +
                 "------------------------\n" +
-                "Last ID: {6}\n" +
-                "Action: {7} {8}\n" +
-                "Error: {9}\n" +
+                "Last ID: {8}\n" +
+                "Action: {9} {10}\n" +
+                "Error: {11}\n" +
                 "------------------------\n" +
-                "Balance: {10} {11}\n" +
-                "Equity: {12} {11}",
+                "Balance: {12} {13}\n" +
+                "Equity: {14} {13}",
                 BuildVersion, _lastStatus,
+                _lastSyncSummary, _lastSyncTime == DateTime.MinValue ? "Never" : _lastSyncTime.ToString("HH:mm:ss"),
                 _pollCount, _successCount, _failCount,
                 _lastPollTime == DateTime.MinValue ? "Never" : _lastPollTime.ToString("HH:mm:ss"),
                 _lastSignalId, _lastAction, _lastSymbol,

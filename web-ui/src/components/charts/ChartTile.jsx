@@ -250,6 +250,13 @@ export function SymbolChart({
 
   const needsFallback = mode !== "live" && !hasAnyBars && status !== "LOADING";
 
+  // Auto-switch to TradePlan mode when hasTradePlan and bars are ready
+  useEffect(() => {
+    if (hasTradePlan && mode === "live" && hasAnyBars) {
+      setMode("cache");
+    }
+  }, [hasTradePlan, hasAnyBars]);
+
   const handleModeClick = useCallback((newMode) => {
     if (newMode === "live") {
       setMode("live");

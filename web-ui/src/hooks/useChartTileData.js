@@ -103,8 +103,10 @@ export function useSymbolChartData({
         const hasBars = Object.values(entries).some((e) => e.bars?.length > 0);
         setData(entries);
         if (!hasBars) {
-          setStatus("ERROR");
-          setError("No data");
+          if (opts.force || mode !== "cache") {
+            setStatus("ERROR");
+            setError("No data");
+          }
           return null;
         }
         if (result.stale) setStatus("STALE");
