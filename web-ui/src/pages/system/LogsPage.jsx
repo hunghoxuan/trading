@@ -59,7 +59,7 @@ export default function LogsPage() {
       await api.upsertSetting({
         type: "system_config",
         name: "enabled_log_prefixes",
-        value: next,
+        data: { prefixes: next },
         status: "active",
       });
       setLogConfig(next);
@@ -78,12 +78,7 @@ export default function LogsPage() {
         (x) =>
           x?.type === "system_config" && x?.name === "enabled_log_prefixes",
       );
-      let val = logSet?.value;
-      if (typeof val === "string") {
-        try {
-          val = JSON.parse(val);
-        } catch {}
-      }
+      let val = logSet?.data?.prefixes;
       setLogConfig(Array.isArray(val) ? val : []);
     } catch (_) {}
   }

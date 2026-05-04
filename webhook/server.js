@@ -6226,13 +6226,13 @@ async function _mt5InitBackendInternal() {
   async function loadLoggingConfig() {
     try {
       const res = await pool.query(
-        `SELECT value FROM user_settings WHERE name = 'enabled_log_prefixes' LIMIT 1`,
+        `SELECT data FROM user_settings WHERE name = 'enabled_log_prefixes' LIMIT 1`,
       );
       if (res.rows.length > 0) {
-        const val = res.rows[0].value;
-        LOG_ENABLED_PREFIXES = Array.isArray(val) ? val : [];
+        const prefixes = res.rows[0]?.data?.prefixes;
+        LOG_ENABLED_PREFIXES = Array.isArray(prefixes) ? prefixes : [];
       } else {
-        LOG_ENABLED_PREFIXES = []; // Default empty
+        LOG_ENABLED_PREFIXES = [];
       }
     } catch (e) {
       LOG_ENABLED_PREFIXES = [];
