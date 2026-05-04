@@ -526,6 +526,7 @@ export function SymbolChart({
                 />
               ) : (
                 <TradeSignalChart
+                  key={`tsc-${symbol}-${tf}-${gridCols}`}
                   symbol={cleanSym}
                   interval={tf}
                   analysisSnapshot={analysisSnapshot || null}

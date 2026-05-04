@@ -199,6 +199,11 @@ function PlanHeader({
             {status.label}
           </span>
         )}
+        {plan.skip && (
+          <span style={{ fontSize: 9, color: "#ef5350", fontWeight: 700 }}>
+            SKIP
+          </span>
+        )}
       </div>
     </div>
   );
@@ -525,7 +530,35 @@ export function SignalDetailCard({
                     submittingPlanId={tradePlan?.submittingPlanId}
                     successMessage={tradePlan?.successMessage}
                   />
-                ) : null}
+                ) : (
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "var(--muted)",
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    <div>
+                      {p.entry || "—"} → {p.tp || "—"} / {p.sl || "—"}{" "}
+                      {p.be ? `· BE:${p.be}` : ""}
+                    </div>
+                    {p.tps?.map((t, i) => (
+                      <div key={i}>
+                        TP{i + 1}: {t.price} ({t.pct}% · {t.rr}R)
+                      </div>
+                    ))}
+                    {p.note && (
+                      <div style={{ marginTop: 4, fontStyle: "italic" }}>
+                        {p.note}
+                      </div>
+                    )}
+                    {p.skipReasons?.map((r, i) => (
+                      <div key={i} style={{ color: "#ef5350" }}>
+                        ⚠ {r.reason} ({r.severity})
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {isMain && tradePlan.successMessage && (
                   <div style={{ marginTop: 8 }}>
                     <span className="minor-text msg-success">
