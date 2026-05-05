@@ -7414,7 +7414,6 @@ async function _mt5InitBackendInternal() {
               syncSymbol,
               syncAction,
               it.order_type || null,
-              ticketCandidates,
             ],
           );
         }
