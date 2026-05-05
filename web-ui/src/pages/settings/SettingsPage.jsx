@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getRuntimeApiKey, setRuntimeApiKey, api } from "../../api";
 import UserDetailSection from "../../components/UserDetailSection";
+import { EventsPageContent } from "../system/EventsPage";
 import { normalizeDisplayTimezone } from "../../utils/format";
 
 const ROUTE_OPTIONS = [
@@ -654,6 +655,12 @@ export default function SettingsPage({
               onClick={() => setActiveTab("PROFILE")}
             >
               Profile
+            </button>
+            <button
+              className={`sidebar-item-v2 ${activeTab === "NOTIFICATIONS" ? "active" : ""}`}
+              onClick={() => setActiveTab("NOTIFICATIONS")}
+            >
+              Notifications
             </button>
           </div>
 
@@ -1840,6 +1847,10 @@ export default function SettingsPage({
                 </div>
               )}
             </div>
+          )}
+
+          {activeTab === "NOTIFICATIONS" && (
+            <EventsPageContent />
           )}
 
           {!activeTab && !selectedSetting && (

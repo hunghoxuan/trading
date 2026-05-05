@@ -113,7 +113,8 @@ function redirectToLogin() {
   }
   if (window.location.pathname.endsWith("/login")) return;
   const base = window.location.pathname.startsWith("/ui") ? "/ui" : "";
-  const loginPath = `${base}/login`;
+  const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
+  const loginPath = `${base}/login?return_url=${returnUrl}`;
   window.location.assign(loginPath);
 }
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
 
 export default function LoginPage({ onLogin }) {
@@ -6,6 +7,7 @@ export default function LoginPage({ onLogin }) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [searchParams] = useSearchParams();
 
   async function submit(e) {
     e.preventDefault();
@@ -14,6 +16,11 @@ export default function LoginPage({ onLogin }) {
     try {
       const out = await api.login(email, password);
       onLogin?.(out?.user || null);
+      // Redirect to return_url if present
+      const returnUrl = searchParams.get("return_url");
+      if (returnUrl) {
+        window.location.assign(decodeURIComponent(returnUrl));
+      }
     } catch (err) {
       setError(err?.message || "Login failed");
     } finally {

@@ -191,7 +191,6 @@ export default function App() {
             </button>
             <div className="nav-dropdown-menu">
               <NavLink to="/settings/profile">Profile</NavLink>
-              <NavLink to="/settings/notifications">Notifications</NavLink>
               <NavLink to="/settings">Settings</NavLink>
               <NavLink to="/system/accounts">Accounts</NavLink>
               <hr style={{ border: '0', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '4px 0' }} />
@@ -239,6 +238,7 @@ export default function App() {
           <Route path="/trades/:tradeId" element={<V2TradeDetailPage />} />
           <Route path="/ai" element={<Navigate to="/ai/browser" replace />} />
           <Route path="/ai/browser" element={<ChartSnapshotsPage />} />
+          <Route path="/ai/browser/:symbol" element={<ChartSnapshotsPage />} />
           <Route path="/settings" element={<SettingsPage authUser={authUser} onUserUpdate={handleUserUpdate} mode="settings" />} />
           <Route path="/settings/profile" element={<SettingsPage authUser={authUser} onUserUpdate={handleUserUpdate} mode="profile" />} />
           <Route path="/system/files" element={canAccessSystemPages ? <SnapshotsPage /> : <Navigate to="/dashboard" replace />} />
