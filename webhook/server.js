@@ -100,7 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 11:07 - bd31845"); // DB schema SHOW column + presets
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 11:46 - a4777a3"); // DB schema SHOW column + presets
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
@@ -8449,6 +8449,26 @@ async function _mt5InitBackendInternal() {
       );
       return res.rows;
     },
+    async getTablePrimaryKey(table) {
+      const allowed = await this.listTables();
+      if (!allowed.includes(table))
+        throw new Error(`Access denied to table: ${table}`);
+      const res = await pool.query(
+        `
+        SELECT kcu.column_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+         AND tc.table_schema = kcu.table_schema
+        WHERE tc.table_name = $1
+          AND tc.constraint_type = 'PRIMARY KEY'
+        ORDER BY kcu.ordinal_position
+        LIMIT 1
+      `,
+        [table],
+      );
+      return res.rows[0]?.column_name || null;
+    },
     async listTables() {
       return [
         "users",
@@ -8474,23 +8494,17 @@ async function _mt5InitBackendInternal() {
       const allowed = await this.listTables();
       if (!allowed.includes(table))
         throw new Error(`Access denied to table: ${table}`);
+      const schema = await this.getTableSchema(table);
+      const validCols = schema.map((c) => c.column_name);
       let where = "";
       const params = [limit, offset];
-      if (query) {
+      if (query && validCols.length) {
         params.push(`%${query}%`);
-        if (table === "signals" || table === "trades") {
-          where = `WHERE symbol ILIKE $3 OR sid ILIKE $3 OR sid ILIKE $3`;
-        } else if (table === "users" || table === "user_accounts") {
-          where = `WHERE user_id ILIKE $3 OR account_id ILIKE $3`;
-        } else if (table === "logs") {
-          where = `WHERE object_id ILIKE $3 OR metadata::text ILIKE $3`;
-        }
+        where = `WHERE ${validCols.map((col) => `"${col}"::text ILIKE $3`).join(" OR ")}`;
       }
       // Validate sort column against schema to prevent SQL injection
       let orderClause = "ORDER BY 1 DESC";
       if (sortCol) {
-        const schema = await this.getTableSchema(table);
-        const validCols = schema.map((c) => c.column_name);
         if (validCols.includes(sortCol)) {
           const dir = sortDir.toUpperCase() === "ASC" ? "ASC" : "DESC";
           orderClause = `ORDER BY "${sortCol}" ${dir}`;
@@ -8512,9 +8526,8 @@ async function _mt5InitBackendInternal() {
         throw new Error(`Access denied to table: ${table}`);
       if (!row || typeof row !== "object")
         throw new Error("row object is required");
-      // Find the PK: use the first column from schema
       const schema = await this.getTableSchema(table);
-      const pkCol = schema[0]?.column_name || "id";
+      const pkCol = (await this.getTablePrimaryKey(table)) || schema[0]?.column_name || "id";
       const idVal = row[pkCol];
       if (idVal == null) throw new Error(`row must contain ${pkCol} column`);
       // Only allow updating columns that exist in schema
@@ -8539,7 +8552,11 @@ async function _mt5InitBackendInternal() {
       }
       if (!setClauses.length) throw new Error("no valid columns to update");
       params.push(idVal);
-      const query = `UPDATE ${table} SET ${setClauses.join(", ")}, updated_at = NOW() WHERE "${pkCol}" = $${paramIdx}`;
+      const hasUpdatedAt = validCols.has("updated_at");
+      const updateFragments = hasUpdatedAt
+        ? [...setClauses, `updated_at = NOW()`]
+        : setClauses;
+      const query = `UPDATE ${table} SET ${updateFragments.join(", ")} WHERE "${pkCol}" = $${paramIdx}`;
       await pool.query(query, params);
       return { ok: true, table, updated: idVal };
     },

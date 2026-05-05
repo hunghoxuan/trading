@@ -1,3 +1,32 @@
+# Session Log: 2026-05-05 12:05
+- **Starting Task**:
+  - Resume `FEAT-20260505-DB-CACHE-UI` review/deploy handoff and fix regressions found during verification.
+- **Work Accomplished**:
+  - **Review Fixes**: Repaired DB table search to use schema-valid columns only, eliminating invalid-column failures on tables like `users`.
+  - **Review Fixes**: Switched DB row updates to use the real primary key and only auto-touch `updated_at` when that column exists, so edit works on tables like `logs`.
+  - **Review Fixes**: Added edit-form type normalization for nullable fields, JSON, numbers, and booleans so clearing optional fields no longer sends invalid empty strings.
+  - **CachePage**: Expanded search matching to include serialized cache metadata/content preview instead of key/symbol/TF only.
+  - **Docs**: Added the missing done feature doc for System DB & Cache Admin and linked it in the feature tracker.
+  - **Versions**: Bumped `SERVER_VERSION` and `EA_BUILD_VERSION` to `v2026.05.05 11:46 - a4777a3`.
+- **Changed Files**:
+  - `webhook/server.js`
+  - `web-ui/src/pages/system/DatabasePage.jsx`
+  - `web-ui/src/pages/system/CachePage.jsx`
+  - `.agents/.product/features/2-done/system_db_cache_admin.md`
+  - `.agents/.product/tickets/feature_tracker.md`
+  - `.agents/worklog.md`
+- **Technical Decisions**:
+  - Use schema-derived search clauses for admin DB search to keep behavior generic and prevent table-specific drift.
+  - Keep edit-form UX unchanged while normalizing values at submit time to minimize UI churn during a review follow-up.
+- **Verification**:
+  - `rtk node --check webhook/server.js` ✅
+  - `rtk npm --prefix web-ui run build` ✅
+  - `rtk bash scripts/deploy/bump_build_versions.sh` ✅
+  - `rtk bash scripts/deploy/check_build_versions.sh origin/main` ✅
+  - `rtk bash scripts/deploy/deploy_webhook.sh` ⚠️ blocked by sandbox policy at remote push/deploy step; explicit user approval required for production deploy
+- **Deploy Status**:
+  - Not deployed. Ready for production deploy after explicit user approval.
+
 # Session Log: 2026-05-05 11:10
 - **Starting Task**:
   - Trade Detail planner UX pass: auto-sync RR/TP/SL, validate side+type+levels coherence, live chart update from form edits, and drag-to-update Entry/TP/SL on static charts.

@@ -6,6 +6,12 @@ This file tracks the status of user-facing features and links them to technical 
 - **Database Schema**: [./architecture/db-schema.md]
 - **External APIs**: [./architecture/external_apis.md]
 
+## [x] System DB & Cache Admin
+- **Status**: Done
+- **Feature Doc**: [../features/2-done/system_db_cache_admin.md]
+- **Ticket**: [./2-backlog/2026-05-05-db-cache-enhancements.md]
+- **Summary**: System-only database and cache inspection pages with schema-driven list/detail/edit flows, validated sorting/search, and cache filtering.
+
 ## [ ] Chart Snapshots Symbols Panel Filters
 - **Status**: Planned
 - **Feature Doc**: [../features/1-plan/chart_snapshots_symbols_panel_filters.md]

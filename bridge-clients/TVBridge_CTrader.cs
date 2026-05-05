@@ -30,7 +30,7 @@ namespace cAlgo.Robots
         [Parameter("Magic Number", DefaultValue = 20260411)]
         public int MagicNumber { get; set; }
 
-        private string BuildVersion = "v2026.05.05 11:36 - 5e50796";
+        private string BuildVersion = "v2026.05.05 11:46 - a4777a3";
         
         private string _serverStatus = "WAITING";
         private string _apiStatus = "WAITING";

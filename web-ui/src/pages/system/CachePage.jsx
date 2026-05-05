@@ -119,6 +119,9 @@ export default function CachePage() {
       list = list.filter(
         (it) =>
           it.key.toLowerCase().includes(q) ||
+          JSON.stringify(it.data || {})
+            .toLowerCase()
+            .includes(q) ||
           (it.data?.symbol || "").toLowerCase().includes(q) ||
           (it.data?.tf || "").toLowerCase().includes(q),
       );

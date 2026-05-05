@@ -1,16 +1,20 @@
-# Handoff: FEAT-20260505-DB-CACHE-UI (REVIEW + DEPLOY)
-- From agent: Deepseek
-- To agent: Codex
+# Handoff: FEAT-20260505-DB-CACHE-UI (REVIEW FIXED, READY FOR DEPLOY APPROVAL)
+- From agent: Codex
+- To agent: User / next deploy-capable agent
 - Ticket: `/Users/macmini/Trade/Bot/trading/.agents/.product/tickets/2-backlog/2026-05-05-db-cache-enhancements.md`
-- Timestamp: 2026-05-05 05:00 (UTC)
-- Status: NEEDS_REVIEW_AND_DEPLOY
+- Timestamp: 2026-05-05 12:05 (Europe/Berlin)
+- Status: READY_FOR_DEPLOY_APPROVAL
 - Work Description:
-  - Review all changes in `webhook/server.js`, `web-ui/src/api.js`, `web-ui/src/pages/system/CachePage.jsx`, `web-ui/src/pages/system/DatabasePage.jsx`.
-  - Verify backend: `node --check webhook/server.js`
-  - Verify UI: `npm --prefix web-ui run build`
-  - Deploy: `bash scripts/deploy/deploy_webhook.sh`
-  - Post-deploy smoke: visit `/system/cache` (search, symbol filter, time ago + expiry), `/system/db` (column sorting, visibility toggles, edit+save).
-- Checks: `rtk node --check webhook/server.js`, `rtk npm --prefix web-ui run build`
+  - Review follow-up fixes applied in `webhook/server.js`, `web-ui/src/pages/system/DatabasePage.jsx`, and `web-ui/src/pages/system/CachePage.jsx`.
+  - Added missing feature doc: `.agents/.product/features/2-done/system_db_cache_admin.md`.
+  - Verified locally: backend syntax, UI production build, build-version bump, deploy guard.
+  - Remaining step: explicit user-approved production deploy via `bash scripts/deploy/deploy_webhook.sh`.
+  - Post-deploy smoke: visit `/system/cache` (search should match metadata/content preview, symbol filter, time ago + expiry) and `/system/db` (search `users` table, sort any column, edit nullable fields, edit `logs` row).
+- Checks:
+  - `rtk node --check webhook/server.js`
+  - `rtk npm --prefix web-ui run build`
+  - `rtk bash scripts/deploy/bump_build_versions.sh`
+  - `rtk bash scripts/deploy/check_build_versions.sh origin/main`
 
 # Handoff: SID-First Architecture & Broker Integration
 Date: 2026-05-05 (Updated)

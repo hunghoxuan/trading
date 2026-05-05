@@ -44,6 +44,41 @@ function statusUi(statusRaw) {
   return { cls: "OTHER", label: s || "-" };
 }
 
+function isNumericType(type = "") {
+  return (
+    type.includes("int") ||
+    type.includes("double") ||
+    type.includes("float") ||
+    type.includes("numeric") ||
+    type.includes("decimal") ||
+    type.includes("real")
+  );
+}
+
+function normalizeFieldValue(col, rawValue) {
+  if (typeof rawValue !== "string") return rawValue;
+  const type = String(col.data_type || "").toLowerCase();
+  const trimmed = rawValue.trim();
+
+  if (trimmed === "") {
+    return col.is_nullable === "YES" ? null : rawValue;
+  }
+
+  if (type.includes("json")) {
+    return JSON.parse(rawValue);
+  }
+
+  if (isNumericType(type)) {
+    return Number(rawValue);
+  }
+
+  if (type === "boolean") {
+    return trimmed.toLowerCase() === "true";
+  }
+
+  return rawValue;
+}
+
 function DynamicForm({
   schema,
   onSubmit,
@@ -76,14 +111,13 @@ function DynamicForm({
   const handleSubmit = (e) => {
     e.preventDefault();
     const final = { ...formData };
-    // Try to parse JSON fields
     schema.forEach((col) => {
-      if (
-        col.data_type.toLowerCase().includes("json") &&
-        typeof final[col.column_name] === "string"
-      ) {
+      if (typeof final[col.column_name] === "string") {
         try {
-          final[col.column_name] = JSON.parse(final[col.column_name]);
+          final[col.column_name] = normalizeFieldValue(
+            col,
+            final[col.column_name],
+          );
         } catch (e) {}
       }
     });
@@ -137,11 +171,11 @@ function DynamicForm({
               ) : (
                 <input
                   type={
-                    type.includes("int") ||
-                    type.includes("double") ||
-                    type.includes("float")
-                      ? "number"
-                      : "text"
+                    type === "boolean"
+                      ? "text"
+                      : isNumericType(type)
+                        ? "number"
+                        : "text"
                   }
                   step="any"
                   value={formData[col.column_name] || ""}
