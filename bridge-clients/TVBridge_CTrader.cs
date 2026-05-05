@@ -52,13 +52,6 @@ namespace cAlgo.Robots
         private List<string> _signalHistory = new List<string>();
         private List<string> _lastSyncResults = new List<string>();
 
-        private struct SyncResult {
-            public string Ticket;
-            public string Sid;
-            public string Status;
-            public string Symbol;
-            public string Action;
-        }
 
         private HttpClient _httpClient = new HttpClient();
         private bool _isBusy = false;
@@ -246,7 +239,8 @@ namespace cAlgo.Robots
                     var status = GetJsonValue(obj, "status");
                     var sym = GetJsonValue(obj, "symbol");
                     var act = GetJsonValue(obj, "action");
-                    resList.Add(string.Format("{0} | {1} {2} {3} [{4}]", ticket, sid ?? "NONE", act, sym, status));
+                    var displaySid = string.IsNullOrEmpty(sid) ? "SKIP" : sid;
+                    resList.Add(string.Format("{0} | {1} {2} {3} [{4}]", ticket, displaySid, act, sym, status));
                 }
             }
             _lastSyncResults = resList;
