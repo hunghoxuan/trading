@@ -1,8 +1,11 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SmartContent } from "./SmartContent";
 
 function parseNum(v) {
-  const n = Number(v);
+  if (v == null) return null;
+  const raw = String(v).trim();
+  if (!raw) return null;
+  const n = Number(raw.replace(",", "."));
   return Number.isFinite(n) ? n : null;
 }
 
@@ -42,9 +45,11 @@ export function TradePlanEditor({
   addTradeLabel = "+ Trade",
   busy = {},
   disabled = false,
+  viewOnly = false,
   error = "",
   className = "",
 }) {
+  const [mode, setMode] = useState("view");
   const effectiveShowSave =
     typeof showSaveButton === "boolean"
       ? showSaveButton
@@ -62,33 +67,114 @@ export function TradePlanEditor({
 
   const controlsDisabled =
     disabled || Boolean(busy?.save || busy?.signal || busy?.trade);
-  const rrReadOnly = false;
   const directionOptions = useMemo(() => ["BUY", "SELL"], []);
 
   const update = (key, val) => {
     if (typeof onChange === "function") onChange(key, val);
   };
+  const lockedView = Boolean(viewOnly);
+  useEffect(() => {
+    if (lockedView) setMode("view");
+  }, [lockedView]);
+  const isEditMode = !lockedView && mode === "edit";
+
+  const summaryRows = [
+    { label: "Order Type", value: `${value.direction || "BUY"} / ${value.trade_type || "limit"}` },
+    { label: "Entry", value: value.entry || "-" },
+    { label: "Risk / Reward", value: value.rr || "-" },
+    { label: "Take Profit", value: value.tp || "-" },
+    { label: "Stop Loss", value: value.sl || "-" },
+    { label: "Note", value: value.note || "-" },
+  ];
+
+  const NumericInline = ({ label, k, step = "0.001", min, max, sliderOverride = null }) => {
+    const sliderMeta = sliderOverride || calcSliderMeta(value[k]);
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "84px 1fr 110px", alignItems: "center", gap: 8 }}>
+        <label
+          className="minor-text"
+          style={{ fontWeight: "700", fontSize: "9px", textTransform: "uppercase", color: "var(--muted-bright)", opacity: 0.8 }}
+        >
+          {label}
+        </label>
+        <input
+          style={{ height: "22px", fontSize: "11px", padding: "0 6px", width: "100%" }}
+          type="number"
+          step={step}
+          inputMode="decimal"
+          min={min}
+          max={max}
+          value={value[k] || ""}
+          onChange={(e) => update(k, e.target.value)}
+          disabled={controlsDisabled}
+        />
+        <input
+          className="snapshot-number-slider-v4"
+          type="range"
+          min={sliderMeta.min}
+          max={sliderMeta.max}
+          step={sliderMeta.step}
+          value={sliderOverride ? Number(value[k]) || 2 : sliderMeta.value}
+          style={{ accentColor: "var(--muted)", height: "8px", margin: 0 }}
+          disabled={sliderOverride ? controlsDisabled : (!sliderMeta.enabled || controlsDisabled)}
+          onChange={(e) => update(k, formatNum3(Number(e.target.value)))}
+        />
+      </div>
+    );
+  };
 
   return (
     <div
       className={`trade-plan-editor-v5 ${className}`}
+      onClick={() => {
+        if (!lockedView && mode !== "edit") setMode("edit");
+      }}
       style={{
         display: "grid",
-        gridTemplateColumns: "1.2fr 1fr",
+        gridTemplateColumns: isEditMode ? "1.2fr 1fr" : "1fr",
         gap: "12px",
         marginTop: "10px",
         paddingTop: "8px",
         borderTop: "1px solid rgba(255,255,255,0.05)",
         minWidth: 0,
         overflow: "hidden",
+        cursor: !lockedView && mode !== "edit" ? "pointer" : "default",
       }}
     >
-      {/* Left Column: Inputs */}
+      <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span className="minor-text" style={{ fontSize: 10 }}>
+          {lockedView ? "View only" : "Click panel to edit"}
+        </span>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!lockedView) setMode((m) => (m === "view" ? "edit" : "view"));
+          }}
+          disabled={lockedView}
+          style={{ height: 22, fontSize: 10, padding: "0 8px" }}
+        >
+          {isEditMode ? "View | Edit" : "View | Edit"}
+        </button>
+      </div>
+
+      {!isEditMode ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "6px 16px" }}>
+          {summaryRows.map((row) => (
+            <div key={row.label} style={{ display: "flex", gap: 6, fontSize: 11 }}>
+              <span className="minor-text" style={{ minWidth: 84 }}>{row.label}:</span>
+              <span>{row.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+      <>
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(2, 1fr)",
-          gap: "8px 12px",
+          gridTemplateColumns: "1fr",
+          gap: "8px",
         }}
       >
         <div
@@ -154,224 +240,13 @@ export function TradePlanEditor({
           </div>
         </div>
 
-        <div
-          className="snapshot-field-mini"
-          style={{ display: "flex", flexDirection: "column", gap: "2px" }}
-        >
-          <label
-            className="minor-text"
-            style={{
-              fontWeight: "700",
-              fontSize: "9px",
-              textTransform: "uppercase",
-              color: "var(--muted-bright)",
-              opacity: 0.8,
-            }}
-          >
-            Entry
-          </label>
-          <input
-            style={{
-              height: "24px",
-              fontSize: "11px",
-              padding: "0 6px",
-              width: "100%",
-            }}
-            type="number"
-            step="0.001"
-            inputMode="decimal"
-            value={value.entry || ""}
-            onChange={(e) => update("entry", e.target.value)}
-            disabled={controlsDisabled}
-          />
-          {(() => {
-            const m = calcSliderMeta(value.entry);
-            return (
-              <input
-                className="snapshot-number-slider-v4"
-                type="range"
-                min={m.min}
-                max={m.max}
-                step={m.step}
-                value={m.value}
-                style={{
-                  accentColor: "var(--muted)",
-                  height: "10px",
-                  margin: "2px 0 0 0",
-                }}
-                disabled={!m.enabled || controlsDisabled}
-                onChange={(e) =>
-                  update("entry", formatNum3(Number(e.target.value)))
-                }
-              />
-            );
-          })()}
-        </div>
+        <NumericInline label="Entry" k="entry" />
 
-        <div
-          className="snapshot-field-mini"
-          style={{ display: "flex", flexDirection: "column", gap: "2px" }}
-        >
-          <label
-            className="minor-text"
-            style={{
-              fontWeight: "700",
-              fontSize: "9px",
-              textTransform: "uppercase",
-              color: "var(--muted-bright)",
-              opacity: 0.8,
-            }}
-          >
-            Risk / Reward
-          </label>
-          <input
-            style={{
-              height: "24px",
-              fontSize: "11px",
-              padding: "0 6px",
-              width: "100%",
-            }}
-            type="number"
-            step="0.1"
-            inputMode="decimal"
-            min="0.3"
-            max="10"
-            value={value.rr || ""}
-            onChange={(e) => update("rr", e.target.value)}
-            disabled={controlsDisabled}
-            readOnly={rrReadOnly}
-          />
-          {(() => {
-            const m = calcSliderMeta(value.rr);
-            return (
-              <input
-                className="snapshot-number-slider-v4"
-                type="range"
-                min={0.5}
-                max={8}
-                step={0.1}
-                value={Number(value.rr) || 2}
-                style={{
-                  accentColor: "var(--muted)",
-                  height: "10px",
-                  margin: "2px 0 0 0",
-                }}
-                disabled={controlsDisabled}
-                onChange={(e) =>
-                  update("rr", formatNum3(Number(e.target.value)))
-                }
-              />
-            );
-          })()}
-        </div>
+        <NumericInline label="Risk / Reward" k="rr" step="0.1" min="0.3" max="10" sliderOverride={{ min: 0.5, max: 8, step: 0.1 }} />
 
-        <div
-          className="snapshot-field-mini"
-          style={{ display: "flex", flexDirection: "column", gap: "2px" }}
-        >
-          <label
-            className="minor-text"
-            style={{
-              fontWeight: "700",
-              fontSize: "9px",
-              textTransform: "uppercase",
-              color: "var(--muted-bright)",
-              opacity: 0.8,
-            }}
-          >
-            Take Profit
-          </label>
-          <input
-            style={{
-              height: "24px",
-              fontSize: "11px",
-              padding: "0 6px",
-              width: "100%",
-            }}
-            type="number"
-            step="0.001"
-            inputMode="decimal"
-            value={value.tp || ""}
-            onChange={(e) => update("tp", e.target.value)}
-            disabled={controlsDisabled}
-          />
-          {(() => {
-            const m = calcSliderMeta(value.tp);
-            return (
-              <input
-                className="snapshot-number-slider-v4"
-                type="range"
-                min={m.min}
-                max={m.max}
-                step={m.step}
-                value={m.value}
-                style={{
-                  accentColor: "var(--muted)",
-                  height: "10px",
-                  margin: "2px 0 0 0",
-                }}
-                disabled={!m.enabled || controlsDisabled}
-                onChange={(e) =>
-                  update("tp", formatNum3(Number(e.target.value)))
-                }
-              />
-            );
-          })()}
-        </div>
+        <NumericInline label="Take Profit" k="tp" />
 
-        <div
-          className="snapshot-field-mini"
-          style={{ display: "flex", flexDirection: "column", gap: "2px" }}
-        >
-          <label
-            className="minor-text"
-            style={{
-              fontWeight: "700",
-              fontSize: "9px",
-              textTransform: "uppercase",
-              color: "var(--muted-bright)",
-              opacity: 0.8,
-            }}
-          >
-            Stop Loss
-          </label>
-          <input
-            style={{
-              height: "24px",
-              fontSize: "11px",
-              padding: "0 6px",
-              width: "100%",
-            }}
-            type="number"
-            step="0.001"
-            inputMode="decimal"
-            value={value.sl || ""}
-            onChange={(e) => update("sl", e.target.value)}
-            disabled={controlsDisabled}
-          />
-          {(() => {
-            const m = calcSliderMeta(value.sl);
-            return (
-              <input
-                className="snapshot-number-slider-v4"
-                type="range"
-                min={m.min}
-                max={m.max}
-                step={m.step}
-                value={m.value}
-                style={{
-                  accentColor: "var(--muted)",
-                  height: "10px",
-                  margin: "2px 0 0 0",
-                }}
-                disabled={!m.enabled || controlsDisabled}
-                onChange={(e) =>
-                  update("sl", formatNum3(Number(e.target.value)))
-                }
-              />
-            );
-          })()}
-        </div>
+        <NumericInline label="Stop Loss" k="sl" />
       </div>
 
       {/* Right Column: Note & Actions */}
@@ -516,6 +391,8 @@ export function TradePlanEditor({
           </span>
         ) : null}
       </div>
+      </>
+      )}
     </div>
   );
 }

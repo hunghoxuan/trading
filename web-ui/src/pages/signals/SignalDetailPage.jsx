@@ -103,7 +103,7 @@ export default function SignalDetailPage() {
   }, [t]);
 
   const isClosed = useMemo(() => {
-    return ["CLOSED", "CANCELLED", "TP", "SL", "FAIL", "EXPIRED"].includes(String(t?.status || "").toUpperCase());
+    return ["FILLED", "CLOSED", "CANCELLED", "TP", "SL", "FAIL", "EXPIRED"].includes(String(t?.status || "").toUpperCase());
   }, [t?.status]);
 
   async function onSaveSignalPlan() {
@@ -144,6 +144,7 @@ export default function SignalDetailPage() {
             onChange: (k, v) => setDetailPlan(p => ({ ...p, [k]: v })),
             onSave: onSaveSignalPlan,
             showSaveButton: !isClosed,
+            viewOnly: isClosed,
             status: statusUi(t.status),
             volume: `${t.volume ?? "-"} lots`,
             pnl: <PnlDisplay value={t.pnl_money_realized} />,

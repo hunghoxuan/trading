@@ -856,7 +856,8 @@ export default function TradesPage() {
                   onSave: onUpdateTradePlan,
                   onAddTrade: onReEntryTrade,
                   showAddSignalButton: false,
-                  showSaveButton: !["CLOSED", "CANCELLED", "TP", "SL", "FAIL", "EXPIRED"].includes(String(selectedTrade.execution_status || "").toUpperCase()),
+                  showSaveButton: !["FILLED", "CLOSED", "CANCELLED", "TP", "SL", "FAIL", "EXPIRED"].includes(String(selectedTrade.execution_status || "").toUpperCase()),
+                  viewOnly: ["FILLED", "CLOSED", "CANCELLED", "TP", "SL", "FAIL", "EXPIRED"].includes(String(selectedTrade.execution_status || "").toUpperCase()),
                 }}
                 header={(() => {
                   const action = String(selectedTrade.action || selectedTrade.side || "-").toUpperCase();

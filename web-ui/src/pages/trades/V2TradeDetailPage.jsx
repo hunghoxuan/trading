@@ -190,7 +190,7 @@ export default function TradeDetailPage() {
     });
   }, [trade]);
   const isClosed = useMemo(() => {
-    return ["CLOSED", "CANCELLED", "TP", "SL", "FAIL", "EXPIRED"].includes(String(trade?.execution_status || "").toUpperCase());
+    return ["FILLED", "CLOSED", "CANCELLED", "TP", "SL", "FAIL", "EXPIRED"].includes(String(trade?.execution_status || "").toUpperCase());
   }, [trade?.execution_status]);
 
   async function onUpdateTradePlan() {
@@ -278,6 +278,7 @@ export default function TradeDetailPage() {
             onAddTrade: onReEntryTrade,
             showAddSignalButton: false,
             showSaveButton: !isClosed,
+            viewOnly: isClosed,
             error: planError,
             status: statusUi(trade.execution_status),
             volume: `${trade.volume ?? "-"} lots`,

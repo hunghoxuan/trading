@@ -879,6 +879,7 @@ export default function SignalsPage() {
                 saveLabel: "Save Signal",
                 busy: detailPlanBusy,
                 disabled: !isDetailPlanDirty,
+                viewOnly: ["FILLED", "CLOSED", "CANCELLED", "TP", "SL", "FAIL", "EXPIRED"].includes(String(selectedSignal.status || "").toUpperCase()),
                 error: detailPlanMsg.type === "error" ? detailPlanMsg.text : "",
                 successMessage: detailPlanMsg.text && detailPlanMsg.type !== "error" ? detailPlanMsg.text : "",
                 status: statusUi(selectedSignal.status),

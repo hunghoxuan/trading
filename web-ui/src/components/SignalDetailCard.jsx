@@ -522,6 +522,7 @@ export function SignalDetailCard({
                     showResetButton={tradePlan.showResetButton !== false}
                     busy={tradePlan.busy || {}}
                     disabled={Boolean(tradePlan.disabled)}
+                    viewOnly={Boolean(tradePlan.viewOnly)}
                     error={tradePlan.error || ""}
                   />
                 ) : isSelected ? (
