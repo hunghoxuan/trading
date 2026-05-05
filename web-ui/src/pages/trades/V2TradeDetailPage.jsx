@@ -184,7 +184,7 @@ export default function TradeDetailPage() {
             enabled: true,
             hideEditor: false,
             mode: "trade",
-            tradeId: trade.trade_id || trade.id,
+            tradeId: trade.sid || trade.id,
             value: detailPlan,
             onChange: (k, v) => setDetailPlan(p => ({ ...p, [k]: v })),
             onSave: onUpdateTradePlan,
@@ -211,8 +211,8 @@ export default function TradeDetailPage() {
             analysisSnapshot: trade?.metadata?.analysis_snapshot || trade?.raw_json?.analysis_snapshot || null,
           }}
           metaItems={[
-            { label: "Trade SID", value: trade.sid || trade.trade_id || "-" },
-            { label: "Signal SID", value: trade.signal_id || "-" },
+            { label: "Trade SID", value: trade.sid || "-" },
+            { label: "Signal SID", value: trade.signal_sid || "-" },
             { label: "Strategy", value: trade.strategy || trade.metadata?.strategy || trade.raw_json?.strategy || "-" },
             { label: "Entry Model", value: trade.entry_model || trade.metadata?.entry_model || trade.raw_json?.entry_model || "-" },
             { label: "Broker Ticket", value: brokerTicketOf(trade) },

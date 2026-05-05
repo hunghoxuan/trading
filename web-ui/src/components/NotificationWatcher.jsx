@@ -43,7 +43,7 @@ export default function NotificationWatcher() {
       let hasClosed = false;
 
       currentTrades.forEach(t => {
-        const sid = t.sid || t.signal_id;
+        const sid = t.sid || t.sid;
         if (!sid) return;
 
         // Detect New Signal
@@ -102,8 +102,8 @@ export default function NotificationWatcher() {
     // Initial load
     api.trades({ page: 1, pageSize: 50 }).then(data => {
       data.trades?.forEach(t => {
-        lastState.current.signalIds.add(t.sid || t.signal_id);
-        lastState.current.tradeStatuses[t.sid || t.signal_id] = String(t.status || "").toUpperCase();
+        lastState.current.signalIds.add(t.sid || t.sid);
+        lastState.current.tradeStatuses[t.sid || t.sid] = String(t.status || "").toUpperCase();
       });
     });
 

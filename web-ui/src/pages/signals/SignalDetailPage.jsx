@@ -162,7 +162,7 @@ export default function SignalDetailPage() {
             analysisSnapshot: t?.raw_json?.analysis_snapshot || null,
           }}
           metaItems={[
-            { label: "Signal SID", value: t.sid || t.signal_id || "-" },
+            { label: "Signal SID", value: t.sid || "-" },
             { label: "Strategy", value: t.strategy || t.raw_json?.strategy || "-" },
             { label: "Entry Model", value: t.entry_model || t.raw_json?.entry_model || "-" },
             { label: "Status", value: statusUi(t.status).label },

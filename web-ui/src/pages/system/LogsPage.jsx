@@ -346,7 +346,7 @@ export default function LogsPage() {
                     </td>
                     <td>
                       <div className="cell-wrap">
-                        <div className="minor-text">{ev.signal_id}</div>
+                        <div className="minor-text">{ev.sid}</div>
                         {ev.ack_ticket && (
                           <div
                             className="minor-text"

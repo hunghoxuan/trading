@@ -683,8 +683,8 @@ export default function DatabasePage() {
                   >
                     {selectedTable} ID:{" "}
                     {selectedRow.id ||
-                      selectedRow.signal_id ||
-                      selectedRow.trade_id ||
+                      selectedRow.sid ||
+                      selectedRow.sid ||
                       selectedRow.user_id ||
                       "-"}
                   </div>

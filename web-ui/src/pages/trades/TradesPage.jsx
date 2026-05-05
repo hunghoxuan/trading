@@ -89,7 +89,7 @@ function brokerTicketOf(t) {
 function tradeKeyOf(t) {
   const idNum = Number(t?.id);
   if (Number.isInteger(idNum) && idNum > 0) return String(idNum);
-  return String(t?.trade_id || "").trim();
+  return String(t?.sid || "").trim();
 }
 
 function rangeBounds(range) {
@@ -326,7 +326,7 @@ export default function TradesPage() {
       let items = Array.isArray(out?.items) ? out.items : [];
       if (items.length === 0) {
         const row = rows.find((r) => tradeKeyOf(r) === String(tradeRef));
-        const signalId = String(row?.signal_id || "").trim();
+        const signalId = String(row?.sid || "").trim();
         if (signalId) {
           const legacy = await api.trade(signalId);
           const evs = Array.isArray(legacy?.events) ? legacy.events : [];
@@ -360,7 +360,7 @@ export default function TradesPage() {
       filters.created_from = b.from || "";
       filters.created_to = b.to || "";
       if (selectedIds.size > 0) {
-        filters.trade_ids = Array.from(selectedIds);
+        filters.sids = Array.from(selectedIds);
       }
       await api.v2TradesBulkAction(bulkAction, filters);
       setSelectedIds(new Set());
@@ -403,7 +403,7 @@ export default function TradesPage() {
   useEffect(() => { loadTrades(); }, [query]);
   useEffect(() => {
     selectedTradeIdRef.current = tradeKeyOf(selectedTrade);
-  }, [selectedTrade?.id, selectedTrade?.trade_id]);
+  }, [selectedTrade?.id, selectedTrade?.sid]);
   useEffect(() => {
     const ref = tradeKeyOf(selectedTrade);
     if (ref) {
@@ -414,7 +414,7 @@ export default function TradesPage() {
       setTradeEvents([]);
       setDetailPlan({ direction: "BUY", trade_type: "limit", entry: "", tp: "", sl: "", rr: "", note: "" });
     }
-  }, [selectedTrade?.id, selectedTrade?.trade_id]);
+  }, [selectedTrade?.id, selectedTrade?.sid]);
   useEffect(() => {
     if (!selectedTrade) {
       setEditForm({ execution_status: "PENDING", pnl_realized: "0" });
@@ -432,7 +432,7 @@ export default function TradesPage() {
     });
     setEditModalOpen(false);
     setEditMsg({ type: "", text: "" });
-  }, [selectedTrade?.id, selectedTrade?.trade_id]);
+  }, [selectedTrade?.id, selectedTrade?.sid]);
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
@@ -559,8 +559,8 @@ export default function TradesPage() {
       const out = await api.v2UpdateTrade(selectedRef, payload);
       setEditMsg({ type: "success", text: "Trade updated." });
       await loadTrades();
-      if (out?.item?.id || out?.item?.sid || out?.item?.trade_id) {
-        const refreshQ = String(out?.item?.sid || out?.item?.trade_id || out?.item?.id || "");
+      if (out?.item?.id || out?.item?.sid || out?.item?.sid) {
+        const refreshQ = String(out?.item?.sid || out?.item?.sid || out?.item?.id || "");
         const refresh = await api.v2Trades({ q: refreshQ, page: 1, pageSize: 1 });
         if (Array.isArray(refresh?.items) && refresh.items.length > 0) {
           setSelectedTrade(refresh.items[0]);
@@ -833,7 +833,7 @@ export default function TradesPage() {
                   enabled: true,
                   hideEditor: false,
                   mode: "trade",
-                  tradeId: selectedTrade.trade_id || selectedTrade.id,
+                  tradeId: selectedTrade.sid || selectedTrade.id,
                   value: detailPlan,
                   onChange: (k, v) => setDetailPlan((p) => ({ ...p, [k]: v })),
                   onSave: onUpdateTradePlan,
@@ -916,7 +916,7 @@ export default function TradesPage() {
                   { label: "Strategy", value: compactStrategy(selectedTrade) },
                   { label: "Entry Model", value: selectedTrade.entry_model || "-" },
                   { label: "Source", value: displaySource(selectedTrade) },
-                  { label: "Trade SID", value: selectedTrade.sid || selectedTrade.trade_id || "-" },
+                  { label: "Trade SID", value: selectedTrade.sid || "-" },
                   { label: "Account", value: accountById.get(String(selectedTrade.account_id || ""))?.name || selectedTrade.account_id || "-" },
                   { label: "Broker Ticket", value: brokerTicketOf(selectedTrade) },
                   { label: "Broker Status", value: selectedTrade.metadata?.broker_data?.status || "-" },

@@ -68,7 +68,7 @@ function fDateTime(v) {
 function signalRefOf(s) {
   const idNum = Number(s?.id);
   if (Number.isInteger(idNum) && idNum > 0) return String(idNum);
-  return String(s?.signal_id || "").trim();
+  return String(s?.sid || "").trim();
 }
 
 function statusUi(statusRaw) {
@@ -360,7 +360,7 @@ export default function SignalsPage() {
         note: detailPlan.note,
       });
       await loadSignals();
-      await loadSignalDetail(selectedSignal.signal_id);
+      await loadSignalDetail(selectedSignal.sid);
       setDetailPlanMsg({ type: "success", text: "Signal plan saved." });
     } catch (e) {
       setDetailPlanMsg({ type: "error", text: String(e?.message || e || "Failed to save signal plan.") });
@@ -420,11 +420,11 @@ export default function SignalsPage() {
         note: String(createForm.note || "").trim(),
       };
       const out = await api.createTrade(payload);
-      setCreateMsg(`Signal created: ${out?.trade?.signal_id || "ok"}`);
+      setCreateMsg(`Signal created: ${out?.trade?.sid || "ok"}`);
       setCreateMode(false);
       await loadSignals();
-      if (out?.trade?.signal_id) {
-        const created = { signal_id: out.trade.signal_id, action: payload.side, symbol: payload.symbol, status: "NEW" };
+      if (out?.trade?.sid) {
+        const created = { signal_id: out.trade.signal_sid, action: payload.side, symbol: payload.symbol, status: "NEW" };
         setSelectedSignal(created);
       }
     } catch (e) {
@@ -465,7 +465,7 @@ export default function SignalsPage() {
 
   useEffect(() => {
     if (selectedSignal) {
-      loadSignalDetail(selectedSignal.signal_id);
+      loadSignalDetail(selectedSignal.sid);
       setDetailPlan(extractTradePlanFromSignal(selectedSignal));
       setDetailPlanMsg({ type: "", text: "" });
     } else {
@@ -475,7 +475,7 @@ export default function SignalsPage() {
   }, [selectedSignal]);
   useEffect(() => {
     selectedSignalIdRef.current = signalRefOf(selectedSignal);
-  }, [selectedSignal?.id, selectedSignal?.signal_id]);
+  }, [selectedSignal?.id, selectedSignal?.sid]);
 
   useEffect(() => { loadSymbols(); }, []);
   useEffect(() => { loadSignals(); }, [query]);
@@ -665,7 +665,7 @@ export default function SignalsPage() {
                   const sideCls = sideValue === 'BUY' ? 'side-buy' : 'side-sell';
                   const sourceLabel = displaySource(t);
                   const sourceId = String(t.source_id || "-");
-                  const signalShort = String(t.sid || t.signal_id || "").slice(-12) || "-";
+                  const signalShort = String(t.sid || t.sid || "").slice(-12) || "-";
                   const strategyLabel = compactStrategy(t);
                   
                   return (
@@ -912,7 +912,7 @@ export default function SignalsPage() {
                 { label: "Strategy", value: compactStrategy(selectedSignal) },
                 { label: "Entry Model", value: selectedSignal.entry_model || "-" },
                 { label: "Source", value: displaySource(selectedSignal) },
-                { label: "Signal SID", value: selectedSignal.sid || selectedSignal.signal_id || "-" },
+                { label: "Signal SID", value: selectedSignal.sid || "-" },
                 { label: "Note", value: selectedSignal.note || "-", fullWidth: true },
               ]}
               history={{

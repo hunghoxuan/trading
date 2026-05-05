@@ -100,10 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(
-  process.env.WEBHOOK_SERVER_VERSION,
-  "v2026.05.05 05:15 - 01f9ef5",
-); // DB schema SHOW column + presets
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 05:39 - a59fe4c"); // DB schema SHOW column + presets
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
@@ -3906,7 +3903,7 @@ async function loadTradePlansForAiContext(userId, symbolNorm) {
   try {
     const db = await mt5InitBackend();
     const rows = await db.query(
-      `SELECT signal_id, created_at, symbol, side, order_type, entry, sl, tp, signal_tf, chart_tf, rr_planned, risk_pct_planned, note, status, metadata
+      `SELECT sid, created_at, symbol, side, order_type, entry, sl, tp, signal_tf, chart_tf, rr_planned, risk_pct_planned, note, status, metadata
        FROM signals
        WHERE user_id = $1 AND regexp_replace(upper(symbol), '[^A-Z0-9]', '', 'g') = $2
          AND status IN ('NEW','PENDING','ACTIVE')
@@ -3915,7 +3912,7 @@ async function loadTradePlansForAiContext(userId, symbolNorm) {
       [userId, symbolNorm],
     );
     return (rows.rows || []).map((r) => ({
-      signal_id: r.signal_id,
+      sid: r.sid,
       created_at: r.created_at,
       symbol: r.symbol,
       side: r.side,
@@ -4788,7 +4785,7 @@ function normalizeSignal(payload) {
   const symbol = String(payload.symbol || payload.ticker || "").toUpperCase();
   const side = normalizeSide(payload.side || payload.action);
   const tradeId = envStr(
-    payload.signal_id ?? payload.id ?? payload.trade_id ?? payload.tradeId,
+    payload.sid ?? payload.id ?? payload.trade_id ?? payload.tradeId,
   );
   const timeframe = String(payload.timeframe || payload.tf || "n/a");
   const orderTypeRaw = envStr(payload.order_type ?? payload.orderType);
@@ -4824,7 +4821,7 @@ function normalizeSignal(payload) {
     strategy,
     symbol,
     side,
-    trade_id: tradeId || "-",
+    sid: tradeId || "-",
     timeframe,
     price,
     sl: Number.isFinite(sl) ? sl : null,
@@ -4868,7 +4865,7 @@ function enforceRiskAndPolicy(signal) {
 
 function formatSignal(signal) {
   return [
-    `${signal.symbol} | ${signal.side} | ${signal.trade_id || "-"} | ${signal.timeframe || "n/a"}`,
+    `${signal.symbol} | ${signal.side} | ${signal.sid || "-"} | ${signal.timeframe || "n/a"}`,
     `Entry:${signal.price} SL:${signal.sl ?? "n/a"} TP:${signal.tp ?? "n/a"} | ${signal.strategy || "-"} | ${signal.note || "-"}`,
   ]
     .filter(Boolean)
@@ -5322,8 +5319,8 @@ function mt5MapDbRow(row) {
   );
   return {
     id: row.id === null || row.id === undefined ? null : Number(row.id),
-    sid: String(row.sid || row.signal_id || ""),
-    signal_id: String(row.signal_id),
+    sid: String(row.sid || row.sid || ""),
+    sid: String(row.sid),
     created_at: String(row.created_at),
     user_id: String(row.user_id || CFG.mt5DefaultUserId || "default"),
     source: String(row.source || ""),
@@ -5480,7 +5477,7 @@ async function _mt5InitBackendInternal() {
     DROP TABLE IF EXISTS ai_configs;
 
     CREATE TABLE IF NOT EXISTS signals (
-      signal_id TEXT PRIMARY KEY,
+      sid TEXT PRIMARY KEY,
       created_at TIMESTAMPTZ NOT NULL,
       user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
       source TEXT,
@@ -5504,11 +5501,11 @@ async function _mt5InitBackendInternal() {
     );
 
     CREATE TABLE IF NOT EXISTS trades (
-      trade_id TEXT PRIMARY KEY,
+      sid TEXT PRIMARY KEY,
       account_id TEXT NOT NULL REFERENCES user_accounts(account_id) ON DELETE CASCADE,
       user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
       broker_id TEXT NULL,
-      signal_id TEXT NULL REFERENCES signals(signal_id) ON DELETE SET NULL,
+      signal_sid TEXT NULL REFERENCES signals(sid) ON DELETE SET NULL,
       source_id TEXT NULL,
       entry_model TEXT NULL,
       signal_tf TEXT NULL,
@@ -5664,7 +5661,7 @@ async function _mt5InitBackendInternal() {
       .query(
         `
       INSERT INTO logs (object_id, object_table, metadata, created_at)
-      SELECT signal_id, 'signals', payload_json || jsonb_build_object('legacy_event_type', event_type), event_time
+      SELECT sid, 'signals', payload_json || jsonb_build_object('legacy_event_type', event_type), event_time
       FROM signal_events
     `,
       )
@@ -5673,7 +5670,7 @@ async function _mt5InitBackendInternal() {
       .query(
         `
       INSERT INTO logs (object_id, object_table, metadata, created_at)
-      SELECT trade_id, 'trades', payload_json || jsonb_build_object('legacy_event_type', event_type), event_time
+      SELECT sid, 'trades', payload_json || jsonb_build_object('legacy_event_type', event_type), event_time
       FROM trade_events
     `,
       )
@@ -6051,7 +6048,7 @@ async function _mt5InitBackendInternal() {
     `CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)`,
     `CREATE INDEX IF NOT EXISTS idx_trades_exec_status ON trades(execution_status)`,
     `CREATE INDEX IF NOT EXISTS idx_trades_account ON trades(account_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_trades_signal ON trades(signal_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_trades_signal_sid ON trades(signal_sid)`,
     `CREATE INDEX IF NOT EXISTS idx_trades_broker_ticket ON trades(broker_trade_id)`,
     // Logs
     `CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at DESC)`,
@@ -6075,7 +6072,7 @@ async function _mt5InitBackendInternal() {
         signal_tf = COALESCE(NULLIF(t.signal_tf, ''), s.signal_tf),
         chart_tf = COALESCE(NULLIF(t.chart_tf, ''), s.chart_tf)
     FROM signals s
-    WHERE t.signal_id = s.signal_id
+    WHERE t.signal_sid = s.sid
   `,
     )
     .catch(() => {});
@@ -6083,8 +6080,8 @@ async function _mt5InitBackendInternal() {
   const idSidMigrations = [
     { table: "users", legacy: "user_id", prefix: "USR" },
     { table: "accounts", legacy: "account_id", prefix: "ACC" },
-    { table: "signals", legacy: "signal_id", prefix: "SIG" },
-    { table: "trades", legacy: "trade_id", prefix: "TRD" },
+    // { table: "signals", legacy: "signal_id", prefix: "SIG" } // REMOVED: signal_id column dropped,
+    // { table: "trades", legacy: "trade_id", prefix: "TRD" } // REMOVED: trade_id column dropped,
     { table: "sources", legacy: "source_id", prefix: "SRC" },
     { table: "execution_profiles", legacy: "profile_id", prefix: "PRF" },
   ];
@@ -6336,21 +6333,20 @@ async function _mt5InitBackendInternal() {
       const signalSid = await allocateUniqueSid(
         pool,
         "signals",
-        signal.sid || signal.signal_id,
+        signal.sid,
         "SIG",
       );
       const r = await pool.query(
         `
         INSERT INTO signals (
-          signal_id, sid, created_at, user_id, source, source_id, symbol, side, order_type, entry, sl, tp,
+          sid, created_at, user_id, source, source_id, symbol, side, order_type, entry, sl, tp,
           entry_model, signal_tf, chart_tf, rr_planned, risk_money_planned, risk_pct_planned,
           note, rejection_reason, raw_json, status
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21)
-        ON CONFLICT (signal_id) DO NOTHING
-        RETURNING signal_id
+        ON CONFLICT (sid) DO NOTHING
+        RETURNING sid
       `,
         [
-          signal.signal_id,
           signalSid,
           signal.created_at,
           signal.user_id,
@@ -6384,10 +6380,10 @@ async function _mt5InitBackendInternal() {
         `
         SELECT *
         FROM signals
-        WHERE signal_id = $1
+        WHERE sid = $1
            OR raw_json->>'id' = $1
-           OR raw_json->>'trade_id' = $1
-        ORDER BY CASE WHEN signal_id = $1 THEN 0 ELSE 1 END, created_at DESC
+           OR raw_json->>'sid' = $1
+        ORDER BY CASE WHEN sid = $1 THEN 0 ELSE 1 END, created_at DESC
         LIMIT 1
       `,
         [sid],
@@ -6416,7 +6412,7 @@ async function _mt5InitBackendInternal() {
         `
         SELECT s.*
         FROM trades t
-        LEFT JOIN signals s ON s.signal_id = t.signal_id
+        LEFT JOIN signals s ON s.sid = t.signal_sid
         WHERE t.broker_trade_id = $1
         ORDER BY t.updated_at DESC, t.created_at DESC
         LIMIT 1
@@ -6450,10 +6446,10 @@ async function _mt5InitBackendInternal() {
           `
           SELECT *
           FROM signals
-          WHERE signal_id = $1
+          WHERE sid = $1
              OR raw_json->>'id' = $1
-             OR raw_json->>'trade_id' = $1
-          ORDER BY CASE WHEN signal_id = $1 THEN 0 ELSE 1 END, created_at DESC
+             OR raw_json->>'sid' = $1
+          ORDER BY CASE WHEN sid = $1 THEN 0 ELSE 1 END, created_at DESC
           LIMIT 1
           FOR UPDATE
         `,
@@ -6475,7 +6471,7 @@ async function _mt5InitBackendInternal() {
             `
             UPDATE signals
             SET status = 'LOCKED'
-            WHERE signal_id = $1
+            WHERE sid = $1
             RETURNING *
           `,
             [sid],
@@ -6546,15 +6542,15 @@ async function _mt5InitBackendInternal() {
                 lease_token = $1,
                 lease_expires_at = NOW() + INTERVAL '1 minute',
                 updated_at = NOW()
-            WHERE trade_id = $2
+            WHERE sid = $2
           `,
-            [mt5GenerateId("LT"), row.trade_id],
+            [mt5GenerateId("LT"), row.sid],
           );
 
           await client.query("COMMIT");
 
           return {
-            task_id: row.trade_id,
+            task_id: row.sid,
             type: taskType,
             symbol: row.symbol,
             action: row.action,
@@ -6562,7 +6558,7 @@ async function _mt5InitBackendInternal() {
             price: row.entry,
             sl: row.sl,
             tp: row.tp,
-            signal_id: row.signal_id || row.trade_id,
+            sid: row.sid,
             ticket: row.broker_trade_id,
           };
         }
@@ -6579,13 +6575,13 @@ async function _mt5InitBackendInternal() {
         if (selSig.rows.length > 0) {
           const row = selSig.rows[0];
           await client.query(
-            `UPDATE signals SET status = 'LEASED' WHERE signal_id = $1`,
-            [row.signal_id],
+            `UPDATE signals SET status = 'LEASED' WHERE sid = $1`,
+            [row.sid],
           );
           await client.query("COMMIT");
 
           return {
-            task_id: row.signal_id,
+            task_id: row.sid,
             type: "OPEN",
             symbol: row.symbol,
             action: row.side,
@@ -6593,7 +6589,7 @@ async function _mt5InitBackendInternal() {
             price: row.price,
             sl: row.sl,
             tp: row.tp,
-            signal_id: row.signal_id,
+            sid: row.sid,
           };
         }
 
@@ -6614,7 +6610,7 @@ async function _mt5InitBackendInternal() {
       return t;
     },
     async fanoutSignalTradeV2(payload = {}) {
-      const signalIdRaw = String(payload.signal_id || "").trim();
+      const signalIdRaw = String(payload.sid || "").trim();
       const signalId = signalIdRaw || null;
       const sourceId = String(payload.source_id || "").trim();
       const userId = String(payload.user_id || CFG.mt5DefaultUserId).trim();
@@ -6641,14 +6637,14 @@ async function _mt5InitBackendInternal() {
           const ins = await client.query(
             `
             INSERT INTO trades (
-              trade_id, sid, account_id, user_id, signal_id, source_id,
+              sid, account_id, user_id, signal_sid, source_id,
               entry_model, signal_tf, chart_tf,
               symbol, action, order_type, entry, sl, tp, volume, note,
               dispatch_status, execution_status, metadata, raw_json, created_at, updated_at
-            ) VALUES ($1,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'NEW','PENDING',$17::jsonb,$18::jsonb,$19,$19)
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'NEW','PENDING',$17::jsonb,$18::jsonb,$19,$19)
           `,
             [
-              tradeSid, // Use SID as both trade_id and sid
+              tradeSid,
               aid,
               userId,
               signalId,
@@ -6686,7 +6682,7 @@ async function _mt5InitBackendInternal() {
                 tradeSid,
                 JSON.stringify(
                   signalId
-                    ? { event: "SIGNAL_FANOUT", signal_id: signalId }
+                    ? { event: "SIGNAL_FANOUT", signal_sid: signalId }
                     : { event: "DIRECT_TRADE_CREATE" },
                 ),
                 userId,
@@ -6726,8 +6722,8 @@ async function _mt5InitBackendInternal() {
             Date.now() + leaseSec * 1000,
           ).toISOString();
           await client.query(
-            `UPDATE trades SET dispatch_status = 'LEASED', lease_token = $1, lease_expires_at = $2, updated_at = NOW() WHERE trade_id = $3`,
-            [leaseToken, leaseExpiresAt, row.trade_id],
+            `UPDATE trades SET dispatch_status = 'LEASED', lease_token = $1, lease_expires_at = $2, updated_at = NOW() WHERE sid = $3`,
+            [leaseToken, leaseExpiresAt, row.sid],
           );
           out.push({
             ...row,
@@ -6818,7 +6814,7 @@ async function _mt5InitBackendInternal() {
              opened_at = COALESCE($5, opened_at, CASE WHEN $1 = 'OPEN' THEN $6 ELSE NULL END),
              closed_at = COALESCE($7, CASE WHEN $1 = 'CLOSED' THEN $6 ELSE NULL END),
              updated_at = $6
-         WHERE (trade_id = $8 OR sid = $8) AND account_id = $9 RETURNING user_id, opened_at, closed_at
+         WHERE sid = $8 AND account_id = $9 RETURNING user_id, opened_at, closed_at
        `,
         [
           payload.execution_status,
@@ -6828,7 +6824,7 @@ async function _mt5InitBackendInternal() {
           openedAt,
           now,
           closedAt,
-          payload.trade_id,
+          payload.sid || payload.trade_id,
           accountId,
           isClosed,
           usedVolume,
@@ -6838,7 +6834,7 @@ async function _mt5InitBackendInternal() {
       );
       if (res.rowCount > 0) {
         await this.log(
-          payload.trade_id,
+          payload.sid || payload.trade_id,
           "trades",
           {
             event: "TRADE_ACK",
@@ -6858,7 +6854,7 @@ async function _mt5InitBackendInternal() {
         );
       } else {
         // Fallback log for tracking orphan/failed acks
-        await this.log(payload.trade_id, "trades", {
+        await this.log(payload.sid || payload.trade_id, "trades", {
           event: "TRADE_ACK_FAILED",
           reason: "Trade not found or update failed",
           payload_status: payload.execution_status || payload.status,
@@ -6892,7 +6888,7 @@ async function _mt5InitBackendInternal() {
           `
           UPDATE signals
           SET status = $1
-          WHERE (signal_id = $2 OR sid = $2)
+          WHERE sid = $2
           RETURNING user_id
         `,
           [s, signalId],
@@ -6908,7 +6904,7 @@ async function _mt5InitBackendInternal() {
               metadata = COALESCE(metadata, '{}'::jsonb) || $6::jsonb,
               closed_at = CASE WHEN $4 = TRUE THEN NOW() ELSE closed_at END,
               updated_at = NOW()
-          WHERE (signal_id = $2 OR sid = $2)
+          WHERE sid = $2
         `,
           [
             tradeExec,
@@ -7024,7 +7020,7 @@ async function _mt5InitBackendInternal() {
       const pushItems = (arr = []) => {
         for (const raw of Array.isArray(arr) ? arr : []) {
           if (!raw || typeof raw !== "object") continue;
-          const signalId = String(raw.signal_id || "").trim();
+          const signalId = String(raw.sid || raw.signal_id || "").trim();
           const ticketCandidates = mt5TicketCandidates(raw);
           const ticket = ticketCandidates[0] || null;
           if (!signalId && !ticketCandidates.length) continue;
@@ -7100,7 +7096,7 @@ async function _mt5InitBackendInternal() {
           const lots = Number(raw.lots || 0);
           const brokerComment = String(raw.comment || "").trim();
 
-          // Use broker comment as signal_id if it looks like an ID
+          // Use broker comment as SID if it looks like an ID
           const effectiveSignalId = brokerComment || signalId;
 
           const key = ticket ? `tk:${ticket}` : `sig:${effectiveSignalId}`;
@@ -7108,7 +7104,7 @@ async function _mt5InitBackendInternal() {
           if (!prev) {
             merged.set(key, {
               ...raw, // Capture all raw fields from broker (pip_value, leverage, etc.)
-              signal_id: effectiveSignalId || null,
+              signal_sid: effectiveSignalId || null,
               ticket,
               ticket_candidates: ticketCandidates,
               pnl,
@@ -7130,8 +7126,8 @@ async function _mt5InitBackendInternal() {
           } else {
             // Keep existing fields and merge new ones
             Object.assign(prev, raw);
-            if (!prev.signal_id && effectiveSignalId)
-              prev.signal_id = effectiveSignalId;
+            if (!prev.sid && effectiveSignalId)
+              prev.sid = effectiveSignalId;
             prev.ticket_candidates = Array.from(
               new Set([...(prev.ticket_candidates || []), ...ticketCandidates]),
             );
@@ -7202,7 +7198,7 @@ async function _mt5InitBackendInternal() {
                   metadata = COALESCE(metadata, '{}'::jsonb) || $4::jsonb,
                   updated_at = NOW()
               WHERE account_id = $1
-                AND broker_trade_id = ANY($2::text[])
+                AND broker_sid = ANY($2::text[])
                 AND symbol <> $3
                 AND execution_status IN ('PENDING','OPEN')
             `,
@@ -7248,7 +7244,7 @@ async function _mt5InitBackendInternal() {
               AND ($11 = '' OR symbol = $11)
               AND (
                 sid = ANY($4::text[])
-                OR broker_trade_id = ANY($4::text[])
+                OR broker_sid = ANY($4::text[])
                 OR metadata->>'broker_position_id' = ANY($4::text[])
                 OR metadata->>'position_ticket' = ANY($4::text[])
               )
@@ -7275,7 +7271,7 @@ async function _mt5InitBackendInternal() {
             ],
           );
         }
-        if (it.signal_id) {
+        if (it.sid) {
           if (res.rowCount === 0) {
             res = await pool.query(
               `
@@ -7298,24 +7294,24 @@ async function _mt5InitBackendInternal() {
                 opened_at = COALESCE($9, opened_at),
                 closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($10, closed_at, NOW()) ELSE closed_at END,
                 updated_at = NOW()
-            WHERE trade_id = (
-              SELECT trade_id
+            WHERE sid = (
+              SELECT sid
               FROM trades
               WHERE account_id = $4
-                AND (signal_id = $5 OR trade_id = $5 OR sid = $5)
+                AND signal_sid = $5
               ORDER BY
                 CASE WHEN broker_trade_id IS NULL OR broker_trade_id = '' THEN 0 ELSE 1 END,
                 created_at ASC
               LIMIT 1
             )
-            RETURNING trade_id
+            RETURNING sid
             `,
               [
                 it.execution_status,
                 it.ticket,
                 it.pnl,
                 aid,
-                it.signal_id,
+                it.sid,
                 it.volume,
                 it.close_reason,
                 syncMeta,
@@ -7348,8 +7344,8 @@ async function _mt5InitBackendInternal() {
                 metadata = COALESCE(metadata, '{}'::jsonb) || $7::jsonb,
                 closed_at = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($8, closed_at, NOW()) ELSE closed_at END,
                 updated_at = NOW()
-            WHERE trade_id = (
-              SELECT trade_id
+            WHERE sid = (
+              SELECT sid
               FROM trades
               WHERE account_id = $4
                 AND execution_status IN ('PENDING','OPEN')
@@ -7360,7 +7356,7 @@ async function _mt5InitBackendInternal() {
               ORDER BY created_at ASC
               LIMIT 1
             )
-            RETURNING trade_id
+            RETURNING sid
           `,
             [
               it.execution_status,
@@ -7389,12 +7385,12 @@ async function _mt5InitBackendInternal() {
           await pool.query(
             `
             INSERT INTO trades (
-              trade_id, sid, account_id, user_id,
+              sid, account_id, user_id,
               symbol, action, volume, entry,
               execution_status, source_id, metadata, broker_trade_id,
               broker_pips, broker_lots, broker_commission, broker_swap, broker_volume,
               created_at, updated_at
-            ) VALUES ($1, $1, $2, $3, $4, $5, $6, $7, 'OPEN', $8, $9::jsonb, $10, $11, $12, $13, $14, $15, NOW(), NOW())
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'OPEN', $8, $9::jsonb, $10, $11, $12, $13, $14, $15, NOW(), NOW())
             ON CONFLICT (sid) DO NOTHING
           `,
             [
@@ -7419,7 +7415,7 @@ async function _mt5InitBackendInternal() {
         } else if (res.rowCount > 0) {
           matched += res.rowCount;
           synced++;
-          const tid = String(res.rows?.[0]?.trade_id || "").trim();
+          const tid = String(res.rows?.[0]?.sid || "").trim();
           if (tid) {
             await this.log(
               tid,
@@ -7429,7 +7425,7 @@ async function _mt5InitBackendInternal() {
                 status_raw: it.status_raw,
                 execution_status: it.execution_status,
                 ticket: it.ticket || null,
-                signal_id: it.signal_id || null,
+                signal_sid: it.sid || null,
                 pnl: it.pnl,
               },
               uid,
@@ -7440,7 +7436,7 @@ async function _mt5InitBackendInternal() {
       const finalizeSnapshotClosures = async (rows = []) => {
         const items = Array.isArray(rows) ? rows : [];
         for (const row of items) {
-          const tradeId = String(row?.trade_id || "").trim();
+          const tradeId = String(row?.sid || "").trim();
           if (!tradeId) continue;
           let resolvedPnl = Number(row?.pnl_realized);
           if (!Number.isFinite(resolvedPnl)) {
@@ -7465,7 +7461,7 @@ async function _mt5InitBackendInternal() {
                 UPDATE trades
                 SET pnl_realized = COALESCE(pnl_realized, $2),
                     updated_at = NOW()
-                WHERE trade_id = $1
+                WHERE sid = $1
               `,
                 [tradeId, inferred],
               );
@@ -7499,8 +7495,8 @@ async function _mt5InitBackendInternal() {
               AND execution_status IN ('OPEN','PENDING')
               AND broker_trade_id IS NOT NULL
               AND broker_trade_id <> ''
-              AND NOT (broker_trade_id = ANY($2::text[]))
-            RETURNING trade_id, broker_trade_id, execution_status, close_reason, pnl_realized
+              AND NOT (broker_sid = ANY($2::text[]))
+            RETURNING sid, broker_trade_id, execution_status, close_reason, pnl_realized
           `,
             [aid, Array.from(seenTickets)],
           );
@@ -7518,7 +7514,7 @@ async function _mt5InitBackendInternal() {
               AND execution_status IN ('OPEN','PENDING')
               AND broker_trade_id IS NOT NULL
               AND broker_trade_id <> ''
-            RETURNING trade_id, broker_trade_id, execution_status, close_reason, pnl_realized
+            RETURNING sid, broker_trade_id, execution_status, close_reason, pnl_realized
           `,
             [aid],
           );
@@ -7580,7 +7576,7 @@ async function _mt5InitBackendInternal() {
       return { ok: true };
     },
     async listSignals(limit, filters = {}, userId = null) {
-      const clauses = ["signal_id NOT LIKE 'SYSTEM_%'"];
+      const clauses = ["sid NOT LIKE 'SYSTEM_%'"];
       const params = [];
       if (typeof filters === "string") {
         // Legacy support
@@ -7601,7 +7597,7 @@ async function _mt5InitBackendInternal() {
           params.push(`%${String(filters.q)}%`);
           const p = `$${params.length}`;
           clauses.push(`(
-             signal_id ILIKE ${p}
+             sid ILIKE ${p}
              OR sid ILIKE ${p}
              OR symbol ILIKE ${p}
              OR note ILIKE ${p}
@@ -7628,7 +7624,7 @@ async function _mt5InitBackendInternal() {
         LEFT JOIN LATERAL (
           SELECT broker_trade_id, pnl_realized, opened_at, closed_at, close_reason, execution_status, updated_at, created_at
           FROM trades
-          WHERE signal_id = s.signal_id
+          WHERE sid = s.sid
           ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
           LIMIT 1
         ) t ON TRUE
@@ -7646,8 +7642,8 @@ async function _mt5InitBackendInternal() {
       const offset = (safePage - 1) * safePageSize;
       const clauses = [];
       const params = [];
-      const tradeIds = Array.isArray(filters.trade_ids)
-        ? filters.trade_ids.map((v) => String(v || "").trim()).filter(Boolean)
+      const tradeIds = Array.isArray(filters.sids)
+        ? filters.sids.map((v) => String(v || "").trim()).filter(Boolean)
         : [];
       if (tradeIds.length) {
         const numericIds = tradeIds
@@ -7659,7 +7655,7 @@ async function _mt5InitBackendInternal() {
           idParts.push(`id = ANY($${params.length}::bigint[])`);
         }
         params.push(tradeIds);
-        idParts.push(`trade_id = ANY($${params.length}::text[])`);
+        idParts.push(`sid = ANY($${params.length}::text[])`);
         idParts.push(`sid = ANY($${params.length}::text[])`);
         clauses.push(`(${idParts.join(" OR ")})`);
       }
@@ -7712,11 +7708,11 @@ async function _mt5InitBackendInternal() {
         params.push(`%${String(filters.q)}%`);
         const p = `$${params.length}`;
         clauses.push(`(
-          trade_id ILIKE ${p}
+          sid ILIKE ${p}
           OR id::text ILIKE ${p}
           OR sid ILIKE ${p}
-          OR signal_id ILIKE ${p}
-          OR broker_trade_id ILIKE ${p}
+          OR sid ILIKE ${p}
+          OR broker_sid ILIKE ${p}
           OR symbol ILIKE ${p}
           OR account_id ILIKE ${p}
           OR source_id ILIKE ${p}
@@ -7744,7 +7740,7 @@ async function _mt5InitBackendInternal() {
     },
     async updateTradeManualV2(tradeId, userId = null, payload = {}) {
       const tid = String(tradeId || "").trim();
-      if (!tid) return { ok: false, error: "trade_id is required" };
+      if (!tid) return { ok: false, error: "sid (trade_id) is required" };
       const numericId = mt5ParseNumericId(tid);
       const stRaw = String(payload.execution_status || payload.status || "")
         .trim()
@@ -7797,10 +7793,10 @@ async function _mt5InitBackendInternal() {
         WHERE (
           ($4::bigint IS NOT NULL AND id = $4::bigint)
           OR sid = $5
-          OR trade_id = $5
+          OR sid = $5
         )
           ${whereUser}
-        RETURNING id, sid, trade_id, signal_id, user_id, execution_status, pnl_realized, close_reason, closed_at
+        RETURNING id, sid, signal_sid, user_id, execution_status, pnl_realized, close_reason, closed_at
       `,
         params,
       );
@@ -7808,7 +7804,7 @@ async function _mt5InitBackendInternal() {
         return { ok: false, error: "trade not found" };
       const row = res.rows[0];
       await this.log(
-        row.trade_id,
+        row.sid,
         "trades",
         {
           event: "TRADE_MANUAL_EDIT",
@@ -7836,8 +7832,8 @@ async function _mt5InitBackendInternal() {
       const nextStatus =
         act === "cancel_all" ? "PENDING_CANCEL" : "PENDING_CLOSE";
       const params = isDelete ? [] : [closeReason, nextStatus];
-      const tradeIds = Array.isArray(filters.trade_ids)
-        ? filters.trade_ids.map((v) => String(v || "").trim()).filter(Boolean)
+      const tradeIds = Array.isArray(filters.sids)
+        ? filters.sids.map((v) => String(v || "").trim()).filter(Boolean)
         : [];
       if (tradeIds.length) {
         const numericIds = tradeIds
@@ -7849,7 +7845,7 @@ async function _mt5InitBackendInternal() {
           parts.push(`id = ANY($${baseOffset + params.length}::bigint[])`);
         }
         params.push(tradeIds);
-        parts.push(`trade_id = ANY($${baseOffset + params.length}::text[])`);
+        parts.push(`sid = ANY($${baseOffset + params.length}::text[])`);
         parts.push(`sid = ANY($${baseOffset + params.length}::text[])`);
         clauses.push(`(${parts.join(" OR ")})`);
       }
@@ -7881,11 +7877,11 @@ async function _mt5InitBackendInternal() {
         params.push(`%${String(filters.q)}%`);
         const p = `$${baseOffset + params.length}`;
         clauses.push(`(
-          trade_id ILIKE ${p}
+          sid ILIKE ${p}
           OR id::text ILIKE ${p}
           OR sid ILIKE ${p}
-          OR signal_id ILIKE ${p}
-          OR broker_trade_id ILIKE ${p}
+          OR sid ILIKE ${p}
+          OR broker_sid ILIKE ${p}
           OR symbol ILIKE ${p}
           OR account_id ILIKE ${p}
           OR source_id ILIKE ${p}
@@ -7903,7 +7899,7 @@ async function _mt5InitBackendInternal() {
           `
           DELETE FROM trades
           ${where}
-          RETURNING trade_id, signal_id
+          RETURNING sid, signal_sid
         `,
           params,
         );
@@ -7912,9 +7908,9 @@ async function _mt5InitBackendInternal() {
           ok: true,
           updated: Number(delRes.rowCount || 0),
           action: act,
-          trade_ids: rows.map((r) => String(r?.trade_id || "")).filter(Boolean),
-          signal_ids: rows
-            .map((r) => String(r?.signal_id || ""))
+          sids: rows.map((r) => String(r?.sid || "")).filter(Boolean),
+          signal_sids: rows
+            .map((r) => String(r?.sid || ""))
             .filter(Boolean),
         };
       }
@@ -7926,7 +7922,7 @@ async function _mt5InitBackendInternal() {
             closed_at = COALESCE(closed_at, NOW()),
             updated_at = NOW()
         ${where}
-        RETURNING trade_id, signal_id
+        RETURNING sid, signal_sid
       `,
         params,
       );
@@ -7935,8 +7931,8 @@ async function _mt5InitBackendInternal() {
         ok: true,
         updated: Number(res.rowCount || 0),
         action: act,
-        trade_ids: rows.map((r) => String(r?.trade_id || "")).filter(Boolean),
-        signal_ids: rows.map((r) => String(r?.signal_id || "")).filter(Boolean),
+        sids: rows.map((r) => String(r?.sid || "")).filter(Boolean),
+        signal_sids: rows.map((r) => String(r?.sid || "")).filter(Boolean),
       };
     },
     async listLogs(filters = {}, limit = 200, offset = 0) {
@@ -8464,7 +8460,7 @@ async function _mt5InitBackendInternal() {
       if (query) {
         params.push(`%${query}%`);
         if (table === "signals" || table === "trades") {
-          where = `WHERE symbol ILIKE $3 OR signal_id ILIKE $3 OR trade_id ILIKE $3`;
+          where = `WHERE symbol ILIKE $3 OR sid ILIKE $3 OR sid ILIKE $3`;
         } else if (table === "users" || table === "user_accounts") {
           where = `WHERE user_id ILIKE $3 OR account_id ILIKE $3`;
         } else if (table === "logs") {
@@ -8698,8 +8694,8 @@ async function _mt5InitBackendInternal() {
     async pruneOldSignals(days) {
       const res = await pool.query(
         `
-        WITH signals_del AS (DELETE FROM signals WHERE created_at < NOW() - $1 * INTERVAL '1 day' RETURNING signal_id),
-             trades_del AS (DELETE FROM trades WHERE created_at < NOW() - $1 * INTERVAL '1 day' RETURNING trade_id),
+        WITH signals_del AS (DELETE FROM signals WHERE created_at < NOW() - $1 * INTERVAL '1 day' RETURNING sid),
+             trades_del AS (DELETE FROM trades WHERE created_at < NOW() - $1 * INTERVAL '1 day' RETURNING sid),
              logs_del AS (DELETE FROM logs WHERE created_at < NOW() - $1 * INTERVAL '1 day' RETURNING object_id)
         SELECT (SELECT COUNT(*) FROM signals_del) as signals_count,
                (SELECT COUNT(*) FROM trades_del) as trades_count,
@@ -8724,7 +8720,7 @@ async function _mt5InitBackendInternal() {
         LEFT JOIN LATERAL (
           SELECT broker_trade_id, pnl_realized
           FROM trades
-          WHERE signal_id = s.signal_id
+          WHERE sid = s.sid
           ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
           LIMIT 1
         ) t ON TRUE
@@ -8763,9 +8759,9 @@ async function _mt5InitBackendInternal() {
           `
           UPDATE signals
           SET status = $1
-          WHERE signal_id = $2
+          WHERE sid = $2
         `,
-          [u.status, u.signal_id],
+          [u.status, u.sid],
         );
         await pool.query(
           `
@@ -8775,7 +8771,7 @@ async function _mt5InitBackendInternal() {
               pnl_realized = CASE WHEN $4 = TRUE THEN $3 ELSE pnl_realized END,
               closed_at = CASE WHEN $5 = TRUE THEN NOW() ELSE closed_at END,
               updated_at = NOW()
-          WHERE signal_id = $6
+          WHERE sid = $6
         `,
           [
             tradeExec,
@@ -8783,7 +8779,7 @@ async function _mt5InitBackendInternal() {
             pnlVal,
             hasPnl,
             isClosed,
-            u.signal_id,
+            u.sid,
           ],
         );
         count += res.rowCount;
@@ -8927,7 +8923,7 @@ async function _mt5InitBackendInternal() {
           params,
         );
         const sRows = sQ.rows;
-        const sIds = sRows.map((r) => String(r.signal_id));
+        const sIds = sRows.map((r) => String(r.sid));
 
         // 2. Collect trades and their IDs
         const tQ = await pool.query(
@@ -8935,13 +8931,13 @@ async function _mt5InitBackendInternal() {
           params,
         );
         const tRows = tQ.rows;
-        const tIds = tRows.map((r) => String(r.trade_id));
+        const tIds = tRows.map((r) => String(r.sid));
 
         // 3. Delete from trades first
         let tradesDeleted = 0;
         if (tIds.length > 0) {
           const tDel = await pool.query(
-            `DELETE FROM trades WHERE trade_id = ANY($1)`,
+            `DELETE FROM trades WHERE sid = ANY($1)`,
             [tIds],
           );
           tradesDeleted = tDel.rowCount;
@@ -8951,7 +8947,7 @@ async function _mt5InitBackendInternal() {
         let signalsDeleted = 0;
         if (sIds.length > 0) {
           const sDel = await pool.query(
-            `DELETE FROM signals WHERE signal_id = ANY($1)`,
+            `DELETE FROM signals WHERE sid = ANY($1)`,
             [sIds],
           );
           signalsDeleted = sDel.rowCount;
@@ -9107,7 +9103,7 @@ async function _mt5InitBackendInternal() {
       await pool.query(
         `
         DELETE FROM trades
-        WHERE signal_id = ANY($1::text[])
+        WHERE sid = ANY($1::text[])
       `,
         [refs],
       );
@@ -9115,7 +9111,7 @@ async function _mt5InitBackendInternal() {
       const res = await pool.query(
         `
         DELETE FROM signals
-        WHERE signal_id = ANY($1::text[])
+        WHERE sid = ANY($1::text[])
            OR sid = ANY($1::text[])
            OR id = ANY($2::bigint[])
       `,
@@ -9135,16 +9131,16 @@ async function _mt5InitBackendInternal() {
         `
         UPDATE signals
         SET status = 'CANCEL', updated_at = NOW()
-        WHERE signal_id = ANY($1::text[])
+        WHERE sid = ANY($1::text[])
            OR sid = ANY($1::text[])
            OR id = ANY($2::bigint[])
-        RETURNING signal_id
+        RETURNING sid
       `,
         [refs, numericIds],
       );
       return {
         updated: res.rowCount,
-        updated_ids: res.rows.map((r) => r.signal_id),
+        updated_ids: res.rows.map((r) => r.sid),
       };
     },
     async renewSignalsByIds(signalIds) {
@@ -9162,7 +9158,7 @@ async function _mt5InitBackendInternal() {
           `
           SELECT *
           FROM signals
-          WHERE signal_id = ANY($1::text[])
+          WHERE sid = ANY($1::text[])
              OR sid = ANY($1::text[])
              OR id = ANY($2::bigint[])
           FOR UPDATE
@@ -9171,24 +9167,24 @@ async function _mt5InitBackendInternal() {
         );
         const updatedIds = [];
         for (const row of selected.rows || []) {
-          const oldId = String(row.signal_id || "");
+          const oldId = String(row.sid || "");
           const cur = mt5CanonicalStoredStatus(row.status);
           if (cur === "NEW" || cur === "LOCKED") continue;
 
           const base = mt5RenewSignalIdBase(oldId);
           const existingRows = await client.query(
-            `SELECT signal_id FROM signals WHERE signal_id = $1 OR signal_id LIKE $2`,
+            `SELECT sid FROM signals WHERE sid = $1 OR sid LIKE $2`,
             [base, `${base}.%`],
           );
           const renewedId = mt5RenewSignalIdFromExisting(
             base,
-            (existingRows.rows || []).map((r) => String(r.signal_id || "")),
+            (existingRows.rows || []).map((r) => String(r.sid || "")),
           );
 
           const ins = await client.query(
             `
             INSERT INTO signals (
-              signal_id, created_at, user_id, source, source_id, side, symbol, entry, entry_model, sl, tp,
+              sid, created_at, user_id, source, source_id, side, symbol, entry, entry_model, sl, tp,
               signal_tf, chart_tf, rr_planned, note, raw_json, status
             )
             VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'NEW')
@@ -9214,7 +9210,7 @@ async function _mt5InitBackendInternal() {
           );
 
           if ((ins.rowCount || 0) > 0) {
-            await client.query(`DELETE FROM signals WHERE signal_id = $1`, [
+            await client.query(`DELETE FROM signals WHERE sid = $1`, [
               oldId,
             ]);
             updatedIds.push(renewedId);
@@ -9321,7 +9317,7 @@ function mt5NormalizeBrokerTicket(item = {}) {
   const candidates = [
     item.broker_trade_id,
     item.brokerTradeId,
-    item.trade_id,
+    item.sid,
     item.tradeId,
     item.ticket,
     item.position_id,
@@ -10229,7 +10225,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
     sl: plannedSl,
     tp: plannedTp,
   });
-  if (duplicate?.signal_id) {
+  if (duplicate?.sid) {
     throw new Error("Already added");
   }
   const rawJson = payload.raw_json || payload;
@@ -10282,7 +10278,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   delete rawJsonNormalized.password;
   delete rawJsonNormalized.token;
   const upsertResult = await mt5UpsertSignal({
-    signal_id: signalId,
+    signal_sid: signalId,
     sid: signalSid,
     created_at: mt5NowIso(),
     user_id: userId,
@@ -10332,7 +10328,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
           },
         });
         const fanout = await mt5FanoutSignalTradeV2({
-          signal_id: signalId,
+          signal_sid: signalId,
           source_id: sourceId,
           user_id: userId,
           entry_model: entryModel || null,
@@ -10401,7 +10397,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   }
 
   return {
-    signal_id: signalId,
+    signal_sid: signalId,
     action,
     symbol,
     status: upsertResult?.inserted ? "NEW" : "DUPLICATE",
@@ -10641,7 +10637,7 @@ async function mt5FindDuplicateSignal(payload = {}) {
   const rows = await b.query(
     `
     SELECT
-      signal_id,
+      sid,
       raw_json->>'entry' AS entry_raw,
       raw_json->>'price' AS price_raw,
       raw_json->>'entry_price' AS entry_price_raw
@@ -10703,12 +10699,12 @@ async function mt5CleanupSignalTradeArtifacts({
   const tradeRowsArr = Array.isArray(tradeRows) ? tradeRows : [];
 
   for (const row of signalRowsArr) {
-    const sid = String(row?.signal_id || "").trim();
+    const sid = String(row?.sid || "").trim();
     if (sid) sigIdSet.add(sid);
   }
   for (const row of tradeRowsArr) {
-    const tid = String(row?.trade_id || "").trim();
-    const sid = String(row?.signal_id || "").trim();
+    const tid = String(row?.sid || "").trim();
+    const sid = String(row?.sid || "").trim();
     if (tid) trdIdSet.add(tid);
     if (sid) sigIdSet.add(sid);
   }
@@ -10730,7 +10726,7 @@ async function mt5CleanupSignalTradeArtifacts({
   if (signalIdList.length > 0) {
     try {
       const res = await b.query(
-        `SELECT raw_json FROM signals WHERE signal_id = ANY($1::text[])`,
+        `SELECT raw_json FROM signals WHERE sid = ANY($1::text[])`,
         [signalIdList],
       );
       for (const row of res.rows || [])
@@ -10740,11 +10736,11 @@ async function mt5CleanupSignalTradeArtifacts({
     }
     try {
       const res = await b.query(
-        `SELECT trade_id FROM trades WHERE signal_id = ANY($1::text[])`,
+        `SELECT sid FROM trades WHERE sid = ANY($1::text[])`,
         [signalIdList],
       );
       for (const row of res.rows || []) {
-        const tid = String(row?.trade_id || "").trim();
+        const tid = String(row?.sid || "").trim();
         if (tid) trdIdSet.add(tid);
       }
     } catch {
@@ -10756,7 +10752,7 @@ async function mt5CleanupSignalTradeArtifacts({
   if (allTradeIds.length > 0) {
     try {
       const res = await b.query(
-        `SELECT metadata FROM trades WHERE trade_id = ANY($1::text[])`,
+        `SELECT metadata FROM trades WHERE sid = ANY($1::text[])`,
         [allTradeIds],
       );
       for (const row of res.rows || [])
@@ -10956,12 +10952,11 @@ async function mt5ResolveTradeRefV2(tradeRef, userId = null) {
   }
   const res = await b.query(
     `
-    SELECT id, sid, trade_id, user_id
+    SELECT id, sid, user_id
     FROM trades
     WHERE (
       ($1::bigint IS NOT NULL AND id = $1::bigint)
       OR sid = $2
-      OR trade_id = $2
     )
     ${whereUser}
     ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
@@ -10986,12 +10981,11 @@ async function mt5ResolveSignalRefV2(signalRef, userId = null) {
   }
   const res = await b.query(
     `
-    SELECT id, sid, signal_id, user_id
+    SELECT id, sid, user_id
     FROM signals
     WHERE (
       ($1::bigint IS NOT NULL AND id = $1::bigint)
       OR sid = $2
-      OR signal_id = $2
     )
     ${whereUser}
     ORDER BY created_at DESC
@@ -11140,13 +11134,13 @@ function csvField(v) {
 function mt5SignalsToBacktestCsv(rows, includeHeader = true) {
   const lines = [];
   if (includeHeader) {
-    lines.push("timestamp;signal_id;action;symbol;volume;sl;tp;note");
+    lines.push("timestamp;sid;action;symbol;volume;sl;tp;note");
   }
   for (const r of rows) {
     lines.push(
       [
         csvField(mt5CsvTimestamp(r.created_at)),
-        csvField(r.signal_id || ""),
+        csvField(r.sid || ""),
         csvField(r.action || ""),
         csvField(r.symbol || ""),
         csvField(r.volume ?? ""),
@@ -11317,13 +11311,13 @@ function mt5ResolveTradeFilters(url, payload = null) {
 
 function mt5ResolveSignalIds(url, payload = null) {
   const fromPayload =
-    payload && payload.signal_ids !== undefined && payload.signal_ids !== null
-      ? payload.signal_ids
+    payload && payload.sids !== undefined && payload.sids !== null
+      ? payload.sids
       : payload && payload.ids !== undefined && payload.ids !== null
         ? payload.ids
         : null;
   const fromQuery =
-    url.searchParams.get("signal_ids") || url.searchParams.get("ids") || "";
+    url.searchParams.get("sids") || url.searchParams.get("signal_ids") || url.searchParams.get("ids") || "";
   const raw = fromPayload !== null ? fromPayload : fromQuery;
   if (Array.isArray(raw)) {
     return [...new Set(raw.map((s) => String(s || "").trim()).filter(Boolean))];
@@ -11365,7 +11359,7 @@ async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
     const q = String(filters.q).toLowerCase();
     rows = rows.filter(
       (r) =>
-        String(r.signal_id || "")
+        String(r.sid || "")
           .toLowerCase()
           .includes(q) ||
         String(r.id || "")
@@ -11377,7 +11371,7 @@ async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
         String(r.raw_json?.id || "")
           .toLowerCase()
           .includes(q) ||
-        String(r.raw_json?.trade_id || "")
+        String(r.raw_json?.sid || r.raw_json?.trade_id || "")
           .toLowerCase()
           .includes(q) ||
         String(r.note || "")
@@ -11411,12 +11405,12 @@ async function mt5GetFilteredTrades(url, payload = null, limitDefault = 10000) {
     const idSet = new Set(signalIds);
     rows = rows.filter(
       (r) =>
-        idSet.has(String(r.signal_id || "")) ||
+        idSet.has(String(r.sid || "")) ||
         idSet.has(String(r.sid || "")) ||
         idSet.has(String(r.id || "")),
     );
   }
-  filters.signal_ids = signalIds;
+  filters.sids = signalIds;
   return { rows, filters, limit };
 }
 
@@ -11993,7 +11987,7 @@ function mt5DashboardHtml() {
         const ack = [t.ack_status || "", t.ack_ticket || "", t.ack_error || ""].filter(Boolean).join(" | ");
         return "<tr>"
           + "<td>" + created + "</td>"
-          + "<td class='muted'>" + (t.signal_id || "") + "</td>"
+          + "<td class='muted'>" + (t.sid || "") + "</td>"
           + "<td>" + (t.symbol || "") + "</td>"
           + "<td>" + (t.action || "") + "</td>"
           + "<td>" + (t.volume ?? "") + "</td>"
@@ -12075,7 +12069,7 @@ async function executeMt5(signal) {
   return {
     broker: "mt5",
     status: "queued",
-    signal_id: enqueue.signal_id,
+    sid: enqueue.sid,
   };
 }
 
@@ -13235,7 +13229,7 @@ const appHandler = async (req, res) => {
       }
       const enqueue = await mt5EnqueueSignalFromPayload(
         {
-          id: payload.signal_id || payload.id || "",
+          id: payload.sid || payload.id || "",
           action: payload.action,
           symbol: payload.symbol,
           volume: payload.volume ?? payload.lots,
@@ -13361,7 +13355,7 @@ const appHandler = async (req, res) => {
       }).catch(() => null);
 
       const fanout = await mt5FanoutSignalTradeV2({
-        signal_id: null,
+        signal_sid: null,
         source_id: sourceId,
         user_id: effectiveUserId,
         entry_model: entryModel,
@@ -13418,7 +13412,7 @@ const appHandler = async (req, res) => {
         payload,
         50000,
       );
-      const ids = rows.map((r) => String(r.signal_id || "")).filter(Boolean);
+      const ids = rows.map((r) => String(r.sid || "")).filter(Boolean);
       const removed = await mt5DeleteSignalsByIds(ids);
       const cleanup = await mt5CleanupSignalTradeArtifacts({
         signalRows: rows,
@@ -13450,7 +13444,7 @@ const appHandler = async (req, res) => {
         payload,
         50000,
       );
-      const ids = rows.map((r) => String(r.signal_id || "")).filter(Boolean);
+      const ids = rows.map((r) => String(r.sid || "")).filter(Boolean);
       const updated = await mt5CancelSignalsByIds(ids);
       const cleanup = await mt5CleanupSignalTradeArtifacts({
         signalRows: rows,
@@ -13695,7 +13689,7 @@ const appHandler = async (req, res) => {
       if (table === "signals") {
         const created = await mt5EnqueueSignalFromPayload(
           {
-            id: row.signal_id || row.id || "",
+            id: row.sid || row.id || "",
             action: row.action,
             symbol: row.symbol,
             volume: row.volume ?? row.lots,
@@ -13722,12 +13716,12 @@ const appHandler = async (req, res) => {
       }
 
       if (table === "signal_events") {
-        const signalId = String(row.signal_id || "").trim();
+        const signalId = String(row.sid || "").trim();
         const eventType = String(row.event_type || "").trim();
         if (!signalId)
           return json(res, 400, {
             ok: false,
-            error: "row.signal_id is required",
+            error: "row.sid is required",
           });
         if (!eventType)
           return json(res, 400, {
@@ -13750,7 +13744,7 @@ const appHandler = async (req, res) => {
         return json(res, 200, {
           ok: true,
           table,
-          created: { signal_id: signalId, event_type: eventType },
+          created: { signal_sid: signalId, event_type: eventType },
         });
       }
 
@@ -13835,7 +13829,7 @@ const appHandler = async (req, res) => {
         payload,
         50000,
       );
-      const ids = rows.map((r) => String(r.signal_id || "")).filter(Boolean);
+      const ids = rows.map((r) => String(r.sid || "")).filter(Boolean);
       const updated = await mt5RenewSignalsByIds(ids);
       return json(res, 200, {
         ok: true,
@@ -13860,9 +13854,9 @@ const appHandler = async (req, res) => {
         url.pathname.slice("/mt5/trades/".length),
       );
       if (!signalId)
-        return json(res, 400, { ok: false, error: "signal_id is required" });
+        return json(res, 400, { ok: false, error: "sid (signal_id) is required" });
       const rows = await mt5ListSignals(50000, "");
-      const trade = rows.find((r) => String(r.signal_id) === signalId);
+      const trade = rows.find((r) => String(r.sid) === signalId);
       if (!trade)
         return json(res, 404, { ok: false, error: "signal not found" });
       const eventLimitRaw = Number(url.searchParams.get("event_limit") || 200);
@@ -13992,7 +13986,7 @@ const appHandler = async (req, res) => {
     try {
       const signals = await mt5ListActiveSignals();
       const data = signals.map((s) => ({
-        signal_id: s.signal_id,
+        sid: s.sid,
         status: s.status,
         symbol: s.symbol,
         action: s.action,
@@ -14075,7 +14069,7 @@ const appHandler = async (req, res) => {
           id: Number(r.log_id || 0),
           event_time: eventTime,
           event_type: eventType,
-          signal_id: signalId,
+          signal_sid: signalId,
           ack_ticket: ackTicket,
           symbol: symbol || "N/A",
           payload_json: payload,
@@ -14103,7 +14097,7 @@ const appHandler = async (req, res) => {
           }
           if (q) {
             const haystack = [
-              ev.signal_id,
+              ev.sid,
               ev.ack_ticket,
               ev.symbol,
               ev.event_type,
@@ -14132,7 +14126,7 @@ const appHandler = async (req, res) => {
       const payload = await readJson(req);
       const sess = getUiSessionFromReq(req);
       const signalId =
-        String(payload.signal_id || payload.object_id || "").trim() ||
+        String(payload.sid || payload.object_id || "").trim() ||
         `ui_note_${Date.now()}`;
       const eventType = String(payload.event_type || "").trim();
       if (!eventType)
@@ -14152,7 +14146,7 @@ const appHandler = async (req, res) => {
       await mt5AppendSignalEvent(signalId, eventType, payloadJson);
       return json(res, 200, {
         ok: true,
-        event: { signal_id: signalId, event_type: eventType },
+        event: { signal_sid: signalId, event_type: eventType },
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -14188,15 +14182,15 @@ const appHandler = async (req, res) => {
 
       // 1. Reconcile EA Active Trades -> VPS
       for (const s of activeSignals) {
-        const sid = String(s.signal_id || "");
+        const sid = String(s.sid || "");
         const ticket = String(s.ticket || "");
         const eaStatus = String(s.status || "");
         const eaPnl = Number(s.pnl);
         const hasEaPnl = Number.isFinite(eaPnl);
 
-        // Find trade by signal_id + ticket
+        // Find trade by sid + ticket
         let sig = dbSignals.find(
-          (d) => String(d.signal_id) === sid && String(d.ack_ticket) === ticket,
+          (d) => String(d.sid) === sid && String(d.ack_ticket) === ticket,
         );
         if (!sig) {
           // Backup: find by ticket alone if mapping is loose
@@ -14214,7 +14208,7 @@ const appHandler = async (req, res) => {
           // Sync if status changed OR pnl changed.
           if (dbCan !== eaCan || pnlChanged) {
             updates.push({
-              signal_id: sig.signal_id,
+              sid: sig.sid,
               status: eaStatus || sig.status,
               ticket: ticket,
               pnl: hasEaPnl ? eaPnl : undefined,
@@ -14260,7 +14254,7 @@ const appHandler = async (req, res) => {
         return json(res, 400, { ok: false, error: "updates array required" });
       const result = await mt5BulkAckSignals(updates);
       for (const u of updates) {
-        await mt5AppendSignalEvent(u.signal_id, `SIGNAL_EA_SYNC_${u.status}`, {
+        await mt5AppendSignalEvent(u.sid, `SIGNAL_EA_SYNC_${u.status}`, {
           ticket: u.ticket,
           pnl: u.pnl,
           account: payload.account_id,
@@ -16781,7 +16775,7 @@ const appHandler = async (req, res) => {
         .toLowerCase();
       const filters = {
         user_id: userId,
-        trade_ids: Array.isArray(payload.trade_ids) ? payload.trade_ids : [],
+        sids: Array.isArray(payload.sids || payload.trade_ids) ? payload.sids || payload.trade_ids : [],
         account_id: payload.account_id || "",
         source_id: payload.source_id || "",
         execution_status: payload.execution_status || "",
@@ -16792,8 +16786,8 @@ const appHandler = async (req, res) => {
       const out = await mt5BulkActionTradesV2(action, filters);
       if (out?.ok && (action === "cancel_all" || action === "delete_all")) {
         const cleanup = await mt5CleanupSignalTradeArtifacts({
-          signalIds: Array.isArray(out.signal_ids) ? out.signal_ids : [],
-          tradeIds: Array.isArray(out.trade_ids) ? out.trade_ids : [],
+          signalIds: Array.isArray(out.sids) ? out.sids : [],
+          tradeIds: Array.isArray(out.sids) ? out.sids : [],
         });
         out.logs_deleted = cleanup.logs_deleted || 0;
         out.files_deleted = cleanup.files_deleted || 0;
@@ -16818,20 +16812,20 @@ const appHandler = async (req, res) => {
       const m = url.pathname.match(/^\/v2\/trades\/([^/]+)\/events$/);
       const tradeRef = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
       if (!tradeRef)
-        return json(res, 400, { ok: false, error: "trade_id is required" });
+        return json(res, 400, { ok: false, error: "sid (trade_id) is required" });
       const userId = uiEffectiveUserId(req, url);
       const resolved = await mt5ResolveTradeRefV2(tradeRef, userId || null);
-      if (!resolved?.trade_id)
+      if (!resolved?.sid)
         return json(res, 404, { ok: false, error: "trade not found" });
       const limitRaw = Number(url.searchParams.get("limit") || 200);
       const limit = Math.max(
         1,
         Math.min(1000, Number.isFinite(limitRaw) ? limitRaw : 200),
       );
-      const rows = await mt5ListTradeEventsV2(resolved.trade_id, limit);
+      const rows = await mt5ListTradeEventsV2(resolved.sid, limit);
       return json(res, 200, {
         ok: true,
-        trade_id: resolved.trade_id,
+        sid: resolved.sid,
         id: resolved.id || null,
         sid: resolved.sid || null,
         items: rows,
@@ -16859,7 +16853,7 @@ const appHandler = async (req, res) => {
       const m = url.pathname.match(/^\/v2\/trades\/([^/]+)\/update$/);
       const tradeRef = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
       if (!tradeRef)
-        return json(res, 400, { ok: false, error: "trade_id is required" });
+        return json(res, 400, { ok: false, error: "sid (trade_id) is required" });
       const userId = uiEffectiveUserId(req, url, payload);
       const out = await mt5UpdateTradeManualV2(
         tradeRef,
@@ -16892,15 +16886,15 @@ const appHandler = async (req, res) => {
       );
       const signalRef = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
       if (!signalRef)
-        return json(res, 400, { ok: false, error: "signal_id is required" });
+        return json(res, 400, { ok: false, error: "sid (signal_id) is required" });
       const userId = uiEffectiveUserId(req, url, payload);
       const resolvedSignal = await mt5ResolveSignalRefV2(
         signalRef,
         userId || null,
       );
-      if (!resolvedSignal?.signal_id)
+      if (!resolvedSignal?.sid)
         return json(res, 404, { ok: false, error: "signal not found" });
-      const signalId = String(resolvedSignal.signal_id || "").trim();
+      const signalId = String(resolvedSignal.sid || "").trim();
       const sideRaw = String(payload.direction || payload.side || "")
         .trim()
         .toUpperCase();
@@ -16958,7 +16952,7 @@ const appHandler = async (req, res) => {
             note = COALESCE($5, note),
             raw_json = COALESCE(raw_json, '{}'::jsonb) || $6::jsonb,
             updated_at = NOW()
-        WHERE signal_id = $7
+        WHERE sid = $7
         ${whereUser}
         RETURNING *
       `,
@@ -16996,20 +16990,20 @@ const appHandler = async (req, res) => {
       const m = url.pathname.match(/^\/v2\/signals\/([^/]+)\/trade$/);
       const signalRef = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
       if (!signalRef)
-        return json(res, 400, { ok: false, error: "signal_id is required" });
+        return json(res, 400, { ok: false, error: "sid (signal_id) is required" });
       const userId = uiEffectiveUserId(req, url, payload);
       const resolvedSignal = await mt5ResolveSignalRefV2(
         signalRef,
         userId || null,
       );
-      if (!resolvedSignal?.signal_id)
+      if (!resolvedSignal?.sid)
         return json(res, 404, { ok: false, error: "signal not found" });
-      const signalId = String(resolvedSignal.signal_id || "").trim();
+      const signalId = String(resolvedSignal.sid || "").trim();
       const b = await mt5Backend();
       const whereUser = userId ? "AND user_id = $2" : "";
       const signalRes = await b.query(
         `
-        SELECT * FROM signals WHERE signal_id = $1 ${whereUser} LIMIT 1
+        SELECT * FROM signals WHERE sid = $1 ${whereUser} LIMIT 1
       `,
         userId ? [signalId, userId] : [signalId],
       );
@@ -17057,7 +17051,7 @@ const appHandler = async (req, res) => {
           : "limit";
       }
       const fanout = await mt5FanoutSignalTradeV2({
-        signal_id: signalId,
+        signal_sid: signalId,
         source_id: sourceId,
         user_id: signal.user_id || userId || CFG.mt5DefaultUserId,
         entry_model:
@@ -17092,7 +17086,7 @@ const appHandler = async (req, res) => {
       );
       return json(res, 200, {
         ok: true,
-        signal_id: signalId,
+        signal_sid: signalId,
         created: fanout?.created || 0,
         account_ids: fanout?.account_ids || [],
       });
@@ -17119,15 +17113,15 @@ const appHandler = async (req, res) => {
       const m = url.pathname.match(/^\/v2\/trades\/([^/]+)\/trade-plan\/save$/);
       const tradeRef = String(m?.[1] ? decodeURIComponent(m[1]) : "").trim();
       if (!tradeRef)
-        return json(res, 400, { ok: false, error: "trade_id is required" });
+        return json(res, 400, { ok: false, error: "sid (trade_id) is required" });
       const userId = uiEffectiveUserId(req, url, payload);
       const resolvedTrade = await mt5ResolveTradeRefV2(
         tradeRef,
         userId || null,
       );
-      if (!resolvedTrade?.trade_id)
+      if (!resolvedTrade?.sid)
         return json(res, 404, { ok: false, error: "trade not found" });
-      const tradeId = String(resolvedTrade.trade_id || "").trim();
+      const tradeId = String(resolvedTrade.sid || "").trim();
       const sideRaw = String(payload.direction || payload.side || "")
         .trim()
         .toUpperCase();
@@ -17179,7 +17173,7 @@ const appHandler = async (req, res) => {
               ELSE execution_status
             END,
             updated_at = NOW()
-        WHERE trade_id = $7
+        WHERE sid = $7
           ${whereUser}
         RETURNING *
       `,
@@ -17483,11 +17477,11 @@ const appHandler = async (req, res) => {
       return json(res, 200, {
         ok: true,
         items: (items || []).map((t) => ({
-          trade_id: t.trade_id,
+          sid: t.sid,
           lease_token: t.lease_token,
           lease_expires_at: t.lease_expires_at,
           account_id: t.account_id,
-          signal_id: t.signal_id ?? null,
+          signal_sid: t.sid ?? null,
           source_id: t.source_id ?? null,
           symbol: t.symbol,
           action: t.action ?? t.side ?? null,
@@ -17523,7 +17517,7 @@ const appHandler = async (req, res) => {
       if (!tradeId || !leaseToken) {
         return json(res, 400, {
           ok: false,
-          error: "trade_id and lease_token are required",
+          error: "sid and lease_token are required",
         });
       }
       const result = await mt5AckTradeV2(account.account_id, payload);
@@ -17705,7 +17699,7 @@ const appHandler = async (req, res) => {
       for (const u of updates) {
         const ticketCandidates = mt5TicketCandidates(u);
         const ticket = ticketCandidates[0] || "";
-        const signalId = String(u.signal_id || "").trim();
+        const signalId = String(u.sid || "").trim();
         if (!ticketCandidates.length && !signalId) continue;
         const stRaw = String(
           u.status || u.execution_status || "CLOSED",
@@ -17748,14 +17742,14 @@ const appHandler = async (req, res) => {
               updated_at = NOW()
           WHERE ($11::text = '' OR account_id = $11)
             AND (
-              broker_trade_id = ANY($4::text[])
+              broker_sid = ANY($4::text[])
               OR metadata->>'broker_position_id' = ANY($4::text[])
               OR metadata->>'position_ticket' = ANY($4::text[])
               OR metadata->>'deal_ticket' = ANY($4::text[])
               OR metadata->>'order_ticket' = ANY($4::text[])
-              OR ($7::text <> '' AND signal_id = $7)
+              OR ($7::text <> '' AND signal_sid = $7)
             )
-          RETURNING trade_id, user_id
+          RETURNING sid, user_id
         `,
           [
             execStatus,
@@ -17777,7 +17771,7 @@ const appHandler = async (req, res) => {
           updatedCount++;
           const row = resUpd.rows[0];
           await b.log(
-            row.trade_id,
+            row.sid,
             "trades",
             {
               event: "TRADE_SYNC_UPDATE",
@@ -17860,7 +17854,7 @@ const appHandler = async (req, res) => {
     if (!task) {
       return json(res, 200, { ok: true, task: null, signal: null });
     }
-    const taskId = task.task_id || task.signal_id;
+    const taskId = task.task_id || task.sid;
     await mt5AppendSignalEvent(taskId, "TASK_FETCH", {
       type: task.type,
       account: account || null,
@@ -17916,9 +17910,9 @@ const appHandler = async (req, res) => {
 
       const status = mt5NormalizeAckStatus(payload.status);
 
-      const signalId = String(payload.signal_id || "");
+      const signalId = String(payload.sid || "");
       if (!signalId) {
-        return json(res, 400, { ok: false, error: "signal_id is required" });
+        return json(res, 400, { ok: false, error: "sid (signal_id) is required" });
       }
 
       const sig = await mt5FindSignalById(signalId);
@@ -18061,7 +18055,7 @@ const appHandler = async (req, res) => {
 
       return json(res, 200, {
         ok: true,
-        signal_id: signalId,
+        signal_sid: signalId,
         status,
         requeued: retryableConnectivityFail,
         ack: {

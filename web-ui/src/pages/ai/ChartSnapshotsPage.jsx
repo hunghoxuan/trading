@@ -3328,7 +3328,7 @@ export default function ChartSnapshotsPage() {
             tp: x?.tp,
             sl: x?.sl,
             updatedAt: x?.updated_at || x?.created_at,
-            id: x?.trade_id || x?.id,
+            id: x?.sid || x?.id,
           }));
         const normalizedSignals = signalItems
           .filter((x) => allowed.has(String(x?.status || "").toUpperCase()))
@@ -3342,7 +3342,7 @@ export default function ChartSnapshotsPage() {
             tp: x?.tp || x?.tp_price,
             sl: x?.sl || x?.sl_price,
             updatedAt: x?.updated_at || x?.created_at,
-            id: x?.signal_id || x?.id,
+            id: x?.sid || x?.id,
           }));
         const merged = [...normalizedTrades, ...normalizedSignals]
           .sort(
