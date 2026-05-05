@@ -102,8 +102,8 @@ loadEnvFile();
 
 const SERVER_VERSION = envStr(
   process.env.WEBHOOK_SERVER_VERSION,
-  "v2026.05.05 05:00 - efa3f99",
-); // DB cache UI enhancements
+  "v2026.05.05 05:15 - 01f9ef5",
+); // DB schema SHOW column + presets
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
