@@ -7390,6 +7390,7 @@ async function _mt5InitBackendInternal() {
           );
         }
 
+        if (res.rowCount > 0) {
           matched += res.rowCount;
           synced++;
           const tid = String(res.rows?.[0]?.sid || "").trim();
