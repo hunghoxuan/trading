@@ -7338,7 +7338,7 @@ async function _mt5InitBackendInternal() {
               FROM trades
               WHERE account_id = $4
                 AND (
-                  (signal_id = $5 AND $5 <> '')
+                  (sid = $5 AND $5 <> '')
                   OR (broker_trade_id = $2 AND $2 <> '')
                   OR (broker_trade_id = ANY($12::text[]))
                 )
