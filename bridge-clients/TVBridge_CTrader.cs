@@ -36,7 +36,7 @@ namespace cAlgo.Robots
         [Parameter("Max Volume (%)", DefaultValue = 1.0)]
         public double MaxVolumePercent { get; set; }
 
-        private string BuildVersion = "v2026.05.05 12:35 - 6b8f804";
+        private string BuildVersion = "v2026.05.05 12:39 - 6b8f804";
         
         private string _serverStatus = "WAITING";
         private string _apiStatus = "WAITING";
@@ -205,11 +205,13 @@ namespace cAlgo.Robots
                 var currentPrice = (action == "BUY") ? symbol.Ask : symbol.Bid;
                 if (sl > 0)
                 {
-                    double currentRisk = symbol.GetProfit(volumeUnits, Math.Abs(currentPrice - sl));
+                    double riskPerMinVolume = (Math.Abs(currentPrice - sl) / symbol.TickSize) * symbol.TickValue;
+                    double currentRisk = riskPerMinVolume * (volumeUnits / symbol.VolumeInUnitsMin);
+                    
                     if (currentRisk > MaxRiskAmount && currentRisk > 0)
                     {
                         volumeUnits = volumeUnits * (MaxRiskAmount / currentRisk);
-                        volumeUnits = symbol.NormalizeVolumeInUnits(volumeUnits, RoundingMode.ToLowest);
+                        volumeUnits = symbol.NormalizeVolumeInUnits(volumeUnits, RoundingMode.Down);
                         Print("Risk {0:F2} > Max {1}. Scaled volume to {2}.", currentRisk, MaxRiskAmount, volumeUnits);
                     }
                 }
@@ -230,7 +232,7 @@ namespace cAlgo.Robots
                 // Let's assume they mean 1% of balance as the notional value.
                 
                 if (volumeUnits > maxVolumeByBalance) {
-                    volumeUnits = symbol.NormalizeVolumeInUnits(maxVolumeByBalance, RoundingMode.ToLowest);
+                    volumeUnits = symbol.NormalizeVolumeInUnits(maxVolumeByBalance, RoundingMode.Down);
                     Print("Volume {0} > Max {1:F2}% Balance. Capped volume to {2}.", volumeUnits, MaxVolumePercent, volumeUnits);
                 }
 
