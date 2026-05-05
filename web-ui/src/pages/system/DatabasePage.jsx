@@ -3,6 +3,22 @@ import { api } from "../../api";
 
 import { showDateTime } from "../../utils/format";
 
+// Columns hidden in COMPACT preset (verbose/metadata/raw/internal)
+const COMPACT_HIDE = [
+  "metadata",
+  "raw_json",
+  "password_hash",
+  "password_salt",
+  "api_key_hash",
+  "api_key_last4",
+  "api_key_rotated_at",
+  "lease_token",
+  "lease_expires_at",
+  "rejection_reason",
+  "source_ids_cache",
+  "dispatch_status",
+];
+
 function fDateTime(v) {
   return showDateTime(v);
 }
@@ -125,9 +141,7 @@ function DynamicForm({
                     type.includes("double") ||
                     type.includes("float")
                       ? "number"
-                      : type.includes("timestamp")
-                        ? "datetime-local"
-                        : "text"
+                      : "text"
                   }
                   step="any"
                   value={formData[col.column_name] || ""}
@@ -433,43 +447,38 @@ export default function DatabasePage() {
           {showSchema && schema.length > 0 && (
             <div className="panel" style={{ margin: "10px", padding: "10px" }}>
               <div className="panel-label">TABLE SCHEMA: {selectedTable}</div>
-              <div
-                style={{ marginBottom: 8, fontSize: 10 }}
-                className="minor-text"
-              >
-                TOGGLE COLUMN VISIBILITY (unchecked = hidden from table):
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 6,
-                  marginBottom: 10,
-                }}
-              >
-                {allSchemaCols.map((c) => (
-                  <label
-                    key={c}
-                    style={{
-                      fontSize: 10,
-                      cursor: "pointer",
-                      padding: "2px 6px",
-                      borderRadius: 4,
-                      background: hiddenCols.has(c)
-                        ? "rgba(255,255,255,0.03)"
-                        : "rgba(255,255,255,0.08)",
-                      opacity: hiddenCols.has(c) ? 0.5 : 1,
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={!hiddenCols.has(c)}
-                      onChange={() => toggleColVisibility(c)}
-                      style={{ marginRight: 4, width: 12, height: 12 }}
-                    />
-                    {c.replace(/_/g, " ").toUpperCase()}
-                  </label>
-                ))}
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <button
+                  className="secondary-button"
+                  style={{ fontSize: 10, padding: "2px 8px" }}
+                  onClick={() => {
+                    const compact = new Set(
+                      allSchemaCols.filter(
+                        (c) =>
+                          !COMPACT_HIDE.includes(c) && !c.startsWith("broker_"),
+                      ),
+                    );
+                    setHiddenCols(
+                      new Set(allSchemaCols.filter((c) => !compact.has(c))),
+                    );
+                  }}
+                >
+                  COMPACT
+                </button>
+                <button
+                  className="secondary-button"
+                  style={{ fontSize: 10, padding: "2px 8px" }}
+                  onClick={() => setHiddenCols(new Set())}
+                >
+                  ALL
+                </button>
+                <button
+                  className="secondary-button"
+                  style={{ fontSize: 10, padding: "2px 8px" }}
+                  onClick={() => setHiddenCols(new Set(allSchemaCols))}
+                >
+                  NONE
+                </button>
               </div>
               <table
                 className="events-table"
@@ -481,6 +490,7 @@ export default function DatabasePage() {
                     <th>DATA_TYPE</th>
                     <th>NULLABLE</th>
                     <th>DEFAULT</th>
+                    <th style={{ width: 50, textAlign: "center" }}>SHOW</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -497,6 +507,14 @@ export default function DatabasePage() {
                       </td>
                       <td>{c.is_nullable}</td>
                       <td>{c.column_default || "-"}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <input
+                          type="checkbox"
+                          checked={!hiddenCols.has(c.column_name)}
+                          onChange={() => toggleColVisibility(c.column_name)}
+                          style={{ width: 14, height: 14, cursor: "pointer" }}
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
