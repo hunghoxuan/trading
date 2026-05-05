@@ -3,6 +3,7 @@
  * Uses localStorage "ui_display_timezone" as the source of truth.
  */
 const DISPLAY_TIMEZONE_OPTIONS = new Set(["UTC", "America/New_York", "Local"]);
+const DISPLAY_TIMEZONE_MODE_OPTIONS = new Set(["selected", "local"]);
 
 function getBrowserTimezone() {
   try {
@@ -35,8 +36,50 @@ export function normalizeDisplayTimezone(value) {
   return "Local";
 }
 
+export function normalizeDisplayTimezoneMode(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (DISPLAY_TIMEZONE_MODE_OPTIONS.has(raw)) return raw;
+  return "selected";
+}
+
+export function getDisplayTimezoneMode() {
+  try {
+    return normalizeDisplayTimezoneMode(
+      localStorage.getItem("ui_display_timezone_mode"),
+    );
+  } catch {
+    return "selected";
+  }
+}
+
+export function setDisplayTimezoneMode(mode) {
+  const next = normalizeDisplayTimezoneMode(mode);
+  try {
+    localStorage.setItem("ui_display_timezone_mode", next);
+  } catch {
+    // ignore
+  }
+  try {
+    window.dispatchEvent(
+      new CustomEvent("ui-timezone-changed", { detail: { mode: next } }),
+    );
+  } catch {
+    // ignore
+  }
+  return next;
+}
+
+export function getEffectiveDisplayTimezone() {
+  const selected = normalizeDisplayTimezone(
+    localStorage.getItem("ui_display_timezone"),
+  );
+  const mode = getDisplayTimezoneMode();
+  if (mode === "local") return "Local";
+  return selected;
+}
+
 function getSafeTimezoneConfig() {
-  const normalized = normalizeDisplayTimezone(localStorage.getItem("ui_display_timezone"));
+  const normalized = getEffectiveDisplayTimezone();
   if (normalized === "Local") {
     return { storageValue: "Local", intlTimeZone: getBrowserTimezone() || "UTC" };
   }

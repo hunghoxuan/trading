@@ -1,6 +1,10 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import './SessionClockBar.css';
 import { playSound, SoundEvents } from "../utils/SoundManager";
+import {
+  getDisplayTimezoneMode,
+  setDisplayTimezoneMode,
+} from "../utils/format";
 
 /**
  * Sessions and Kill Zones defined in UTC hours (0-24)
@@ -21,16 +25,29 @@ const KILL_ZONES = [
 export default function SessionClockBar({ displayTimezone }) {
   const [now, setNow] = useState(new Date());
   const [tz, setTz] = useState(() => displayTimezone || localStorage.getItem("ui_display_timezone") || "Local");
-  const [isLocal, setIsLocal] = useState(false);
+  const [tzMode, setTzMode] = useState(() => getDisplayTimezoneMode());
   const [news, setNews] = useState([]);
 
   const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  const currentTz = (isLocal || String(tz || "").toLowerCase() === "local") ? browserTz : tz;
+  const currentTz =
+    tzMode === "local" || String(tz || "").toLowerCase() === "local"
+      ? browserTz
+      : tz;
 
   useEffect(() => {
     if (displayTimezone && displayTimezone !== tz) {
       setTz(displayTimezone);
     }
+  }, [displayTimezone]);
+
+  useEffect(() => {
+    const onTimezoneUiChanged = () => {
+      setTzMode(getDisplayTimezoneMode());
+      setTz(displayTimezone || localStorage.getItem("ui_display_timezone") || "Local");
+    };
+    window.addEventListener("ui-timezone-changed", onTimezoneUiChanged);
+    return () =>
+      window.removeEventListener("ui-timezone-changed", onTimezoneUiChanged);
   }, [displayTimezone]);
 
   useEffect(() => {
@@ -229,7 +246,10 @@ export default function SessionClockBar({ displayTimezone }) {
     });
   };
 
-  const toggleTz = () => setIsLocal(!isLocal);
+  const toggleTz = () => {
+    const nextMode = tzMode === "local" ? "selected" : "local";
+    setTzMode(setDisplayTimezoneMode(nextMode));
+  };
 
   return (
     <div className="session-clock-bar-container">
@@ -291,7 +311,9 @@ export default function SessionClockBar({ displayTimezone }) {
           <div className="time-value-small">{timeStr}</div>
           <div className="tz-label-small">
             {dateStr ? `${dateStr} ` : ""}
-            {isLocal ? "LOCAL" : currentTz.split("/").pop().replace("_", " ")}
+            {tzMode === "local"
+              ? "LOCAL"
+              : currentTz.split("/").pop().replace("_", " ")}
           </div>
         </div>
       </div>

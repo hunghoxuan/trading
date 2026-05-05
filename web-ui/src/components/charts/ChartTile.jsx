@@ -2,7 +2,10 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useSymbolChartData } from "../../hooks/useChartTileData";
 import TradeSignalChart from "../TradeSignalChart";
 import { chartFetchManager } from "../../services/chartFetchManager";
-import { showDateTime } from "../../utils/format";
+import {
+  getEffectiveDisplayTimezone,
+  showDateTime,
+} from "../../utils/format";
 
 const MODES = ["live", "cache", "snapshots"];
 const MODE_LABELS = { live: "Live", cache: "Cache", snapshots: "Snapshots" };
@@ -40,6 +43,18 @@ function timeAgo(ms) {
   if (diff < 3600000) return Math.floor(diff / 60000) + "m ago";
   if (diff < 86400000) return Math.floor(diff / 3600000) + "h ago";
   return Math.floor(diff / 86400000) + "d ago";
+}
+
+function toTradingViewTimezone() {
+  const effective = getEffectiveDisplayTimezone();
+  if (effective === "Local") {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "Etc/UTC";
+    } catch {
+      return "Etc/UTC";
+    }
+  }
+  return effective;
 }
 
 function TfHeader({ tf, context, master, mode, analysisSnapshot }) {
@@ -362,6 +377,7 @@ export function SymbolChart({
   }, [containerWidth, gridCols]);
 
   const showControls = !(hasTradePlan && hasAnalysis);
+  const tvTimezone = toTradingViewTimezone();
   const overlayButtons = [
     { key: "plan1", label: "P1" },
     { key: "plan2", label: "P2" },
@@ -608,7 +624,7 @@ export function SymbolChart({
                   title={`tv-${symbol}-${tf}`}
                   className="browser-chart-v1"
                   style={{ height: chartHeight }}
-                  src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(cleanSym)}&interval=${encodeURIComponent(liveTfToTvInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0`}
+                  src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(cleanSym)}&interval=${encodeURIComponent(liveTfToTvInterval(tf))}&theme=dark&style=1&locale=en&toolbarbg=%230f1729&hide_top_toolbar=1&hide_legend=1&saveimage=0&timezone=${encodeURIComponent(tvTimezone)}`}
                 />
               ) : (
                 <TradeSignalChart

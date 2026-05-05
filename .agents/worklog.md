@@ -1,3 +1,25 @@
+# Session Log: 2026-05-05 17:08
+- **Starting Task**:
+  - Add client-side timezone mode toggle (Local vs Selected) that updates all `showDateTime` outputs and align Live chart iframe timezone with the selected effective timezone.
+- **Work Accomplished**:
+  - **Timezone Mode Runtime**: Added `ui_display_timezone_mode` (`selected|local`) handling in formatting utilities with `ui-timezone-changed` client event.
+  - **Global UI Refresh**: App now listens for timezone mode events and re-renders so all `showDateTime` labels update immediately client-side (no server/page refresh).
+  - **Clock Toggle**: Session clock click now toggles Local vs Selected mode globally (instead of local-only visual toggle).
+  - **Live Chart TZ Sync**: TradingView iframe URL now includes `timezone=` using effective mode timezone so live chart axis follows Local/Selected mode.
+- **Changed Files**:
+  - `web-ui/src/utils/format.js`
+  - `web-ui/src/App.jsx`
+  - `web-ui/src/components/SessionClockBar.jsx`
+  - `web-ui/src/components/charts/ChartTile.jsx`
+  - `.agents/.product/features/2-done/settings_dashboard.md`
+  - `.agents/worklog.md`
+- **Technical Decisions**:
+  - Keep timezone mode purely client-side in localStorage/event flow to avoid API changes and avoid server refreshes.
+- **Verification**:
+  - `rtk npm --prefix web-ui run build` ✅
+- **Deploy Status**:
+  - Not deployed.
+
 # Session Log: 2026-05-05 14:32
 - **Starting Task**:
   - Fix Trade Detail chart tile ratio so static charts size from real available width instead of a fixed height heuristic.

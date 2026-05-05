@@ -31,6 +31,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authUser, setAuthUser] = useState(null);
   const [, setRelativeTimeTick] = useState(0);
+  const [tzUiTick, setTzUiTick] = useState(0);
   const location = useLocation();
   const canAccessSystemPages = String(authUser?.role || "").toLowerCase() === "system";
   const settingsMenuActive = useMemo(() => {
@@ -57,7 +58,7 @@ export default function App() {
       || localStorage.getItem("ui_display_timezone")
       || "Local"
     );
-  }, [authUser]);
+  }, [authUser, tzUiTick]);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -70,6 +71,13 @@ export default function App() {
       setRelativeTimeTick((n) => n + 1);
     }, 60 * 1000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const onTimezoneUiChanged = () => setTzUiTick((n) => n + 1);
+    window.addEventListener("ui-timezone-changed", onTimezoneUiChanged);
+    return () =>
+      window.removeEventListener("ui-timezone-changed", onTimezoneUiChanged);
   }, []);
 
   useEffect(() => {
