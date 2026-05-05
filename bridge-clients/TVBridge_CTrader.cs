@@ -36,10 +36,10 @@ namespace cAlgo.Robots
         [Parameter("Max Volume (%)", DefaultValue = 1.0)]
         public double MaxVolumePercent { get; set; }
 
-        private string BuildVersion = "v2026.05.05 12:39 - 6b8f804";
+        private string BuildVersion = "v2026.05.05 13:12 - 6b8f804";
         
-        private string _serverStatus = "WAITING";
-        private string _apiStatus = "WAITING";
+        private string _serverStatus = "...";
+        private string _apiStatus = "...";
         private string _pollStatus = "IDLE";
         private string _syncStatus = "IDLE";
         
@@ -343,18 +343,28 @@ namespace cAlgo.Robots
 
                 // 2. BOTTOM LEFT: POLL EVENT
                 var bl = new StringBuilder();
-                bl.AppendLine(string.Format("EVENT POLL: {0}, {1}", _pollStatus, _lastPollTime == DateTime.MinValue ? "NEVER" : _lastPollTime.ToString("HH:mm:ss")));
+                var pollTimeStr = _lastPollTime == DateTime.MinValue ? "WAITING..." : _lastPollTime.ToString("HH:mm:ss");
+                bl.AppendLine(string.Format("EVENT POLL: {0}, {1}", _pollStatus, pollTimeStr));
                 foreach (var sig in _signalHistory) bl.AppendLine("  " + sig);
                 if (_lastPollErr != "None") bl.AppendLine("ERR: " + (_lastPollErr.Length > 50 ? _lastPollErr.Substring(0, 50) : _lastPollErr));
-                Chart.DrawStaticText("Panel_BL", bl.ToString(), VerticalAlignment.Bottom, HorizontalAlignment.Left, _pollStatus == "OK" ? Color.White : Color.Red);
+                
+                Color pollColor = _pollStatus == "OK" ? Color.White : 
+                                 (_pollStatus == "IDLE" || _pollStatus == "WAITING" ? Color.Gray : 
+                                 (_pollStatus == "POLLING" ? Color.Yellow : Color.Red));
+                Chart.DrawStaticText("Panel_BL", bl.ToString(), VerticalAlignment.Bottom, HorizontalAlignment.Left, pollColor);
 
                 // 3. BOTTOM RIGHT: SYNC EVENT
                 var br = new StringBuilder();
-                br.AppendLine(string.Format("EVENT SYNC: {0}, {1}", _syncStatus, _lastSyncTime == DateTime.MinValue ? "NEVER" : _lastSyncTime.ToString("HH:mm:ss")));
+                var syncTimeStr = _lastSyncTime == DateTime.MinValue ? "WAITING..." : _lastSyncTime.ToString("HH:mm:ss");
+                br.AppendLine(string.Format("EVENT SYNC: {0}, {1}", _syncStatus, syncTimeStr));
                 foreach (var line in _lastSyncResults.Take(12)) br.AppendLine("  " + line);
                 if (_lastSyncResults.Count > 12) br.AppendLine(string.Format("  ... +{0} more", _lastSyncResults.Count - 12));
                 if (_lastSyncErr != "None") br.AppendLine("ERR: " + (_lastSyncErr.Length > 50 ? _lastSyncErr.Substring(0, 50) : _lastSyncErr));
-                Chart.DrawStaticText("Panel_BR", br.ToString(), VerticalAlignment.Bottom, HorizontalAlignment.Right, _syncStatus == "OK" ? Color.Lime : Color.Red);
+                
+                Color syncColor = _syncStatus == "OK" ? Color.Lime : 
+                                 (_syncStatus == "IDLE" || _syncStatus == "WAITING" ? Color.Gray : 
+                                 (_syncStatus == "SYNCING" ? Color.Yellow : Color.Red));
+                Chart.DrawStaticText("Panel_BR", br.ToString(), VerticalAlignment.Bottom, HorizontalAlignment.Right, syncColor);
             });
         }
 
