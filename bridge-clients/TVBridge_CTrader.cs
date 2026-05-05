@@ -36,7 +36,7 @@ namespace cAlgo.Robots
         [Parameter("Max Volume (%)", DefaultValue = 1.0)]
         public double MaxVolumePercent { get; set; }
 
-        private string BuildVersion = "v2026.05.05 13:31 - 6b8f804";
+        private string BuildVersion = "v2026.05.05 13:40 - cf101b9";
         
         private string _serverStatus = "WAITING";
         private string _apiStatus = "WAITING";
@@ -82,6 +82,7 @@ namespace cAlgo.Robots
             var margin = Account.Margin;
             var posList = new List<string>();
             var posDisplay = new List<string>();
+            var activeTicketIds = new HashSet<string>(Positions.Select(p => p.Id.ToString()));
             
             foreach (var pos in Positions.Where(p => p.Label == MagicNumber.ToString())) {
                 var sid = (pos.Comment ?? "").Replace("\"", "'");
@@ -108,7 +109,7 @@ namespace cAlgo.Robots
             Task.Run(async () => {
                 try {
                     await PollSignalsAsync(accId);
-                    await SyncWithVpsAsync(accId, balance, equity, margin, posList, closedList);
+                    await SyncWithVpsAsync(accId, balance, equity, margin, posList, closedList, activeTicketIds);
                 } catch (Exception ex) {
                     _lastSyncErr = ex.Message;
                 } finally {
@@ -274,7 +275,7 @@ namespace cAlgo.Robots
             RefreshDebugPanel();
         }
 
-        private async Task SyncWithVpsAsync(string accId, double bal, double eq, double marg, List<string> posList, List<string> closedList)
+        private async Task SyncWithVpsAsync(string accId, double bal, double eq, double marg, List<string> posList, List<string> closedList, HashSet<string> activeTicketIds)
         {
             _syncStatus = "SYNCING";
             try
@@ -292,7 +293,7 @@ namespace cAlgo.Robots
                     _apiStatus = "OK";
                     _syncCount++; _syncStatus = "OK"; _lastSyncTime = DateTime.Now; _lastSyncErr = "None";
                     var json = await response.Content.ReadAsStringAsync();
-                    ParseSyncResults(json);
+                    ParseSyncResults(json, activeTicketIds);
                 } else { 
                     _apiStatus = (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden) ? "KEY_INVALID" : "ERR_" + (int)response.StatusCode;
                     _syncStatus = "FAIL (" + (int)response.StatusCode + ")"; 
@@ -308,7 +309,7 @@ namespace cAlgo.Robots
             }
         }
 
-        private void ParseSyncResults(string json)
+        private void ParseSyncResults(string json, HashSet<string> activeTicketIds)
         {
             var resList = new List<string>();
             var resultsMatch = Regex.Match(json, "\"results\"\\s*:\\s*\\[(.*?)\\]", RegexOptions.Singleline);
@@ -326,7 +327,7 @@ namespace cAlgo.Robots
                     
                     if (status == "Ok") {
                         // If it's a closed trade, memorize it so we stop sending
-                        if (!Positions.Any(p => p.Id.ToString() == ticket)) {
+                        if (!activeTicketIds.Contains(ticket)) {
                             _syncedClosedTickets.Add(ticket);
                         }
                         continue; // Hide "Ok" from UI

@@ -22,6 +22,7 @@ import LoginPage from "./pages/LoginPage";
 import SessionClockBar from "./components/SessionClockBar";
 import NotificationWatcher from "./components/NotificationWatcher";
 import TickerBar from "./components/TickerBar";
+import ToastContainer from "./components/ToastContainer";
 import { normalizeDisplayTimezone } from "./utils/format";
 
 export default function App() {
@@ -133,6 +134,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <NotificationWatcher />
+      <ToastContainer />
       <header className="topbar">
         <div className="brand">
           <span>📈 Trading</span>
@@ -177,7 +179,6 @@ export default function App() {
                 <NavLink to="/system/sources">Sources</NavLink>
                 <hr style={{ border: '0', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '4px 0' }} />
                 <NavLink to="/tools">🛠 Tools</NavLink>
-                <NavLink to="/tools/notification" style={{ paddingLeft: 24, fontSize: 11 }}>↳ Notification</NavLink>
               </div>
             </div>
           )}
@@ -190,6 +191,7 @@ export default function App() {
             </button>
             <div className="nav-dropdown-menu">
               <NavLink to="/settings/profile">Profile</NavLink>
+              <NavLink to="/settings/notifications">Notifications</NavLink>
               <NavLink to="/settings">Settings</NavLink>
               <NavLink to="/system/accounts">Accounts</NavLink>
               <hr style={{ border: '0', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '4px 0' }} />
@@ -250,6 +252,7 @@ export default function App() {
           <Route path="/system/sources" element={canAccessSystemPages ? <SourcesPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/tools" element={<ToolsPage />} />
           <Route path="/tools/notification" element={<EventsPage />} />
+          <Route path="/settings/notifications" element={<EventsPage />} />
           <Route path="/snapshots" element={<Navigate to="/system/files" replace />} />
           <Route path="/storage" element={<Navigate to="/system/storage" replace />} />
           <Route path="/cache" element={<Navigate to="/system/cache" replace />} />

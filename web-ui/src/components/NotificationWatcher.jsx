@@ -1,8 +1,8 @@
 import { useEffect, useRef, useCallback } from "react";
 import { api } from "../api";
 import { playSound, SoundEvents } from "../utils/SoundManager";
+import { showToast } from "./ToastContainer";
 
-// Store events in a global array so TickerBar can read them
 window.__tickerEvents = window.__tickerEvents || [];
 
 /**
@@ -23,9 +23,9 @@ export default function NotificationWatcher() {
         fn(`[${p.event}] ${p.message}`);
       }
 
-      // 2. Browser notification
-      if (p.notification && Notification.permission === "granted") {
-        new Notification(p.event.replace(/_/g, " ").toUpperCase(), { body: p.message, icon: "/favicon.ico" });
+      // 2. In-app toast
+      if (p.notification) {
+        showToast({ message: `[${p.event.replace(/_/g, " ").toUpperCase()}] ${p.message}`, type: p.type, position: p.position || "bottom-right" });
       }
 
       // 3. Ticker
@@ -83,10 +83,6 @@ export default function NotificationWatcher() {
   }, [handleEvent]);
 
   useEffect(() => {
-    // Request notification permission on mount
-    if (Notification.permission === "default") {
-      Notification.requestPermission();
-    }
     connect();
     return () => {
       if (esRef.current) esRef.current.close();
