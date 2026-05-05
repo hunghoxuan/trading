@@ -921,18 +921,27 @@ export default function TradesPage() {
                   { label: "Account", value: accountById.get(String(selectedTrade.account_id || ""))?.name || selectedTrade.account_id || "-" },
                   { label: "Broker Ticket", value: brokerTicketOf(selectedTrade) },
                   { label: "Broker Status", value: selectedTrade.metadata?.broker_data?.status || "-" },
-                  ...(selectedTrade.metadata && typeof selectedTrade.metadata === "object" ? (() => {
-                    const meta = selectedTrade.metadata;
-                    return [
-                    { label: "Broker Volume", value: asNum(selectedTrade.broker_volume) > 0 ? `${asNum(selectedTrade.broker_volume).toLocaleString()} units` : (meta.broker_data?.volume ? `${asNum(meta.broker_data.volume).toLocaleString()} units` : null) },
-                    { label: "Broker Lots", value: asNum(selectedTrade.broker_lots) > 0 ? `${asNum(selectedTrade.broker_lots).toFixed(2)} lots` : (meta.broker_data?.lots ? `${asNum(meta.broker_data.lots).toFixed(2)} lots` : null) },
-                    { label: "Broker Pips", value: (selectedTrade.broker_pips != null || meta.broker_data?.pips != null) ? `${asNum(selectedTrade.broker_pips ?? meta.broker_data?.pips).toFixed(1)} pips` : null },
-                    { label: "Broker Net Profit", value: (selectedTrade.pnl_realized != null || meta.broker_data?.net_pnl != null) ? `$${asNum(selectedTrade.pnl_realized ?? meta.broker_data?.net_pnl).toFixed(2)}` : null },
-                    { label: "Commission", value: (selectedTrade.broker_commission != null || meta.broker_data?.commission != null) ? `$${asNum(selectedTrade.broker_commission ?? meta.broker_data?.commission).toFixed(2)}` : null },
-                    { label: "Swap", value: (selectedTrade.broker_swap != null || meta.broker_data?.swap != null) ? `$${asNum(selectedTrade.broker_swap ?? meta.broker_swap).toFixed(2)}` : null },
-                    { label: "Position ID", value: selectedTrade.broker_trade_id || meta.broker_data?.position_id || meta.broker_position_id || null },
-                    ].filter(x => x.value !== null);
-                  })() : []),
+                    ...(selectedTrade.metadata && typeof selectedTrade.metadata === "object" ? (() => {
+                      const meta = selectedTrade.metadata;
+                      const bData = meta.broker_data || {};
+                      
+                      const bVol = asNum(selectedTrade.broker_volume) ?? asNum(bData.volume);
+                      const bLots = asNum(selectedTrade.broker_lots) ?? asNum(bData.lots);
+                      const bPips = asNum(selectedTrade.broker_pips) ?? asNum(bData.pips);
+                      const bProfit = asNum(selectedTrade.pnl_realized) ?? asNum(bData.net_pnl);
+                      const bComm = asNum(selectedTrade.broker_commission) ?? asNum(bData.commission);
+                      const bSwap = asNum(selectedTrade.broker_swap) ?? asNum(bData.swap);
+
+                      return [
+                        { label: "Broker Volume", value: bVol != null ? `${bVol.toLocaleString()} units` : null },
+                        { label: "Broker Lots", value: bLots != null ? `${bLots.toFixed(2)} lots` : null },
+                        { label: "Broker Pips", value: bPips != null ? `${bPips.toFixed(1)} pips` : null },
+                        { label: "Broker Net Profit", value: bProfit != null ? `$${bProfit.toFixed(2)}` : null },
+                        { label: "Commission", value: bComm != null ? `$${bComm.toFixed(2)}` : null },
+                        { label: "Swap", value: bSwap != null ? `$${bSwap.toFixed(2)}` : null },
+                        { label: "Position ID", value: selectedTrade.broker_trade_id || bData.position_id || bData.positionId || meta.broker_position_id || null },
+                      ].filter(x => x.value !== null);
+                    })() : []),
                   { label: "Note", value: selectedTrade.note || "-", fullWidth: true },
                   { 
                     label: "Raw Metadata", 
