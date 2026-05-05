@@ -5960,6 +5960,12 @@ async function _mt5InitBackendInternal() {
     .query(`ALTER TABLE trades RENAME COLUMN side TO action`)
     .catch(() => {});
   await pool
+    .query(`ALTER TABLE trades RENAME COLUMN signal_sid TO signal_id`)
+    .catch(() => {});
+  await pool
+    .query(`ALTER TABLE trades RENAME COLUMN broker_sid TO broker_trade_id`)
+    .catch(() => {});
+  await pool
     .query(`ALTER TABLE trades RENAME COLUMN intent_entry TO entry`)
     .catch(() => {});
   await pool
@@ -6977,18 +6983,22 @@ async function _mt5InitBackendInternal() {
 
       await pool.query(
         `
-        UPDATE user_accounts
-        SET metadata = $1,
-            balance = $2,
-            equity = $3,
-            margin = $4,
-            free_margin = $5,
-            leverage = $6,
-            broker_name = $7,
-            updated_at = NOW()
-        WHERE account_id = $8
+        INSERT INTO user_accounts (
+          account_id, user_id, metadata, balance, equity, margin, free_margin, leverage, broker_name, status, updated_at
+        ) VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9, 'ACTIVE', NOW())
+        ON CONFLICT (account_id) DO UPDATE SET
+          metadata = EXCLUDED.metadata,
+          balance = EXCLUDED.balance,
+          equity = EXCLUDED.equity,
+          margin = EXCLUDED.margin,
+          free_margin = EXCLUDED.free_margin,
+          leverage = EXCLUDED.leverage,
+          broker_name = EXCLUDED.broker_name,
+          updated_at = NOW()
       `,
         [
+          aid,
+          uid,
           JSON.stringify(newMeta),
           newMeta.balance,
           newMeta.equity,
@@ -6996,7 +7006,6 @@ async function _mt5InitBackendInternal() {
           newMeta.free_margin,
           newMeta.leverage,
           newMeta.broker_name,
-          aid,
         ],
       );
       await StateRepo.del("USER_ACCOUNTS", uid);
@@ -7298,7 +7307,11 @@ async function _mt5InitBackendInternal() {
               SELECT sid
               FROM trades
               WHERE account_id = $4
-                AND signal_id = $5
+                AND (
+                  (signal_id = $5 AND $5 <> '')
+                  OR (broker_trade_id = $2 AND $2 <> '')
+                  OR (broker_trade_id = ANY($12::text[]))
+                )
               ORDER BY
                 CASE WHEN broker_trade_id IS NULL OR broker_trade_id = '' THEN 0 ELSE 1 END,
                 created_at ASC
@@ -7318,6 +7331,7 @@ async function _mt5InitBackendInternal() {
                 it.opened_at || null,
                 it.closed_at || null,
                 it.order_type || null,
+                ticketCandidates,
               ],
             );
           }
@@ -7370,6 +7384,7 @@ async function _mt5InitBackendInternal() {
               syncSymbol,
               syncAction,
               it.order_type || null,
+              ticketCandidates,
             ],
           );
         }
@@ -7385,12 +7400,12 @@ async function _mt5InitBackendInternal() {
           await pool.query(
             `
             INSERT INTO trades (
-              sid, account_id, user_id,
+              trade_id, sid, account_id, user_id,
               symbol, action, volume, entry,
               execution_status, source_id, metadata, broker_trade_id,
               broker_pips, broker_lots, broker_commission, broker_swap, broker_volume,
               created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'OPEN', $8, $9::jsonb, $10, $11, $12, $13, $14, $15, NOW(), NOW())
+            ) VALUES ($1, $1, $2, $3, $4, $5, $6, $7, 'OPEN', $8, $9::jsonb, $10, $11, $12, $13, $14, $15, NOW(), NOW())
             ON CONFLICT (sid) DO NOTHING
           `,
             [

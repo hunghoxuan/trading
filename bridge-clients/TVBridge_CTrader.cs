@@ -170,6 +170,14 @@ namespace cAlgo.Robots
                     return;
                 }
 
+                // PERSISTENT DEDUPLICATION: Check if we already have an open position for this Signal ID
+                if (Positions.Any(p => p.Comment == id && p.Label == MagicNumber.ToString()))
+                {
+                    Print("Signal {0} already open. Skipping execution.", id);
+                    _ = AckAsync(id, leaseToken, "FILLED", "ALREADY_OPEN", ""); // Ack as filled so server stops sending
+                    return;
+                }
+
                 var volumeUnits = symbol.QuantityToVolumeInUnits(lots);
                 var res = ExecuteMarketOrder(action == "BUY" ? TradeType.Buy : TradeType.Sell, symbol.Name, volumeUnits, MagicNumber.ToString(), ParseDouble(GetJsonValue(json, "sl")), ParseDouble(GetJsonValue(json, "tp")), id);
                 if (res.IsSuccessful) {
