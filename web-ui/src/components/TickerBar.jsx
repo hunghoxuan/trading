@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import "./TickerBar.css";
 
 /**
  * Light gray scrolling text marquee under the DayClock bar.
@@ -30,36 +31,12 @@ export default function TickerBar() {
     .join("  •  ");
 
   return (
-    <div
-      style={{
-        background: "rgba(255,255,255,0.03)",
-        borderTop: "1px solid var(--border)",
-        borderBottom: "1px solid var(--border)",
-        padding: "3px 0",
-        overflow: "hidden",
-        whiteSpace: "nowrap",
-      }}
-    >
-      <div
-        style={{
-          display: "inline-block",
-          paddingLeft: "100%",
-          animation: "ticker-scroll 40s linear infinite",
-          fontSize: 11,
-          color: "#6b7280",
-          fontFamily: "monospace",
-        }}
-      >
+    <div className="ticker-bar">
+      <div className="ticker-bar-scroll">
         {text}
         <span style={{ margin: "0 60px" }}>•</span>
         {text}
       </div>
-      <style>{`
-        @keyframes ticker-scroll {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
-      `}</style>
     </div>
   );
 }

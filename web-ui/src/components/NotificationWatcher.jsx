@@ -43,6 +43,11 @@ export default function NotificationWatcher() {
         }
       }
 
+      // 4b. Component/datasource refresh (without page reload)
+      if (p.comp_refresh) {
+        window.dispatchEvent(new CustomEvent("comp-refresh", { detail: { action: p.action, event: p.event, page: p.page } }));
+      }
+
       // 5. Sound
       if (p.sound && SoundEvents[p.sound]) {
         playSound(p.sound);

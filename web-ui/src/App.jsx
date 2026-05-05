@@ -173,11 +173,11 @@ export default function App() {
                 <NavLink to="/system/cache">Cache</NavLink>
                 <NavLink to="/system/logs">Logs</NavLink>
                 <NavLink to="/system/db">DB</NavLink>
-                <NavLink to="/system/events">Events</NavLink>
                 <NavLink to="/system/users">Users</NavLink>
                 <NavLink to="/system/sources">Sources</NavLink>
                 <hr style={{ border: '0', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '4px 0' }} />
                 <NavLink to="/tools">🛠 Tools</NavLink>
+                <NavLink to="/tools/notification" style={{ paddingLeft: 24, fontSize: 11 }}>↳ Notification</NavLink>
               </div>
             </div>
           )}
@@ -245,11 +245,11 @@ export default function App() {
           <Route path="/system/cache" element={canAccessSystemPages ? <CachePage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/logs" element={canAccessSystemPages ? <LogsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/db" element={canAccessSystemPages ? <DatabasePage /> : <Navigate to="/dashboard" replace />} />
-          <Route path="/system/events" element={canAccessSystemPages ? <EventsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/users" element={canAccessSystemPages ? <UsersPage authUser={authUser} /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/accounts" element={canAccessSystemPages ? <AccountsV2Page /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/sources" element={canAccessSystemPages ? <SourcesPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/tools" element={<ToolsPage />} />
+          <Route path="/tools/notification" element={<EventsPage />} />
           <Route path="/snapshots" element={<Navigate to="/system/files" replace />} />
           <Route path="/storage" element={<Navigate to="/system/storage" replace />} />
           <Route path="/cache" element={<Navigate to="/system/cache" replace />} />

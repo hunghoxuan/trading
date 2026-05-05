@@ -139,7 +139,7 @@ function bumpPulse(userId = null, action = "updated", itemType = "general") {
     NOTIFICATION_PULSE.user[userId][typeKey] = Date.now();
   }
   // Also emit SSE
-  emitNotification({ user_id: userId || null, page: null, event: itemType === "trade" ? "trade_updated" : itemType === "signal" ? "signal_added" : "system_event", message: `${itemType} ${action}`, type: "info", notification: false, console_log: false, ticker: true, need_refresh: false, sound: null });
+  emitNotification({ user_id: userId || null, page: null, event: itemType === "trade" ? "trade_updated" : itemType === "signal" ? "signal_added" : "system_event", message: `${itemType} ${action}`, type: "info", notification: false, console_log: false, ticker: true, need_refresh: false, comp_refresh: false, action: null, sound: null, position: "bottom-right" });
 }
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(
@@ -16425,7 +16425,10 @@ const appHandler = async (req, res) => {
         console_log: payload.console_log || false,
         ticker: payload.ticker !== false,
         need_refresh: payload.need_refresh || false,
+        comp_refresh: payload.comp_refresh || false,
+        action: payload.action || null,
         sound: payload.sound || null,
+        position: payload.position || "bottom-right",
       });
       return json(res, 200, { ok: true });
     } catch (e) {
@@ -16448,7 +16451,10 @@ const appHandler = async (req, res) => {
         console_log: payload.console_log !== false,
         ticker: payload.ticker !== false,
         need_refresh: payload.need_refresh || false,
+        comp_refresh: payload.comp_refresh || false,
+        action: payload.action || null,
         sound: payload.sound || null,
+        position: payload.position || "bottom-right",
       };
       emitNotification(ev);
       return json(res, 200, { ok: true, sent: ev });
@@ -16458,14 +16464,15 @@ const appHandler = async (req, res) => {
   }
 
   const DEFAULT_EVENT_TYPES = [
-    { event: "trade_added", notification: true, console_log: false, ticker: true, refresh: false, sound: "NEW_SIGNAL" },
-    { event: "trade_updated", notification: false, console_log: false, ticker: true, refresh: false, sound: null },
-    { event: "signal_added", notification: true, console_log: false, ticker: true, refresh: false, sound: "NEW_SIGNAL" },
-    { event: "broker_sync", notification: false, console_log: false, ticker: true, refresh: false, sound: null },
-    { event: "news_alert", notification: true, console_log: false, ticker: true, refresh: false, sound: "NEWS_ALERT" },
-    { event: "system_event", notification: false, console_log: true, ticker: true, refresh: false, sound: null },
-    { event: "page_refresh", notification: false, console_log: false, ticker: false, refresh: true, sound: null },
-    { event: "error", notification: true, console_log: true, ticker: true, refresh: false, sound: null },
+    { event: "trade_added", notification: true, console_log: false, ticker: true, refresh: false, comp_refresh: false, sound: "NEW_SIGNAL", position: "bottom-right" },
+    { event: "trade_updated", notification: false, console_log: false, ticker: true, refresh: false, comp_refresh: false, sound: null, position: "bottom-right" },
+    { event: "signal_added", notification: true, console_log: false, ticker: true, refresh: false, comp_refresh: false, sound: "NEW_SIGNAL", position: "bottom-right" },
+    { event: "broker_sync", notification: false, console_log: false, ticker: true, refresh: false, comp_refresh: false, sound: null, position: "bottom-right" },
+    { event: "news_alert", notification: true, console_log: false, ticker: true, refresh: false, comp_refresh: false, sound: "NEWS_ALERT", position: "bottom-right" },
+    { event: "system_event", notification: false, console_log: true, ticker: true, refresh: false, comp_refresh: false, sound: null, position: "bottom-right" },
+    { event: "page_refresh", notification: false, console_log: false, ticker: false, refresh: true, comp_refresh: false, sound: null, position: "bottom-right" },
+    { event: "component_refresh", notification: false, console_log: false, ticker: false, refresh: false, comp_refresh: true, sound: null, position: "bottom-right" },
+    { event: "error", notification: true, console_log: true, ticker: true, refresh: false, comp_refresh: false, sound: null, position: "bottom-right" },
   ];
 
   if (req.method === "GET" && url.pathname === "/v2/notifications/events") {
