@@ -100,7 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 12:12 - 6b8f804"); // DB schema SHOW column + presets
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 12:45 - 482d881"); // SSE notification system
 
 // --- SSE Notification Bus ---
 const SSE_CLIENTS = new Map(); // userId -> Set<res>
