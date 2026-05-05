@@ -100,7 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 07:21 - deployall2"); // DB schema SHOW column + presets
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 08:32 - a6f66a6"); // DB schema SHOW column + presets
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
@@ -5505,7 +5505,7 @@ async function _mt5InitBackendInternal() {
       account_id TEXT NOT NULL REFERENCES user_accounts(account_id) ON DELETE CASCADE,
       user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
       broker_id TEXT NULL,
-      signal_sid TEXT NULL REFERENCES signals(sid) ON DELETE SET NULL,
+      signal_id TEXT NULL REFERENCES signals(sid) ON DELETE SET NULL,
       source_id TEXT NULL,
       entry_model TEXT NULL,
       signal_tf TEXT NULL,
@@ -6048,7 +6048,7 @@ async function _mt5InitBackendInternal() {
     `CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)`,
     `CREATE INDEX IF NOT EXISTS idx_trades_exec_status ON trades(execution_status)`,
     `CREATE INDEX IF NOT EXISTS idx_trades_account ON trades(account_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_trades_signal_sid ON trades(signal_sid)`,
+    `CREATE INDEX IF NOT EXISTS idx_trades_signal_id ON trades(signal_id)`,
     `CREATE INDEX IF NOT EXISTS idx_trades_broker_ticket ON trades(broker_trade_id)`,
     // Logs
     `CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at DESC)`,
@@ -6072,7 +6072,7 @@ async function _mt5InitBackendInternal() {
         signal_tf = COALESCE(NULLIF(t.signal_tf, ''), s.signal_tf),
         chart_tf = COALESCE(NULLIF(t.chart_tf, ''), s.chart_tf)
     FROM signals s
-    WHERE t.signal_sid = s.sid
+    WHERE t.signal_id = s.sid
   `,
     )
     .catch(() => {});
@@ -6412,7 +6412,7 @@ async function _mt5InitBackendInternal() {
         `
         SELECT s.*
         FROM trades t
-        LEFT JOIN signals s ON s.sid = t.signal_sid
+        LEFT JOIN signals s ON s.sid = t.signal_id
         WHERE t.broker_trade_id = $1
         ORDER BY t.updated_at DESC, t.created_at DESC
         LIMIT 1
@@ -6637,11 +6637,11 @@ async function _mt5InitBackendInternal() {
           const ins = await client.query(
             `
             INSERT INTO trades (
-              sid, account_id, user_id, signal_sid, source_id,
+              trade_id, sid, account_id, user_id, signal_id, source_id,
               entry_model, signal_tf, chart_tf,
               symbol, action, order_type, entry, sl, tp, volume, note,
               dispatch_status, execution_status, metadata, raw_json, created_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'NEW','PENDING',$17::jsonb,$18::jsonb,$19,$19)
+            ) VALUES ($1,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'NEW','PENDING',$17::jsonb,$18::jsonb,$19,$19)
           `,
             [
               tradeSid,
@@ -6682,7 +6682,7 @@ async function _mt5InitBackendInternal() {
                 tradeSid,
                 JSON.stringify(
                   signalId
-                    ? { event: "SIGNAL_FANOUT", signal_sid: signalId }
+                    ? { event: "SIGNAL_FANOUT", signal_id: signalId }
                     : { event: "DIRECT_TRADE_CREATE" },
                 ),
                 userId,
@@ -7104,7 +7104,7 @@ async function _mt5InitBackendInternal() {
           if (!prev) {
             merged.set(key, {
               ...raw, // Capture all raw fields from broker (pip_value, leverage, etc.)
-              signal_sid: effectiveSignalId || null,
+              signal_id: effectiveSignalId || null,
               ticket,
               ticket_candidates: ticketCandidates,
               pnl,
@@ -7198,7 +7198,7 @@ async function _mt5InitBackendInternal() {
                   metadata = COALESCE(metadata, '{}'::jsonb) || $4::jsonb,
                   updated_at = NOW()
               WHERE account_id = $1
-                AND broker_sid = ANY($2::text[])
+                AND broker_trade_id = ANY($2::text[])
                 AND symbol <> $3
                 AND execution_status IN ('PENDING','OPEN')
             `,
@@ -7244,7 +7244,7 @@ async function _mt5InitBackendInternal() {
               AND ($11 = '' OR symbol = $11)
               AND (
                 sid = ANY($4::text[])
-                OR broker_sid = ANY($4::text[])
+                OR broker_trade_id = ANY($4::text[])
                 OR metadata->>'broker_position_id' = ANY($4::text[])
                 OR metadata->>'position_ticket' = ANY($4::text[])
               )
@@ -7298,7 +7298,7 @@ async function _mt5InitBackendInternal() {
               SELECT sid
               FROM trades
               WHERE account_id = $4
-                AND signal_sid = $5
+                AND signal_id = $5
               ORDER BY
                 CASE WHEN broker_trade_id IS NULL OR broker_trade_id = '' THEN 0 ELSE 1 END,
                 created_at ASC
@@ -7425,7 +7425,7 @@ async function _mt5InitBackendInternal() {
                 status_raw: it.status_raw,
                 execution_status: it.execution_status,
                 ticket: it.ticket || null,
-                signal_sid: it.sid || null,
+                signal_id: it.sid || null,
                 pnl: it.pnl,
               },
               uid,
@@ -7495,7 +7495,7 @@ async function _mt5InitBackendInternal() {
               AND execution_status IN ('OPEN','PENDING')
               AND broker_trade_id IS NOT NULL
               AND broker_trade_id <> ''
-              AND NOT (broker_sid = ANY($2::text[]))
+              AND NOT (broker_trade_id = ANY($2::text[]))
             RETURNING sid, broker_trade_id, execution_status, close_reason, pnl_realized
           `,
             [aid, Array.from(seenTickets)],
@@ -7712,7 +7712,7 @@ async function _mt5InitBackendInternal() {
           OR id::text ILIKE ${p}
           OR sid ILIKE ${p}
           OR sid ILIKE ${p}
-          OR broker_sid ILIKE ${p}
+          OR broker_trade_id ILIKE ${p}
           OR symbol ILIKE ${p}
           OR account_id ILIKE ${p}
           OR source_id ILIKE ${p}
@@ -7796,7 +7796,7 @@ async function _mt5InitBackendInternal() {
           OR sid = $5
         )
           ${whereUser}
-        RETURNING id, sid, signal_sid, user_id, execution_status, pnl_realized, close_reason, closed_at
+        RETURNING id, sid, signal_id, user_id, execution_status, pnl_realized, close_reason, closed_at
       `,
         params,
       );
@@ -7881,7 +7881,7 @@ async function _mt5InitBackendInternal() {
           OR id::text ILIKE ${p}
           OR sid ILIKE ${p}
           OR sid ILIKE ${p}
-          OR broker_sid ILIKE ${p}
+          OR broker_trade_id ILIKE ${p}
           OR symbol ILIKE ${p}
           OR account_id ILIKE ${p}
           OR source_id ILIKE ${p}
@@ -7899,7 +7899,7 @@ async function _mt5InitBackendInternal() {
           `
           DELETE FROM trades
           ${where}
-          RETURNING sid, signal_sid
+          RETURNING sid, signal_id
         `,
           params,
         );
@@ -7909,7 +7909,7 @@ async function _mt5InitBackendInternal() {
           updated: Number(delRes.rowCount || 0),
           action: act,
           sids: rows.map((r) => String(r?.sid || "")).filter(Boolean),
-          signal_sids: rows
+          signal_ids: rows
             .map((r) => String(r?.sid || ""))
             .filter(Boolean),
         };
@@ -7922,7 +7922,7 @@ async function _mt5InitBackendInternal() {
             closed_at = COALESCE(closed_at, NOW()),
             updated_at = NOW()
         ${where}
-        RETURNING sid, signal_sid
+        RETURNING sid, signal_id
       `,
         params,
       );
@@ -7932,7 +7932,7 @@ async function _mt5InitBackendInternal() {
         updated: Number(res.rowCount || 0),
         action: act,
         sids: rows.map((r) => String(r?.sid || "")).filter(Boolean),
-        signal_sids: rows.map((r) => String(r?.sid || "")).filter(Boolean),
+        signal_ids: rows.map((r) => String(r?.sid || "")).filter(Boolean),
       };
     },
     async listLogs(filters = {}, limit = 200, offset = 0) {
@@ -10238,9 +10238,9 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   );
   const sidBaseFromPayload = String(
     payload.sid ||
-      payload.signal_sid ||
+      payload.signal_id ||
       rawJson?.sid ||
-      rawJson?.signal_sid ||
+      rawJson?.signal_id ||
       "",
   ).trim();
   const signalSid = sidBaseFromPayload
@@ -10278,7 +10278,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   delete rawJsonNormalized.password;
   delete rawJsonNormalized.token;
   const upsertResult = await mt5UpsertSignal({
-    signal_sid: signalId,
+    signal_id: signalId,
     sid: signalSid,
     created_at: mt5NowIso(),
     user_id: userId,
@@ -10328,7 +10328,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
           },
         });
         const fanout = await mt5FanoutSignalTradeV2({
-          signal_sid: signalId,
+          signal_id: signalId,
           source_id: sourceId,
           user_id: userId,
           entry_model: entryModel || null,
@@ -10397,7 +10397,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   }
 
   return {
-    signal_sid: signalId,
+    signal_id: signalId,
     action,
     symbol,
     status: upsertResult?.inserted ? "NEW" : "DUPLICATE",
@@ -13355,7 +13355,7 @@ const appHandler = async (req, res) => {
       }).catch(() => null);
 
       const fanout = await mt5FanoutSignalTradeV2({
-        signal_sid: null,
+        signal_id: null,
         source_id: sourceId,
         user_id: effectiveUserId,
         entry_model: entryModel,
@@ -13744,7 +13744,7 @@ const appHandler = async (req, res) => {
         return json(res, 200, {
           ok: true,
           table,
-          created: { signal_sid: signalId, event_type: eventType },
+          created: { signal_id: signalId, event_type: eventType },
         });
       }
 
@@ -14069,7 +14069,7 @@ const appHandler = async (req, res) => {
           id: Number(r.log_id || 0),
           event_time: eventTime,
           event_type: eventType,
-          signal_sid: signalId,
+          signal_id: signalId,
           ack_ticket: ackTicket,
           symbol: symbol || "N/A",
           payload_json: payload,
@@ -14146,7 +14146,7 @@ const appHandler = async (req, res) => {
       await mt5AppendSignalEvent(signalId, eventType, payloadJson);
       return json(res, 200, {
         ok: true,
-        event: { signal_sid: signalId, event_type: eventType },
+        event: { signal_id: signalId, event_type: eventType },
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -17051,7 +17051,7 @@ const appHandler = async (req, res) => {
           : "limit";
       }
       const fanout = await mt5FanoutSignalTradeV2({
-        signal_sid: signalId,
+        signal_id: signalId,
         source_id: sourceId,
         user_id: signal.user_id || userId || CFG.mt5DefaultUserId,
         entry_model:
@@ -17086,7 +17086,7 @@ const appHandler = async (req, res) => {
       );
       return json(res, 200, {
         ok: true,
-        signal_sid: signalId,
+        signal_id: signalId,
         created: fanout?.created || 0,
         account_ids: fanout?.account_ids || [],
       });
@@ -17481,7 +17481,7 @@ const appHandler = async (req, res) => {
           lease_token: t.lease_token,
           lease_expires_at: t.lease_expires_at,
           account_id: t.account_id,
-          signal_sid: t.sid ?? null,
+          signal_id: t.sid ?? null,
           source_id: t.source_id ?? null,
           symbol: t.symbol,
           action: t.action ?? t.side ?? null,
@@ -17742,12 +17742,12 @@ const appHandler = async (req, res) => {
               updated_at = NOW()
           WHERE ($11::text = '' OR account_id = $11)
             AND (
-              broker_sid = ANY($4::text[])
+              broker_trade_id = ANY($4::text[])
               OR metadata->>'broker_position_id' = ANY($4::text[])
               OR metadata->>'position_ticket' = ANY($4::text[])
               OR metadata->>'deal_ticket' = ANY($4::text[])
               OR metadata->>'order_ticket' = ANY($4::text[])
-              OR ($7::text <> '' AND signal_sid = $7)
+              OR ($7::text <> '' AND signal_id = $7)
             )
           RETURNING sid, user_id
         `,
@@ -18055,7 +18055,7 @@ const appHandler = async (req, res) => {
 
       return json(res, 200, {
         ok: true,
-        signal_sid: signalId,
+        signal_id: signalId,
         status,
         requeued: retryableConnectivityFail,
         ack: {

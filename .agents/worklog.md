@@ -1,3 +1,31 @@
+# Session Log: 2026-05-05 10:35
+- **Starting Task**:
+  - Fix Trade Detail chart overlay toggles not redrawing, make static charts fill resized containers, and validate mouse/crosshair sync feasibility in the current chart library.
+- **Work Accomplished**:
+  - **Overlay Redraw**: Wired Trade Detail static charts to rebuild when `P1`, `P2`, `PD`, or `KL` toggle state changes so overlays update immediately.
+  - **Chart Resize**: Passed tile height into static charts and switched them to full container sizing instead of width-derived aspect ratio sizing.
+  - **Resize Handling**: Added `ResizeObserver`-based resize updates so chart canvases stay synced to container bounds during `+/-` layout changes.
+  - **Crosshair Sync**: Added shared crosshair state across static TF charts using `subscribeCrosshairMove`, `setCrosshairPosition`, and `clearCrosshairPosition` from the installed `lightweight-charts` API.
+  - **Docs**: Updated trade lifecycle feature doc to reflect immediate overlay redraw and full-tile chart fitting.
+  - Bumped `SERVER_VERSION` and `EA_BUILD_VERSION` to `v2026.05.05 08:32 - a6f66a6`.
+- **Changed Files**:
+  - `web-ui/src/components/charts/ChartTile.jsx`
+  - `web-ui/src/components/TradeSignalChart.jsx`
+  - `.agents/.product/features/2-done/trade_lifecycle.md`
+  - `.agents/worklog.md`
+  - `webhook/server.js`
+  - `bridge-clients/TVBridgeEA.mq5`
+  - `bridge-clients/TVBridge_CTrader.cs`
+- **Technical Decisions**:
+  - Keep `+/-` layout changes purely client-side while using parent-driven height to keep chart canvases visually full-bleed inside each tile.
+  - Use the installed `lightweight-charts` API surface as the source of truth for crosshair-sync feasibility.
+- **Verification**:
+  - `rtk bash scripts/deploy/bump_build_versions.sh` ✅
+  - `rtk node --check webhook/server.js` ✅
+  - `rtk npm --prefix web-ui run build` ✅
+- **Deploy Status**:
+  - Not deployed.
+
 # Session Log: 2026-05-05 09:45
 - **Starting Task**:
   - Deploy all remaining local changes: cTrader sync metadata updates and UI volume-stat display updates across signals/trades/detail views.

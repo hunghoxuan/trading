@@ -190,6 +190,7 @@ export function SymbolChart({
     pdArrays: false,
     keyLevels: false,
   });
+  const [syncedCrosshair, setSyncedCrosshair] = useState(null);
 
   const toggleOverlay = (key) => setOverlays((p) => ({ ...p, [key]: !p[key] }));
 
@@ -551,6 +552,7 @@ export function SymbolChart({
         {sortedTfs.map((tf) => {
           const isLive = mode === "live" || needsFallback;
           const context = master?.context?.[tf.toLowerCase()];
+          const chartId = `${cleanSym}-${String(tf).toLowerCase()}`;
 
           return (
             <div key={`${mode}-${tf}`} style={{ minWidth: 100 }}>
@@ -572,8 +574,10 @@ export function SymbolChart({
               ) : (
                 <TradeSignalChart
                   key={`tsc-${symbol}-${tf}`}
+                  chartId={chartId}
                   symbol={cleanSym}
                   interval={tf}
+                  height={chartHeight}
                   analysisSnapshot={analysisSnapshot || null}
                   entryPrice={overlays.plan1 ? entryPrice : null}
                   slPrice={overlays.plan1 ? slPrice : null}
@@ -582,6 +586,8 @@ export function SymbolChart({
                   showExtraPlans={overlays.plan2}
                   showPdArrays={overlays.pdArrays}
                   showKeyLevels={overlays.keyLevels}
+                  syncedCrosshair={syncedCrosshair}
+                  onCrosshairSync={setSyncedCrosshair}
                 />
               )}
             </div>

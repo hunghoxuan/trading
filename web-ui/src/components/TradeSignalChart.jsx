@@ -209,8 +209,10 @@ class SignalCreationLinePrimitive {
 
 
 export default function TradeSignalChart({ 
+  chartId = '',
   symbol = 'BTCUSDT', 
   interval = '1h', 
+  height = 320,
   historicalData = [], 
   live = true,
   entryPrice = null,
@@ -222,11 +224,14 @@ export default function TradeSignalChart({
   showPrimaryPlan = true,
   showExtraPlans = true,
   showPdArrays = true,
-  showKeyLevels = true
+  showKeyLevels = true,
+  syncedCrosshair = null,
+  onCrosshairSync = null,
 }) {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
+  const suppressCrosshairSyncRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [dataSource, setDataSource] = useState("");
 
@@ -238,7 +243,7 @@ export default function TradeSignalChart({
     // 1. Initialize Chart
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
-      height: 420,
+      height: chartContainerRef.current.clientHeight || height,
       layout: {
         background: { color: '#0d1117' },
         textColor: '#d1d4dc',
@@ -264,6 +269,35 @@ export default function TradeSignalChart({
 
     chartRef.current = chart;
     seriesRef.current = candleSeries;
+
+    const handleCrosshairMove = (param) => {
+      if (suppressCrosshairSyncRef.current) {
+        suppressCrosshairSyncRef.current = false;
+        return;
+      }
+      if (typeof onCrosshairSync !== 'function') return;
+      if (!param?.point || !param?.time) {
+        onCrosshairSync({ sourceId: chartId, active: false });
+        return;
+      }
+
+      const candleData = param.seriesData?.get?.(candleSeries);
+      const rawPrice =
+        candleData?.close ??
+        candleData?.value ??
+        (param.point ? candleSeries.coordinateToPrice(param.point.y) : null);
+      const price = Number(rawPrice);
+      if (!Number.isFinite(price)) return;
+
+      onCrosshairSync({
+        sourceId: chartId,
+        active: true,
+        time: param.time,
+        price,
+      });
+    };
+
+    chart.subscribeCrosshairMove(handleCrosshairMove);
 
 
     // 3. Fetch History + Start Live
@@ -552,28 +586,82 @@ export default function TradeSignalChart({
 
     initData();
 
-    // Resize handling
-    const handleResize = () => {
-      if (chartContainerRef.current) {
-        const w = chartContainerRef.current.clientWidth;
-        const h = Math.floor(w * 2 / 3);
-        chart.applyOptions({ width: w, height: h });
-      }
-    };
-    window.addEventListener('resize', handleResize);
-
-    // Initial size
-    handleResize();
-
     return () => {
       isMounted = false;
-      window.removeEventListener('resize', handleResize);
+      chart.unsubscribeCrosshairMove(handleCrosshairMove);
+      chartRef.current = null;
+      seriesRef.current = null;
       chart.remove();
     };
-  }, [symbol, interval, openedAt, closedAt, JSON.stringify(analysisSnapshot), JSON.stringify(historicalData), live]); // Re-init if bounds change
+  }, [
+    symbol,
+    interval,
+    height,
+    openedAt,
+    closedAt,
+    entryPrice,
+    slPrice,
+    tpPrice,
+    showPrimaryPlan,
+    showExtraPlans,
+    showPdArrays,
+    showKeyLevels,
+    JSON.stringify(analysisSnapshot),
+    JSON.stringify(historicalData),
+    live,
+  ]);
+
+  useEffect(() => {
+    if (!chartRef.current || !seriesRef.current) return;
+    if (!syncedCrosshair || syncedCrosshair.sourceId === chartId) return;
+
+    if (!syncedCrosshair.active || !syncedCrosshair.time) {
+      suppressCrosshairSyncRef.current = true;
+      chartRef.current.clearCrosshairPosition();
+      return;
+    }
+
+    if (!Number.isFinite(Number(syncedCrosshair.price))) return;
+
+    suppressCrosshairSyncRef.current = true;
+    chartRef.current.setCrosshairPosition(
+      Number(syncedCrosshair.price),
+      syncedCrosshair.time,
+      seriesRef.current,
+    );
+  }, [chartId, syncedCrosshair]);
+
+  useEffect(() => {
+    if (!chartRef.current || !chartContainerRef.current) return;
+
+    const applySize = () => {
+      if (!chartRef.current || !chartContainerRef.current) return;
+      const width = chartContainerRef.current.clientWidth;
+      const nextHeight = chartContainerRef.current.clientHeight || height;
+      chartRef.current.applyOptions({ width, height: nextHeight });
+    };
+
+    applySize();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const resizeObserver = new ResizeObserver(() => applySize());
+      resizeObserver.observe(chartContainerRef.current);
+      return () => resizeObserver.disconnect();
+    }
+
+    window.addEventListener('resize', applySize);
+    return () => window.removeEventListener('resize', applySize);
+  }, [height]);
 
   return (
-    <div className="chart-wrapper" style={{ position: 'relative', width: '100%' }}>
+    <div
+      className="chart-wrapper"
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: typeof height === 'number' ? `${height}px` : height,
+      }}
+    >
       {loading && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(13, 17, 23, 0.7)', zIndex: 10, borderRadius: '8px' }}>
           <div className="loading-small">Loading Chart Data...</div>
@@ -581,7 +669,7 @@ export default function TradeSignalChart({
       )}
       <div 
         ref={chartContainerRef} 
-        style={{ width: '100%', borderRadius: '8px', overflow: 'hidden' }} 
+        style={{ width: '100%', height: '100%', borderRadius: '8px', overflow: 'hidden' }} 
       />
     </div>
   );

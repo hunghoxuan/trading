@@ -2,12 +2,14 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using System.Globalization;
 using cAlgo.API;
 using cAlgo.API.Internals;
 using cAlgo.API.Indicators;
 using cAlgo.Indicators;
 using System.Net;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Text;
 
@@ -28,410 +30,220 @@ namespace cAlgo.Robots
         [Parameter("Magic Number", DefaultValue = 20260411)]
         public int MagicNumber { get; set; }
 
-        [Parameter("Use Risk % Sizing", DefaultValue = true)]
-        public bool UseRiskPercentSizing { get; set; }
-
-        [Parameter("Max Risk %", DefaultValue = 1.0, MinValue = 0.1, MaxValue = 10.0)]
-        public double MaxRiskPct { get; set; }
-
-        private string BuildVersion = "v2026.05.05 07:21 - deployall2";
-        private string _lastStatus = "INITIALIZING";
-        private string _lastSignalId = "None";
-        private string _lastAction = "None";
-        private string _lastSymbol = "None";
+        private string BuildVersion = "v2026.05.05 08:32 - a6f66a6";
+        
+        private string _serverStatus = "WAITING";
+        private string _apiStatus = "WAITING";
+        private string _pollStatus = "IDLE";
+        private string _syncStatus = "IDLE";
+        
+        private string _lastPollErr = "None";
+        private string _lastSyncErr = "None";
+        
         private DateTime _lastPollTime = DateTime.MinValue;
-        private int _pollCount = 0;
-        private int _successCount = 0;
-        private int _failCount = 0;
-        private string _lastError = "";
-        private bool _isPolling = false;
-
-        private static readonly HttpClient _httpClient;
-
-        static TVBridgeCBot()
-        {
-            _httpClient = new HttpClient();
-            _httpClient.Timeout = TimeSpan.FromSeconds(30);
-            _httpClient.DefaultRequestHeaders.Add("User-Agent", "cTrader-TVBridge");
-        }
-
         private DateTime _lastSyncTime = DateTime.MinValue;
-        private string _lastSyncSummary = "INIT";
-        private string _lastStateHash = "";
+        
+        private int _pollCount = 0;
+        private int _successPolls = 0;
+        private int _syncCount = 0;
+
+        // REGISTRY: Tracks all processed signals to prevent duplicates
+        private HashSet<string> _processedSignalIds = new HashSet<string>();
+        private List<string> _signalHistory = new List<string>();
+        private List<string> _activePositions = new List<string>();
+
+        private HttpClient _httpClient = new HttpClient();
+        private bool _isBusy = false;
 
         protected override void OnStart()
         {
-            try
-            {
-                ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
-
-                Print("[Init] TVBridgeCBot Started. Magic: {0}", MagicNumber);
-                _lastStatus = "LIVE_READY";
-                RefreshDebugPanel();
-                Timer.Start(PollSeconds);
-            }
-            catch (Exception ex)
-            {
-                Print("[Critical Error] Initialization failed: {0}", ex.Message);
-                _lastStatus = "INIT_FAILED";
-                _lastError = ex.Message;
-                RefreshDebugPanel();
-            }
+            _httpClient.Timeout = TimeSpan.FromSeconds(30);
+            Timer.Start(PollSeconds);
+            Print("[Bridge] Robot Started. Registry Initialized.");
+            RefreshDebugPanel();
         }
 
         protected override void OnTimer()
         {
-            if (_isPolling) return;
+            if (_isBusy) return;
+            _isBusy = true;
 
-            // Alternating between Poll and Sync
-            if (DateTime.Now - _lastSyncTime > TimeSpan.FromMinutes(1))
-            {
-                _ = SyncWithVpsAsync();
-            }
-            else
-            {
-                _ = PollSignalsAsync();
-            }
-
-            RefreshDebugPanel();
-        }
-
-        private async Task SyncWithVpsAsync()
-        {
-            _isPolling = true;
-
-            // Collect positions on main thread
+            var accId = Account.UserId.ToString();
+            var balance = Account.Balance;
+            var equity = Account.Equity;
+            var margin = Account.Margin;
             var posList = new List<string>();
-            var accountId = "";
-            var brokerName = "";
-            double balance = 0, equity = 0, margin = 0, freeMargin = 0, leverage = 0;
+            var posDisplay = new List<string>();
+            
+            foreach (var pos in Positions.Where(p => p.Label == MagicNumber.ToString())) {
+                var sid = (pos.Comment ?? "").Replace("\"", "'");
+                posList.Add(string.Format(CultureInfo.InvariantCulture, 
+                    "{{\"sid\":\"{0}\",\"ticket\":\"{1}\",\"symbol\":\"{2}\",\"side\":\"{3}\",\"volume\":{4:F2},\"pnl\":{5:F2}}}",
+                    sid, pos.Id, pos.SymbolName, pos.TradeType.ToString().ToUpper(), pos.VolumeInUnits, pos.NetProfit));
+                
+                posDisplay.Add(string.Format("{0} {1} {2}", pos.Id, pos.TradeType.ToString().ToUpper(), pos.SymbolName));
+            }
+            _activePositions = posDisplay;
 
-            var tcs = new TaskCompletionSource<bool>();
-            BeginInvokeOnMainThread(() =>
-            {
-                try
-                {
-                    accountId = Account.Number.ToString();
-                    balance = Account.Balance;
-                    equity = Account.Equity;
-                    margin = Account.Margin;
-                    freeMargin = Account.FreeMargin;
-                    leverage = Account.PreciseLeverage;
-                    brokerName = Account.BrokerName;
-
-                    double accountBalance = Account.Balance;
-                    foreach (var pos in Positions)
-                    {
-                        // We check for SID in comment or legacy MagicNumber in Label
-                        if (pos.Label.Contains("_") || pos.Label == MagicNumber.ToString())
-                        {
-                            string sid = string.IsNullOrEmpty(pos.Comment) ? pos.Label : pos.Comment;
-                            double pips = pos.Pips;
-                            var symbol = Symbols.GetSymbol(pos.SymbolName);
-                            
-                            // Calculate risk_money_planned if SL exists
-                            double riskMoney = 0;
-                            if (pos.StopLoss.HasValue) {
-                                double slDistance = Math.Abs(pos.EntryPrice - pos.StopLoss.Value);
-                                if (symbol.PipSize > 0) {
-                                    double slPips = slDistance / symbol.PipSize;
-                                    riskMoney = slPips * symbol.PipValue * pos.VolumeInUnits;
-                                }
-                            }
-                            if (double.IsNaN(riskMoney) || double.IsInfinity(riskMoney)) riskMoney = 0;
-                            
-                            double currentBalance = accountBalance;
-                            if (double.IsNaN(currentBalance) || double.IsInfinity(currentBalance)) currentBalance = 0;
-
-                            double volSize = currentBalance > 0 ? (riskMoney / currentBalance) * 100.0 : 0;
-                            if (double.IsNaN(volSize) || double.IsInfinity(volSize)) volSize = 0;
-
-                            posList.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                                "{{\"ticket\":\"{0}\",\"symbol\":\"{1}\",\"volume\":{2:F2},\"lots\":{3:F2},\"side\":\"{4}\",\"entry\":{5:F5},\"pnl\":{6:F2},\"net_pnl\":{7:F2},\"commission\":{8:F2},\"swap\":{9:F2},\"pips\":{10:F2},\"opened_at\":\"{11}\",\"comment\":\"{12}\",\"status\":\"OPEN\",\"digits\":{13},\"pip_size\":{14:F5},\"pip_value\":{15:F5},\"base_asset\":\"{16}\",\"quote_asset\":\"{17}\",\"account_balance\":{18:F2},\"risk_money_planned\":{19:F2},\"volume_size\":{20:F2}}}",
-                                pos.Id, pos.SymbolName, riskMoney, pos.Quantity, pos.TradeType.ToString().ToUpper(), pos.EntryPrice, pos.GrossProfit, pos.NetProfit, pos.Commissions, pos.Swap, pips, pos.EntryTime.ToString("yyyy-MM-ddTHH:mm:ssZ"), sid,
-                                symbol.Digits, symbol.PipSize, symbol.PipValue, symbol.BaseAsset, symbol.QuoteAsset, currentBalance, riskMoney, volSize));
-                        }
-                    }
+            Task.Run(async () => {
+                try {
+                    await PollSignalsAsync(accId);
+                    await SyncWithVpsAsync(accId, balance, equity, margin, posList);
+                } catch (Exception ex) {
+                    _lastSyncErr = ex.Message;
+                } finally {
+                    _isBusy = false;
+                    RefreshDebugPanel();
                 }
-                finally { tcs.SetResult(true); }
             });
-            await tcs.Task;
-
-            try
-            {
-                var stateHash = string.Join(",", posList);
-                if (stateHash == _lastStateHash && DateTime.Now - _lastSyncTime < TimeSpan.FromMinutes(5))
-                {
-                    _lastSyncSummary = "STABLE";
-                    _isPolling = false;
-                    return;
-                }
-                _lastStateHash = stateHash;
-
-                var body = string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                    "{{\"account_id\":\"{0}\",\"balance\":{1:F2},\"equity\":{2:F2},\"margin\":{3:F2},\"free_margin\":{4:F2},\"leverage\":{5:F2},\"broker_name\":\"{6}\",\"positions\":[{7}],\"orders\":[],\"closed\":[]}}",
-                    accountId, balance, equity, margin, freeMargin, leverage, brokerName, string.Join(",", posList));
-
-                Print("[Sync] Sending: {0}", body);
-
-                var url = ServerBaseUrl.TrimEnd('/') + "/mt5/ea/sync-v2";
-                var content = new StringContent(body, Encoding.UTF8, "application/json");
-                content.Headers.Add("x-api-key", EaApiKey);
-
-                var response = await _httpClient.PostAsync(url, content);
-                if (response.IsSuccessStatusCode)
-                {
-                    _lastSyncTime = DateTime.Now;
-                    _lastSyncSummary = "OK " + posList.Count + " pos";
-                }
-                else
-                {
-                    var errorBody = await response.Content.ReadAsStringAsync();
-                    Print("[Sync] Server Error: {0}", errorBody);
-                    // Extract error message from json {"ok":false,"error":"..."}
-                    var errorMsg = GetJsonValue(errorBody, "error");
-                    if (string.IsNullOrEmpty(errorMsg)) errorMsg = response.StatusCode.ToString();
-                    _lastSyncSummary = "FAIL " + errorMsg;
-                }
-            }
-            catch (Exception ex)
-            {
-                _lastSyncSummary = "ERR " + ex.Message;
-            }
-            finally
-            {
-                _isPolling = false;
-            }
         }
 
-        private async Task PollSignalsAsync()
+        private async Task PollSignalsAsync(string accountId)
         {
-            _isPolling = true;
             _pollCount++;
+            _pollStatus = "POLLING";
             try
             {
-                var url = ServerBaseUrl.TrimEnd('/') + "/v2/broker/pull";
-
+                var url = ServerBaseUrl.TrimEnd('/') + "/v2/broker/pull?account_id=" + accountId;
                 using (var request = new HttpRequestMessage(System.Net.Http.HttpMethod.Get, url))
                 {
                     request.Headers.Add("x-api-key", EaApiKey);
                     var response = await _httpClient.SendAsync(request);
-
+                    _serverStatus = response.IsSuccessStatusCode || (int)response.StatusCode < 500 ? "OK" : "ERR " + (int)response.StatusCode;
+                    
                     if (response.IsSuccessStatusCode)
                     {
-                        var json = await response.Content.ReadAsStringAsync();
+                        _apiStatus = "OK";
+                        _successPolls++;
                         _lastPollTime = DateTime.Now;
-                        _lastStatus = "POLL_OK";
-                        BeginInvokeOnMainThread(() =>
-                        {
-                            ProcessResponse(json);
-                        });
+                        _pollStatus = "OK";
+                        _lastPollErr = "None";
+                        var json = await response.Content.ReadAsStringAsync();
+                        BeginInvokeOnMainThread(() => ProcessResponse(json));
                     }
                     else
                     {
-                        _failCount++;
-                        _lastStatus = "HTTP_ERR";
-                        _lastError = response.StatusCode.ToString();
+                        _pollStatus = "FAIL";
+                        _lastPollErr = await response.Content.ReadAsStringAsync();
+                        if (string.IsNullOrEmpty(_lastPollErr)) _lastPollErr = "HTTP " + (int)response.StatusCode;
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                _failCount++;
-                _lastStatus = "CONN_ERROR";
-                _lastError = ex.Message;
-                Print("Poll Error: {0}", ex.Message);
-            }
-            finally
-            {
-                _isPolling = false;
-            }
+            catch (Exception ex) { _pollStatus = "CONN_ERR"; _lastPollErr = ex.Message; }
         }
 
         private void ProcessResponse(string json)
         {
             if (string.IsNullOrEmpty(json) || !json.Contains("\"items\"")) return;
-
             var itemsMatch = Regex.Match(json, "\"items\"\\s*:\\s*\\[(.*?)\\]", RegexOptions.Singleline);
             if (!itemsMatch.Success) return;
-
-            var itemsContent = itemsMatch.Groups[1].Value;
-            var objects = Regex.Matches(itemsContent, "\\{(.*?)\\}", RegexOptions.Singleline);
-
-            foreach (Match objMatch in objects)
-            {
-                var signalJson = "{" + objMatch.Groups[1].Value + "}";
-                ExecuteSignal(signalJson);
-            }
+            var objects = Regex.Matches(itemsMatch.Groups[1].Value, "\\{(.*?)\\}", RegexOptions.Singleline);
+            foreach (Match objMatch in objects) ExecuteSignal("{" + objMatch.Groups[1].Value + "}");
         }
 
         private void ExecuteSignal(string json)
         {
-            var id = GetJsonValue(json, "signal_id");
+            var id = GetJsonValue(json, "sid");
+            if (string.IsNullOrEmpty(id)) id = GetJsonValue(json, "signal_sid");
+            var leaseToken = GetJsonValue(json, "lease_token");
             var action = GetJsonValue(json, "action").ToUpper();
             var symbolCode = GetJsonValue(json, "symbol");
-            var volume = ParseDouble(GetJsonValue(json, "volume"));
-            var sl = ParseDouble(GetJsonValue(json, "sl"));
-            var tp = ParseDouble(GetJsonValue(json, "tp"));
+            var lots = ParseDouble(GetJsonValue(json, "volume"));
 
-            if (string.IsNullOrEmpty(id) || id == _lastSignalId) return;
+            if (string.IsNullOrEmpty(id)) return;
 
-            _lastSignalId = id;
-            _lastAction = action;
-            _lastSymbol = symbolCode;
-            _lastStatus = "EXECUTING";
+            // REGISTRY CHECK: Never execute same ID twice
+            if (_processedSignalIds.Contains(id)) return;
+            _processedSignalIds.Add(id);
 
-            var symbol = Symbols.GetSymbol(symbolCode);
-            if (symbol == null)
-            {
-                _lastStatus = "SYM_ERR";
-                _lastError = symbolCode;
-                _ = AckAsync(id, "ERROR", "", "Symbol not found: " + symbolCode);
-                return;
-            }
+            // Keep history list clean
+            _signalHistory.Insert(0, string.Format("{0}: {1} {2}", id, action, symbolCode));
+            if (_signalHistory.Count > 5) _signalHistory.RemoveAt(5);
 
-            if (action == "CLOSE")
-            {
-                ClosePositions(symbolCode);
-                _ = AckAsync(id, "CLOSED", "", "Symbol Closed");
-                _successCount++;
-                return;
-            }
-
-            TradeType? type = null;
-            if (action == "BUY") type = TradeType.Buy;
-            else if (action == "SELL") type = TradeType.Sell;
-
-            var source = GetJsonValue(json, "source");
-            var model = GetJsonValue(json, "entry_model");
-            var label = string.Format("{0}_{1}", source, model).Replace(" ", "_").ToUpper();
-            if (string.IsNullOrEmpty(label) || label == "_") label = MagicNumber.ToString();
-
-            if (type.HasValue)
-            {
-                var volumeUnits = symbol.QuantityToVolumeInUnits(volume);
-
-                if (UseRiskPercentSizing && sl > 0)
-                {
-                    double entryPrice = type == TradeType.Buy ? symbol.Ask : symbol.Bid;
-                    double riskPerUnit = Math.Abs(entryPrice - sl);
-                    if (riskPerUnit > 0)
-                    {
-                        double balance = Account.Balance;
-                        double riskAmount = balance * (MaxRiskPct / 100.0);
-                        double rawVolume = riskAmount / (riskPerUnit * symbol.PipValue * 10);
-                        volumeUnits = symbol.NormalizeVolumeInUnits(rawVolume, RoundingMode.Down);
-                    }
+            BeginInvokeOnMainThread(() => {
+                var symbol = Symbols.GetSymbol(symbolCode);
+                if (symbol == null) return;
+                
+                if (action == "CLOSE") {
+                    foreach (var p in Positions.Where(x => x.SymbolName == symbolCode && x.Label == MagicNumber.ToString())) ClosePosition(p);
+                    _ = AckAsync(id, leaseToken, "CLOSED", "MANUAL", "");
+                    return;
                 }
 
-                // Label = source_model
-                // Comment = sid (id from payload)
-                var result = ExecuteMarketOrder(type.Value, symbol.Name, volumeUnits, label, sl, tp, id);
-                if (result.IsSuccessful)
-                {
-                    _successCount++;
-                    _lastStatus = "EXEC_OK";
-                    _ = AckAsync(id, "OPENED", result.Position.Id.ToString(), "Success");
+                var volumeUnits = symbol.QuantityToVolumeInUnits(lots);
+                var res = ExecuteMarketOrder(action == "BUY" ? TradeType.Buy : TradeType.Sell, symbol.Name, volumeUnits, MagicNumber.ToString(), ParseDouble(GetJsonValue(json, "sl")), ParseDouble(GetJsonValue(json, "tp")), id);
+                if (res.IsSuccessful) {
+                    _ = AckAsync(id, leaseToken, "FILLED", res.Position.Id.ToString(), "");
+                } else {
+                    _ = AckAsync(id, leaseToken, "ERROR", "", res.Error.ToString());
                 }
-                else
-                {
-                    _failCount++;
-                    _lastStatus = "EXEC_ERR";
-                    _lastError = result.Error.ToString();
-                    _ = AckAsync(id, "ERROR", "", result.Error.ToString());
-                }
-            }
+            });
         }
 
-        private void ClosePositions(string symbolCode)
+        private async Task SyncWithVpsAsync(string accId, double bal, double eq, double marg, List<string> posList)
         {
-            foreach (var position in Positions)
-            {
-                if (position.SymbolName == symbolCode && position.Label == MagicNumber.ToString())
-                {
-                    ClosePosition(position);
-                }
-            }
-        }
-
-        private async Task AckAsync(string signalId, string status, string ticket, string error)
-        {
+            _syncStatus = "SYNCING";
             try
             {
-                var url = ServerBaseUrl.TrimEnd('/') + "/v2/broker/sync";
-                var payload = string.Format("{{\"signal_id\":\"{0}\", \"status\":\"{1}\", \"ticket\":\"{2}\", \"error\":\"{3}\"}}",
-                    signalId, status, ticket, error);
-
+                var payload = string.Format(CultureInfo.InvariantCulture, 
+                    "{{\"account_id\":\"{0}\",\"balance\":{1:F2},\"equity\":{2:F2},\"margin\":{3:F2},\"positions\":[{4}]}}",
+                    accId, bal, eq, marg, string.Join(",", posList));
                 var content = new StringContent(payload, Encoding.UTF8, "application/json");
                 content.Headers.Add("x-api-key", EaApiKey);
+                var response = await _httpClient.PostAsync(ServerBaseUrl.TrimEnd('/') + "/v2/broker/sync", content);
+                if (response.IsSuccessStatusCode) {
+                    _syncCount++; _syncStatus = "OK"; _lastSyncTime = DateTime.Now; _lastSyncErr = "None";
+                } else { 
+                    _syncStatus = "FAIL (" + (int)response.StatusCode + ")"; 
+                    _lastSyncErr = await response.Content.ReadAsStringAsync();
+                    if (string.IsNullOrEmpty(_lastSyncErr)) _lastSyncErr = "Server Rejected Payload";
+                }
+            }
+            catch (Exception ex) { _syncStatus = "ERROR"; _lastSyncErr = ex.Message; }
+        }
 
-                await _httpClient.PostAsync(url, content);
-            }
-            catch (Exception ex)
-            {
-                Print("Ack Error: {0}", ex.Message);
-            }
+        private async Task AckAsync(string sid, string token, string status, string ticket, string err)
+        {
+            try {
+                var payload = string.Format("{{\"trade_id\":\"{0}\", \"lease_token\":\"{1}\", \"status\":\"{2}\", \"ticket\":\"{3}\", \"error\":\"{4}\"}}", sid, token, status, ticket, err);
+                var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                content.Headers.Add("x-api-key", EaApiKey);
+                await _httpClient.PostAsync(ServerBaseUrl.TrimEnd('/') + "/v2/broker/ack", content);
+            } catch {}
         }
 
         private void RefreshDebugPanel()
         {
             BeginInvokeOnMainThread(() =>
             {
-                var statusColor = _lastStatus.Contains("ERR") || _lastStatus.Contains("FAIL") ? Color.Red : Color.Aqua;
+                // 1. TOP LEFT: CORE
+                var tl = new StringBuilder();
+                tl.AppendLine(string.Format("BUILD: {0}", BuildVersion));
+                tl.AppendLine(string.Format("TIME: {0}", DateTime.Now.ToString("HH:mm:ss")));
+                tl.AppendLine(string.Format("SERVER: {0} | API: {1}", _serverStatus, _apiStatus));
+                Chart.DrawStaticText("Panel_TL", tl.ToString(), VerticalAlignment.Top, HorizontalAlignment.Left, Color.Aqua);
 
-                var activeTrades = new List<string>();
-                try
-                {
-                    foreach (var pos in Positions)
-                    {
-                        if (pos.Label == MagicNumber.ToString())
-                        {
-                            string side = pos.TradeType == TradeType.Buy ? "B" : "S";
-                            string sid = string.IsNullOrEmpty(pos.Comment) ? "Manual" : pos.Comment;
-                            if (sid.Length > 8) sid = sid.Substring(0, 8);
-                            activeTrades.Add(string.Format("{0} {1} {2}", sid, pos.SymbolName, side));
-                        }
-                    }
-                }
-                catch { }
+                // 2. BOTTOM LEFT: POLL EVENT
+                var bl = new StringBuilder();
+                bl.AppendLine(string.Format("EVENT POLL: {0}, {1}", _pollStatus, _lastPollTime == DateTime.MinValue ? "NEVER" : _lastPollTime.ToString("HH:mm:ss")));
+                foreach (var sig in _signalHistory) bl.AppendLine("  " + sig);
+                if (_lastPollErr != "None") bl.AppendLine("ERR: " + (_lastPollErr.Length > 50 ? _lastPollErr.Substring(0, 50) : _lastPollErr));
+                Chart.DrawStaticText("Panel_BL", bl.ToString(), VerticalAlignment.Bottom, HorizontalAlignment.Left, _pollStatus == "OK" ? Color.White : Color.Red);
 
-                var text = string.Format(
-                    "--- TVBridge cTrader Pro ---\n" +
-                    "Build: {0}\n" +
-                    "Status: {1}\n" +
-                    "Sync: {2} [{3}]\n" +
-                    "Polls: {4} (OK: {5} / ERR: {6})\n" +
-                    "Last Poll: {7}\n" +
-                    "------------------------\n" +
-                    "VPS Trades ({8}):\n{9}\n" +
-                    "------------------------\n" +
-                    "Last ID: {10}\n" +
-                    "Action: {11} {12}\n" +
-                    "Error: {13}",
-                    BuildVersion, _lastStatus,
-                    _lastSyncSummary, _lastSyncTime == DateTime.MinValue ? "Never" : _lastSyncTime.ToString("HH:mm:ss"),
-                    _pollCount, _successCount, _failCount,
-                    _lastPollTime == DateTime.MinValue ? "Never" : _lastPollTime.ToString("HH:mm:ss"),
-                    activeTrades.Count,
-                    activeTrades.Count > 0 ? string.Join("\n", activeTrades.Take(5)) : "None",
-                    _lastSignalId, _lastAction, _lastSymbol,
-                    string.IsNullOrEmpty(_lastError) ? "None" : _lastError
-                );
-
-                Chart.DrawStaticText("DebugPanel", text, VerticalAlignment.Top, HorizontalAlignment.Left, statusColor);
+                // 3. BOTTOM RIGHT: SYNC EVENT
+                var br = new StringBuilder();
+                br.AppendLine(string.Format("EVENT SYNC: {0}, {1}", _syncStatus, _lastSyncTime == DateTime.MinValue ? "NEVER" : _lastSyncTime.ToString("HH:mm:ss")));
+                foreach (var pos in _activePositions.Take(8)) br.AppendLine("  " + pos);
+                if (_activePositions.Count > 8) br.AppendLine(string.Format("  ... +{0} more", _activePositions.Count - 8));
+                if (_lastSyncErr != "None") br.AppendLine("ERR: " + (_lastSyncErr.Length > 50 ? _lastSyncErr.Substring(0, 50) : _lastSyncErr));
+                Chart.DrawStaticText("Panel_BR", br.ToString(), VerticalAlignment.Bottom, HorizontalAlignment.Right, _syncStatus == "OK" ? Color.Lime : Color.Red);
             });
         }
 
-        private string GetJsonValue(string json, string key)
-        {
-            var match = Regex.Match(json, string.Format("\"{0}\"\\s*:\\s*\"?(.*?)\"?[,}}]", key));
-            return match.Success ? match.Groups[1].Value.Trim('\"') : "";
+        private string GetJsonValue(string json, string key) {
+            var m = Regex.Match(json, string.Format("\"{0}\"\\s*:\\s*\"?(.*?)\"?[,}}]", key));
+            return m.Success ? m.Groups[1].Value.Trim('\"') : "";
         }
-
-        private double ParseDouble(string val)
-        {
-            double res;
-            return double.TryParse(val, out res) ? res : 0;
-        }
+        private double ParseDouble(string val) { double r; return double.TryParse(val, NumberStyles.Any, CultureInfo.InvariantCulture, out r) ? r : 0; }
     }
 }
