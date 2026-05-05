@@ -28,6 +28,20 @@ export default function EventsPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [testMsg, setTestMsg] = useState("");
+  const [testErr, setTestErr] = useState("");
+
+  async function fire(overrides = {}) {
+    try {
+      setTestMsg("");
+      setTestErr("");
+      const res = await api.notificationTest(overrides);
+      setTestMsg(`Sent: ${res.sent.event} — "${res.sent.message}"`);
+      setTimeout(() => setTestMsg(""), 4000);
+    } catch (e) {
+      setTestErr(e?.message || "Failed");
+    }
+  }
 
   async function load() {
     try {
@@ -173,6 +187,35 @@ export default function EventsPage() {
             ))}
           </tbody>
         </table>
+
+        <div style={{ borderTop: "1px solid var(--border)", padding: "16px 20px" }}>
+          <div className="panel-label" style={{ marginBottom: 12 }}>TEST NOTIFICATIONS</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <button className="primary-button" style={{ fontSize: 12 }} disabled={saving} onClick={() => fire({
+              event: "system_event", message: "🧪 All channels — check ticker, console, toast", notification: true, console_log: true, ticker: true, sound: "NEW_SIGNAL",
+            })}>🔔 ALL CHANNELS</button>
+            <button className="secondary-button" style={{ fontSize: 12 }} disabled={saving} onClick={() => fire({
+              event: "trade_added", message: "XAUUSD BUY signal", notification: true, ticker: true, sound: "NEW_SIGNAL",
+            })}>📈 TRADE ADDED</button>
+            <button className="secondary-button" style={{ fontSize: 12 }} disabled={saving} onClick={() => fire({
+              event: "trade_updated", message: "XAUUSD filled at 2650.50", ticker: true,
+            })}>🔄 TRADE UPDATED</button>
+            <button className="secondary-button" style={{ fontSize: 12 }} disabled={saving} onClick={() => fire({
+              event: "broker_sync", message: "Broker sync — 42 positions", ticker: true,
+            })}>🔁 BROKER SYNC</button>
+            <button className="secondary-button" style={{ fontSize: 12 }} disabled={saving} onClick={() => fire({
+              event: "news_alert", message: "NFP 10m — High impact", notification: true, ticker: true, sound: "NEWS_ALERT",
+            })}>📰 NEWS ALERT</button>
+            <button className="secondary-button" style={{ fontSize: 12 }} disabled={saving} onClick={() => fire({
+              event: "error", message: "API timeout TwelveData", type: "error", notification: true, console_log: true, ticker: true,
+            })}>❌ ERROR</button>
+            <button className="secondary-button" style={{ fontSize: 12 }} disabled={saving} onClick={() => fire({
+              event: "component_refresh", message: "Dashboard data stale — refresh", comp_refresh: true, ticker: true, action: "dashboard",
+            })}>🔄 COMP REFRESH</button>
+          </div>
+          {testMsg && <div className="badge FILLED" style={{ padding: "6px 12px", marginTop: 10 }}>{testMsg}</div>}
+          {testErr && <div className="badge SL" style={{ padding: "6px 12px", marginTop: 10 }}>{testErr}</div>}
+        </div>
       </div>
     </div>
   );
