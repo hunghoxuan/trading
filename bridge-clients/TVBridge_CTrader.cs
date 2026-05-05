@@ -30,7 +30,7 @@ namespace cAlgo.Robots
         [Parameter("Magic Number", DefaultValue = 20260411)]
         public int MagicNumber { get; set; }
 
-        private string BuildVersion = "v2026.05.05 11:07 - 5e50796";
+        private string BuildVersion = "v2026.05.05 11:36 - 5e50796";
         
         private string _serverStatus = "WAITING";
         private string _apiStatus = "WAITING";
@@ -51,6 +51,7 @@ namespace cAlgo.Robots
         private HashSet<string> _processedSignalIds = new HashSet<string>();
         private List<string> _signalHistory = new List<string>();
         private List<string> _lastSyncResults = new List<string>();
+        private HashSet<string> _syncedClosedTickets = new HashSet<string>();
 
 
         private HttpClient _httpClient = new HttpClient();
@@ -84,7 +85,14 @@ namespace cAlgo.Robots
             }
 
             var closedList = new List<string>();
-            foreach (var deal in History.Where(d => d.Label == MagicNumber.ToString()).OrderByDescending(d => d.ClosingTime).Take(20)) {
+            var historicalDeals = History.Where(d => d.Label == MagicNumber.ToString())
+                                         .OrderByDescending(d => d.ClosingTime)
+                                         .ToList();
+            
+            foreach (var deal in historicalDeals) {
+                if (_syncedClosedTickets.Contains(deal.PositionId.ToString())) continue;
+                if (closedList.Count >= 20) break;
+
                 var sid = (deal.Comment ?? "").Replace("\"", "'");
                 closedList.Add(string.Format(CultureInfo.InvariantCulture, 
                     "{{\"sid\":\"{0}\",\"ticket\":\"{1}\",\"symbol\":\"{2}\",\"side\":\"{3}\",\"volume\":{4:F2},\"pnl\":{5:F2},\"status\":\"CLOSED\",\"closed_at\":\"{6:O}\"}}",
@@ -244,6 +252,15 @@ namespace cAlgo.Robots
                     var status = GetJsonValue(obj, "status");
                     var sym = GetJsonValue(obj, "symbol");
                     var act = GetJsonValue(obj, "action");
+                    
+                    if (status == "Ok") {
+                        // If it's a closed trade, memorize it so we stop sending
+                        if (!Positions.Any(p => p.Id.ToString() == ticket)) {
+                            _syncedClosedTickets.Add(ticket);
+                        }
+                        continue; // Hide "Ok" from UI
+                    }
+                    
                     var displaySid = string.IsNullOrEmpty(sid) ? "SKIP" : sid;
                     resList.Add(string.Format("{0} | {1} {2} {3} [{4}]", ticket, displaySid, act, sym, status));
                 }
