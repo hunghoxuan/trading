@@ -1,6 +1,32 @@
 # Session Log: 2026-05-05 11:10
 - **Starting Task**:
   - Trade Detail planner UX pass: auto-sync RR/TP/SL, validate side+type+levels coherence, live chart update from form edits, and drag-to-update Entry/TP/SL on static charts.
+- **Work Accomplished**:
+  - **Auto-sync Rules**: Implemented Trade Detail plan recalculation so `RR -> TP` and `Entry/TP/SL -> RR`.
+  - **Validation/Coherence**: Added client-side plan validation + order-type coherence checks versus last price (`BUY/SELL` + `limit/stop/market` + `Entry/TP/SL`) with inline error display and blocked save/add actions when invalid.
+  - **Auto Derive**: Direction is auto-derived from level geometry when `Entry/TP/SL` change; order type is auto-derived from level side relative to last price.
+  - **Live Chart Binding**: TradePlan chart now uses live `detailPlan` values, so Entry/TP/SL edits immediately update chart overlays.
+  - **Chart Drag Edit**: Added drag-edit support for primary `Entry`, `TP`, and `SL` lines on static charts; dragged prices feed the same planner update pipeline.
+  - **Docs**: Updated trade lifecycle feature doc with planner consistency logic.
+  - Bumped `SERVER_VERSION` and `EA_BUILD_VERSION` to `v2026.05.05 11:07 - bd31845`.
+- **Changed Files**:
+  - `web-ui/src/pages/trades/V2TradeDetailPage.jsx`
+  - `web-ui/src/components/SignalDetailCard.jsx`
+  - `web-ui/src/components/charts/ChartTile.jsx`
+  - `web-ui/src/components/TradeSignalChart.jsx`
+  - `.agents/.product/features/2-done/trade_lifecycle.md`
+  - `.agents/worklog.md`
+  - `webhook/server.js`
+  - `bridge-clients/TVBridgeEA.mq5`
+  - `bridge-clients/TVBridge_CTrader.cs`
+- **Verification**:
+  - `rtk bash scripts/deploy/bump_build_versions.sh` ✅
+  - `rtk node --check webhook/server.js` ✅
+  - `rtk npm --prefix web-ui run build` ✅
+  - Public health: `https://trade.mozasolution.com/webhook/mt5/health` → `v2026.05.05 11:07 - bd31845` ✅
+  - Public UI: `https://trade.mozasolution.com/ui/` serves `index-D71pLa1z.js` ✅
+- **Deploy Status**:
+  - Deployed.
 
 # Session Log: 2026-05-05 10:35
 - **Starting Task**:
