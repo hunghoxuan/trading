@@ -80,8 +80,18 @@ function PlanHeader({
   volume = null,
   pnl = null,
 }) {
+  const rrNum = Number(String(plan.rr ?? "").replace(",", "."));
+  const rrText = Number.isFinite(rrNum) ? `${rrNum.toFixed(1)}r` : "0.0r";
   const directionColor = isBuy ? "#26a69a" : "#ef5350";
   const sideBg = isBuy ? "rgba(38,166,154,0.1)" : "rgba(239,83,80,0.1)";
+  const confidenceRaw = plan.confidence ?? plan.confidence_pct;
+  const confidenceNum = Number(String(confidenceRaw ?? "").replace(",", "."));
+  const confidenceText = Number.isFinite(confidenceNum) ? `${confidenceNum.toFixed(1)}%` : "";
+  const skipText = String(
+    plan.skip_recommendation ||
+      plan.skip ||
+      (Array.isArray(plan.skipReasons) && plan.skipReasons.length ? "skip" : ""),
+  ).trim();
 
   return (
     <div
@@ -151,7 +161,7 @@ function PlanHeader({
             <span style={{ color: "var(--accent)" }}>{plan.tp || "-"}</span> /{" "}
             <span style={{ color: "var(--bearish)" }}>{plan.sl || "-"}</span>
             <span style={{ color: "var(--muted)", marginLeft: 8, fontWeight: 600 }}>
-              {plan.rr || "0.0"}R
+              {rrText}
             </span>
           </div>
         </div>
@@ -177,11 +187,16 @@ function PlanHeader({
         {pnl ? (
           <span style={{ fontSize: "11px", fontWeight: 700 }}>{pnl}</span>
         ) : null}
-        {plan.skip && (
-          <span style={{ fontSize: 9, color: "#ef5350", fontWeight: 700 }}>
-            {typeof plan.skip === "string" ? plan.skip : "SKIP"}
+        {skipText ? (
+          <span className="badge badge-mini" style={{ padding: "2px 6px", fontSize: "9px", color: "#ef5350", borderColor: "#ef535066" }}>
+            {skipText}
           </span>
-        )}
+        ) : null}
+        {confidenceText ? (
+          <span className="badge badge-mini" style={{ padding: "2px 6px", fontSize: "9px" }}>
+            {confidenceText}
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -311,6 +326,36 @@ export function SignalDetailCard({
   const [multiChartData, setMultiChartData] = useState({});
   const [loadingCharts, setLoadingCharts] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState("main");
+  const [planDrafts, setPlanDrafts] = useState({});
+  const plans = response?.tradePlans || [
+    {
+      direction: tradePlan?.value?.direction,
+      entry: tradePlan?.value?.entry,
+      sl: tradePlan?.value?.sl,
+      tp: tradePlan?.value?.tp,
+      rr: tradePlan?.value?.rr,
+      strategy: tradePlan?.value?.strategy,
+      entryModel: tradePlan?.value?.entry_model,
+      confidence: tradePlan?.value?.confidence_pct,
+    },
+  ];
+
+  useEffect(() => {
+    const next = {};
+    plans.forEach((p, i) => {
+      const planId = i === 0 ? "main" : `suggested_${i}`;
+      next[planId] = {
+        ...p,
+        entry_model: p.entry_model || p.entryModel || "",
+        confidence_pct: p.confidence_pct ?? p.confidence ?? null,
+        reasons_to_skip: Array.isArray(p.reasons_to_skip)
+          ? p.reasons_to_skip
+          : (Array.isArray(p.skipReasons) ? p.skipReasons : []),
+        skip_recommendation: p.skip_recommendation || p.skip || "",
+      };
+    });
+    setPlanDrafts(next);
+  }, [response?.tradePlans, tradePlan?.value]);
 
   useEffect(() => {
     if (chart?.enabled) {
@@ -432,25 +477,13 @@ export function SignalDetailCard({
             marginBottom: 20,
           }}
         >
-          {(
-            response?.tradePlans || [
-              {
-                direction: tradePlan.value.direction,
-                entry: tradePlan.value.entry,
-                sl: tradePlan.value.sl,
-                tp: tradePlan.value.tp,
-                rr: tradePlan.value.rr,
-                strategy: tradePlan.value.strategy,
-                entryModel: tradePlan.value.entry_model,
-                confidence: tradePlan.value.confidence_pct,
-              },
-            ]
-          ).map((p, i) => {
+          {plans.map((p, i) => {
             const isMain = i === 0;
             const planId = isMain ? "main" : `suggested_${i}`;
             const isSelected = selectedPlanId === planId;
             const isBuy = String(p.direction).toUpperCase() === "BUY";
             const isSimplified = !isSelected;
+            const planValue = isMain ? tradePlan.value : (planDrafts[planId] || p);
             return (
               <div
                 key={planId}
@@ -471,7 +504,7 @@ export function SignalDetailCard({
                 }}
               >
                 <PlanHeader
-                  plan={p}
+                  plan={planValue}
                   symbol={chart?.symbol || "Plan"}
                   isBuy={isBuy}
                   simplified={isSimplified}
@@ -483,19 +516,29 @@ export function SignalDetailCard({
                   <TradePlanEditor
                     signalId={tradePlan.signalId || null}
                     tradeId={tradePlan.tradeId || null}
-                    value={isMain ? tradePlan.value : p}
-                    onChange={isMain ? tradePlan.onChange : undefined}
+                    value={planValue}
+                    onChange={(k, v) => {
+                      if (isMain) {
+                        tradePlan.onChange?.(k, v);
+                      } else {
+                        setPlanDrafts((prev) => ({
+                          ...prev,
+                          [planId]: { ...(prev[planId] || p), [k]: v },
+                        }));
+                      }
+                    }}
                     onReset={tradePlan.onReset}
                     onSave={tradePlan.onSave}
                     onAddSignal={(pos) =>
-                      tradePlan.onAddSignal?.(pos || tradePlan.value, "main")
+                      tradePlan.onAddSignal?.(pos || planValue, planId)
                     }
                     onAddTrade={(pos) =>
-                      tradePlan.onAddTrade?.(pos || tradePlan.value, "main")
+                      tradePlan.onAddTrade?.(pos || planValue, planId)
                     }
                     showSaveButton={tradePlan.showSaveButton}
                     showAddSignalButton={tradePlan.showAddSignalButton}
                     showAddTradeButton={tradePlan.showAddTradeButton}
+                    showActionsInView={mode === "ai"}
                     addTradeLabel={tradePlan.addTradeLabel}
                     showResetButton={tradePlan.showResetButton !== false}
                     busy={tradePlan.busy || {}}
@@ -503,44 +546,20 @@ export function SignalDetailCard({
                     viewOnly={Boolean(tradePlan.viewOnly)}
                     error={tradePlan.error || ""}
                   />
-                ) : isSelected ? (
-                  <ExtraPlanBlock
-                    planId={planId}
-                    plan={p}
-                    onAddSignal={tradePlan?.onAddSignal}
-                    onAddTrade={tradePlan?.onAddTrade}
-                    busy={tradePlan?.busy}
-                    submittingPlanId={tradePlan?.submittingPlanId}
-                    successMessage={tradePlan?.successMessage}
-                  />
                 ) : (
-                  <div
-                    style={{
-                      fontSize: 10,
-                      color: "var(--muted)",
-                      lineHeight: 1.4,
-                    }}
-                  >
-                    <div>
-                      {p.entry || "—"} → {p.tp || "—"} / {p.sl || "—"}{" "}
-                      {p.be ? `· BE:${p.be}` : ""}
-                    </div>
-                    {p.tps?.map((t, i) => (
-                      <div key={i}>
-                        TP{i + 1}: {t.price} ({t.pct}% · {t.rr}R)
-                      </div>
-                    ))}
-                    {p.note && (
-                      <div style={{ marginTop: 4, fontStyle: "italic" }}>
-                        {p.note}
-                      </div>
-                    )}
-                    {p.skipReasons?.map((r, i) => (
-                      <div key={i} style={{ color: "#ef5350" }}>
-                        ⚠ {r.reason} ({r.severity})
-                      </div>
-                    ))}
-                  </div>
+                  <TradePlanEditor
+                    value={planValue}
+                    onAddSignal={(pos) => tradePlan.onAddSignal?.(pos || planValue, planId)}
+                    onAddTrade={(pos) => tradePlan.onAddTrade?.(pos || planValue, planId)}
+                    showSaveButton={false}
+                    showAddSignalButton={mode === "ai" && tradePlan.showAddSignalButton}
+                    showAddTradeButton={mode === "ai" && tradePlan.showAddTradeButton}
+                    showActionsInView={mode === "ai"}
+                    showResetButton={false}
+                    busy={tradePlan.busy || {}}
+                    disabled={true}
+                    viewOnly={true}
+                  />
                 )}
                 {isMain && tradePlan.successMessage && (
                   <div style={{ marginTop: 8 }}>

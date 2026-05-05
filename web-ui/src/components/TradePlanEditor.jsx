@@ -46,6 +46,7 @@ export function TradePlanEditor({
   busy = {},
   disabled = false,
   viewOnly = false,
+  showActionsInView = false,
   error = "",
   className = "",
 }) {
@@ -87,9 +88,14 @@ export function TradePlanEditor({
       label: "Reasons To Skip",
       value: Array.isArray(value.reasons_to_skip)
         ? value.reasons_to_skip.join(", ")
-        : (value.reasons_to_skip || "-"),
+        : (Array.isArray(value.skipReasons)
+          ? value.skipReasons
+              .map((x) => (typeof x === "string" ? x : x?.reason))
+              .filter(Boolean)
+              .join(", ")
+          : (value.reasons_to_skip || "-")),
     },
-    { label: "Skip Recommendation", value: value.skip_recommendation || "-" },
+    { label: "Skip Recommendation", value: value.skip_recommendation || value.skip || "-" },
   ];
 
   const NumericInline = ({ label, k, step = "0.001", min, max, sliderOverride = null }) => {
@@ -146,14 +152,48 @@ export function TradePlanEditor({
       }}
     >
       {!isEditMode ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "6px 16px" }}>
-          {summaryRows.map((row) => (
-            <div key={row.label} style={{ display: "flex", gap: 6, fontSize: 11 }}>
-              <span className="minor-text" style={{ minWidth: 84 }}>{row.label}:</span>
-              <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{row.value}</span>
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "6px 16px" }}>
+            {summaryRows.map((row) => (
+              <div key={row.label} style={{ display: "flex", gap: 6, fontSize: 11 }}>
+                <span className="minor-text" style={{ minWidth: 84 }}>{row.label}:</span>
+                <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{row.value}</span>
+              </div>
+            ))}
+          </div>
+          {showActionsInView ? (
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10 }}>
+              {effectiveShowAddSignal ? (
+                <button
+                  className={`secondary-button ${busy?.signal ? "btn-busy" : ""}`}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddSignal?.(value);
+                  }}
+                  disabled={controlsDisabled || typeof onAddSignal !== "function"}
+                  style={{ height: "24px", fontSize: "11px", padding: "0 10px" }}
+                >
+                  {busy?.signal ? <div className="spinner" style={{ width: 12, height: 12 }} /> : addSignalLabel}
+                </button>
+              ) : null}
+              {effectiveShowAddTrade ? (
+                <button
+                  className={`primary-button ${busy?.trade ? "btn-busy" : ""}`}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddTrade?.(value);
+                  }}
+                  disabled={controlsDisabled || typeof onAddTrade !== "function"}
+                  style={{ height: "24px", fontSize: "11px", padding: "0 10px" }}
+                >
+                  {busy?.trade ? <div className="spinner" style={{ width: 12, height: 12 }} /> : addTradeLabel}
+                </button>
+              ) : null}
             </div>
-          ))}
-        </div>
+          ) : null}
+        </>
       ) : (
       <>
       <div
