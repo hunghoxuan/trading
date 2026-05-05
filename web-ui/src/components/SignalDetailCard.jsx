@@ -1216,6 +1216,7 @@ export function SignalDetailCard({
           entryPrice={chart?.entryPrice}
           slPrice={chart?.slPrice}
           tpPrice={chart?.tpPrice}
+          onPlanLevelChange={chart?.onPlanLevelChange}
           analysisSnapshot={rawData}
           hasTradePlan={Boolean(
             tradePlan?.value?.entry ||

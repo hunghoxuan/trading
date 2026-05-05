@@ -167,6 +167,7 @@ export function SymbolChart({
   entryPrice = null,
   tpPrice = null,
   slPrice = null,
+  onPlanLevelChange = null,
   analysisSnapshot = null,
   hasTradePlan = false,
   hasAnalysis = false,
@@ -586,6 +587,7 @@ export function SymbolChart({
                   showExtraPlans={overlays.plan2}
                   showPdArrays={overlays.pdArrays}
                   showKeyLevels={overlays.keyLevels}
+                  onPlanLevelChange={onPlanLevelChange}
                   syncedCrosshair={syncedCrosshair}
                   onCrosshairSync={setSyncedCrosshair}
                 />

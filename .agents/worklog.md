@@ -1,3 +1,7 @@
+# Session Log: 2026-05-05 11:10
+- **Starting Task**:
+  - Trade Detail planner UX pass: auto-sync RR/TP/SL, validate side+type+levels coherence, live chart update from form edits, and drag-to-update Entry/TP/SL on static charts.
+
 # Session Log: 2026-05-05 10:35
 - **Starting Task**:
   - Fix Trade Detail chart overlay toggles not redrawing, make static charts fill resized containers, and validate mouse/crosshair sync feasibility in the current chart library.

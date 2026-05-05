@@ -10,6 +10,7 @@ Managing the full journey of a trade from "Pending" to "Closed".
 - **Renewals**: Re-queue failed or cancelled trades for execution.
 - **Automated Sync**: If a trade is closed on the broker (TP/SL hit), the dashboard reflects it automatically.
 - **Trade Detail Chart Review**: Trade Detail opens with a two-column timeframe grid by default, supports client-side `+/-` chart density changes, uses multi-select overlay toggles for `P1`, `P2`, `PD`, and `KL`, redraws overlays immediately on toggle, keeps static charts fitted to the full tile bounds during resize, and syncs crosshair movement across static timeframe charts.
+- **Planner Consistency Logic**: Trade Detail planner auto-updates `TP` when `RR` changes and auto-updates `RR` when `Entry/TP/SL` change, applies side/type/level validation with inline client errors, auto-derives direction/order-type from coherent level relationships, and supports drag-updating primary `Entry/TP/SL` directly on static charts.
 - **Broker Risk Display**: Signal/trade summary stats prefer broker-reported `volume_size` when available so the UI shows actual synced volume percentage instead of a local fallback estimate.
 
 ## Technical Details

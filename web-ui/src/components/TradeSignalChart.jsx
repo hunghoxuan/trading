@@ -225,6 +225,7 @@ export default function TradeSignalChart({
   showExtraPlans = true,
   showPdArrays = true,
   showKeyLevels = true,
+  onPlanLevelChange = null,
   syncedCrosshair = null,
   onCrosshairSync = null,
 }) {
@@ -298,6 +299,9 @@ export default function TradeSignalChart({
     };
 
     chart.subscribeCrosshairMove(handleCrosshairMove);
+    const chartElement = chart.chartElement();
+    const dragState = { activeKey: null };
+    let removeDragListeners = () => {};
 
 
     // 3. Fetch History + Start Live
@@ -379,6 +383,8 @@ export default function TradeSignalChart({
             '#10b981', // Emerald
           ];
 
+          const levelPriceMap = { entry: null, tp: null, sl: null };
+
           const drawPlan = (p, index = 0) => {
             const ep = asNum(p.entry);
             const sp = asNum(p.sl);
@@ -406,6 +412,7 @@ export default function TradeSignalChart({
               axisLabelVisible: true, 
               title: `${actionLabel}${pNum}` 
             });
+            if (isPrimary) levelPriceMap.entry = ep;
             // SL line: dashed, always RED
             if (sp) candleSeries.createPriceLine({ 
               price: sp, 
@@ -415,6 +422,7 @@ export default function TradeSignalChart({
               axisLabelVisible: true, 
               title: `SL${pNum}` 
             });
+            if (isPrimary && sp) levelPriceMap.sl = sp;
             // TP line: dotted, always GREEN
             if (tp) candleSeries.createPriceLine({ 
               price: tp, 
@@ -424,6 +432,7 @@ export default function TradeSignalChart({
               axisLabelVisible: true, 
               title: `TP${pNum}` 
             });
+            if (isPrimary && tp) levelPriceMap.tp = tp;
 
             // Entry → TP zone box: Reward zone = Green
             if (ep && tp && boxAnchorTs) {
@@ -469,6 +478,64 @@ export default function TradeSignalChart({
           }
 
           allPlans.forEach((p, idx) => drawPlan(p, idx));
+
+          const enableLevelDrag =
+            typeof onPlanLevelChange === "function" &&
+            Number.isFinite(levelPriceMap.entry) &&
+            Number.isFinite(levelPriceMap.tp) &&
+            Number.isFinite(levelPriceMap.sl);
+
+          const pickNearestLevel = (mouseY) => {
+            const candidates = [
+              { key: "entry", price: levelPriceMap.entry },
+              { key: "tp", price: levelPriceMap.tp },
+              { key: "sl", price: levelPriceMap.sl },
+            ]
+              .map((x) => ({ ...x, y: candleSeries.priceToCoordinate(x.price) }))
+              .filter((x) => Number.isFinite(x.y))
+              .map((x) => ({ ...x, dist: Math.abs(x.y - mouseY) }))
+              .sort((a, b) => a.dist - b.dist);
+            if (!candidates.length || candidates[0].dist > 12) return null;
+            return candidates[0].key;
+          };
+
+          const emitLevelAtMouse = (evt) => {
+            if (!dragState.activeKey) return;
+            const rect = chartElement.getBoundingClientRect();
+            const y = evt.clientY - rect.top;
+            const nextPrice = candleSeries.coordinateToPrice(y);
+            if (!Number.isFinite(nextPrice)) return;
+            onPlanLevelChange(dragState.activeKey, Number(nextPrice));
+          };
+
+          const onMouseMove = (evt) => {
+            if (!dragState.activeKey || !enableLevelDrag) return;
+            emitLevelAtMouse(evt);
+          };
+
+          const onMouseUp = () => {
+            dragState.activeKey = null;
+            window.removeEventListener("mousemove", onMouseMove);
+            window.removeEventListener("mouseup", onMouseUp);
+          };
+
+          const onMouseDown = (evt) => {
+            if (!enableLevelDrag) return;
+            const rect = chartElement.getBoundingClientRect();
+            const y = evt.clientY - rect.top;
+            const nearest = pickNearestLevel(y);
+            if (!nearest) return;
+            dragState.activeKey = nearest;
+            window.addEventListener("mousemove", onMouseMove);
+            window.addEventListener("mouseup", onMouseUp);
+            evt.preventDefault();
+          };
+
+          chartElement.addEventListener("mousedown", onMouseDown);
+          removeDragListeners = () => {
+            onMouseUp();
+            chartElement.removeEventListener("mousedown", onMouseDown);
+          };
 
           // --- PD ARRAYS as boxes ---
           // Support both old signal format (nested under market_analysis) and new (top-level)
@@ -589,6 +656,7 @@ export default function TradeSignalChart({
     return () => {
       isMounted = false;
       chart.unsubscribeCrosshairMove(handleCrosshairMove);
+      removeDragListeners();
       chartRef.current = null;
       seriesRef.current = null;
       chart.remove();
@@ -606,6 +674,7 @@ export default function TradeSignalChart({
     showExtraPlans,
     showPdArrays,
     showKeyLevels,
+    onPlanLevelChange,
     JSON.stringify(analysisSnapshot),
     JSON.stringify(historicalData),
     live,

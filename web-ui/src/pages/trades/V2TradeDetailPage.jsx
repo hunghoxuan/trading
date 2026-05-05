@@ -8,6 +8,7 @@ import {
   buildHeaderMeta, 
   renderHistoryItem,
   extractTradePlanFromTrade,
+  validateTradePlan,
 } from "../../utils/signalDetailUtils";
 import { showDateTime } from "../../utils/format";
 
@@ -46,14 +47,89 @@ function fDateTime(v) {
   return showDateTime(v);
 }
 
+function formatNum3(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "";
+  return String(Number(n.toFixed(3)));
+}
+
+function inferDirection(entry, tp, sl, fallback = "BUY") {
+  if (Number.isFinite(entry) && Number.isFinite(tp) && Number.isFinite(sl)) {
+    if (tp > entry && sl < entry) return "BUY";
+    if (tp < entry && sl > entry) return "SELL";
+  }
+  return String(fallback || "BUY").toUpperCase() === "SELL" ? "SELL" : "BUY";
+}
+
+function deriveOrderType(direction, entry, lastPrice, fallback = "limit") {
+  if (!Number.isFinite(entry) || !Number.isFinite(lastPrice)) return String(fallback || "limit").toLowerCase();
+  const eps = Math.max(Math.abs(lastPrice) * 0.00002, 0.00001);
+  if (Math.abs(entry - lastPrice) <= eps) return "market";
+  if (String(direction).toUpperCase() === "BUY") return entry < lastPrice ? "limit" : "stop";
+  return entry > lastPrice ? "limit" : "stop";
+}
+
+function orderTypeRuleError(direction, orderType, entry, lastPrice) {
+  if (!Number.isFinite(entry) || !Number.isFinite(lastPrice)) return "";
+  const side = String(direction || "").toUpperCase();
+  const typ = String(orderType || "").toLowerCase();
+  if (typ === "market") return "";
+  if (side === "BUY" && typ === "limit" && !(entry < lastPrice)) return "Buy Limit requires Entry < last price.";
+  if (side === "BUY" && typ === "stop" && !(entry > lastPrice)) return "Buy Stop requires Entry > last price.";
+  if (side === "SELL" && typ === "limit" && !(entry > lastPrice)) return "Sell Limit requires Entry > last price.";
+  if (side === "SELL" && typ === "stop" && !(entry < lastPrice)) return "Sell Stop requires Entry < last price.";
+  return "";
+}
+
 export default function TradeDetailPage() {
   const { tradeId } = useParams();
   const [trade, setTrade] = useState(null);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [planError, setPlanError] = useState("");
   const [detailTfTab, setDetailTfTab] = useState("ENTRY");
   const [detailPlan, setDetailPlan] = useState({ direction: "BUY", trade_type: "limit", entry: "", tp: "", sl: "", rr: "", note: "" });
+
+  const lastPrice = useMemo(() => {
+    const p = asNum(trade?.last_price ?? trade?.metadata?.last_price ?? trade?.raw_json?.last_price);
+    return p;
+  }, [trade]);
+
+  const applyPlanChange = (key, rawValue) => {
+    setDetailPlan((prev) => {
+      const next = { ...prev, [key]: rawValue };
+      const entry = asNum(next.entry);
+      const tp = asNum(next.tp);
+      const sl = asNum(next.sl);
+      const rr = asNum(next.rr);
+      const directionFromForm = String(next.direction || prev.direction || "BUY").toUpperCase() === "SELL" ? "SELL" : "BUY";
+      const direction = ["entry", "tp", "sl"].includes(key)
+        ? inferDirection(entry, tp, sl, directionFromForm)
+        : directionFromForm;
+      next.direction = direction;
+
+      if (key === "rr" && Number.isFinite(entry) && Number.isFinite(sl) && Number.isFinite(rr) && rr > 0) {
+        const risk = Math.abs(entry - sl);
+        if (risk > 0) {
+          const nextTp = direction === "BUY" ? entry + risk * rr : entry - risk * rr;
+          next.tp = formatNum3(nextTp);
+        }
+      } else if (["entry", "tp", "sl"].includes(key) && Number.isFinite(entry) && Number.isFinite(tp) && Number.isFinite(sl)) {
+        const risk = Math.abs(entry - sl);
+        const reward = Math.abs(tp - entry);
+        if (risk > 0) next.rr = formatNum3(reward / risk);
+      }
+
+      const nextEntry = asNum(next.entry);
+      next.trade_type = deriveOrderType(next.direction, nextEntry, lastPrice, next.trade_type || prev.trade_type || "limit");
+
+      const baseErr = validateTradePlan(next, { skipRrCheck: false });
+      const typeErr = orderTypeRuleError(next.direction, next.trade_type, asNum(next.entry), lastPrice);
+      setPlanError(baseErr || typeErr || "");
+      return next;
+    });
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -119,6 +195,11 @@ export default function TradeDetailPage() {
 
   async function onUpdateTradePlan() {
     if (!trade) return;
+    const validErr = validateTradePlan(detailPlan, { skipRrCheck: false }) || orderTypeRuleError(detailPlan.direction, detailPlan.trade_type, asNum(detailPlan.entry), lastPrice);
+    if (validErr) {
+      setPlanError(validErr);
+      return;
+    }
     try {
       setLoading(true);
       const payload = {
@@ -148,6 +229,11 @@ export default function TradeDetailPage() {
 
   async function onReEntryTrade() {
     if (!trade) return;
+    const validErr = validateTradePlan(detailPlan, { skipRrCheck: false }) || orderTypeRuleError(detailPlan.direction, detailPlan.trade_type, asNum(detailPlan.entry), lastPrice);
+    if (validErr) {
+      setPlanError(validErr);
+      return;
+    }
     try {
       setLoading(true);
       const payload = {
@@ -187,11 +273,12 @@ export default function TradeDetailPage() {
             mode: "trade",
             tradeId: trade.sid || trade.id,
             value: detailPlan,
-            onChange: (k, v) => setDetailPlan(p => ({ ...p, [k]: v })),
+            onChange: (k, v) => applyPlanChange(k, v),
             onSave: onUpdateTradePlan,
             onAddTrade: onReEntryTrade,
             showAddSignalButton: false,
             showSaveButton: !isClosed,
+            error: planError,
             status: statusUi(trade.execution_status),
             volume: `${trade.volume ?? "-"} lots`,
             pnl: <PnlDisplay value={trade.pnl_realized} />,
@@ -204,9 +291,10 @@ export default function TradeDetailPage() {
             symbol: trade.symbol,
             interval: trade.signal_tf || trade.chart_tf || "1h",
             live: true,
-            entryPrice: asNum(trade.entry),
-            slPrice: asNum(trade.sl),
-            tpPrice: asNum(trade.tp),
+            entryPrice: asNum(detailPlan.entry) ?? asNum(trade.entry),
+            slPrice: asNum(detailPlan.sl) ?? asNum(trade.sl),
+            tpPrice: asNum(detailPlan.tp) ?? asNum(trade.tp),
+            onPlanLevelChange: (levelKey, levelValue) => applyPlanChange(levelKey, formatNum3(levelValue)),
             openedAt: trade.opened_at,
             closedAt: trade.closed_at,
             analysisSnapshot: trade?.metadata?.analysis_snapshot || trade?.raw_json?.analysis_snapshot || null,
