@@ -30,7 +30,7 @@ namespace cAlgo.Robots
         [Parameter("Magic Number", DefaultValue = 20260411)]
         public int MagicNumber { get; set; }
 
-        private string BuildVersion = "v2026.05.05 10:57 - 0ba141f";
+        private string BuildVersion = "v2026.05.05 11:07 - 5e50796";
         
         private string _serverStatus = "WAITING";
         private string _apiStatus = "WAITING";
@@ -81,15 +81,20 @@ namespace cAlgo.Robots
                 posList.Add(string.Format(CultureInfo.InvariantCulture, 
                     "{{\"sid\":\"{0}\",\"ticket\":\"{1}\",\"symbol\":\"{2}\",\"side\":\"{3}\",\"volume\":{4:F2},\"pnl\":{5:F2}}}",
                     sid, pos.Id, pos.SymbolName, pos.TradeType.ToString().ToUpper(), pos.VolumeInUnits, pos.NetProfit));
-                
-                posDisplay.Add(string.Format("{0} {1} {2}", pos.Id, pos.TradeType.ToString().ToUpper(), pos.SymbolName));
             }
-            // _activePositions removed, replaced by _lastSyncResults
+
+            var closedList = new List<string>();
+            foreach (var deal in History.Where(d => d.Label == MagicNumber.ToString()).OrderByDescending(d => d.ClosingTime).Take(20)) {
+                var sid = (deal.Comment ?? "").Replace("\"", "'");
+                closedList.Add(string.Format(CultureInfo.InvariantCulture, 
+                    "{{\"sid\":\"{0}\",\"ticket\":\"{1}\",\"symbol\":\"{2}\",\"side\":\"{3}\",\"volume\":{4:F2},\"pnl\":{5:F2},\"status\":\"CLOSED\",\"closed_at\":\"{6:O}\"}}",
+                    sid, deal.PositionId, deal.SymbolName, deal.TradeType.ToString().ToUpper(), deal.VolumeInUnits, deal.NetProfit, deal.ClosingTime));
+            }
 
             Task.Run(async () => {
                 try {
                     await PollSignalsAsync(accId);
-                    await SyncWithVpsAsync(accId, balance, equity, margin, posList);
+                    await SyncWithVpsAsync(accId, balance, equity, margin, posList, closedList);
                 } catch (Exception ex) {
                     _lastSyncErr = ex.Message;
                 } finally {
@@ -200,14 +205,14 @@ namespace cAlgo.Robots
             RefreshDebugPanel();
         }
 
-        private async Task SyncWithVpsAsync(string accId, double bal, double eq, double marg, List<string> posList)
+        private async Task SyncWithVpsAsync(string accId, double bal, double eq, double marg, List<string> posList, List<string> closedList)
         {
             _syncStatus = "SYNCING";
             try
             {
                 var payload = string.Format(CultureInfo.InvariantCulture, 
-                    "{{\"account_id\":\"{0}\",\"balance\":{1:F2},\"equity\":{2:F2},\"margin\":{3:F2},\"positions\":[{4}],\"orders\":[]}}",
-                    accId, bal, eq, marg, string.Join(",", posList));
+                    "{{\"account_id\":\"{0}\",\"balance\":{1:F2},\"equity\":{2:F2},\"margin\":{3:F2},\"positions\":[{4}],\"orders\":[],\"closed\":[{5}]}}",
+                    accId, bal, eq, marg, string.Join(",", posList), string.Join(",", closedList));
                 var content = new StringContent(payload, Encoding.UTF8, "application/json");
                 content.Headers.Add("x-api-key", EaApiKey);
                 var response = await _httpClient.PostAsync(ServerBaseUrl.TrimEnd('/') + "/v2/broker/sync", content);
