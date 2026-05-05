@@ -29,7 +29,6 @@ const RANGE_OPTIONS = [
   { val: "year", lab: "This Year" },
 ];
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
-const AUTO_REFRESH_MS = Number(localStorage.getItem("tvbridge_refresh_ms") || 10000);
 
 function fPrice(v1, v2) {
   const n1 = Number(v1);
@@ -210,7 +209,6 @@ export default function SignalsPage() {
   const [isListOpen, setIsListOpen] = useState(true);
   const [createMsg, setCreateMsg] = useState("");
   const [detailTfTab, setDetailTfTab] = useState("ENTRY");
-  const [lastRefreshAt, setLastRefreshAt] = useState(null);
   const [detailPlan, setDetailPlan] = useState({ direction: "BUY", trade_type: "limit", entry: "", tp: "", sl: "", rr: "", note: "" });
   const [detailPlanBusy, setDetailPlanBusy] = useState({ save: false, trade: false, signal: false });
   const [detailPlanMsg, setDetailPlanMsg] = useState({ type: "", text: "" });
@@ -282,7 +280,6 @@ export default function SignalsPage() {
       setTotal(data.total || 0);
       setPages(data.pages || 1);
       setError("");
-      setLastRefreshAt(new Date());
       const selectedSignalId = String(selectedSignalIdRef.current || "").trim();
       if (selectedSignalId) {
         const updated = nextRows.find((x) => signalRefOf(x) === selectedSignalId);
@@ -492,13 +489,6 @@ export default function SignalsPage() {
   }, [signalId, rows.length]);
 
   useEffect(() => { loadSignals(); }, [query]);
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      loadSignals();
-    }, AUTO_REFRESH_MS);
-    return () => window.clearInterval(timer);
-  }, [query]);
 
   const sortedRows = useMemo(() => {
     const statusRankAsc = (v) => {
@@ -556,9 +546,7 @@ export default function SignalsPage() {
     <section className="logs-page-container stack-layout">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
         <h2 className="page-title" style={{ margin: 0 }}>Signals</h2>
-        <span className="minor-text" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-          Last refreshed: {lastRefreshAt ? showDateTime(lastRefreshAt) : "-"} (auto {Math.round(AUTO_REFRESH_MS/1000)}s)
-        </span>
+        <span className="minor-text">{total} signals</span>
       </div>
       <div className="toolbar-panel">
         <div className="toolbar-group toolbar-pagination">

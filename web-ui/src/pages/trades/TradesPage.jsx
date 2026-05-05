@@ -36,7 +36,6 @@ const RANGE_OPTIONS = [
   { value: "year", label: "This Year" },
 ];
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
-const AUTO_REFRESH_MS = Number(localStorage.getItem("tvbridge_refresh_ms") || 10000);
 
 import { showDateTime } from "../../utils/format";
 
@@ -182,7 +181,6 @@ export default function TradesPage() {
   const [sources, setSources] = useState([]);
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [tradeEvents, setTradeEvents] = useState([]);
-  const [lastRefreshAt, setLastRefreshAt] = useState(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkAction, setBulkAction] = useState("");
   const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -300,7 +298,6 @@ export default function TradesPage() {
       setTotal(data.total || 0);
       setPages(data.pages || 1);
       setError("");
-      setLastRefreshAt(new Date());
       if (selectedTradeIdRef.current) {
         const updated = (data.items || []).find(r => tradeKeyOf(r) === selectedTradeIdRef.current);
         if (updated) {
@@ -446,13 +443,6 @@ export default function TradesPage() {
     setEditModalOpen(false);
     setEditMsg({ type: "", text: "" });
   }, [selectedTrade?.id, selectedTrade?.sid]);
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      loadTrades();
-    }, AUTO_REFRESH_MS);
-    return () => window.clearInterval(timer);
-  }, [query]);
 
   async function onUpdateTradePlan() {
     if (!selectedTrade) return;
@@ -605,9 +595,7 @@ export default function TradesPage() {
     <section className="logs-page-container stack-layout">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
         <h2 className="page-title" style={{ margin: 0 }}>Trades</h2>
-        <span className="minor-text" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-          Last refreshed: {lastRefreshAt ? showDateTime(lastRefreshAt) : "-"} (auto {Math.round(AUTO_REFRESH_MS/1000)}s)
-        </span>
+        <span className="minor-text">{total} trades</span>
       </div>
 
       <div className="toolbar-panel">
