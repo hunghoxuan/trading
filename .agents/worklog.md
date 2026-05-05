@@ -454,3 +454,4 @@
   - Manual link/path consistency check after move ✅
 - **Deploy Status**:
   - Not deployed (documentation/ticket-state change only).
+- [2026-05-05] Finalized SID-First Architecture refactor. Implemented Manual Trade Discovery and dedicated account health columns. Deployed build b1ae8f7.

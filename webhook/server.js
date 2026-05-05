@@ -100,7 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 04:45 - 6704a34"); // DB Index Update
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 04:53 - b1ae8f7"); // DB Index Update
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
@@ -626,7 +626,9 @@ function mt5GenerateId(prefix = "ID") {
  * Time-sortable by second precision
  */
 function mt5GenerateTimeSid() {
-  const seconds = Math.floor(Date.now() / 1000).toString(36).toUpperCase();
+  const seconds = Math.floor(Date.now() / 1000)
+    .toString(36)
+    .toUpperCase();
   const rand = Math.random().toString(36).substring(2, 5).toUpperCase();
   return (seconds + rand).substring(0, 9);
 }
@@ -6659,12 +6661,16 @@ async function _mt5InitBackendInternal() {
               payload.tp,
               payload.volume,
               payload.note,
-              JSON.stringify((() => {
-                const m = { ...(payload.metadata || {}) };
-                delete m.raw_json;
-                return m;
-              })()),
-              JSON.stringify(payload.metadata?.raw_json || payload.raw_json || {}),
+              JSON.stringify(
+                (() => {
+                  const m = { ...(payload.metadata || {}) };
+                  delete m.raw_json;
+                  return m;
+                })(),
+              ),
+              JSON.stringify(
+                payload.metadata?.raw_json || payload.raw_json || {},
+              ),
               mt5NowIso(),
             ],
           );
@@ -6964,7 +6970,9 @@ async function _mt5InitBackendInternal() {
           payload.free_margin || existingMeta.free_margin || 0,
         ),
         leverage: Number(payload.leverage || existingMeta.leverage || 0),
-        broker_name: String(payload.broker_name || existingMeta.broker_name || ""),
+        broker_name: String(
+          payload.broker_name || existingMeta.broker_name || "",
+        ),
         health_updated_at: new Date().toISOString(),
       };
 
@@ -7055,7 +7063,8 @@ async function _mt5InitBackendInternal() {
             )
               statusRaw = "CANCEL";
             else if (raw.closed_at || raw.close_reason) statusRaw = "CLOSED";
-            else if (pnl !== null && raw.execution_status === "CLOSED") statusRaw = "CLOSED";
+            else if (pnl !== null && raw.execution_status === "CLOSED")
+              statusRaw = "CLOSED";
             else statusRaw = "OPEN";
           }
           let executionStatus = "PENDING";
@@ -7063,9 +7072,22 @@ async function _mt5InitBackendInternal() {
 
           if (["START", "OPEN", "ACTIVE", "FILLED", "EXECUTED"].includes(s)) {
             executionStatus = "OPEN";
-          } else if (["PLACED", "NEW", "PENDING", "SUBMITTED", "PARTIAL"].includes(s)) {
+          } else if (
+            ["PLACED", "NEW", "PENDING", "SUBMITTED", "PARTIAL"].includes(s)
+          ) {
             executionStatus = "PENDING";
-          } else if (["TP", "SL", "CANCEL", "FAIL", "CLOSED", "EXPIRED", "REJECTED", "DELETED"].includes(s)) {
+          } else if (
+            [
+              "TP",
+              "SL",
+              "CANCEL",
+              "FAIL",
+              "CLOSED",
+              "EXPIRED",
+              "REJECTED",
+              "DELETED",
+            ].includes(s)
+          ) {
             executionStatus = "CLOSED";
           }
           const commission = Number(raw.commission || 0);
@@ -7357,34 +7379,39 @@ async function _mt5InitBackendInternal() {
         // Final fallback: if no trade was matched and it's OPEN, create it.
         if (res.rowCount === 0 && it.execution_status === "OPEN") {
           const discoverySid = mt5GenerateTimeSid();
-          const brokerSource = (payload.broker_name || "BROKER").toUpperCase().replace(/\s+/g, "_");
-          
-          await pool.query(`
+          const brokerSource = (payload.broker_name || "BROKER")
+            .toUpperCase()
+            .replace(/\s+/g, "_");
+
+          await pool.query(
+            `
             INSERT INTO trades (
-              trade_id, sid, account_id, user_id, 
-              symbol, action, volume, entry, 
-              execution_status, source, metadata, broker_trade_id,
+              trade_id, sid, account_id, user_id,
+              symbol, action, volume, entry,
+              execution_status, source_id, metadata, broker_trade_id,
               broker_pips, broker_lots, broker_commission, broker_swap, broker_volume,
               created_at, updated_at
             ) VALUES ($1, $1, $2, $3, $4, $5, $6, $7, 'OPEN', $8, $9::jsonb, $10, $11, $12, $13, $14, $15, NOW(), NOW())
             ON CONFLICT (sid) DO NOTHING
-          `, [
-            discoverySid,
-            aid,
-            userId,
-            syncSymbol,
-            syncAction,
-            it.volume || 0,
-            it.entry || 0,
-            brokerSource,
-            syncMeta,
-            ticketCandidates[0] || "",
-            it.pips || 0,
-            it.lots || 0,
-            it.commission || 0,
-            it.swap || 0,
-            it.volume || 0
-          ]);
+          `,
+            [
+              discoverySid,
+              aid,
+              uid,
+              syncSymbol,
+              syncAction,
+              it.volume || 0,
+              it.entry || 0,
+              brokerSource,
+              syncMeta,
+              ticketCandidates[0] || "",
+              it.pips || 0,
+              it.lots || 0,
+              it.commission || 0,
+              it.swap || 0,
+              it.volume || 0,
+            ],
+          );
           matched++;
         } else if (res.rowCount > 0) {
           matched += res.rowCount;
@@ -8418,7 +8445,14 @@ async function _mt5InitBackendInternal() {
         "user_templates",
       ];
     },
-    async listTableRows(table, limit = 50, offset = 0, query = "") {
+    async listTableRows(
+      table,
+      limit = 50,
+      offset = 0,
+      query = "",
+      sortCol = "",
+      sortDir = "DESC",
+    ) {
       const allowed = await this.listTables();
       if (!allowed.includes(table))
         throw new Error(`Access denied to table: ${table}`);
@@ -8434,8 +8468,18 @@ async function _mt5InitBackendInternal() {
           where = `WHERE object_id ILIKE $3 OR metadata::text ILIKE $3`;
         }
       }
+      // Validate sort column against schema to prevent SQL injection
+      let orderClause = "ORDER BY 1 DESC";
+      if (sortCol) {
+        const schema = await this.getTableSchema(table);
+        const validCols = schema.map((c) => c.column_name);
+        if (validCols.includes(sortCol)) {
+          const dir = sortDir.toUpperCase() === "ASC" ? "ASC" : "DESC";
+          orderClause = `ORDER BY "${sortCol}" ${dir}`;
+        }
+      }
       const res = await pool.query(
-        `SELECT * FROM ${table} ${where} ORDER BY 1 DESC LIMIT $1 OFFSET $2`,
+        `SELECT * FROM ${table} ${where} ${orderClause} LIMIT $1 OFFSET $2`,
         params,
       );
       const totalRes = await pool.query(
@@ -8443,6 +8487,43 @@ async function _mt5InitBackendInternal() {
         query ? [params[2]] : [],
       );
       return { rows: res.rows, total: parseInt(totalRes.rows[0].count) };
+    },
+    async updateTableRow(table, row) {
+      const allowed = await this.listTables();
+      if (!allowed.includes(table))
+        throw new Error(`Access denied to table: ${table}`);
+      if (!row || typeof row !== "object")
+        throw new Error("row object is required");
+      // Find the PK: use the first column from schema
+      const schema = await this.getTableSchema(table);
+      const pkCol = schema[0]?.column_name || "id";
+      const idVal = row[pkCol];
+      if (idVal == null) throw new Error(`row must contain ${pkCol} column`);
+      // Only allow updating columns that exist in schema
+      const validCols = new Set(schema.map((c) => c.column_name));
+      const setClauses = [];
+      const params = [];
+      let paramIdx = 1;
+      for (const [k, v] of Object.entries(row)) {
+        if (!validCols.has(k)) continue;
+        if (k === pkCol) continue; // skip PK
+        setClauses.push(`"${k}" = $${paramIdx}`);
+        // parse JSON fields properly
+        const colType = (
+          schema.find((c) => c.column_name === k)?.data_type || ""
+        ).toLowerCase();
+        if (colType.includes("json")) {
+          params.push(typeof v === "string" ? v : JSON.stringify(v));
+        } else {
+          params.push(v);
+        }
+        paramIdx++;
+      }
+      if (!setClauses.length) throw new Error("no valid columns to update");
+      params.push(idVal);
+      const query = `UPDATE ${table} SET ${setClauses.join(", ")}, updated_at = NOW() WHERE "${pkCol}" = $${paramIdx}`;
+      await pool.query(query, params);
+      return { ok: true, table, updated: idVal };
     },
     async getAccountByIdV2(accountId) {
       const res = await pool.query(
@@ -10100,7 +10181,7 @@ async function mt5EnqueueSignalFromPayload(payload, opts = {}) {
   const symbol = mt5NormalizeSymbol(payload);
   const volume = mt5NormalizeVolume(payload);
   const orderType = mt5NormalizeOrderType(payload);
-  const signalId = mt5GenerateId("SIG");
+  const signalId = mt5GenerateTimeSid();
   const userId = envStr(
     payload.user_id ?? payload.userId ?? payload.user ?? CFG.mt5DefaultUserId,
     CFG.mt5DefaultUserId,
@@ -13562,6 +13643,8 @@ const appHandler = async (req, res) => {
         return json(res, 403, { ok: false, error: "table access forbidden" });
       }
       const q = envStr(url.searchParams.get("q"));
+      const sortCol = envStr(url.searchParams.get("sortCol") || "");
+      const sortDir = envStr(url.searchParams.get("sortDir") || "DESC");
       const page = Math.max(1, Number(url.searchParams.get("page") || 1));
       const pageSize = Math.max(
         5,
@@ -13569,7 +13652,14 @@ const appHandler = async (req, res) => {
       );
       const offset = (page - 1) * pageSize;
 
-      const { rows, total } = await b.listTableRows(table, pageSize, offset, q);
+      const { rows, total } = await b.listTableRows(
+        table,
+        pageSize,
+        offset,
+        q,
+        sortCol,
+        sortDir,
+      );
       return json(res, 200, {
         ok: true,
         table,
@@ -13698,6 +13788,34 @@ const appHandler = async (req, res) => {
         ok: false,
         error: `Create is not supported for table: ${table}`,
       });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error.message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/mt5/db/rows/update") {
+    if (!CFG.mt5Enabled)
+      return json(res, 400, { ok: false, error: "MT5 bridge disabled" });
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const payload = await readJson(req);
+      const table = String(payload.table || "")
+        .trim()
+        .toLowerCase();
+      const row =
+        payload.row && typeof payload.row === "object" ? payload.row : {};
+      if (!table)
+        return json(res, 400, { ok: false, error: "table is required" });
+      if (table === "ui_auth_users")
+        return json(res, 403, { ok: false, error: "table access forbidden" });
+      const b = await mt5Backend();
+      if (!b.updateTableRow)
+        return json(res, 400, {
+          ok: false,
+          error: "Not supported by this backend",
+        });
+      const result = await b.updateTableRow(table, row);
+      return json(res, 200, { ok: true, ...result });
     } catch (error) {
       return json(res, 400, { ok: false, error: error.message });
     }
