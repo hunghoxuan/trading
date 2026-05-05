@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api";
 import { SignalDetailCard } from "../../components/SignalDetailCard";
 import { buildDetailHeader } from "../../components/SignalDetailHeaderBuilder";
@@ -191,6 +192,8 @@ function displaySource(item = {}) {
 }
 
 export default function SignalsPage() {
+  const navigate = useNavigate();
+  const { signalId } = useParams();
   const [symbols, setSymbols] = useState([]);
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
@@ -478,6 +481,15 @@ export default function SignalsPage() {
   }, [selectedSignal?.id, selectedSignal?.sid]);
 
   useEffect(() => { loadSymbols(); }, []);
+
+  // Select signal from URL param on load
+  useEffect(() => {
+    if (signalId && rows.length > 0) {
+      const found = rows.find(r => signalRefOf(r) === signalId);
+      if (found) { setSelectedSignal(found); selectedSignalIdRef.current = signalId; }
+    }
+  }, [signalId, rows.length]);
+
   useEffect(() => { loadSignals(); }, [query]);
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -568,10 +580,10 @@ export default function SignalsPage() {
         </div>
 
         <div className="toolbar-group toolbar-search-filter">
-          <input 
-            value={filter.q} 
-            onChange={(e) => setFilter(f => ({ ...f, q: e.target.value, page: 1 }))} 
-            placeholder="Search sid, symbol, note..." 
+          <input
+            value={filter.q}
+            onChange={(e) => setFilter(f => ({ ...f, q: e.target.value, page: 1 }))}
+            placeholder="Search sid, symbol, note..."
             style={{ width: '220px' }}
           />
           <select value={filter.symbol} onChange={(e) => setFilter(f => ({ ...f, symbol: e.target.value, page: 1 }))}>
@@ -609,9 +621,9 @@ export default function SignalsPage() {
           <button type="button" className={`primary-button ${bulkBusy ? "btn-busy" : ""}`} onClick={onBulkOk} disabled={bulkBusy || !bulkAction}>
             {bulkBusy ? <div className="spinner" style={{ width: 14, height: 14 }} /> : "APPLY"}
           </button>
-          <button 
-            type="button" 
-            className="primary-button" 
+          <button
+            type="button"
+            className="primary-button"
             onClick={() => { if (createMode) { setCreateMode(false); setCreateMsg(""); } else { setCreateMode(true); setSelectedSignal(null); } }}
           >
             {createMode ? "CANCEL" : "+ CREATE SIGNAL"}
@@ -635,9 +647,9 @@ export default function SignalsPage() {
               <thead>
                 <tr>
                   <th style={{ width: '30px' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={allSelected} 
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
                       onChange={e => {
                         const checked = e.target.checked;
                         setSelectedIds(prev => {
@@ -667,20 +679,22 @@ export default function SignalsPage() {
                   const sourceId = String(t.source_id || "-");
                   const signalShort = String(t.sid || t.sid || "").slice(-12) || "-";
                   const strategyLabel = compactStrategy(t);
-                  
+
                   return (
-                    <tr 
-                      key={signalRefOf(t)} 
+                    <tr
+                      key={signalRefOf(t)}
                       className={signalRefOf(selectedSignal) === signalRefOf(t) ? "active" : ""}
                       onClick={() => {
-                        selectedSignalIdRef.current = signalRefOf(t);
+                        const ref = signalRefOf(t);
+                        selectedSignalIdRef.current = ref;
                         setCreateMode(false);
                         setSelectedSignal(t);
+                        navigate(`/signals/${ref}`, { replace: true });
                       }}
                     >
                       <td onClick={e => e.stopPropagation()}>
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={selectedIds.has(signalRefOf(t))}
                           onChange={e => {
                             const checked = e.target.checked;

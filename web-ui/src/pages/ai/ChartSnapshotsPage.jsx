@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { createChart } from "lightweight-charts";
 import { showDateTime, isSameDay } from "../../utils/format";
 
@@ -1630,6 +1631,8 @@ function validatePosition(pos = {}) {
 }
 
 export default function ChartSnapshotsPage() {
+  const navigate = useNavigate();
+  const { symbol: paramSymbol } = useParams();
   const [cfg, setCfg] = useState(DEFAULT_CONFIG);
   const [templates, setTemplates] = useState(() => loadTemplates());
   const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID);
@@ -1938,8 +1941,12 @@ export default function ChartSnapshotsPage() {
     cfg.symbol,
   ]);
 
-  const setCfgField = (key, value) =>
+  const setCfgField = (key, value) => {
     setCfg((prev) => ({ ...prev, [key]: value }));
+    if (key === "symbol" && value) {
+      navigate(`/ai/browser/${encodeURIComponent(value)}`, { replace: true });
+    }
+  };
   const resetPositionLocal = () => {
     if (effectiveParsed && typeof effectiveParsed === "object") {
       setPosition(extractPositionFromAnalysis(effectiveParsed));
@@ -3239,6 +3246,8 @@ export default function ChartSnapshotsPage() {
 
   useEffect(() => {
     loadSnapshots();
+    // Read symbol from URL param
+    if (paramSymbol) setCfgField("symbol", decodeURIComponent(paramSymbol));
   }, []);
 
   useEffect(() => {

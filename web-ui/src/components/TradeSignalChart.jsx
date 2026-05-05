@@ -218,6 +218,7 @@ export default function TradeSignalChart({
   entryPrice = null,
   slPrice = null,
   tpPrice = null,
+  createdAt = null,
   openedAt = null,
   closedAt = null,
   analysisSnapshot = null,
@@ -355,11 +356,22 @@ export default function TradeSignalChart({
         if (isMounted) {
           candleSeries.setData(candles);
 
-          // --- MARKERS: only open/close arrows, NO text overlays ---
+          // --- MARKERS: creation/open/close arrows, NO text overlays ---
           const markers = [];
+          let createdTs = null;
+          if (createdAt) {
+            createdTs = Math.floor(new Date(createdAt).getTime() / 1000);
+            if (Number.isFinite(createdTs)) {
+              markers.push({ time: createdTs, position: 'belowBar', color: '#9ca3af', shape: 'arrowUp', text: '' });
+            }
+          }
           if (openedAt) {
             const openTs = Math.floor(new Date(openedAt).getTime() / 1000);
-            markers.push({ time: openTs, position: 'belowBar', color: '#2196f3', shape: 'arrowUp', text: '' });
+            const nearCreated =
+              Number.isFinite(createdTs) && Math.abs(openTs - createdTs) <= 60;
+            if (!nearCreated) {
+              markers.push({ time: openTs, position: 'belowBar', color: '#2196f3', shape: 'arrowUp', text: '' });
+            }
             
             // Vertical line at creation
             const creationLine = new SignalCreationLinePrimitive(openTs, 'rgba(33, 150, 243, 0.5)');
@@ -666,6 +678,7 @@ export default function TradeSignalChart({
     interval,
     height,
     openedAt,
+    createdAt,
     closedAt,
     entryPrice,
     slPrice,

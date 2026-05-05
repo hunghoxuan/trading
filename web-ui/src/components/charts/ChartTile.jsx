@@ -167,6 +167,9 @@ export function SymbolChart({
   entryPrice = null,
   tpPrice = null,
   slPrice = null,
+  createdAt = null,
+  openedAt = null,
+  closedAt = null,
   onPlanLevelChange = null,
   analysisSnapshot = null,
   hasTradePlan = false,
@@ -618,6 +621,9 @@ export function SymbolChart({
                   entryPrice={overlays.plan1 ? entryPrice : null}
                   slPrice={overlays.plan1 ? slPrice : null}
                   tpPrice={overlays.plan1 ? tpPrice : null}
+                  createdAt={createdAt}
+                  openedAt={openedAt}
+                  closedAt={closedAt}
                   showPrimaryPlan={overlays.plan1}
                   showExtraPlans={overlays.plan2}
                   showPdArrays={overlays.pdArrays}

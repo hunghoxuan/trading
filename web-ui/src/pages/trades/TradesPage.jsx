@@ -1,11 +1,12 @@
 import { api } from "../../api";
 import { useState, useMemo, useRef, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { SignalDetailCard } from "../../components/SignalDetailCard";
 import { buildDetailHeader } from "../../components/SignalDetailHeaderBuilder";
-import { 
-  asNum, 
-  buildHeaderMeta, 
-  buildRrVolRiskText, 
+import {
+  asNum,
+  buildHeaderMeta,
+  buildRrVolRiskText,
   renderHistoryItem,
   extractTradePlanFromTrade,
 } from "../../utils/signalDetailUtils";
@@ -170,6 +171,8 @@ function displaySource(item = {}) {
 }
 
 export default function TradesPage() {
+  const navigate = useNavigate();
+  const { tradeId } = useParams();
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
@@ -400,6 +403,15 @@ export default function TradesPage() {
   }
 
   useEffect(() => { loadMeta(); }, []);
+
+  // Select trade from URL param on load
+  useEffect(() => {
+    if (tradeId && rows.length > 0) {
+      const found = rows.find(r => tradeKeyOf(r) === tradeId);
+      if (found) { setSelectedTrade(found); selectedTradeIdRef.current = tradeId; }
+    }
+  }, [tradeId, rows.length]);
+
   useEffect(() => { loadTrades(); }, [query]);
   useEffect(() => {
     selectedTradeIdRef.current = tradeKeyOf(selectedTrade);
@@ -720,8 +732,10 @@ export default function TradesPage() {
                       key={tradeKeyOf(t)}
                       className={tradeKeyOf(selectedTrade) === tradeKeyOf(t) ? "active" : ""}
                       onClick={() => {
-                        selectedTradeIdRef.current = tradeKeyOf(t);
+                        const k = tradeKeyOf(t);
+                        selectedTradeIdRef.current = k;
                         setSelectedTrade(t);
+                        navigate(`/trades/${k}`, { replace: true });
                       }}
                     >
                       <td onClick={(e) => e.stopPropagation()}>
@@ -924,7 +938,7 @@ export default function TradesPage() {
                     ...(selectedTrade.metadata && typeof selectedTrade.metadata === "object" ? (() => {
                       const meta = selectedTrade.metadata;
                       const bData = meta.broker_data || {};
-                      
+
                       const bVol = asNum(selectedTrade.broker_volume) ?? asNum(bData.volume);
                       const bLots = asNum(selectedTrade.broker_lots) ?? asNum(bData.lots);
                       const bPips = asNum(selectedTrade.broker_pips) ?? asNum(bData.pips);
@@ -943,8 +957,8 @@ export default function TradesPage() {
                       ].filter(x => x.value !== null);
                     })() : []),
                   { label: "Note", value: selectedTrade.note || "-", fullWidth: true },
-                  { 
-                    label: "Raw Metadata", 
+                  {
+                    label: "Raw Metadata",
                     fullWidth: true,
                     value: (
                       <div className="bg-gray-900/50 rounded-lg p-3 border border-gray-800 overflow-hidden mt-2">

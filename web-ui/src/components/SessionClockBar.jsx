@@ -54,30 +54,41 @@ export default function SessionClockBar({ displayTimezone }) {
     };
   }, []);
 
-  const { timeStr, progressPct, currentHour } = useMemo(() => {
+  const { timeStr, dateStr, progressPct, currentHour } = useMemo(() => {
     try {
-      const fmt = new Intl.DateTimeFormat('en-GB', {
+      const fmt = new Intl.DateTimeFormat("en-GB", {
         timeZone: currentTz,
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
       });
       const parts = fmt.formatToParts(now);
-      const h = parseInt(parts.find(p => p.type === 'hour').value);
-      const m = parseInt(parts.find(p => p.type === 'minute').value);
-      const s = parseInt(parts.find(p => p.type === 'second').value);
+      const h = parseInt(parts.find((p) => p.type === "hour").value);
+      const m = parseInt(parts.find((p) => p.type === "minute").value);
+      const s = parseInt(parts.find((p) => p.type === "second").value);
+
+      const dateFmt = new Intl.DateTimeFormat("en-GB", {
+        timeZone: currentTz,
+        day: "numeric",
+        month: "numeric",
+      });
+      const dateParts = dateFmt.formatToParts(now);
+      const d = dateParts.find((p) => p.type === "day")?.value || "";
+      const mo = dateParts.find((p) => p.type === "month")?.value || "";
+      const dateLabel = d && mo ? `${d}.${mo}` : "";
       
       const totalSeconds = h * 3600 + m * 60 + s;
       const pct = (totalSeconds / (24 * 3600)) * 100;
       
       return {
-        timeStr: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`,
+        timeStr: `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`,
+        dateStr: dateLabel,
         progressPct: pct,
-        currentHour: h + m / 60 + s / 3600
+        currentHour: h + m / 60 + s / 3600,
       };
     } catch (e) {
-      return { timeStr: '--:--:--', progressPct: 0, currentHour: 0 };
+      return { timeStr: "--:--:--", dateStr: "", progressPct: 0, currentHour: 0 };
     }
   }, [now, currentTz]);
 
@@ -279,7 +290,8 @@ export default function SessionClockBar({ displayTimezone }) {
           {countdown && <div className="countdown-text">{countdown.text}</div>}
           <div className="time-value-small">{timeStr}</div>
           <div className="tz-label-small">
-            {isLocal ? 'LOCAL' : currentTz.split('/').pop().replace('_', ' ')}
+            {dateStr ? `${dateStr} ` : ""}
+            {isLocal ? "LOCAL" : currentTz.split("/").pop().replace("_", " ")}
           </div>
         </div>
       </div>

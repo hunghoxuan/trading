@@ -295,6 +295,7 @@ export default function TradeDetailPage() {
             slPrice: asNum(detailPlan.sl) ?? asNum(trade.sl),
             tpPrice: asNum(detailPlan.tp) ?? asNum(trade.tp),
             onPlanLevelChange: (levelKey, levelValue) => applyPlanChange(levelKey, formatNum3(levelValue)),
+            createdAt: trade.created_at,
             openedAt: trade.opened_at,
             closedAt: trade.closed_at,
             analysisSnapshot: trade?.metadata?.analysis_snapshot || trade?.raw_json?.analysis_snapshot || null,
