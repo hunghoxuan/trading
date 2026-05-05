@@ -1,3 +1,7 @@
+# Session Log: 2026-05-05 09:45
+- **Starting Task**:
+  - Deploy all remaining local changes: cTrader sync metadata updates and UI volume-stat display updates across signals/trades/detail views.
+
 # Session Log: 2026-05-05 09:20
 - **Starting Task**:
   - Update Trade Detail chart UX: default 2 charts per row, replace P1/P2/PD/KL checkboxes with multi-select toggle buttons, keep overlay and +/- changes client-side.

@@ -34,7 +34,7 @@ namespace cAlgo.Robots
         [Parameter("Max Risk %", DefaultValue = 1.0, MinValue = 0.1, MaxValue = 10.0)]
         public double MaxRiskPct { get; set; }
 
-        private string BuildVersion = "v2026.05.05 05:39 - a59fe4c";
+        private string BuildVersion = "v2026.05.05 07:19 - 495a7a6";
         private string _lastStatus = "INITIALIZING";
         private string _lastSignalId = "None";
         private string _lastAction = "None";
@@ -51,7 +51,7 @@ namespace cAlgo.Robots
         static TVBridgeCBot()
         {
             _httpClient = new HttpClient();
-            _httpClient.Timeout = TimeSpan.FromSeconds(10);
+            _httpClient.Timeout = TimeSpan.FromSeconds(30);
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "cTrader-TVBridge");
         }
 
@@ -103,7 +103,8 @@ namespace cAlgo.Robots
             // Collect positions on main thread
             var posList = new List<string>();
             var accountId = "";
-            double balance = 0, equity = 0, margin = 0, freeMargin = 0;
+            var brokerName = "";
+            double balance = 0, equity = 0, margin = 0, freeMargin = 0, leverage = 0;
 
             var tcs = new TaskCompletionSource<bool>();
             BeginInvokeOnMainThread(() =>
@@ -115,9 +116,10 @@ namespace cAlgo.Robots
                     equity = Account.Equity;
                     margin = Account.Margin;
                     freeMargin = Account.FreeMargin;
-                    double leverage = Account.PreciseLeverage;
-                    string brokerName = Account.BrokerName;
+                    leverage = Account.PreciseLeverage;
+                    brokerName = Account.BrokerName;
 
+                    double accountBalance = Account.Balance;
                     foreach (var pos in Positions)
                     {
                         // We check for SID in comment or legacy MagicNumber in Label
@@ -127,10 +129,27 @@ namespace cAlgo.Robots
                             double pips = pos.Pips;
                             var symbol = Symbols.GetSymbol(pos.SymbolName);
                             
+                            // Calculate risk_money_planned if SL exists
+                            double riskMoney = 0;
+                            if (pos.StopLoss.HasValue) {
+                                double slDistance = Math.Abs(pos.EntryPrice - pos.StopLoss.Value);
+                                if (symbol.PipSize > 0) {
+                                    double slPips = slDistance / symbol.PipSize;
+                                    riskMoney = slPips * symbol.PipValue * pos.VolumeInUnits;
+                                }
+                            }
+                            if (double.IsNaN(riskMoney) || double.IsInfinity(riskMoney)) riskMoney = 0;
+                            
+                            double currentBalance = accountBalance;
+                            if (double.IsNaN(currentBalance) || double.IsInfinity(currentBalance)) currentBalance = 0;
+
+                            double volSize = currentBalance > 0 ? (riskMoney / currentBalance) * 100.0 : 0;
+                            if (double.IsNaN(volSize) || double.IsInfinity(volSize)) volSize = 0;
+
                             posList.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                                "{{\"ticket\":\"{0}\",\"symbol\":\"{1}\",\"volume\":{2:F2},\"lots\":{3:F2},\"side\":\"{4}\",\"entry\":{5:F5},\"pnl\":{6:F2},\"net_pnl\":{7:F2},\"commission\":{8:F2},\"swap\":{9:F2},\"pips\":{10:F2},\"opened_at\":\"{11}\",\"comment\":\"{12}\",\"status\":\"OPEN\",\"digits\":{13},\"pip_size\":{14:F5},\"pip_value\":{15:F5},\"base_asset\":\"{16}\",\"quote_asset\":\"{17}\"}}",
-                                pos.Id, pos.SymbolName, pos.VolumeInUnits, pos.Quantity, pos.TradeType.ToString().ToUpper(), pos.EntryPrice, pos.GrossProfit, pos.NetProfit, pos.Commissions, pos.Swap, pips, pos.EntryTime.ToString("yyyy-MM-ddTHH:mm:ssZ"), sid,
-                                symbol.Digits, symbol.PipSize, symbol.PipValue, symbol.BaseAsset, symbol.QuoteAsset));
+                                "{{\"ticket\":\"{0}\",\"symbol\":\"{1}\",\"volume\":{2:F2},\"lots\":{3:F2},\"side\":\"{4}\",\"entry\":{5:F5},\"pnl\":{6:F2},\"net_pnl\":{7:F2},\"commission\":{8:F2},\"swap\":{9:F2},\"pips\":{10:F2},\"opened_at\":\"{11}\",\"comment\":\"{12}\",\"status\":\"OPEN\",\"digits\":{13},\"pip_size\":{14:F5},\"pip_value\":{15:F5},\"base_asset\":\"{16}\",\"quote_asset\":\"{17}\",\"account_balance\":{18:F2},\"risk_money_planned\":{19:F2},\"volume_size\":{20:F2}}}",
+                                pos.Id, pos.SymbolName, riskMoney, pos.Quantity, pos.TradeType.ToString().ToUpper(), pos.EntryPrice, pos.GrossProfit, pos.NetProfit, pos.Commissions, pos.Swap, pips, pos.EntryTime.ToString("yyyy-MM-ddTHH:mm:ssZ"), sid,
+                                symbol.Digits, symbol.PipSize, symbol.PipValue, symbol.BaseAsset, symbol.QuoteAsset, currentBalance, riskMoney, volSize));
                         }
                     }
                 }
@@ -151,7 +170,7 @@ namespace cAlgo.Robots
 
                 var body = string.Format(System.Globalization.CultureInfo.InvariantCulture,
                     "{{\"account_id\":\"{0}\",\"balance\":{1:F2},\"equity\":{2:F2},\"margin\":{3:F2},\"free_margin\":{4:F2},\"leverage\":{5:F2},\"broker_name\":\"{6}\",\"positions\":[{7}],\"orders\":[],\"closed\":[]}}",
-                    accountId, Account.Balance, Account.Equity, Account.Margin, Account.FreeMargin, Account.PreciseLeverage, Account.BrokerName, string.Join(",", posList));
+                    accountId, balance, equity, margin, freeMargin, leverage, brokerName, string.Join(",", posList));
 
                 Print("[Sync] Sending: {0}", body);
 

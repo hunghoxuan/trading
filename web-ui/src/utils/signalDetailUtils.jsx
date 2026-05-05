@@ -32,7 +32,7 @@ export function formatNote(note) {
   return String(note).split(". ").filter(Boolean).join(".<br/>");
 }
 
-export function buildRrVolRiskText({ rrRaw, volumeRaw, riskSizeRaw, riskPctRaw, rewardSizeRaw, plannedVolRaw }) {
+export function buildRrVolRiskText({ rrRaw, volumeRaw, riskSizeRaw, riskPctRaw, rewardSizeRaw, plannedVolRaw, volumeSizeRaw }) {
   const rr = asNum(rrRaw);
   const vol = asNum(volumeRaw);
   const plannedVol = asNum(plannedVolRaw);
@@ -44,7 +44,7 @@ export function buildRrVolRiskText({ rrRaw, volumeRaw, riskSizeRaw, riskPctRaw, 
     ? Math.abs(rewardRaw)
     : (loss != null && rr != null ? loss * rr : null);
 
-  const volVal = plannedVol ?? (riskPct != null ? riskPct / 100 : null);
+  const volVal = volumeSizeRaw != null ? volumeSizeRaw / 100 : (plannedVol ?? (riskPct != null ? riskPct / 100 : null));
   const volText = volVal != null
     ? `vol ${Number((volVal * 100).toFixed(2))}%`
     : "vol -";
@@ -79,6 +79,7 @@ export function buildHeaderMeta({
   rewardSizeRaw,
   updatedAtRaw,
   statusUi,
+  volumeSizeRaw,
 }) {
   const pnl = asNum(pnlRaw);
   const showPnl = shouldShowPnl(statusRaw, pnl);
@@ -90,7 +91,7 @@ export function buildHeaderMeta({
     pnlText: `$${pnl != null ? pnl.toFixed(2) : "0.00"}`,
     pnlClassName: pnl != null && pnl < 0 ? "money-neg" : "money-pos",
     dateText: formatDetailDateTime(updatedAtRaw),
-    statsText: buildRrVolRiskText({ rrRaw, volumeRaw, plannedVolRaw, riskSizeRaw, riskPctRaw, rewardSizeRaw }),
+    statsText: buildRrVolRiskText({ rrRaw, volumeRaw, plannedVolRaw, riskSizeRaw, riskPctRaw, rewardSizeRaw, volumeSizeRaw }),
     statusNode: <span className={`badge ${status.cls}`}>{status.label}</span>,
   };
 }

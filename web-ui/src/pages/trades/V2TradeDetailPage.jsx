@@ -103,6 +103,7 @@ export default function TradeDetailPage() {
       rewardSizeRaw: reward,
       updatedAtRaw: trade.updated_at || trade.closed_at || trade.opened_at || trade.created_at,
       statusUi,
+      volumeSizeRaw: asNum(meta.broker_data?.volume_size),
     });
     return buildDetailHeader({
       side: action,

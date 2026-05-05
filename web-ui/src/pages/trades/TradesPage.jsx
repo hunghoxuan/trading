@@ -773,6 +773,7 @@ export default function TradesPage() {
                                 riskSizeRaw: mr.risk,
                                 riskPctRaw: riskPct,
                                 rewardSizeRaw: mr.reward,
+                                volumeSizeRaw: asNum(meta.broker_data?.volume_size),
                               });
                             })()}
                           </div>
