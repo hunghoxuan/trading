@@ -1212,6 +1212,7 @@ export function SignalDetailCard({
           symbol={chart?.symbol}
           timeframes={selectedTfs}
           defaultMode={chart?.mode || "cache"}
+          initialGridCols={mode === "trade" ? 2 : chart?.defaultGridCols}
           entryPrice={chart?.entryPrice}
           slPrice={chart?.slPrice}
           tpPrice={chart?.tpPrice}

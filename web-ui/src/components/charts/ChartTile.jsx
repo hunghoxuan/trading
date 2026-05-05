@@ -161,6 +161,7 @@ export function SymbolChart({
   symbol,
   timeframes = ["D", "4h", "15m", "5m"],
   defaultMode = "live",
+  initialGridCols = null,
   onAnalyze,
   onRemove,
   entryPrice = null,
@@ -175,7 +176,14 @@ export function SymbolChart({
   const [pendingMode, setPendingMode] = useState(null); // mode we're loading
   const [lastError, setLastError] = useState(null);
   const cleanSym = useMemo(() => normSym(symbol), [symbol]);
-  const [gridCols, setGridCols] = useState(timeframes?.length || 4);
+  const defaultGridCols = useMemo(() => {
+    const maxCols = Math.max(1, timeframes?.length || 4);
+    if (Number.isFinite(Number(initialGridCols)) && Number(initialGridCols) > 0) {
+      return Math.min(maxCols, Math.max(1, Number(initialGridCols)));
+    }
+    return maxCols;
+  }, [initialGridCols, timeframes?.length]);
+  const [gridCols, setGridCols] = useState(defaultGridCols);
   const [overlays, setOverlays] = useState({
     plan1: true,
     plan2: false,
@@ -186,7 +194,9 @@ export function SymbolChart({
   const toggleOverlay = (key) => setOverlays((p) => ({ ...p, [key]: !p[key] }));
 
   useEffect(() => {
-    setGridCols(timeframes?.length || 4);
+    setGridCols((prev) =>
+      Math.min(Math.max(1, prev), Math.max(1, timeframes?.length || 4)),
+    );
   }, [timeframes?.length]);
 
   const { status, master, error, cachedAt, refresh, liveKey, snapshotState } =
@@ -316,6 +326,12 @@ export function SymbolChart({
       : Math.max(250, ((timeframes?.length || 4) / gridCols) * 250);
 
   const showControls = !(hasTradePlan && hasAnalysis);
+  const overlayButtons = [
+    { key: "plan1", label: "P1" },
+    { key: "plan2", label: "P2" },
+    { key: "pdArrays", label: "PD" },
+    { key: "keyLevels", label: "KL" },
+  ];
 
   return (
     <div className="browser-card-v1" style={{ position: "relative" }}>
@@ -404,32 +420,22 @@ export function SymbolChart({
               <span style={{ opacity: 0.3, fontSize: 8, margin: "0 2px" }}>
                 |
               </span>
-              {["plan1", "plan2", "pdArrays", "keyLevels"].map((k) => (
-                <label
-                  key={k}
+              {overlayButtons.map(({ key, label }) => (
+                <button
+                  key={key}
+                  className={overlays[key] ? "primary-button" : "secondary-button"}
+                  onClick={() => toggleOverlay(key)}
+                  type="button"
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 2,
-                    cursor: "pointer",
-                    fontSize: 9,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: "3px 7px",
+                    borderRadius: 4,
+                    minWidth: 28,
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={overlays[k]}
-                    onChange={() => toggleOverlay(k)}
-                  />
-                  <span className="minor-text">
-                    {k === "plan1"
-                      ? "P1"
-                      : k === "plan2"
-                        ? "P2"
-                        : k === "pdArrays"
-                          ? "PD"
-                          : "KL"}
-                  </span>
-                </label>
+                  {label}
+                </button>
               ))}
             </>
           ) : (
@@ -565,19 +571,17 @@ export function SymbolChart({
                 />
               ) : (
                 <TradeSignalChart
-                  key={`tsc-${symbol}-${tf}-${gridCols}`}
+                  key={`tsc-${symbol}-${tf}`}
                   symbol={cleanSym}
                   interval={tf}
-                  analysisSnapshot={
-                    hasTradePlan
-                      ? overlays.pdArrays || overlays.keyLevels
-                        ? analysisSnapshot
-                        : null
-                      : analysisSnapshot || null
-                  }
+                  analysisSnapshot={analysisSnapshot || null}
                   entryPrice={overlays.plan1 ? entryPrice : null}
                   slPrice={overlays.plan1 ? slPrice : null}
                   tpPrice={overlays.plan1 ? tpPrice : null}
+                  showPrimaryPlan={overlays.plan1}
+                  showExtraPlans={overlays.plan2}
+                  showPdArrays={overlays.pdArrays}
+                  showKeyLevels={overlays.keyLevels}
                 />
               )}
             </div>

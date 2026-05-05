@@ -218,7 +218,11 @@ export default function TradeSignalChart({
   tpPrice = null,
   openedAt = null,
   closedAt = null,
-  analysisSnapshot = null
+  analysisSnapshot = null,
+  showPrimaryPlan = true,
+  showExtraPlans = true,
+  showPdArrays = true,
+  showKeyLevels = true
 }) {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
@@ -415,18 +419,20 @@ export default function TradeSignalChart({
             return entryMatch && tpMatch;
           };
 
-          if (entryPrice) {
+          if (showPrimaryPlan && entryPrice) {
             const primary = { entry: entryPrice, sl: slPrice, tp: tpPrice, direction: tpPrice > entryPrice ? "BUY" : "SELL" };
             allPlans.push(primary);
           }
           
-          rawPlans.forEach(p => {
-             const ep = Number(p.entry);
-             if (!ep) return;
-             // Avoid duplicate of primary if already added
-             const isDuplicate = allPlans.some(x => isMatching(x, p));
-             if (!isDuplicate) allPlans.push(p);
-          });
+          if (showExtraPlans) {
+            rawPlans.forEach(p => {
+               const ep = Number(p.entry);
+               if (!ep) return;
+               // Avoid duplicate of primary if already added
+               const isDuplicate = allPlans.some(x => isMatching(x, p));
+               if (!isDuplicate) allPlans.push(p);
+            });
+          }
 
           allPlans.forEach((p, idx) => drawPlan(p, idx));
 
@@ -486,38 +492,42 @@ export default function TradeSignalChart({
             return status === 'active' || status === 'fresh' || status === 'tested' || status === '';
           });
 
-          activePdArrays.slice(0, 50).forEach((pd) => {
-            const bounds = parsePdZoneBounds(pd);
-            if (!bounds || bounds.low == null || bounds.high == null) return;
-            if (bounds.low === bounds.high) return; // skip degenerate
+          if (showPdArrays) {
+            activePdArrays.slice(0, 50).forEach((pd) => {
+              const bounds = parsePdZoneBounds(pd);
+              if (!bounds || bounds.low == null || bounds.high == null) return;
+              if (bounds.low === bounds.high) return; // skip degenerate
 
-            const color = colorForTf(pd?.timeframe || '');
+              const color = colorForTf(pd?.timeframe || '');
 
-            const barStartRaw = Number(pd?.bar_start);
-            const barStart = Number.isFinite(barStartRaw) && barStartRaw > 100000
-              ? barStartRaw
-              : (candles.length ? Number(candles[0]?.time) : null);
+              const barStartRaw = Number(pd?.bar_start);
+              const barStart = Number.isFinite(barStartRaw) && barStartRaw > 100000
+                ? barStartRaw
+                : (candles.length ? Number(candles[0]?.time) : null);
 
-            if (!barStart) return;
+              if (!barStart) return;
 
-            const primitive = new PdArrayBoxPrimitive(barStart, bounds.low, bounds.high, color);
-            candleSeries.attachPrimitive(primitive);
-          });
+              const primitive = new PdArrayBoxPrimitive(barStart, bounds.low, bounds.high, color);
+              candleSeries.attachPrimitive(primitive);
+            });
+          }
 
           // --- KEY LEVELS as orange dotted lines ---
           const keyLevels = parseKeyLevels(snapshot?.key_levels
             ? snapshot
             : (snapshot?.market_analysis ? snapshot.market_analysis : snapshot));
-          keyLevels.forEach((k) => {
-            candleSeries.createPriceLine({
-              price: k.price,
-              color: '#f97316',
-              lineWidth: 1,
-              lineStyle: 4,
-              axisLabelVisible: false,
-              title: '',
+          if (showKeyLevels) {
+            keyLevels.forEach((k) => {
+              candleSeries.createPriceLine({
+                price: k.price,
+                color: '#f97316',
+                lineWidth: 1,
+                lineStyle: 4,
+                axisLabelVisible: false,
+                title: '',
+              });
             });
-          });
+          }
 
           // --- FIT VIEW ---
           const snapshotStart = Number(snapshot?.bar_start);

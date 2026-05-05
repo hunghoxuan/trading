@@ -1,3 +1,32 @@
+# Session Log: 2026-05-05 09:20
+- **Starting Task**:
+  - Update Trade Detail chart UX: default 2 charts per row, replace P1/P2/PD/KL checkboxes with multi-select toggle buttons, keep overlay and +/- changes client-side.
+- **Work Accomplished**:
+  - **Trade Detail**: Default chart grid now opens at 2 timeframe charts per row.
+  - **Trade Detail**: Replaced `P1`, `P2`, `PD`, `KL` checkboxes with multi-select toggle buttons in the chart toolbar.
+  - **Chart UX**: Kept overlay toggles and `+/-` density changes client-side by storing them in local React state only.
+  - **Chart UX**: Removed static chart remount-on-resize behavior so `+/-` does not force chart data work.
+  - **Overlay Wiring**: Connected `P1` to primary plan, `P2` to extra plans, `PD` to PD arrays, and `KL` to key levels.
+  - **Docs**: Updated trade lifecycle feature doc with current Trade Detail chart behavior.
+  - Bumped `SERVER_VERSION` and `EA_BUILD_VERSION` to `v2026.05.05 07:09 - 8d22305`.
+- **Changed Files**:
+  - `web-ui/src/components/charts/ChartTile.jsx`
+  - `web-ui/src/components/SignalDetailCard.jsx`
+  - `web-ui/src/components/TradeSignalChart.jsx`
+  - `.agents/.product/features/2-done/trade_lifecycle.md`
+  - `webhook/server.js`
+  - `bridge-clients/TVBridgeEA.mq5`
+  - `.agents/worklog.md`
+- **Technical Decisions**:
+  - Scope kept in shared chart components so Trade Detail gets the new layout without touching already-dirty trade page files.
+  - Overlay toggles now control rendering only; fetch inputs stay unchanged to avoid refreshes.
+- **Verification**:
+  - `rtk bash scripts/deploy/bump_build_versions.sh` ✅
+  - `rtk node --check webhook/server.js` ✅
+  - `rtk npm --prefix web-ui run build` ✅
+- **Deploy Status**:
+  - Not deployed.
+
 # Session Log: 2026-05-05 05:00
 - **Starting Task**:
   - Resume `FEAT-20260505-DB-CACHE-UI` — DB & Cache Page Enhancements
