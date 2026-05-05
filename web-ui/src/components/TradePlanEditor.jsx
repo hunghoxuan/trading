@@ -79,12 +79,17 @@ export function TradePlanEditor({
   const isEditMode = !lockedView && mode === "edit";
 
   const summaryRows = [
-    { label: "Order Type", value: `${value.direction || "BUY"} / ${value.trade_type || "limit"}` },
-    { label: "Entry", value: value.entry || "-" },
-    { label: "Risk / Reward", value: value.rr || "-" },
-    { label: "Take Profit", value: value.tp || "-" },
-    { label: "Stop Loss", value: value.sl || "-" },
     { label: "Note", value: value.note || "-" },
+    { label: "Invalidation", value: value.invalidation || "-" },
+    { label: "Entry Model", value: value.entry_model || value.entryModel || "-" },
+    { label: "Strategy", value: value.strategy || "-" },
+    {
+      label: "Reasons To Skip",
+      value: Array.isArray(value.reasons_to_skip)
+        ? value.reasons_to_skip.join(", ")
+        : (value.reasons_to_skip || "-"),
+    },
+    { label: "Skip Recommendation", value: value.skip_recommendation || "-" },
   ];
 
   const NumericInline = ({ label, k, step = "0.001", min, max, sliderOverride = null }) => {
@@ -134,37 +139,18 @@ export function TradePlanEditor({
         gridTemplateColumns: isEditMode ? "1.2fr 1fr" : "1fr",
         gap: "12px",
         marginTop: "10px",
-        paddingTop: "8px",
-        borderTop: "1px solid rgba(255,255,255,0.05)",
+        paddingTop: "0",
         minWidth: 0,
         overflow: "hidden",
         cursor: !lockedView && mode !== "edit" ? "pointer" : "default",
       }}
     >
-      <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span className="minor-text" style={{ fontSize: 10 }}>
-          {lockedView ? "View only" : "Click panel to edit"}
-        </span>
-        <button
-          className="secondary-button"
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!lockedView) setMode((m) => (m === "view" ? "edit" : "view"));
-          }}
-          disabled={lockedView}
-          style={{ height: 22, fontSize: 10, padding: "0 8px" }}
-        >
-          {isEditMode ? "View | Edit" : "View | Edit"}
-        </button>
-      </div>
-
       {!isEditMode ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "6px 16px" }}>
           {summaryRows.map((row) => (
             <div key={row.label} style={{ display: "flex", gap: 6, fontSize: 11 }}>
               <span className="minor-text" style={{ minWidth: 84 }}>{row.label}:</span>
-              <span>{row.value}</span>
+              <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{row.value}</span>
             </div>
           ))}
         </div>

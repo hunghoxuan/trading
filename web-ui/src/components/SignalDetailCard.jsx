@@ -150,6 +150,9 @@ function PlanHeader({
             {plan.entry || "-"} →{" "}
             <span style={{ color: "var(--accent)" }}>{plan.tp || "-"}</span> /{" "}
             <span style={{ color: "var(--bearish)" }}>{plan.sl || "-"}</span>
+            <span style={{ color: "var(--muted)", marginLeft: 8, fontWeight: 600 }}>
+              {plan.rr || "0.0"}R
+            </span>
           </div>
         </div>
       </div>
@@ -163,34 +166,6 @@ function PlanHeader({
           textAlign: "right",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
-            lineHeight: 1.1,
-          }}
-        >
-          {plan.entryModel && (
-            <div style={{ fontSize: "9px", opacity: 0.7, marginBottom: 2 }}>
-              {plan.entryModel}
-            </div>
-          )}
-          <div
-            style={{
-              fontWeight: 800,
-              color: "var(--foreground)",
-              fontSize: "12px",
-            }}
-          >
-            {plan.rr || "0.0"}R
-          </div>
-          {plan.confidence && (
-            <div style={{ fontSize: "9px", opacity: 0.7 }}>
-              {plan.confidence}% cf
-            </div>
-          )}
-        </div>
         {status && (
           <span
             className={`badge ${status.cls} badge-mini`}
@@ -199,6 +174,9 @@ function PlanHeader({
             {status.label}
           </span>
         )}
+        {pnl ? (
+          <span style={{ fontSize: "11px", fontWeight: 700 }}>{pnl}</span>
+        ) : null}
         {plan.skip && (
           <span style={{ fontSize: 9, color: "#ef5350", fontWeight: 700 }}>
             {typeof plan.skip === "string" ? plan.skip : "SKIP"}
