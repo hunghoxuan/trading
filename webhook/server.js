@@ -100,7 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.04 21:07 - 49ad3fd"); // DB Index Update
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 04:27 - 8d8ec61"); // DB Index Update
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
@@ -618,6 +618,17 @@ function mt5GenerateId(prefix = "ID") {
   const now = Date.now();
   const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
   return `${prefix}_${now}_${rand}`;
+}
+
+/**
+ * Generates a 9-char unique SID
+ * Format: [TimePart (6 chars)] + [RandomPart (3 chars)]
+ * Time-sortable by second precision
+ */
+function mt5GenerateTimeSid() {
+  const seconds = Math.floor(Date.now() / 1000).toString(36).toUpperCase();
+  const rand = Math.random().toString(36).substring(2, 5).toUpperCase();
+  return (seconds + rand).substring(0, 9);
 }
 
 function mt5NormalizeSymbol(s) {
@@ -2653,7 +2664,7 @@ function normalizePublicSidBase(raw, fallbackPrefix = "ID") {
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");
   if (cleaned) return cleaned.slice(0, 48);
-  return `${String(fallbackPrefix || "ID").toUpperCase()}_${snapshotTimestampToken(Date.now()).replace(/[^0-9_]/g, "")}`.slice(
+  return `${String(fallbackPrefix || "ID").toUpperCase()}_${mt5GenerateTimeSid()}`.slice(
     0,
     48,
   );
@@ -6247,17 +6258,7 @@ async function _mt5InitBackendInternal() {
     ]);
     const tableName = String(table || "").trim();
     if (!allowed.has(tableName)) {
-      const fallbackRes = await client
-        .query(`SELECT gen_sid($1, 8) AS sid`, [
-          String(fallbackPrefix || "ID")
-            .slice(0, 6)
-            .toUpperCase(),
-        ])
-        .catch(() => ({ rows: [] }));
-      return String(
-        fallbackRes.rows?.[0]?.sid ||
-          normalizePublicSidBase(baseRaw, fallbackPrefix),
-      );
+      return `${String(fallbackPrefix || "ID").toUpperCase()}_${mt5GenerateTimeSid()}`.slice(0, 48);
     }
     const base = normalizePublicSidBase(baseRaw, fallbackPrefix);
     for (let i = 0; i < 120; i += 1) {
@@ -6342,7 +6343,7 @@ async function _mt5InitBackendInternal() {
           signal_id, sid, created_at, user_id, source, source_id, symbol, side, order_type, entry, sl, tp,
           entry_model, signal_tf, chart_tf, rr_planned, risk_money_planned, risk_pct_planned,
           note, rejection_reason, raw_json, status
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,$22)
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21)
         ON CONFLICT (signal_id) DO NOTHING
         RETURNING signal_id
       `,
@@ -6627,7 +6628,6 @@ async function _mt5InitBackendInternal() {
         const accountIds = [];
         for (const row of accounts.rows || []) {
           const aid = row.account_id;
-          const tradeId = mt5GenerateId("TRD");
           const tradeSid = await allocateUniqueSid(
             client,
             "trades",
@@ -6643,11 +6643,10 @@ async function _mt5InitBackendInternal() {
               entry_model, signal_tf, chart_tf,
               symbol, action, order_type, entry, sl, tp, volume, note,
               dispatch_status, execution_status, metadata, raw_json, created_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'NEW','PENDING',$18::jsonb,$19::jsonb,$20,$20)
+            ) VALUES ($1,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'NEW','PENDING',$17::jsonb,$18::jsonb,$19,$19)
           `,
             [
-              tradeId,
-              tradeSid,
+              tradeSid, // Use SID as both trade_id and sid
               aid,
               userId,
               signalId,
@@ -6678,7 +6677,7 @@ async function _mt5InitBackendInternal() {
             await client.query(
               `INSERT INTO logs (object_id, object_table, metadata, user_id) VALUES ($1,'trades',$2,$3)`,
               [
-                tradeId,
+                tradeSid,
                 JSON.stringify(
                   signalId
                     ? { event: "SIGNAL_FANOUT", signal_id: signalId }
@@ -6813,7 +6812,7 @@ async function _mt5InitBackendInternal() {
              opened_at = COALESCE($5, opened_at, CASE WHEN $1 = 'OPEN' THEN $6 ELSE NULL END),
              closed_at = COALESCE($7, CASE WHEN $1 = 'CLOSED' THEN $6 ELSE NULL END),
              updated_at = $6
-         WHERE trade_id = $8 AND account_id = $9 RETURNING user_id, opened_at, closed_at
+         WHERE (trade_id = $8 OR sid = $8) AND account_id = $9 RETURNING user_id, opened_at, closed_at
        `,
         [
           payload.execution_status,
@@ -6887,7 +6886,7 @@ async function _mt5InitBackendInternal() {
           `
           UPDATE signals
           SET status = $1
-          WHERE signal_id = $2
+          WHERE (signal_id = $2 OR sid = $2)
           RETURNING user_id
         `,
           [s, signalId],
@@ -6903,7 +6902,7 @@ async function _mt5InitBackendInternal() {
               metadata = COALESCE(metadata, '{}'::jsonb) || $6::jsonb,
               closed_at = CASE WHEN $4 = TRUE THEN NOW() ELSE closed_at END,
               updated_at = NOW()
-          WHERE signal_id = $2
+          WHERE (signal_id = $2 OR sid = $2)
         `,
           [
             tradeExec,
@@ -7190,6 +7189,11 @@ async function _mt5InitBackendInternal() {
                 END,
                 pnl_realized = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($2, pnl_realized) ELSE pnl_realized END,
                 volume = COALESCE($7, volume),
+                broker_pips = $13,
+                broker_lots = $14,
+                broker_commission = $15,
+                broker_swap = $16,
+                broker_volume = $17,
                 order_type = COALESCE($12, order_type),
                 close_reason = CASE WHEN $1 IN ('CLOSED','CANCELLED','TP','SL') THEN COALESCE($8, close_reason) ELSE close_reason END,
                 broker_trade_id = COALESCE(NULLIF($9, ''), broker_trade_id),
@@ -7200,13 +7204,12 @@ async function _mt5InitBackendInternal() {
             WHERE account_id = $3
               AND ($11 = '' OR symbol = $11)
               AND (
-                broker_trade_id = ANY($4::text[])
+                sid = ANY($4::text[])
+                OR broker_trade_id = ANY($4::text[])
                 OR metadata->>'broker_position_id' = ANY($4::text[])
                 OR metadata->>'position_ticket' = ANY($4::text[])
-                OR metadata->>'deal_ticket' = ANY($4::text[])
-                OR metadata->>'order_ticket' = ANY($4::text[])
               )
-            RETURNING trade_id
+            RETURNING sid
           `,
             [
               it.execution_status,
@@ -7217,10 +7220,15 @@ async function _mt5InitBackendInternal() {
               closedAt,
               it.volume,
               it.close_reason,
-              it.ticket || "",
+              ticketCandidates[0] || "",
               syncMeta,
               syncSymbol,
               it.order_type || null,
+              it.pips || 0,
+              it.lots || 0,
+              it.commission || 0,
+              it.swap || 0,
+              it.volume || 0,
             ],
           );
         }

@@ -34,7 +34,7 @@ namespace cAlgo.Robots
         [Parameter("Max Risk %", DefaultValue = 1.0, MinValue = 0.1, MaxValue = 10.0)]
         public double MaxRiskPct { get; set; }
 
-        private string BuildVersion = "v2026.05.04 21:07 - 49ad3fd";
+        private string BuildVersion = "v2026.05.05 04:27 - 8d8ec61";
         private string _lastStatus = "INITIALIZING";
         private string _lastSignalId = "None";
         private string _lastAction = "None";
@@ -120,7 +120,8 @@ namespace cAlgo.Robots
 
                     foreach (var pos in Positions)
                     {
-                        if (pos.Label == MagicNumber.ToString())
+                        // We check for SID in comment or legacy MagicNumber in Label
+                        if (pos.Label.Contains("_") || pos.Label == MagicNumber.ToString())
                         {
                             string sid = string.IsNullOrEmpty(pos.Comment) ? pos.Label : pos.Comment;
                             double pips = pos.Pips;
@@ -282,6 +283,11 @@ namespace cAlgo.Robots
             if (action == "BUY") type = TradeType.Buy;
             else if (action == "SELL") type = TradeType.Sell;
 
+            var source = GetJsonValue(json, "source");
+            var model = GetJsonValue(json, "entry_model");
+            var label = string.Format("{0}_{1}", source, model).Replace(" ", "_").ToUpper();
+            if (string.IsNullOrEmpty(label) || label == "_") label = MagicNumber.ToString();
+
             if (type.HasValue)
             {
                 var volumeUnits = symbol.QuantityToVolumeInUnits(volume);
@@ -299,9 +305,9 @@ namespace cAlgo.Robots
                     }
                 }
 
-                // Label = MagicNumber (for isolation)
-                // Comment = id (signal_id for tracking)
-                var result = ExecuteMarketOrder(type.Value, symbol.Name, volumeUnits, MagicNumber.ToString(), sl, tp, id);
+                // Label = source_model
+                // Comment = sid (id from payload)
+                var result = ExecuteMarketOrder(type.Value, symbol.Name, volumeUnits, label, sl, tp, id);
                 if (result.IsSuccessful)
                 {
                     _successCount++;
