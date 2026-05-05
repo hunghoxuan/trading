@@ -187,6 +187,7 @@ export default function TradesPage() {
   const [bulkAction, setBulkAction] = useState("");
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [createMode, setCreateMode] = useState(false);
+  const [isListOpen, setIsListOpen] = useState(true);
   const [createMsg, setCreateMsg] = useState("");
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
@@ -673,7 +674,10 @@ export default function TradesPage() {
       {createMsg ? <div className="loading" style={{ padding: 10 }}>{createMsg}</div> : null}
 
       <div className="logs-layout-split">
-        <div className="logs-list-pane component-frozen-wrap">
+        <div className="logs-list-pane component-frozen-wrap" style={isListOpen ? {} : { display: "none" }}>
+          <div style={{ position: "absolute", top: 8, right: 8, zIndex: 2 }}>
+            <button className="secondary-button" type="button" onClick={() => setIsListOpen(false)} title="Hide list" style={{ width: 28, height: 28, padding: 0, fontSize: 12, fontWeight: 700 }}>{"<<"}</button>
+          </div>
           {loading && (
             <div className="frozen-overlay">
               <div className="spinner" />
@@ -838,7 +842,10 @@ export default function TradesPage() {
           </div>
         </div>
 
-        <div className="logs-detail-pane component-frozen-wrap">
+        <div className="logs-detail-pane component-frozen-wrap" style={isListOpen ? {} : { gridColumn: "1 / -1" }}>
+          {!isListOpen && (
+            <button className="secondary-button" type="button" onClick={() => setIsListOpen(true)} title="Show list" style={{ position: "absolute", top: 8, left: 8, zIndex: 2, width: 28, height: 28, padding: 0, fontSize: 12, fontWeight: 700 }}>{">>"}</button>
+          )}
           {editBusy && (
             <div className="frozen-overlay">
               <div className="spinner" />

@@ -207,6 +207,7 @@ export default function SignalsPage() {
   const [error, setError] = useState("");
   const [advFilters, setAdvFilters] = useState({ sources: [], entry_models: [], chart_tfs: [], signal_tfs: [] });
   const [createMode, setCreateMode] = useState(false);
+  const [isListOpen, setIsListOpen] = useState(true);
   const [createMsg, setCreateMsg] = useState("");
   const [detailTfTab, setDetailTfTab] = useState("ENTRY");
   const [lastRefreshAt, setLastRefreshAt] = useState(null);
@@ -633,7 +634,10 @@ export default function SignalsPage() {
       </div>
 
       <div className="logs-layout-split">
-        <div className="logs-list-pane component-frozen-wrap">
+        <div className="logs-list-pane component-frozen-wrap" style={isListOpen ? {} : { display: "none" }}>
+          <div style={{ position: "absolute", top: 8, right: 8, zIndex: 2 }}>
+            <button className="secondary-button" type="button" onClick={() => setIsListOpen(false)} title="Hide list" style={{ width: 28, height: 28, padding: 0, fontSize: 12, fontWeight: 700 }}>{"<<"}</button>
+          </div>
           {loading && (
             <div className="frozen-overlay">
               <div className="spinner" />
@@ -775,7 +779,10 @@ export default function SignalsPage() {
           </div>
         </div>
 
-        <div className="logs-detail-pane component-frozen-wrap">
+        <div className="logs-detail-pane component-frozen-wrap" style={isListOpen ? {} : { gridColumn: "1 / -1" }}>
+          {!isListOpen && (
+            <button className="secondary-button" type="button" onClick={() => setIsListOpen(true)} title="Show list" style={{ position: "absolute", top: 8, left: 8, zIndex: 2, width: 28, height: 28, padding: 0, fontSize: 12, fontWeight: 700 }}>{">>"}</button>
+          )}
           {(detailPlanBusy.save || detailPlanBusy.trade || detailPlanBusy.signal) && (
             <div className="frozen-overlay">
               <div className="spinner" />
