@@ -100,7 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 10:41 - 5e50796"); // DB schema SHOW column + presets
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 10:57 - 0ba141f"); // DB schema SHOW column + presets
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
@@ -7171,6 +7171,7 @@ async function _mt5InitBackendInternal() {
 
       let matched = 0;
       let synced = 0;
+      const results = [];
       for (const it of items) {
         let res = { rowCount: 0 };
         const ticketCandidates =
@@ -7389,9 +7390,26 @@ async function _mt5InitBackendInternal() {
           );
         }
 
-        // --- MANUAL TRADE DISCOVERY ---
-        // Final fallback: if no trade was matched and it's OPEN, create it.
-        if (res.rowCount === 0 && it.execution_status === "OPEN") {
+          matched += res.rowCount;
+          synced++;
+          const tid = String(res.rows?.[0]?.sid || "").trim();
+          results.push({ ticket: it.ticket, sid: tid, status: 'Ok', symbol: it.symbol, action: it.action });
+          if (tid) {
+            await this.log(
+              tid,
+              "trades",
+              {
+                event: "TRADE_SYNC_UPDATE",
+                status_raw: it.status_raw,
+                execution_status: it.execution_status,
+                ticket: it.ticket || null,
+                signal_id: it.sid || null,
+                pnl: it.pnl,
+              },
+              uid,
+            );
+          }
+        } else if (it.execution_status === "OPEN") {
           const discoverySid = mt5GenerateTimeSid();
           const brokerSource = (payload.broker_name || "BROKER")
             .toUpperCase()
@@ -7427,25 +7445,9 @@ async function _mt5InitBackendInternal() {
             ],
           );
           matched++;
-        } else if (res.rowCount > 0) {
-          matched += res.rowCount;
-          synced++;
-          const tid = String(res.rows?.[0]?.sid || "").trim();
-          if (tid) {
-            await this.log(
-              tid,
-              "trades",
-              {
-                event: "TRADE_SYNC_UPDATE",
-                status_raw: it.status_raw,
-                execution_status: it.execution_status,
-                ticket: it.ticket || null,
-                signal_id: it.sid || null,
-                pnl: it.pnl,
-              },
-              uid,
-            );
-          }
+          results.push({ ticket: it.ticket, sid: discoverySid, status: 'Added', symbol: it.symbol, action: it.action });
+        } else {
+          results.push({ ticket: it.ticket, sid: null, status: 'Skip', symbol: it.symbol, action: it.action });
         }
       }
       const finalizeSnapshotClosures = async (rows = []) => {
@@ -7544,6 +7546,7 @@ async function _mt5InitBackendInternal() {
         matched,
         received: items.length,
         closed_by_snapshot,
+        results,
       };
     },
     async brokerHeartbeatV2(accountId, payload = {}) {
@@ -17489,7 +17492,7 @@ const appHandler = async (req, res) => {
         maxItems,
         leaseSeconds,
       );
-      return json(res, 200, {
+      const resp = {
         ok: true,
         items: (items || []).map((t) => ({
           sid: t.sid,
@@ -17509,7 +17512,9 @@ const appHandler = async (req, res) => {
           metadata:
             t.metadata && typeof t.metadata === "object" ? t.metadata : {},
         })),
-      });
+      };
+      console.log(`[v2/broker/pull] aid=${account.account_id} items=${resp.items.length}`);
+      return json(res, 200, resp);
     } catch (error) {
       return json(res, 400, {
         ok: false,
@@ -17570,6 +17575,7 @@ const appHandler = async (req, res) => {
       if (!account) return;
       const result = await mt5BrokerSyncV2(account.account_id, payload || {});
       const statusCode = result?.ok ? 200 : 400;
+      console.log(`[v2/broker/sync] aid=${account.account_id} items=${(payload.items || []).length} results=${(result.results || []).length}`);
       return json(res, statusCode, result);
     } catch (error) {
       console.error("[v2/broker/sync] failed", {

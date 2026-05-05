@@ -30,7 +30,7 @@ namespace cAlgo.Robots
         [Parameter("Magic Number", DefaultValue = 20260411)]
         public int MagicNumber { get; set; }
 
-        private string BuildVersion = "v2026.05.05 10:41 - 5e50796";
+        private string BuildVersion = "v2026.05.05 10:57 - 0ba141f";
         
         private string _serverStatus = "WAITING";
         private string _apiStatus = "WAITING";
@@ -50,7 +50,15 @@ namespace cAlgo.Robots
         // REGISTRY: Tracks all processed signals to prevent duplicates
         private HashSet<string> _processedSignalIds = new HashSet<string>();
         private List<string> _signalHistory = new List<string>();
-        private List<string> _activePositions = new List<string>();
+        private List<string> _lastSyncResults = new List<string>();
+
+        private struct SyncResult {
+            public string Ticket;
+            public string Sid;
+            public string Status;
+            public string Symbol;
+            public string Action;
+        }
 
         private HttpClient _httpClient = new HttpClient();
         private bool _isBusy = false;
@@ -83,7 +91,7 @@ namespace cAlgo.Robots
                 
                 posDisplay.Add(string.Format("{0} {1} {2}", pos.Id, pos.TradeType.ToString().ToUpper(), pos.SymbolName));
             }
-            _activePositions = posDisplay;
+            // _activePositions removed, replaced by _lastSyncResults
 
             Task.Run(async () => {
                 try {
@@ -156,9 +164,7 @@ namespace cAlgo.Robots
             if (_processedSignalIds.Contains(id)) return;
             _processedSignalIds.Add(id);
 
-            // Keep history list clean
-            _signalHistory.Insert(0, string.Format("{0}: {1} {2}", id, action, symbolCode));
-            if (_signalHistory.Count > 5) _signalHistory.RemoveAt(5);
+            UpdateSignalHistory(id, action + " " + symbolCode + " (PENDING)");
 
             BeginInvokeOnMainThread(() => {
                 var symbol = Symbols.GetSymbol(symbolCode);
@@ -174,6 +180,7 @@ namespace cAlgo.Robots
                 if (Positions.Any(p => p.Comment == id && p.Label == MagicNumber.ToString()))
                 {
                     Print("Signal {0} already open. Skipping execution.", id);
+                    UpdateSignalHistory(id, action + " " + symbolCode + " (ALREADY_OPEN)");
                     _ = AckAsync(id, leaseToken, "FILLED", "ALREADY_OPEN", ""); // Ack as filled so server stops sending
                     return;
                 }
@@ -181,11 +188,23 @@ namespace cAlgo.Robots
                 var volumeUnits = symbol.QuantityToVolumeInUnits(lots);
                 var res = ExecuteMarketOrder(action == "BUY" ? TradeType.Buy : TradeType.Sell, symbol.Name, volumeUnits, MagicNumber.ToString(), ParseDouble(GetJsonValue(json, "sl")), ParseDouble(GetJsonValue(json, "tp")), id);
                 if (res.IsSuccessful) {
+                    UpdateSignalHistory(id, action + " " + symbolCode + " (FILLED)");
                     _ = AckAsync(id, leaseToken, "FILLED", res.Position.Id.ToString(), "");
                 } else {
+                    UpdateSignalHistory(id, action + " " + symbolCode + " (ERR: " + res.Error + ")");
                     _ = AckAsync(id, leaseToken, "ERROR", "", res.Error.ToString());
                 }
             });
+        }
+
+        private void UpdateSignalHistory(string id, string text)
+        {
+            var entry = string.Format("{0}: {1}", id, text);
+            // Remove existing entry for same ID to update it
+            _signalHistory.RemoveAll(x => x.StartsWith(id + ":"));
+            _signalHistory.Insert(0, entry);
+            if (_signalHistory.Count > 8) _signalHistory.RemoveAt(8);
+            RefreshDebugPanel();
         }
 
         private async Task SyncWithVpsAsync(string accId, double bal, double eq, double marg, List<string> posList)
@@ -194,13 +213,15 @@ namespace cAlgo.Robots
             try
             {
                 var payload = string.Format(CultureInfo.InvariantCulture, 
-                    "{{\"account_id\":\"{0}\",\"balance\":{1:F2},\"equity\":{2:F2},\"margin\":{3:F2},\"positions\":[{4}]}}",
+                    "{{\"account_id\":\"{0}\",\"balance\":{1:F2},\"equity\":{2:F2},\"margin\":{3:F2},\"positions\":[{4}],\"orders\":[]}}",
                     accId, bal, eq, marg, string.Join(",", posList));
                 var content = new StringContent(payload, Encoding.UTF8, "application/json");
                 content.Headers.Add("x-api-key", EaApiKey);
                 var response = await _httpClient.PostAsync(ServerBaseUrl.TrimEnd('/') + "/v2/broker/sync", content);
                 if (response.IsSuccessStatusCode) {
                     _syncCount++; _syncStatus = "OK"; _lastSyncTime = DateTime.Now; _lastSyncErr = "None";
+                    var json = await response.Content.ReadAsStringAsync();
+                    ParseSyncResults(json);
                 } else { 
                     _syncStatus = "FAIL (" + (int)response.StatusCode + ")"; 
                     _lastSyncErr = await response.Content.ReadAsStringAsync();
@@ -208,6 +229,27 @@ namespace cAlgo.Robots
                 }
             }
             catch (Exception ex) { _syncStatus = "ERROR"; _lastSyncErr = ex.Message; }
+        }
+
+        private void ParseSyncResults(string json)
+        {
+            var resList = new List<string>();
+            var resultsMatch = Regex.Match(json, "\"results\"\\s*:\\s*\\[(.*?)\\]", RegexOptions.Singleline);
+            if (resultsMatch.Success)
+            {
+                var objects = Regex.Matches(resultsMatch.Groups[1].Value, "\\{(.*?)\\}", RegexOptions.Singleline);
+                foreach (Match objMatch in objects)
+                {
+                    var obj = "{" + objMatch.Groups[1].Value + "}";
+                    var ticket = GetJsonValue(obj, "ticket");
+                    var sid = GetJsonValue(obj, "sid");
+                    var status = GetJsonValue(obj, "status");
+                    var sym = GetJsonValue(obj, "symbol");
+                    var act = GetJsonValue(obj, "action");
+                    resList.Add(string.Format("{0} | {1} {2} {3} [{4}]", ticket, sid ?? "NONE", act, sym, status));
+                }
+            }
+            _lastSyncResults = resList;
         }
 
         private async Task AckAsync(string sid, string token, string status, string ticket, string err)
@@ -241,8 +283,8 @@ namespace cAlgo.Robots
                 // 3. BOTTOM RIGHT: SYNC EVENT
                 var br = new StringBuilder();
                 br.AppendLine(string.Format("EVENT SYNC: {0}, {1}", _syncStatus, _lastSyncTime == DateTime.MinValue ? "NEVER" : _lastSyncTime.ToString("HH:mm:ss")));
-                foreach (var pos in _activePositions.Take(8)) br.AppendLine("  " + pos);
-                if (_activePositions.Count > 8) br.AppendLine(string.Format("  ... +{0} more", _activePositions.Count - 8));
+                foreach (var line in _lastSyncResults.Take(12)) br.AppendLine("  " + line);
+                if (_lastSyncResults.Count > 12) br.AppendLine(string.Format("  ... +{0} more", _lastSyncResults.Count - 12));
                 if (_lastSyncErr != "None") br.AppendLine("ERR: " + (_lastSyncErr.Length > 50 ? _lastSyncErr.Substring(0, 50) : _lastSyncErr));
                 Chart.DrawStaticText("Panel_BR", br.ToString(), VerticalAlignment.Bottom, HorizontalAlignment.Right, _syncStatus == "OK" ? Color.Lime : Color.Red);
             });
