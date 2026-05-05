@@ -2,7 +2,7 @@
 
 ## Meta
 - ID: `FEAT-20260505-DB-CACHE-UI`
-- Status: `IN PROGRESS`
+- Status: `DONE`
 - Priority: `P2`
 
 ## Scope

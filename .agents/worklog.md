@@ -1,3 +1,33 @@
+# Session Log: 2026-05-05 05:00
+- **Starting Task**:
+  - Resume `FEAT-20260505-DB-CACHE-UI` — DB & Cache Page Enhancements
+- **Work Accomplished**:
+  - **Backend**: Added `sortCol`/`sortDir` params to `listTableRows` with schema-validated dynamic ORDER BY.
+  - **Backend**: Added `updateTableRow` function with PK detection, column validation, JSON handling.
+  - **Backend**: Added `POST /mt5/db/rows/update` route.
+  - **Frontend API**: Added `dbUpdateRow` method.
+  - **CachePage**: Replaced `showDateTime` with `timeAgo` + expiry countdown per cache item.
+  - **CachePage**: Added search input (key/content) and symbol filter dropdown.
+  - **DatabasePage**: Column header sorting with ▲/▼ indicators.
+  - **DatabasePage**: Schema panel column visibility toggles (show/hide from table).
+  - **DatabasePage**: Detail pane EDIT button → DynamicForm pre-filled with selected row → SAVE updates via new API.
+  - **DynamicForm**: Extended to accept `initialData` and `mode` props for edit mode.
+  - **Docs**: Added missing `source`, `status`, `broker_pips`, `broker_lots`, `broker_commission`, `broker_swap`, `broker_volume` to trades table in `db-schema.md`.
+  - Bumped `SERVER_VERSION` and `EA_BUILD_VERSION` to `v2026.05.05 05:00 - efa3f99`.
+- **Changed Files**:
+  - `webhook/server.js`
+  - `web-ui/src/api.js`
+  - `web-ui/src/pages/system/CachePage.jsx`
+  - `web-ui/src/pages/system/DatabasePage.jsx`
+  - `bridge-clients/TVBridgeEA.mq5`
+  - `.agents/.product/architecture/db-schema.md`
+  - `.agents/worklog.md`
+- **Verification**:
+  - `node --check webhook/server.js` ✅
+  - `npm --prefix web-ui run build` ✅
+- **Deploy Status**:
+  - Not yet deployed. Ready for deploy.
+
 # Session Log: 2026-05-04 04:32
 - **Starting Task**:
   - Enhance symbol search and add asset groups (GOLD, SILVER, SMT).

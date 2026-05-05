@@ -9,41 +9,66 @@ function fDateTime(v) {
 
 function statusUi(statusRaw) {
   const s = String(statusRaw || "").toUpperCase();
-  if (s === "ACTIVE" || s === "TRUE" || s === "SUCCESS" || s === "OK") return { cls: "TP", label: s };
-  if (s === "INACTIVE" || s === "FALSE" || s === "DISABLE" || s === "DISABLED") return { cls: "INACTIVE", label: s };
+  if (s === "ACTIVE" || s === "TRUE" || s === "SUCCESS" || s === "OK")
+    return { cls: "TP", label: s };
+  if (s === "INACTIVE" || s === "FALSE" || s === "DISABLE" || s === "DISABLED")
+    return { cls: "INACTIVE", label: s };
   if (s === "PLACED" || s === "OPEN") return { cls: "PLACED", label: s };
   if (s === "LOCKED") return { cls: "LOCKED", label: s };
   if (s === "START") return { cls: "START", label: s };
   if (s === "TP" || s === "WON" || s === "WIN") return { cls: "TP", label: s };
-  if (s === "SL" || s === "FAILED" || s === "ERROR" || s === "REJECTED" || s === "LOSS") return { cls: "SL", label: s };
+  if (
+    s === "SL" ||
+    s === "FAILED" ||
+    s === "ERROR" ||
+    s === "REJECTED" ||
+    s === "LOSS"
+  )
+    return { cls: "SL", label: s };
   return { cls: "OTHER", label: s || "-" };
 }
 
-function DynamicForm({ schema, onSubmit, onCancel, busy }) {
+function DynamicForm({
+  schema,
+  onSubmit,
+  onCancel,
+  busy,
+  initialData,
+  mode = "create",
+}) {
   const [formData, setFormData] = useState({});
 
   useEffect(() => {
-    const initial = {};
-    schema.forEach(col => {
-      if (col.column_default && !col.column_default.includes('nextval')) {
-        let def = col.column_default.replace(/'/g, '').split('::')[0];
-        initial[col.column_name] = def;
-      }
-    });
-    setFormData(initial);
-  }, [schema]);
+    if (initialData) {
+      setFormData({ ...initialData });
+    } else {
+      const initial = {};
+      schema.forEach((col) => {
+        if (col.column_default && !col.column_default.includes("nextval")) {
+          let def = col.column_default.replace(/'/g, "").split("::")[0];
+          initial[col.column_name] = def;
+        }
+      });
+      setFormData(initial);
+    }
+  }, [schema, initialData]);
 
   const handleChange = (name, val) => {
-    setFormData(prev => ({ ...prev, [name]: val }));
+    setFormData((prev) => ({ ...prev, [name]: val }));
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     const final = { ...formData };
     // Try to parse JSON fields
-    schema.forEach(col => {
-      if (col.data_type.toLowerCase().includes('json') && typeof final[col.column_name] === 'string') {
-        try { final[col.column_name] = JSON.parse(final[col.column_name]); } catch(e) {}
+    schema.forEach((col) => {
+      if (
+        col.data_type.toLowerCase().includes("json") &&
+        typeof final[col.column_name] === "string"
+      ) {
+        try {
+          final[col.column_name] = JSON.parse(final[col.column_name]);
+        } catch (e) {}
       }
     });
     onSubmit(final);
@@ -51,34 +76,65 @@ function DynamicForm({ schema, onSubmit, onCancel, busy }) {
 
   return (
     <form onSubmit={handleSubmit} className="stack-layout" style={{ gap: 14 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        {schema.map(col => {
-          const isRequired = col.is_nullable === 'NO' && !col.column_default;
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        {schema.map((col) => {
+          const isRequired = col.is_nullable === "NO" && !col.column_default;
           const type = col.data_type.toLowerCase();
-          const isFullWidth = type.includes('json') || col.column_name === 'note';
-          
+          const isFullWidth =
+            type.includes("json") || col.column_name === "note";
+
           return (
-            <label key={col.column_name} style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: isFullWidth ? 'span 2' : 'auto' }}>
-              <span className="minor-text" style={{ fontSize: 10, fontWeight: 800, color: 'var(--muted)' }}>
-                {col.column_name.toUpperCase()} {isRequired && <span style={{ color: '#ef4444' }}>*</span>}
-                <span style={{ marginLeft: 8, opacity: 0.5, fontWeight: 400 }}>{col.data_type}</span>
+            <label
+              key={col.column_name}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                gridColumn: isFullWidth ? "span 2" : "auto",
+              }}
+            >
+              <span
+                className="minor-text"
+                style={{ fontSize: 10, fontWeight: 800, color: "var(--muted)" }}
+              >
+                {col.column_name.toUpperCase()}{" "}
+                {isRequired && <span style={{ color: "#ef4444" }}>*</span>}
+                <span style={{ marginLeft: 8, opacity: 0.5, fontWeight: 400 }}>
+                  {col.data_type}
+                </span>
               </span>
-              
-              {type.includes('json') ? (
-                <textarea 
+
+              {type.includes("json") ? (
+                <textarea
                   className="snapshot-mono"
-                  value={typeof formData[col.column_name] === 'object' ? JSON.stringify(formData[col.column_name], null, 2) : (formData[col.column_name] || '')}
-                  onChange={e => handleChange(col.column_name, e.target.value)}
+                  value={
+                    typeof formData[col.column_name] === "object"
+                      ? JSON.stringify(formData[col.column_name], null, 2)
+                      : formData[col.column_name] || ""
+                  }
+                  onChange={(e) =>
+                    handleChange(col.column_name, e.target.value)
+                  }
                   rows={4}
-                  style={{ fontSize: '11px' }}
+                  style={{ fontSize: "11px" }}
                 />
               ) : (
-                <input 
-                  type={type.includes('int') || type.includes('double') || type.includes('float') ? 'number' : type.includes('timestamp') ? 'datetime-local' : 'text'}
+                <input
+                  type={
+                    type.includes("int") ||
+                    type.includes("double") ||
+                    type.includes("float")
+                      ? "number"
+                      : type.includes("timestamp")
+                        ? "datetime-local"
+                        : "text"
+                  }
                   step="any"
-                  value={formData[col.column_name] || ''}
-                  onChange={e => handleChange(col.column_name, e.target.value)}
-                  placeholder={col.column_default || ''}
+                  value={formData[col.column_name] || ""}
+                  onChange={(e) =>
+                    handleChange(col.column_name, e.target.value)
+                  }
+                  placeholder={col.column_default || ""}
                   required={isRequired}
                 />
               )}
@@ -86,11 +142,35 @@ function DynamicForm({ schema, onSubmit, onCancel, busy }) {
           );
         })}
       </div>
-      <div style={{ display: "flex", gap: 10, marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-        <button type="submit" className="primary-button" style={{ minWidth: 120 }} disabled={busy}>
-          {busy ? "SAVING..." : "💾 CREATE RECORD"}
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          marginTop: 10,
+          borderTop: "1px solid var(--border)",
+          paddingTop: 16,
+        }}
+      >
+        <button
+          type="submit"
+          className="primary-button"
+          style={{ minWidth: 120 }}
+          disabled={busy}
+        >
+          {busy
+            ? "SAVING..."
+            : mode === "edit"
+              ? "💾 EDIT RECORD"
+              : "💾 CREATE RECORD"}
         </button>
-        <button type="button" className="secondary-button" onClick={onCancel} disabled={busy}>✖ CANCEL</button>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={onCancel}
+          disabled={busy}
+        >
+          ✖ CANCEL
+        </button>
       </div>
     </form>
   );
@@ -110,7 +190,14 @@ export default function DatabasePage() {
   const [createMode, setCreateMode] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [createMsg, setCreateMsg] = useState("");
-  const [createRowJson, setCreateRowJson] = useState("{\n  \"action\": \"BUY\",\n  \"symbol\": \"XAUUSD\",\n  \"volume\": 0.01\n}");
+  const [createRowJson, setCreateRowJson] = useState(
+    '{\n  "action": "BUY",\n  "symbol": "XAUUSD",\n  "volume": 0.01\n}',
+  );
+  const [editMode, setEditMode] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [sortCol, setSortCol] = useState("");
+  const [sortDir, setSortDir] = useState("DESC");
+  const [hiddenCols, setHiddenCols] = useState(new Set());
   const inFlightRef = useRef(false);
 
   const [filter, setFilter] = useState({
@@ -119,7 +206,10 @@ export default function DatabasePage() {
     pageSize: 50,
   });
 
-  const query = useMemo(() => ({ table: selectedTable, ...filter }), [selectedTable, filter]);
+  const query = useMemo(
+    () => ({ table: selectedTable, ...filter, sortCol, sortDir }),
+    [selectedTable, filter, sortCol, sortDir],
+  );
 
   async function loadTables() {
     try {
@@ -138,7 +228,7 @@ export default function DatabasePage() {
       setLoading(true);
       const [data, schemaData] = await Promise.all([
         api.dbRows(query),
-        api.dbSchema(query.table).catch(() => ({ schema: [] }))
+        api.dbSchema(query.table).catch(() => ({ schema: [] })),
       ]);
       setSchema(schemaData.schema || []);
       setRows(data.rows || []);
@@ -153,22 +243,26 @@ export default function DatabasePage() {
     }
   }
 
-  useEffect(() => { loadTables(); }, []);
-  useEffect(() => { loadRows(); }, [query]);
+  useEffect(() => {
+    loadTables();
+  }, []);
+  useEffect(() => {
+    loadRows();
+  }, [query]);
 
   const handleSearchChange = (e) => {
-    setFilter(prev => ({ ...prev, q: e.target.value, page: 1 }));
+    setFilter((prev) => ({ ...prev, q: e.target.value, page: 1 }));
   };
 
   const handleTableChange = (e) => {
     setSelectedTable(e.target.value);
-    setFilter(prev => ({ ...prev, page: 1 }));
+    setFilter((prev) => ({ ...prev, page: 1 }));
     setSelectedRow(null);
     setCreateMode(false);
   };
 
   const handlePageChange = (p) => {
-    setFilter(prev => ({ ...prev, page: p }));
+    setFilter((prev) => ({ ...prev, page: p }));
   };
 
   async function onCreateRow(formData) {
@@ -186,10 +280,50 @@ export default function DatabasePage() {
     }
   }
 
+  async function onEditRow(formData) {
+    try {
+      setEditBusy(true);
+      await api.dbUpdateRow({ table: selectedTable, row: formData });
+      setCreateMsg("Record updated.");
+      setEditMode(false);
+      setSelectedRow(formData);
+      await loadRows();
+    } catch (e) {
+      setError(e?.message || "Failed to update row");
+    } finally {
+      setEditBusy(false);
+      window.setTimeout(() => setCreateMsg(""), 3000);
+    }
+  }
+
+  function handleSort(colName) {
+    if (sortCol === colName) {
+      setSortDir((d) => (d === "ASC" ? "DESC" : "ASC"));
+    } else {
+      setSortCol(colName);
+      setSortDir("ASC");
+    }
+  }
+
+  function toggleColVisibility(colName) {
+    setHiddenCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(colName)) next.delete(colName);
+      else next.add(colName);
+      return next;
+    });
+  }
+
   const tableHeaders = useMemo(() => {
     if (schema && schema.length > 0) {
-      return schema.map(c => c.column_name);
+      return schema.map((c) => c.column_name).filter((c) => !hiddenCols.has(c));
     }
+    if (!rows.length) return [];
+    return Object.keys(rows[0]);
+  }, [rows, schema, hiddenCols]);
+
+  const allSchemaCols = useMemo(() => {
+    if (schema && schema.length > 0) return schema.map((c) => c.column_name);
     if (!rows.length) return [];
     return Object.keys(rows[0]);
   }, [rows, schema]);
@@ -201,109 +335,273 @@ export default function DatabasePage() {
         <div className="toolbar-group toolbar-pagination">
           {pages > 1 && (
             <div className="pager-mini">
-              <button className="secondary-button" disabled={filter.page <= 1} onClick={() => handlePageChange(filter.page - 1)}>&lt;</button>
-              <span className="minor-text">{filter.page}/{pages}</span>
-              <button className="secondary-button" disabled={filter.page >= pages} onClick={() => handlePageChange(filter.page + 1)}>&gt;</button>
+              <button
+                className="secondary-button"
+                disabled={filter.page <= 1}
+                onClick={() => handlePageChange(filter.page - 1)}
+              >
+                &lt;
+              </button>
+              <span className="minor-text">
+                {filter.page}/{pages}
+              </span>
+              <button
+                className="secondary-button"
+                disabled={filter.page >= pages}
+                onClick={() => handlePageChange(filter.page + 1)}
+              >
+                &gt;
+              </button>
             </div>
           )}
-          <div className="minor-text" style={{ marginLeft: "10px" }}>TOTAL: {total}</div>
+          <div className="minor-text" style={{ marginLeft: "10px" }}>
+            TOTAL: {total}
+          </div>
 
           <select
             value={filter.pageSize}
-            onChange={e => setFilter(f => ({ ...f, pageSize: Number(e.target.value), page: 1 }))}
+            onChange={(e) =>
+              setFilter((f) => ({
+                ...f,
+                pageSize: Number(e.target.value),
+                page: 1,
+              }))
+            }
           >
-            {[50, 100, 200].map(n => <option key={n} value={n}>{n}</option>)}
+            {[50, 100, 200].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
           </select>
         </div>
 
         <div className="toolbar-group toolbar-search-filter">
-          <select value={selectedTable} onChange={handleTableChange} style={{ minWidth: '140px' }}>
-            {tables.map(t => <option key={t} value={t}>{t.toUpperCase()}</option>)}
+          <select
+            value={selectedTable}
+            onChange={handleTableChange}
+            style={{ minWidth: "140px" }}
+          >
+            {tables.map((t) => (
+              <option key={t} value={t}>
+                {t.toUpperCase()}
+              </option>
+            ))}
           </select>
 
-          <input 
-            type="text" 
-            placeholder="SEARCH RECORDS..." 
-            value={filter.q} 
-            onChange={handleSearchChange} 
+          <input
+            type="text"
+            placeholder="SEARCH RECORDS..."
+            value={filter.q}
+            onChange={handleSearchChange}
             style={{ width: "180px" }}
           />
         </div>
 
-        <button type="button" className="secondary-button" onClick={() => setShowSchema(!showSchema)}>{showSchema ? "HIDE SCHEMA" : "SHOW SCHEMA"}</button>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => setShowSchema(!showSchema)}
+        >
+          {showSchema ? "HIDE SCHEMA" : "SHOW SCHEMA"}
+        </button>
         <div className="toolbar-group toolbar-bulk-action">
           <select disabled={loading}>
             <option value="">BULK ACTION...</option>
             <option value="export">DOWNLOAD CSV</option>
             <option value="delete">DELETE ALL</option>
           </select>
-          <button type="button" className="primary-button" onClick={() => alert("Action triggered")} disabled={loading}>APPLY</button>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => alert("Action triggered")}
+            disabled={loading}
+          >
+            APPLY
+          </button>
         </div>
-
       </div>
 
       <div className="logs-layout-split">
         <div className="logs-list-pane">
           {error && <div className="error">{error}</div>}
-          {createMsg ? <div className="loading" style={{ padding: 10 }}>{createMsg}</div> : null}
+          {createMsg ? (
+            <div className="loading" style={{ padding: 10 }}>
+              {createMsg}
+            </div>
+          ) : null}
           {showSchema && schema.length > 0 && (
             <div className="panel" style={{ margin: "10px", padding: "10px" }}>
               <div className="panel-label">TABLE SCHEMA: {selectedTable}</div>
-              <table className="events-table" style={{ width: "100%", fontSize: "12px" }}>
-                <thead><tr><th>COLUMN_NAME</th><th>DATA_TYPE</th><th>NULLABLE</th><th>DEFAULT</th></tr></thead>
+              <div
+                style={{ marginBottom: 8, fontSize: 10 }}
+                className="minor-text"
+              >
+                TOGGLE COLUMN VISIBILITY (unchecked = hidden from table):
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 6,
+                  marginBottom: 10,
+                }}
+              >
+                {allSchemaCols.map((c) => (
+                  <label
+                    key={c}
+                    style={{
+                      fontSize: 10,
+                      cursor: "pointer",
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      background: hiddenCols.has(c)
+                        ? "rgba(255,255,255,0.03)"
+                        : "rgba(255,255,255,0.08)",
+                      opacity: hiddenCols.has(c) ? 0.5 : 1,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!hiddenCols.has(c)}
+                      onChange={() => toggleColVisibility(c)}
+                      style={{ marginRight: 4, width: 12, height: 12 }}
+                    />
+                    {c.replace(/_/g, " ").toUpperCase()}
+                  </label>
+                ))}
+              </div>
+              <table
+                className="events-table"
+                style={{ width: "100%", fontSize: "12px" }}
+              >
+                <thead>
+                  <tr>
+                    <th>COLUMN_NAME</th>
+                    <th>DATA_TYPE</th>
+                    <th>NULLABLE</th>
+                    <th>DEFAULT</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {schema.map(c => (
+                  {schema.map((c) => (
                     <tr key={c.column_name}>
                       <td>{c.column_name}</td>
-                      <td><span className="badge START">{c.data_type} {c.character_maximum_length ? `(${c.character_maximum_length})` : ''}</span></td>
+                      <td>
+                        <span className="badge START">
+                          {c.data_type}{" "}
+                          {c.character_maximum_length
+                            ? `(${c.character_maximum_length})`
+                            : ""}
+                        </span>
+                      </td>
                       <td>{c.is_nullable}</td>
-                      <td>{c.column_default || '-'}</td>
+                      <td>{c.column_default || "-"}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-          <div className="events-table-wrap" style={{ overflowX: 'auto', whiteSpace: 'nowrap' }}>
+          <div
+            className="events-table-wrap"
+            style={{ overflowX: "auto", whiteSpace: "nowrap" }}
+          >
             <table className="events-table">
               <thead>
                 <tr>
-                  {tableHeaders.map(h => <th key={h}>{h.replace(/_/g, " ").toUpperCase()}</th>)}
+                  {tableHeaders.map((h) => (
+                    <th
+                      key={h}
+                      onClick={() => handleSort(h)}
+                      style={{ cursor: "pointer", userSelect: "none" }}
+                    >
+                      {h.replace(/_/g, " ").toUpperCase()}
+                      {sortCol === h && (
+                        <span style={{ marginLeft: 4, fontSize: 10 }}>
+                          {sortDir === "ASC" ? "▲" : "▼"}
+                        </span>
+                      )}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {loading && <tr><td colSpan={tableHeaders.length} style={{ textAlign: "center", padding: "40px" }} className="muted">Loading institutional records...</td></tr>}
-                {!loading && rows.length === 0 && <tr><td colSpan={tableHeaders.length} style={{ textAlign: "center", padding: "40px" }} className="muted">No records found</td></tr>}
-                {!loading && rows.map((row, idx) => (
-                  <tr 
-                    key={idx} 
-                    onClick={() => { setCreateMode(false); setSelectedRow(row); }} 
-                    className={selectedRow === row ? "active" : ""}
-                  >
-                    {tableHeaders.map(h => {
-                      const val = row[h];
-                      const isDate = h.includes("_at") || h === "tick_time" || h === "event_time";
-                      const isStatus = h === "status" || h === "ack_status";
-                      
-                      if (isStatus) {
-                        const ui = statusUi(val);
-                        return <td key={h}><span className={`badge ${ui.cls}`}>{ui.label}</span></td>;
-                      }
-                      
-                      return (
-                        <td key={h}>
-                          <div className="cell-wrap">
-                             <div className="minor-text">{isDate ? fDateTime(val) : String(val ?? "-").slice(0, 50)}</div>
-                          </div>
-                        </td>
-                      );
-                    })}
+                {loading && (
+                  <tr>
+                    <td
+                      colSpan={tableHeaders.length}
+                      style={{ textAlign: "center", padding: "40px" }}
+                      className="muted"
+                    >
+                      Loading institutional records...
+                    </td>
                   </tr>
-                ))}
+                )}
+                {!loading && rows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={tableHeaders.length}
+                      style={{ textAlign: "center", padding: "40px" }}
+                      className="muted"
+                    >
+                      No records found
+                    </td>
+                  </tr>
+                )}
+                {!loading &&
+                  rows.map((row, idx) => (
+                    <tr
+                      key={idx}
+                      onClick={() => {
+                        setCreateMode(false);
+                        setEditMode(false);
+                        setSelectedRow(row);
+                      }}
+                      className={selectedRow === row ? "active" : ""}
+                    >
+                      {tableHeaders.map((h) => {
+                        const val = row[h];
+                        const isDate =
+                          h.includes("_at") ||
+                          h === "tick_time" ||
+                          h === "event_time";
+                        const isStatus = h === "status" || h === "ack_status";
+
+                        if (isStatus) {
+                          const ui = statusUi(val);
+                          return (
+                            <td key={h}>
+                              <span className={`badge ${ui.cls}`}>
+                                {ui.label}
+                              </span>
+                            </td>
+                          );
+                        }
+
+                        return (
+                          <td key={h}>
+                            <div className="cell-wrap">
+                              <div className="minor-text">
+                                {isDate
+                                  ? fDateTime(val)
+                                  : String(val ?? "-").slice(0, 50)}
+                              </div>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>
-          <div style={{ padding: "10px 12px", borderTop: "1px solid var(--border)" }}>
+          <div
+            style={{
+              padding: "10px 12px",
+              borderTop: "1px solid var(--border)",
+            }}
+          >
             <button
               type="button"
               className="secondary-button"
@@ -312,6 +610,7 @@ export default function DatabasePage() {
                   setCreateMode(false);
                 } else {
                   setCreateMode(true);
+                  setEditMode(false);
                   setSelectedRow(null);
                 }
               }}
@@ -321,33 +620,113 @@ export default function DatabasePage() {
           </div>
         </div>
 
-        <div className="logs-detail-pane" style={{ padding: '0' }}>
+        <div className="logs-detail-pane" style={{ padding: "0" }}>
           {createMode ? (
-            <div className="panel" style={{ margin: 12, border: 'none', background: 'transparent' }}>
-              <div className="panel-label">CREATE NEW {selectedTable.toUpperCase()} RECORD</div>
-              <DynamicForm 
-                schema={schema} 
+            <div
+              className="panel"
+              style={{ margin: 12, border: "none", background: "transparent" }}
+            >
+              <div className="panel-label">
+                CREATE NEW {selectedTable.toUpperCase()} RECORD
+              </div>
+              <DynamicForm
+                schema={schema}
                 busy={createBusy}
                 onSubmit={onCreateRow}
                 onCancel={() => setCreateMode(false)}
               />
             </div>
-          ) : selectedRow ? (
-            <div className="trade-detail-content scrollable fadeIn" style={{ padding: 20 }}>
-              <div className="detail-header" style={{ marginBottom: '20px', borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
-                 <h2 style={{ margin: 0, fontSize: 18 }}>TELEMETRY INSPECTION</h2>
-                 <div className="minor-text" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                   {selectedTable} ID: {selectedRow.id || selectedRow.signal_id || selectedRow.trade_id || selectedRow.user_id || "-"}
-                 </div>
+          ) : selectedRow && !editMode ? (
+            <div
+              className="trade-detail-content scrollable fadeIn"
+              style={{ padding: 20 }}
+            >
+              <div
+                className="detail-header"
+                style={{
+                  marginBottom: "20px",
+                  borderBottom: "1px solid var(--border)",
+                  paddingBottom: 12,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <h2 style={{ margin: 0, fontSize: 18 }}>
+                    TELEMETRY INSPECTION
+                  </h2>
+                  <div
+                    className="minor-text"
+                    style={{
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                    }}
+                  >
+                    {selectedTable} ID:{" "}
+                    {selectedRow.id ||
+                      selectedRow.signal_id ||
+                      selectedRow.trade_id ||
+                      selectedRow.user_id ||
+                      "-"}
+                  </div>
+                </div>
+                <button
+                  className="primary-button"
+                  onClick={() => setEditMode(true)}
+                  style={{ minWidth: 80 }}
+                >
+                  ✏️ EDIT
+                </button>
               </div>
-              <div className="detail-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
-                {Object.entries(selectedRow)
-                  .map(([k, v]) => (
-                  <div key={k} style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 12, alignItems: 'start' }}>
-                    <div className="minor-text" style={{ textTransform: 'uppercase', color: 'var(--muted)', fontWeight: 800, fontSize: 9 }}>{k.replace(/_/g, " ")}</div>
-                    <div className="cell-major" style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap', fontSize: 12 }}>
-                      {typeof v === 'object' ? (
-                        <pre className="snapshot-mono" style={{ margin: 0, padding: 8, background: 'var(--bg)', borderRadius: 6, fontSize: 11 }}>
+              <div
+                className="detail-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr",
+                  gap: "12px",
+                }}
+              >
+                {Object.entries(selectedRow).map(([k, v]) => (
+                  <div
+                    key={k}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "140px 1fr",
+                      gap: 12,
+                      alignItems: "start",
+                    }}
+                  >
+                    <div
+                      className="minor-text"
+                      style={{
+                        textTransform: "uppercase",
+                        color: "var(--muted)",
+                        fontWeight: 800,
+                        fontSize: 9,
+                      }}
+                    >
+                      {k.replace(/_/g, " ")}
+                    </div>
+                    <div
+                      className="cell-major"
+                      style={{
+                        wordBreak: "break-all",
+                        whiteSpace: "pre-wrap",
+                        fontSize: 12,
+                      }}
+                    >
+                      {typeof v === "object" ? (
+                        <pre
+                          className="snapshot-mono"
+                          style={{
+                            margin: 0,
+                            padding: 8,
+                            background: "var(--bg)",
+                            borderRadius: 6,
+                            fontSize: 11,
+                          }}
+                        >
                           {JSON.stringify(v, null, 2)}
                         </pre>
                       ) : (
@@ -358,10 +737,35 @@ export default function DatabasePage() {
                 ))}
               </div>
             </div>
+          ) : editMode && selectedRow ? (
+            <div
+              className="panel"
+              style={{ margin: 12, border: "none", background: "transparent" }}
+            >
+              <div className="panel-label">
+                EDIT {selectedTable.toUpperCase()} RECORD
+              </div>
+              <DynamicForm
+                schema={schema}
+                busy={editBusy}
+                initialData={selectedRow}
+                mode="edit"
+                onSubmit={onEditRow}
+                onCancel={() => setEditMode(false)}
+              />
+            </div>
           ) : (
-             <div className="empty-state minor-text" style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-               SELECT A RECORD TO INSPECT INSTITUTIONAL TELEMETRY
-             </div>
+            <div
+              className="empty-state minor-text"
+              style={{
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              SELECT A RECORD TO INSPECT INSTITUTIONAL TELEMETRY
+            </div>
           )}
         </div>
       </div>

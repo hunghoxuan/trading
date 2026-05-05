@@ -117,6 +117,13 @@ All tables use PostgreSQL with JSONB for flexible metadata.
 | `note` | TEXT | |
 | `lease_token` | TEXT | |
 | `lease_expires_at` | TIMESTAMPTZ | |
+| `source` | TEXT | broker source name (e.g. ICMARKETS) |
+| `status` | TEXT | trade status |
+| `broker_pips` | FLOAT8 | |
+| `broker_lots` | FLOAT8 | |
+| `broker_commission` | FLOAT8 | |
+| `broker_swap` | FLOAT8 | |
+| `broker_volume` | FLOAT8 | |
 | `dispatch_status` | TEXT | NOT NULL DEFAULT 'NEW' |
 | `execution_status` | TEXT | NOT NULL DEFAULT 'PENDING' |
 | `close_reason` | TEXT | |

@@ -11,6 +11,18 @@ function timeAgo(ms) {
   return Math.floor(diff / 86400000) + "d ago";
 }
 
+function expiryText(item) {
+  if (!item.data?.updated_at) return null;
+  const updated = new Date(item.data.updated_at).getTime();
+  if (!item.ttl_ms) return null;
+  const expiresAt = updated + item.ttl_ms;
+  const remaining = expiresAt - Date.now();
+  if (remaining <= 0) return "EXPIRED";
+  if (remaining < 60000) return Math.ceil(remaining / 1000) + "s left";
+  if (remaining < 3600000) return Math.floor(remaining / 60000) + "m left";
+  return Math.floor(remaining / 3600000) + "h left";
+}
+
 function CsvTable({ content }) {
   const rows = useMemo(() => {
     if (typeof content !== "string") return [];
@@ -86,6 +98,36 @@ export default function CachePage() {
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState("");
+  const [symbolFilter, setSymbolFilter] = useState("");
+
+  // Derive unique symbols from items
+  const symbols = useMemo(() => {
+    const set = new Set();
+    items.forEach((it) => {
+      const sym = it.data?.symbol;
+      if (sym && sym !== "?") set.add(sym);
+    });
+    return [...set].sort();
+  }, [items]);
+
+  // Client-side filtered items
+  const filteredItems = useMemo(() => {
+    let list = items;
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (it) =>
+          it.key.toLowerCase().includes(q) ||
+          (it.data?.symbol || "").toLowerCase().includes(q) ||
+          (it.data?.tf || "").toLowerCase().includes(q),
+      );
+    }
+    if (symbolFilter) {
+      list = list.filter((it) => it.data?.symbol === symbolFilter);
+    }
+    return list;
+  }, [items, search, symbolFilter]);
 
   async function loadCache() {
     try {
@@ -173,7 +215,26 @@ export default function CachePage() {
         <h2 className="page-title" style={{ margin: 0 }}>
           CACHE
         </h2>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <input
+            type="text"
+            placeholder="SEARCH KEY / CONTENT..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ width: 200, fontSize: 12 }}
+          />
+          <select
+            value={symbolFilter}
+            onChange={(e) => setSymbolFilter(e.target.value)}
+            style={{ width: 110, fontSize: 12 }}
+          >
+            <option value="">ALL SYMBOLS</option>
+            {symbols.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
           {msg && (
             <span className="badge FILLED" style={{ padding: "6px 12px" }}>
               {msg}
@@ -224,23 +285,27 @@ export default function CachePage() {
               <tr>
                 <th>KEY</th>
                 <th style={{ width: 80 }}>SOURCE</th>
-                <th style={{ width: 140 }}>UPDATED</th>
+                <th style={{ width: 140 }}>UPDATED / EXPIRY</th>
                 <th style={{ width: 40 }}></th>
               </tr>
             </thead>
             <tbody>
-              {items.length === 0 ? (
+              {filteredItems.length === 0 ? (
                 <tr>
                   <td
-                    colSpan="3"
+                    colSpan="4"
                     style={{ textAlign: "center", padding: 40 }}
                     className="muted"
                   >
-                    {loading ? "Loading..." : "No cache items"}
+                    {loading
+                      ? "Loading..."
+                      : items.length === 0
+                        ? "No cache items"
+                        : "No matches"}
                   </td>
                 </tr>
               ) : (
-                items.map((item, idx) => (
+                filteredItems.map((item, idx) => (
                   <tr
                     key={`${item.source}-${item.key}-${idx}`}
                     className={
@@ -283,9 +348,20 @@ export default function CachePage() {
                     <td>
                       <div className="minor-text" style={{ fontSize: 9 }}>
                         {item.data?.updated_at
-                          ? showDateTime(item.data.updated_at)
+                          ? timeAgo(new Date(item.data.updated_at).getTime())
                           : "n/a"}
                       </div>
+                      {expiryText(item) && (
+                        <div
+                          className="minor-text"
+                          style={{
+                            fontSize: 8,
+                            color: item.expired ? "#ef4444" : "var(--muted)",
+                          }}
+                        >
+                          {expiryText(item)}
+                        </div>
+                      )}
                     </td>
                     <td style={{ textAlign: "right" }}>
                       <button

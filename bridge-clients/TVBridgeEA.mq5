@@ -4,7 +4,7 @@
 #include <Trade/Trade.mqh>
 
 // Bump this on every code update so running build is obvious on chart/logs.
-string EA_BUILD_VERSION = "v2026.05.05 04:53 - b1ae8f7";
+string EA_BUILD_VERSION = "v2026.05.05 05:00 - efa3f99";
 
 //--- 1. CONNECTION & IDENTITY
 input string InpServerBaseUrl = "https://trade.mozasolution.com/webhook"; // VPS Webhook URL
@@ -967,15 +967,15 @@ void SaveMappings()
 {
    int h = FileOpen(InpMappingFile, FILE_WRITE|FILE_CSV|FILE_ANSI);
    if(h == INVALID_HANDLE) return;
-   
+
    FileWrite(h, "TYPE", "TICKET", "SIGNAL_ID", "ACK_SENT");
-   
+
    for(int i=0; i<ArraySize(g_posMapTicket); i++)
       FileWrite(h, "POS", IntegerToString(g_posMapTicket[i]), g_posMapSignalId[i], (g_posMapOpenedAckSent[i]?"1":"0"));
-      
+
    for(int i=0; i<ArraySize(g_ordMapTicket); i++)
       FileWrite(h, "ORD", IntegerToString(g_ordMapTicket[i]), g_ordMapSignalId[i], "0");
-      
+
    FileClose(h);
 }
 
@@ -983,18 +983,18 @@ void LoadMappings()
 {
    int h = FileOpen(InpMappingFile, FILE_READ|FILE_CSV|FILE_ANSI);
    if(h == INVALID_HANDLE) return;
-   
+
    if(!FileIsEnding(h)) FileReadString(h); // Header
    if(!FileIsEnding(h)) FileReadString(h);
    if(!FileIsEnding(h)) FileReadString(h);
    if(!FileIsEnding(h)) FileReadString(h);
-   
+
    ArrayResize(g_posMapTicket, 0);
    ArrayResize(g_posMapSignalId, 0);
    ArrayResize(g_posMapOpenedAckSent, 0);
    ArrayResize(g_ordMapTicket, 0);
    ArrayResize(g_ordMapSignalId, 0);
-   
+
    while(!FileIsEnding(h))
    {
       string type = FileReadString(h);
@@ -1002,7 +1002,7 @@ void LoadMappings()
       string ticketStr = FileReadString(h);
       string signalId = FileReadString(h);
       string ackSentStr = FileReadString(h);
-      
+
       if(type == "POS")
       {
          int n = ArraySize(g_posMapTicket);
@@ -1357,7 +1357,7 @@ bool NormalizeVolumeForSymbol(const string symbol,
 
    if(volumeOut < vMin - 1e-10 || volumeOut > vMax + 1e-10)
       return false;
-   
+
    return true;
 }
 
@@ -1677,9 +1677,9 @@ string IsoTime(datetime t)
 {
    if(t <= 0) return "";
    MqlDateTime dt;
-   // We use STRUCT to avoid TimeToString locale issues. 
-   // Note: We assume broker time or UTC depending on server expectation. 
-   // Usually, it's safest to send as is if server handles broker offset, 
+   // We use STRUCT to avoid TimeToString locale issues.
+   // Note: We assume broker time or UTC depending on server expectation.
+   // Usually, it's safest to send as is if server handles broker offset,
    // but Z implies UTC.
    TimeToStruct(t, dt);
    return StringFormat("%04d-%02d-%02dT%02d:%02d:%02dZ", dt.year, dt.mon, dt.day, dt.hour, dt.min, dt.sec);
@@ -1705,7 +1705,7 @@ void Ack(const string signalId, const string status, const string ticket, const 
    string openTimeIso = "";
    string closeTimeIso = "";
    ulong ptk = StringToInteger(ticket);
-   
+
    if(ptk > 0)
    {
       if(PositionSelectByTicket(ptk))
@@ -1724,7 +1724,7 @@ void Ack(const string signalId, const string status, const string ticket, const 
          }
       }
    }
-   
+
    string s = status;
    StringToUpper(s);
    if(s == "CLOSED" || s == "TP" || s == "SL")
@@ -1792,14 +1792,14 @@ void Ack(const string signalId, const string status, const string ticket, const 
    ArrayResize(g_ackQError, n+1);
    ArrayResize(g_ackQBody, n+1);
    ArrayResize(g_ackQRetryCount, n+1);
-   
+
    g_ackQSignalId[n] = signalId;
    g_ackQStatus[n] = status;
    g_ackQTicket[n] = ticket;
    g_ackQError[n] = err;
    g_ackQBody[n] = body;
    g_ackQRetryCount[n] = 0;
-   
+
    Print("Queued Ack status=", status, " id=", signalId, " ticket=", ticket);
 }
 
@@ -1807,14 +1807,14 @@ void ProcessAckQueue()
 {
    int n = ArraySize(g_ackQSignalId);
    if(n == 0) return;
-   
+
    int w = 0;
    for(int i=0; i<n; i++)
    {
       string signalId = g_ackQSignalId[i];
       string tradeId = "";
       string leaseToken = "";
-      
+
       // Try to find V2 context for this signal
       for(int j=0; j<ArraySize(g_tradeIdMapSignalId); j++) {
          if(g_tradeIdMapSignalId[j] == signalId) {
@@ -1850,7 +1850,7 @@ void ProcessAckQueue()
          RemoteLog("Reliable Ack SENT OK: status=" + g_ackQStatus[i] + " id=" + signalId + " url=" + url);
          continue;
       }
-      
+
       g_ackQRetryCount[i]++;
       if(g_ackQRetryCount[i] < 100) // Keep trying
       {
@@ -2071,10 +2071,10 @@ bool ExecuteSignal(const string signalId,
    g_ackTpPips = 0;
    g_ackRiskMoneyActual = 0;
    g_ackRewardMoneyPlanned = 0;
-   
+
    double entryRef = (entry > 0.0) ? entry : ((actionRaw=="BUY") ? SymbolInfoDouble(symbolRaw, SYMBOL_ASK) : SymbolInfoDouble(symbolRaw, SYMBOL_BID));
    if(entryRef <= 0.0) entryRef = 1.0; // fallback if no prices
-    
+
    double pps = SymbolInfoDouble(symbolRaw, SYMBOL_POINT);
    double pV = 0;
    if(pps > 0.0)
@@ -2084,12 +2084,12 @@ bool ExecuteSignal(const string signalId,
          pV = MathAbs(profitOnePip);
    }
    g_ackPipValuePerLot = pV;
-   
+
    if(pps > 0.0)
    {
       double slDist = (sl > 0.0) ? MathAbs(entryRef - sl) : 0.0;
       double tpDist = (tp > 0.0) ? MathAbs(tp - entryRef) : 0.0;
-      g_ackSlPips = slDist / pps; 
+      g_ackSlPips = slDist / pps;
       g_ackTpPips = tpDist / pps;
    }
    g_ackRiskMoneyActual = volume * g_ackPipValuePerLot * g_ackSlPips;
@@ -2628,14 +2628,14 @@ void OnTimer()
    ProcessVirtualGuards();
 
    datetime now = TimeCurrent();
-   
+
    // Periodic state reconciliation (PUSH ACTIVE) - every 60s
    if(now - g_syncLastTime >= 60)
    {
       SyncWithVps();
       g_syncLastTime = now;
    }
-   
+
    // Periodic History Sync (PUSH CLOSED) - every 5 minutes
    if(now - g_syncHistoryLastTime >= 300)
    {
@@ -2669,13 +2669,13 @@ void OnTimer()
     // Handle Unified Task Object
     string taskType = JsonGetString(resp, "type");
     if(taskType == "") taskType = "OPEN"; // Fallback for old signals
-    
+
     string leaseToken = JsonGetString(resp, "lease_token");
     string tradeId = JsonGetString(resp, "trade_id");
     string signalId = JsonGetString(resp, "signal_id");
     if(signalId == "") signalId = tradeId;
     if(signalId == "") signalId = JsonGetString(resp, "task_id");
-    
+
     // Track V2 context
     if(signalId != "" && leaseToken != "") {
        int nL = ArraySize(g_leaseTokenMapSignalId);
@@ -2732,7 +2732,7 @@ void OnTimer()
           else Ack(signalId, "ERROR", IntegerToString((int)ticketNum), "cancel_fail");
        }
     }
-    
+
     RefreshDebugPanel();
 }
 
@@ -2750,7 +2750,7 @@ void SyncClosedHistory()
    {
       ulong ticket = HistoryDealGetTicket(i);
       long entryType = HistoryDealGetInteger(ticket, DEAL_ENTRY);
-      
+
       // Include DEAL_ENTRY_OUT_BY for hedging accounts or close-by operations
       if(entryType != DEAL_ENTRY_OUT && entryType != DEAL_ENTRY_OUT_BY)
          continue;
@@ -2824,7 +2824,7 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
             int ordIdx = -1;
             GetSignalIdByOrderTicket(orderTicket, signalId, ordIdx);
             if(StringLen(signalId) == 0) signalId = OrderGetString(ORDER_COMMENT);
-            
+
             if(StringLen(signalId) > 0)
             {
                g_ackSymbol = OrderGetString(ORDER_SYMBOL);
@@ -2835,7 +2835,7 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
                g_ackBalance = AccountInfoDouble(ACCOUNT_BALANCE);
                g_ackEquity = AccountInfoDouble(ACCOUNT_EQUITY);
                g_ackHasPnlRealized = false;
-               
+
                Ack(signalId, "PLACED", IntegerToString((long)orderTicket), "order_placed");
             }
          }
@@ -2854,7 +2854,7 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
             int ordIdx = -1;
             GetSignalIdByOrderTicket(orderTicket, signalId, ordIdx);
             if(StringLen(signalId) == 0) signalId = HistoryOrderGetString(orderTicket, ORDER_COMMENT);
-            
+
             if(StringLen(signalId) > 0)
             {
                g_ackSymbol = HistoryOrderGetString(orderTicket, ORDER_SYMBOL);
@@ -2865,7 +2865,7 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
                g_ackBalance = AccountInfoDouble(ACCOUNT_BALANCE);
                g_ackEquity = AccountInfoDouble(ACCOUNT_EQUITY);
                g_ackHasPnlRealized = false;
-               
+
                ENUM_ORDER_STATE state = (ENUM_ORDER_STATE)HistoryOrderGetInteger(orderTicket, ORDER_STATE);
                if(state == ORDER_STATE_CANCELED || state == ORDER_STATE_EXPIRED || state == ORDER_STATE_REJECTED)
                {
@@ -3120,7 +3120,7 @@ void SyncWithVps()
    body += "\"orders\":[" + ordUpdates + "],";
    body += "\"closed\":[" + closedUpdates + "]";
    body += "}";
-   
+
    string url = BuildApiUrl("/mt5/ea/sync-v2");
    string resp = "";
    if(HttpPostJsonWithResponse(url, body, resp))
@@ -3145,7 +3145,7 @@ void SyncWithVps()
       g_lastSyncCode = g_lastHttpCode;
       g_lastSyncSummary = "FAIL " + g_lastHttpMethod + " " + SanitizeOneLine(g_lastHttpUrl, 64) + " | " + g_lastHttpError;
       g_lastSyncPayload = "V2 FAIL: " + SanitizeOneLine(resp, 150);
-      g_lastStateHash = ""; 
+      g_lastStateHash = "";
    }
    g_lastSyncUpdate = TimeCurrent();
    RefreshDebugPanel();

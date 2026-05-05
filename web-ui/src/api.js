@@ -27,7 +27,9 @@ function runtimeApiBase() {
     return origin;
   }
 
-  const apiBaseStored = normalizeApiBase(localStorage.getItem("tvbridge_api_base"));
+  const apiBaseStored = normalizeApiBase(
+    localStorage.getItem("tvbridge_api_base"),
+  );
   if (apiBaseStored) return apiBaseStored;
 
   if (hostname === "localhost" || hostname === "127.0.0.1") {
@@ -95,7 +97,12 @@ function buildUrl(base, path) {
 function isAuthFailure(status, data) {
   if (status === 401 || status === 403) return true;
   const err = String(data?.error || "").toLowerCase();
-  return err.includes("unauthorized") || err.includes("forbidden") || err.includes("session") || err.includes("login required");
+  return (
+    err.includes("unauthorized") ||
+    err.includes("forbidden") ||
+    err.includes("session") ||
+    err.includes("login required")
+  );
 }
 
 function redirectToLogin() {
@@ -132,7 +139,9 @@ async function get(path) {
       });
     } catch (err) {
       if (err?.name === "AbortError") {
-        throw new Error(`Request timeout (${Math.round(DEFAULT_API_TIMEOUT_MS / 1000)}s). Check API URL and server status.`);
+        throw new Error(
+          `Request timeout (${Math.round(DEFAULT_API_TIMEOUT_MS / 1000)}s). Check API URL and server status.`,
+        );
       }
       throw err;
     } finally {
@@ -163,7 +172,11 @@ async function get(path) {
     throw new Error(`Server returned non-JSON response (${res.status})`);
   }
   if (!res.ok || !data.ok) {
-    if (path !== "/auth/login" && path !== "/auth/me" && isAuthFailure(res.status, data)) {
+    if (
+      path !== "/auth/login" &&
+      path !== "/auth/me" &&
+      isAuthFailure(res.status, data)
+    ) {
       redirectToLogin();
       throw new Error("Session expired. Redirecting to login.");
     }
@@ -194,7 +207,9 @@ async function getBlob(path) {
       });
     } catch (err) {
       if (err?.name === "AbortError") {
-        throw new Error(`Request timeout (${Math.round(DEFAULT_API_TIMEOUT_MS / 1000)}s). Check API URL and server status.`);
+        throw new Error(
+          `Request timeout (${Math.round(DEFAULT_API_TIMEOUT_MS / 1000)}s). Check API URL and server status.`,
+        );
       }
       throw err;
     } finally {
@@ -231,7 +246,8 @@ async function getBlob(path) {
     throw new Error(data.error || `Request failed: ${res.status}`);
   }
   const blob = await res.blob();
-  const contentType = res.headers.get("content-type") || blob.type || "application/octet-stream";
+  const contentType =
+    res.headers.get("content-type") || blob.type || "application/octet-stream";
   const disposition = res.headers.get("content-disposition") || "";
   const fileName = (/filename="([^"]+)"/i.exec(disposition)?.[1] || "").trim();
   return { blob, contentType, disposition, fileName };
@@ -265,7 +281,9 @@ async function post(path, body = {}) {
       });
     } catch (err) {
       if (err?.name === "AbortError") {
-        throw new Error(`Request timeout (${Math.round(DEFAULT_API_TIMEOUT_MS / 1000)}s). Check API URL and server status.`);
+        throw new Error(
+          `Request timeout (${Math.round(DEFAULT_API_TIMEOUT_MS / 1000)}s). Check API URL and server status.`,
+        );
       }
       throw err;
     } finally {
@@ -295,7 +313,11 @@ async function post(path, body = {}) {
     throw new Error(`Server returned non-JSON response (${res.status})`);
   }
   if (!res.ok || !data.ok) {
-    if (path !== "/auth/login" && path !== "/auth/me" && isAuthFailure(res.status, data)) {
+    if (
+      path !== "/auth/login" &&
+      path !== "/auth/me" &&
+      isAuthFailure(res.status, data)
+    ) {
       redirectToLogin();
       throw new Error("Session expired. Redirecting to login.");
     }
@@ -304,7 +326,11 @@ async function post(path, body = {}) {
   return data;
 }
 
-async function postWithTimeout(path, body = {}, timeoutMs = DEFAULT_API_TIMEOUT_MS) {
+async function postWithTimeout(
+  path,
+  body = {},
+  timeoutMs = DEFAULT_API_TIMEOUT_MS,
+) {
   const API_KEY = runtimeApiKey();
   const base = runtimeApiBase();
   const primaryUrl = buildUrl(base, path);
@@ -332,7 +358,9 @@ async function postWithTimeout(path, body = {}, timeoutMs = DEFAULT_API_TIMEOUT_
       });
     } catch (err) {
       if (err?.name === "AbortError") {
-        throw new Error(`Request timeout (${Math.round(timeoutMs / 1000)}s). Check API URL and server status.`);
+        throw new Error(
+          `Request timeout (${Math.round(timeoutMs / 1000)}s). Check API URL and server status.`,
+        );
       }
       throw err;
     } finally {
@@ -362,7 +390,11 @@ async function postWithTimeout(path, body = {}, timeoutMs = DEFAULT_API_TIMEOUT_
     throw new Error(`Server returned non-JSON response (${res.status})`);
   }
   if (!res.ok || !data.ok) {
-    if (path !== "/auth/login" && path !== "/auth/me" && isAuthFailure(res.status, data)) {
+    if (
+      path !== "/auth/login" &&
+      path !== "/auth/me" &&
+      isAuthFailure(res.status, data)
+    ) {
       redirectToLogin();
       throw new Error("Session expired. Redirecting to login.");
     }
@@ -396,7 +428,9 @@ async function put(path, body = {}) {
       });
     } catch (err) {
       if (err?.name === "AbortError") {
-        throw new Error(`Request timeout (${Math.round(DEFAULT_API_TIMEOUT_MS / 1000)}s). Check API URL and server status.`);
+        throw new Error(
+          `Request timeout (${Math.round(DEFAULT_API_TIMEOUT_MS / 1000)}s). Check API URL and server status.`,
+        );
       }
       throw err;
     } finally {
@@ -426,7 +460,11 @@ async function put(path, body = {}) {
     throw new Error(`Server returned non-JSON response (${res.status})`);
   }
   if (!res.ok || !data.ok) {
-    if (path !== "/auth/login" && path !== "/auth/me" && isAuthFailure(res.status, data)) {
+    if (
+      path !== "/auth/login" &&
+      path !== "/auth/me" &&
+      isAuthFailure(res.status, data)
+    ) {
       redirectToLogin();
       throw new Error("Session expired. Redirecting to login.");
     }
@@ -456,7 +494,10 @@ async function del(path) {
         headers,
       });
     } catch (err) {
-      if (err?.name === "AbortError") throw new Error(`Request timeout (${Math.round(DEFAULT_API_TIMEOUT_MS / 1000)}s). Check API URL and server status.`);
+      if (err?.name === "AbortError")
+        throw new Error(
+          `Request timeout (${Math.round(DEFAULT_API_TIMEOUT_MS / 1000)}s). Check API URL and server status.`,
+        );
       throw err;
     } finally {
       window.clearTimeout(timer);
@@ -468,15 +509,27 @@ async function del(path) {
     res = await doFetch(primaryUrl);
   } catch (primaryError) {
     if (primaryUrl !== fallbackUrl) {
-      try { res = await doFetch(fallbackUrl); } catch { throw primaryError; }
+      try {
+        res = await doFetch(fallbackUrl);
+      } catch {
+        throw primaryError;
+      }
     } else {
       throw primaryError;
     }
   }
   let data;
-  try { data = await res.json(); } catch { throw new Error(`Server returned non-JSON response (${res.status})`); }
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(`Server returned non-JSON response (${res.status})`);
+  }
   if (!res.ok || !data.ok) {
-    if (path !== "/auth/login" && path !== "/auth/me" && isAuthFailure(res.status, data)) {
+    if (
+      path !== "/auth/login" &&
+      path !== "/auth/me" &&
+      isAuthFailure(res.status, data)
+    ) {
       redirectToLogin();
       throw new Error("Session expired. Redirecting to login.");
     }
@@ -493,7 +546,10 @@ async function downloadCsv(path, params = {}) {
     if (v !== undefined && v !== null && String(v) !== "") q.set(k, String(v));
   });
   const primaryUrl = buildUrl(base, `${path}?${q.toString()}`);
-  const fallbackUrl = buildUrl(window.location.origin, `${path}?${q.toString()}`);
+  const fallbackUrl = buildUrl(
+    window.location.origin,
+    `${path}?${q.toString()}`,
+  );
 
   async function doFetch(url) {
     const ctrl = new AbortController();
@@ -510,7 +566,9 @@ async function downloadCsv(path, params = {}) {
       });
     } catch (err) {
       if (err?.name === "AbortError") {
-        throw new Error("Download timeout (20s). Check API URL and server status.");
+        throw new Error(
+          "Download timeout (20s). Check API URL and server status.",
+        );
       }
       throw err;
     } finally {
@@ -539,7 +597,7 @@ async function downloadCsv(path, params = {}) {
   const blob = await res.blob();
   const contentDisposition = res.headers.get("content-disposition") || "";
   const m = contentDisposition.match(/filename="([^"]+)"/i);
-  const filename = (m && m[1]) ? m[1] : "mt5-backtest.csv";
+  const filename = m && m[1] ? m[1] : "mt5-backtest.csv";
   return { blob, filename };
 }
 
@@ -550,73 +608,132 @@ export const api = {
   updateMetadata: (payload = {}) => put("/auth/metadata", payload),
   listUsers: () => get("/auth/users"),
   createUser: (payload = {}) => post("/auth/users", payload),
-  updateUser: (userId, payload = {}) => put(`/auth/users/${encodeURIComponent(userId)}`, payload),
-  deactivateUser: (userId) => post(`/auth/users/${encodeURIComponent(userId)}/deactivate`, {}),
+  updateUser: (userId, payload = {}) =>
+    put(`/auth/users/${encodeURIComponent(userId)}`, payload),
+  deactivateUser: (userId) =>
+    post(`/auth/users/${encodeURIComponent(userId)}/deactivate`, {}),
   deleteUser: (userId) => del(`/auth/users/${encodeURIComponent(userId)}`),
-  userDetail: (userId) => get(`/auth/users/${encodeURIComponent(userId)}/detail`),
-  createUserAccount: (userId, payload = {}) => post(`/auth/users/${encodeURIComponent(userId)}/accounts`, payload),
-  updateUserAccount: (userId, accountId, payload = {}) => put(`/auth/users/${encodeURIComponent(userId)}/accounts/${encodeURIComponent(accountId)}`, payload),
-  deleteUserAccount: (userId, accountId) => del(`/auth/users/${encodeURIComponent(userId)}/accounts/${encodeURIComponent(accountId)}`),
+  userDetail: (userId) =>
+    get(`/auth/users/${encodeURIComponent(userId)}/detail`),
+  createUserAccount: (userId, payload = {}) =>
+    post(`/auth/users/${encodeURIComponent(userId)}/accounts`, payload),
+  updateUserAccount: (userId, accountId, payload = {}) =>
+    put(
+      `/auth/users/${encodeURIComponent(userId)}/accounts/${encodeURIComponent(accountId)}`,
+      payload,
+    ),
+  deleteUserAccount: (userId, accountId) =>
+    del(
+      `/auth/users/${encodeURIComponent(userId)}/accounts/${encodeURIComponent(accountId)}`,
+    ),
   v2Accounts: () => get("/v2/accounts"),
   v2CreateAccount: (payload = {}) => post("/v2/accounts", payload),
-  v2UpdateAccount: (accountId, payload = {}) => put(`/v2/accounts/${encodeURIComponent(accountId)}`, payload),
-  v2ArchiveAccount: (accountId) => del(`/v2/accounts/${encodeURIComponent(accountId)}`),
+  v2UpdateAccount: (accountId, payload = {}) =>
+    put(`/v2/accounts/${encodeURIComponent(accountId)}`, payload),
+  v2ArchiveAccount: (accountId) =>
+    del(`/v2/accounts/${encodeURIComponent(accountId)}`),
   v2Sources: () => get("/v2/sources"),
   v2Trades: (params = {}) => {
     const q = new URLSearchParams();
     Object.entries(params || {}).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && String(v) !== "") q.set(k, String(v));
+      if (v !== undefined && v !== null && String(v) !== "")
+        q.set(k, String(v));
     });
     return get(`/v2/trades?${q.toString()}`);
   },
-  v2UpdateTrade: (tradeId, payload = {}) => post(`/v2/trades/${encodeURIComponent(tradeId)}/update`, payload),
-  v2TradesBulkAction: (action, filters = {}) => post("/v2/trades/bulk-action", { action, ...filters }),
-  v2TradeEvents: (tradeId, limit = 200) => get(`/v2/trades/${encodeURIComponent(tradeId)}/events?limit=${encodeURIComponent(limit)}`),
+  v2UpdateTrade: (tradeId, payload = {}) =>
+    post(`/v2/trades/${encodeURIComponent(tradeId)}/update`, payload),
+  v2TradesBulkAction: (action, filters = {}) =>
+    post("/v2/trades/bulk-action", { action, ...filters }),
+  v2TradeEvents: (tradeId, limit = 200) =>
+    get(
+      `/v2/trades/${encodeURIComponent(tradeId)}/events?limit=${encodeURIComponent(limit)}`,
+    ),
   v2CreateSource: (payload = {}) => post("/v2/sources", payload),
-  v2UpdateSource: (sourceId, payload = {}) => put(`/v2/sources/${encodeURIComponent(sourceId)}`, payload),
-  v2SourceEvents: (sourceId, limit = 100) => get(`/v2/sources/${encodeURIComponent(sourceId)}/events?limit=${encodeURIComponent(limit)}`),
-  v2RotateSourceSecret: (sourceId) => post(`/v2/sources/${encodeURIComponent(sourceId)}/auth-secret/rotate`, {}),
-  v2RevokeSourceSecret: (sourceId) => post(`/v2/sources/${encodeURIComponent(sourceId)}/auth-secret/revoke`, {}),
-  v2GetSubscriptions: (accountId) => get(`/v2/accounts/${encodeURIComponent(accountId)}/subscriptions`),
-  v2PutSubscriptions: (accountId, items = []) => put(`/v2/accounts/${encodeURIComponent(accountId)}/subscriptions`, { items }),
-  v2RotateAccountApiKey: (accountId) => post(`/v2/accounts/${encodeURIComponent(accountId)}/api-key/rotate`, {}),
-  v2RevokeAccountApiKey: (accountId) => post(`/v2/accounts/${encodeURIComponent(accountId)}/api-key/revoke`, {}),
-  v2UpdateAccountApiKey: (accountId, plainApiKey) => post(`/v2/broker/accounts/${encodeURIComponent(accountId)}/apiKey`, { api_key_plaintext: plainApiKey }),
+  v2UpdateSource: (sourceId, payload = {}) =>
+    put(`/v2/sources/${encodeURIComponent(sourceId)}`, payload),
+  v2SourceEvents: (sourceId, limit = 100) =>
+    get(
+      `/v2/sources/${encodeURIComponent(sourceId)}/events?limit=${encodeURIComponent(limit)}`,
+    ),
+  v2RotateSourceSecret: (sourceId) =>
+    post(`/v2/sources/${encodeURIComponent(sourceId)}/auth-secret/rotate`, {}),
+  v2RevokeSourceSecret: (sourceId) =>
+    post(`/v2/sources/${encodeURIComponent(sourceId)}/auth-secret/revoke`, {}),
+  v2GetSubscriptions: (accountId) =>
+    get(`/v2/accounts/${encodeURIComponent(accountId)}/subscriptions`),
+  v2PutSubscriptions: (accountId, items = []) =>
+    put(`/v2/accounts/${encodeURIComponent(accountId)}/subscriptions`, {
+      items,
+    }),
+  v2RotateAccountApiKey: (accountId) =>
+    post(`/v2/accounts/${encodeURIComponent(accountId)}/api-key/rotate`, {}),
+  v2RevokeAccountApiKey: (accountId) =>
+    post(`/v2/accounts/${encodeURIComponent(accountId)}/api-key/revoke`, {}),
+  v2UpdateAccountApiKey: (accountId, plainApiKey) =>
+    post(`/v2/broker/accounts/${encodeURIComponent(accountId)}/apiKey`, {
+      api_key_plaintext: plainApiKey,
+    }),
   v2ExecutionProfiles: () => get("/v2/settings/execution-profiles"),
-  v2SaveExecutionProfile: (payload = {}) => post("/v2/settings/execution-profile", payload),
-  v2ApplyExecutionProfile: (payload = {}) => post("/v2/settings/execution-profile/apply", payload),
+  v2SaveExecutionProfile: (payload = {}) =>
+    post("/v2/settings/execution-profile", payload),
+  v2ApplyExecutionProfile: (payload = {}) =>
+    post("/v2/settings/execution-profile/apply", payload),
   login: (email, password) => post("/auth/login", { email, password }),
   logout: () => post("/auth/logout", {}),
-  changePassword: (currentPassword, newPassword) => post("/auth/password", { currentPassword, newPassword }),
+  changePassword: (currentPassword, newPassword) =>
+    post("/auth/password", { currentPassword, newPassword }),
   health: () => get("/health"),
   dashboardAdvanced: (params = {}) => {
     const q = new URLSearchParams();
     Object.entries(params || {}).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && String(v) !== "") q.set(k, String(v));
+      if (v !== undefined && v !== null && String(v) !== "")
+        q.set(k, String(v));
     });
     return get(`/mt5/dashboard/advanced?${q.toString()}`);
   },
-  dashboardSummary: (userId = "") => get(`/mt5/dashboard/summary${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`),
-  dashboardSeries: (period = "month", userId = "") => get(`/mt5/dashboard/pnl-series?period=${encodeURIComponent(period)}${userId ? `&user_id=${encodeURIComponent(userId)}` : ""}`),
-  symbols: (userId = "") => get(`/mt5/filters/symbols${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`),
-  filtersAdvanced: (userId = "") => get(`/mt5/filters/advanced${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`),
+  dashboardSummary: (userId = "") =>
+    get(
+      `/mt5/dashboard/summary${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`,
+    ),
+  dashboardSeries: (period = "month", userId = "") =>
+    get(
+      `/mt5/dashboard/pnl-series?period=${encodeURIComponent(period)}${userId ? `&user_id=${encodeURIComponent(userId)}` : ""}`,
+    ),
+  symbols: (userId = "") =>
+    get(
+      `/mt5/filters/symbols${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`,
+    ),
+  filtersAdvanced: (userId = "") =>
+    get(
+      `/mt5/filters/advanced${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`,
+    ),
   trades: (params) => {
     const q = new URLSearchParams();
     Object.entries(params || {}).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && String(v) !== "") q.set(k, String(v));
+      if (v !== undefined && v !== null && String(v) !== "")
+        q.set(k, String(v));
     });
     return get(`/v2/signals?${q.toString()}`);
   },
   trade: (signalId) => get(`/mt5/trades/${encodeURIComponent(signalId)}`),
   createTrade: (payload = {}) => post("/v2/signals/create", payload),
-  createSignal: (payload = {}) => post("/v2/signals/create", {
-    ...(payload || {}),
-    only_signal: (payload && (payload.only_signal ?? payload.onlySignal)) ?? true,
-  }),
+  createSignal: (payload = {}) =>
+    post("/v2/signals/create", {
+      ...(payload || {}),
+      only_signal:
+        (payload && (payload.only_signal ?? payload.onlySignal)) ?? true,
+    }),
   createTradeDirect: (payload = {}) => post("/v2/trades/create", payload),
-  saveSignalTradePlan: (signalId, payload = {}) => post(`/v2/signals/${encodeURIComponent(signalId)}/trade-plan/save`, payload),
-  createTradeFromSignal: (signalId, payload = {}) => post(`/v2/signals/${encodeURIComponent(signalId)}/trade`, payload),
-  saveTradePlan: (tradeId, payload = {}) => post(`/v2/trades/${encodeURIComponent(tradeId)}/trade-plan/save`, payload),
+  saveSignalTradePlan: (signalId, payload = {}) =>
+    post(
+      `/v2/signals/${encodeURIComponent(signalId)}/trade-plan/save`,
+      payload,
+    ),
+  createTradeFromSignal: (signalId, payload = {}) =>
+    post(`/v2/signals/${encodeURIComponent(signalId)}/trade`, payload),
+  saveTradePlan: (tradeId, payload = {}) =>
+    post(`/v2/trades/${encodeURIComponent(tradeId)}/trade-plan/save`, payload),
   deleteTrades: (params) => post("/mt5/trades/delete", params),
   cancelTrades: (params) => post("/mt5/trades/cancel", params),
   renewTrades: (params) => post("/mt5/trades/renew", params),
@@ -624,7 +741,8 @@ export const api = {
   events: (params = {}) => {
     const q = new URLSearchParams();
     Object.entries(params || {}).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && String(v) !== "") q.set(k, String(v));
+      if (v !== undefined && v !== null && String(v) !== "")
+        q.set(k, String(v));
     });
     return get(`/mt5/api/events?${q.toString()}`);
   },
@@ -634,56 +752,93 @@ export const api = {
   dbRows: (params = {}) => {
     const q = new URLSearchParams();
     Object.entries(params || {}).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && String(v) !== "") q.set(k, String(v));
+      if (v !== undefined && v !== null && String(v) !== "")
+        q.set(k, String(v));
     });
     return get(`/mt5/db/rows?${q.toString()}`);
   },
   dbCreateRow: (payload = {}) => post("/mt5/db/rows/create", payload),
+  dbUpdateRow: (payload = {}) => post("/mt5/db/rows/update", payload),
   dbSchema: (table) => get(`/mt5/db/schema?table=${encodeURIComponent(table)}`),
   storageStats: () => get("/v2/system/storage/stats"),
-  storageCleanup: (target, userId = "") => post("/v2/system/storage/cleanup", { target, userId }),
+  storageCleanup: (target, userId = "") =>
+    post("/v2/system/storage/cleanup", { target, userId }),
   listCache: () => get("/v2/system/cache"),
-  getCacheDetail: (key, source = "memory") => get(`/v2/system/cache?key=${encodeURIComponent(key)}&source=${encodeURIComponent(source)}`),
-  deleteCache: (key = "", source = "") => del(`/v2/system/cache?key=${encodeURIComponent(key)}&source=${encodeURIComponent(source)}`),
+  getCacheDetail: (key, source = "memory") =>
+    get(
+      `/v2/system/cache?key=${encodeURIComponent(key)}&source=${encodeURIComponent(source)}`,
+    ),
+  deleteCache: (key = "", source = "") =>
+    del(
+      `/v2/system/cache?key=${encodeURIComponent(key)}&source=${encodeURIComponent(source)}`,
+    ),
   aiListTemplates: () => get("/v2/ai/templates"),
   aiUpsertTemplate: (payload = {}) => post("/v2/ai/templates", payload),
-  aiDeleteTemplate: (templateId) => del(`/v2/ai/templates/${encodeURIComponent(templateId)}`),
+  aiDeleteTemplate: (templateId) =>
+    del(`/v2/ai/templates/${encodeURIComponent(templateId)}`),
   aiGetConfig: () => get("/v2/ai/config"),
   aiUpsertConfig: (key, value) => post("/v2/ai/config", { key, value }),
-  aiGenerate: (payload = {}) => postWithTimeout("/v2/ai/generate", payload, 65000),
-  chartSnapshotCreate: (payload = {}) => postWithTimeout("/v2/chart/snapshot", payload, 90000),
-  chartSnapshotCreateBatch: (payload = {}) => postWithTimeout("/v2/chart/snapshot/batch", payload, 180000),
-  chartRefresh: (payload = {}) => postWithTimeout("/v2/chart/refresh", payload, 180000),
-  chartSnapshotsAnalyze: (payload = {}) => postWithTimeout("/v2/chart/snapshots/analyze", payload, 180000),
+  aiGenerate: (payload = {}) =>
+    postWithTimeout("/v2/ai/generate", payload, 65000),
+  chartSnapshotCreate: (payload = {}) =>
+    postWithTimeout("/v2/chart/snapshot", payload, 90000),
+  chartSnapshotCreateBatch: (payload = {}) =>
+    postWithTimeout("/v2/chart/snapshot/batch", payload, 180000),
+  chartRefresh: (payload = {}) =>
+    postWithTimeout("/v2/chart/refresh", payload, 180000),
+  chartSnapshotsAnalyze: (payload = {}) =>
+    postWithTimeout("/v2/chart/snapshots/analyze", payload, 180000),
   chartContext: (params = {}) => {
     const q = new URLSearchParams();
     Object.entries(params || {}).forEach(([k, v]) => {
       if (Array.isArray(v)) q.set(k, v.join(","));
-      else if (v !== undefined && v !== null && String(v) !== "") q.set(k, String(v));
+      else if (v !== undefined && v !== null && String(v) !== "")
+        q.set(k, String(v));
     });
     return get(`/v2/chart/context?${q.toString()}`);
   },
   claudeFiles: (params = {}) => {
     const q = new URLSearchParams();
     Object.entries(params || {}).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && String(v) !== "") q.set(k, String(v));
+      if (v !== undefined && v !== null && String(v) !== "")
+        q.set(k, String(v));
     });
     return get(`/v2/ai/claude/files${q.toString() ? `?${q.toString()}` : ""}`);
   },
-  claudeFile: (fileId) => get(`/v2/ai/claude/files/${encodeURIComponent(fileId)}`),
-  claudeFileContent: (fileId, download = false) => getBlob(`/v2/ai/claude/files/${encodeURIComponent(fileId)}/content${download ? "?download=1" : ""}`),
-  claudeUploadSnapshots: (payload = {}) => postWithTimeout("/v2/ai/claude/files/upload-snapshots", payload, 90000),
-  claudeDeleteFiles: (payload = {}) => post("/v2/ai/claude/files/delete", payload),
-  chartTwelveCandles: (symbol = "", timeframe = "15m", bars = 300, refresh = false) =>
-    get(`/v2/chart/twelve/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&bars=${encodeURIComponent(bars)}${refresh ? "&refresh=1" : ""}`),
+  claudeFile: (fileId) =>
+    get(`/v2/ai/claude/files/${encodeURIComponent(fileId)}`),
+  claudeFileContent: (fileId, download = false) =>
+    getBlob(
+      `/v2/ai/claude/files/${encodeURIComponent(fileId)}/content${download ? "?download=1" : ""}`,
+    ),
+  claudeUploadSnapshots: (payload = {}) =>
+    postWithTimeout("/v2/ai/claude/files/upload-snapshots", payload, 90000),
+  claudeDeleteFiles: (payload = {}) =>
+    post("/v2/ai/claude/files/delete", payload),
+  chartTwelveCandles: (
+    symbol = "",
+    timeframe = "15m",
+    bars = 300,
+    refresh = false,
+  ) =>
+    get(
+      `/v2/chart/twelve/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&bars=${encodeURIComponent(bars)}${refresh ? "&refresh=1" : ""}`,
+    ),
   chartSymbols: (q = "", provider = "ICMARKETS", limit = 20) =>
-    get(`/v2/chart/symbols?q=${encodeURIComponent(q)}&provider=${encodeURIComponent(provider)}&limit=${encodeURIComponent(limit)}`),
-  chartSnapshots: (limit = 30) => get(`/v2/chart/snapshots?limit=${encodeURIComponent(limit)}`),
-  chartSnapshotsDelete: (payload = {}) => post("/v2/chart/snapshots/delete", payload),
+    get(
+      `/v2/chart/symbols?q=${encodeURIComponent(q)}&provider=${encodeURIComponent(provider)}&limit=${encodeURIComponent(limit)}`,
+    ),
+  chartSnapshots: (limit = 30) =>
+    get(`/v2/chart/snapshots?limit=${encodeURIComponent(limit)}`),
+  chartSnapshotsDelete: (payload = {}) =>
+    post("/v2/chart/snapshots/delete", payload),
   getSettings: () => get("/v2/settings"),
   getSettingSecret: (type, name, field = "value") =>
-    get(`/v2/settings/secret?type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}&field=${encodeURIComponent(field)}`),
+    get(
+      `/v2/settings/secret?type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}&field=${encodeURIComponent(field)}`,
+    ),
   upsertSetting: (payload = {}) => post("/v2/settings", payload),
   notificationPulse: () => get("/v2/notifications/pulse"),
-  deleteSetting: (type, name) => del(`/v2/settings/${encodeURIComponent(type)}/${encodeURIComponent(name)}`),
+  deleteSetting: (type, name) =>
+    del(`/v2/settings/${encodeURIComponent(type)}/${encodeURIComponent(name)}`),
 };
