@@ -839,6 +839,14 @@ export const api = {
     ),
   upsertSetting: (payload = {}) => post("/v2/settings", payload),
   notificationPulse: () => get("/v2/notifications/pulse"),
+  notificationStream: () => {
+    // Returns an EventSource — caller manages lifecycle
+    const base = runtimeApiBase();
+    return new EventSource(`${base}/v2/notifications/stream`, { withCredentials: true });
+  },
+  notificationEvents: () => get("/v2/notifications/events"),
+  notificationSettings: () => get("/v2/notifications/settings"),
+  notificationSaveSettings: (settings) => post("/v2/notifications/settings", { settings }),
   deleteSetting: (type, name) =>
     del(`/v2/settings/${encodeURIComponent(type)}/${encodeURIComponent(name)}`),
 };

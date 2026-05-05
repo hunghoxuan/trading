@@ -1,3 +1,17 @@
+# Session Log: 2026-05-05 14:32
+- **Starting Task**:
+  - Fix Trade Detail chart tile ratio so static charts size from real available width instead of a fixed height heuristic.
+- **Work Accomplished**:
+  - **Chart Ratio**: Reworked `SymbolChart` tile sizing to measure the real card width and compute per-tile height from a landscape target aspect ratio.
+  - **Layout Stability**: Removed the chart tile wrapper's artificial minimum width so grid columns can use the full available panel width cleanly.
+  - **Docs**: Updated trade lifecycle feature doc with the width-driven chart ratio behavior.
+- **Changed Files**:
+  - `web-ui/src/components/charts/ChartTile.jsx`
+  - `.agents/.product/features/2-done/trade_lifecycle.md`
+  - `.agents/worklog.md`
+- **Technical Decisions**:
+  - Keep ratio logic in the shared `SymbolChart` container so both signal and trade detail chart tabs inherit the fix without duplicating layout math.
+
 # Session Log: 2026-05-05 12:05
 - **Starting Task**:
   - Resume `FEAT-20260505-DB-CACHE-UI` review/deploy handoff and fix regressions found during verification.
@@ -23,9 +37,13 @@
   - `rtk npm --prefix web-ui run build` ✅
   - `rtk bash scripts/deploy/bump_build_versions.sh` ✅
   - `rtk bash scripts/deploy/check_build_versions.sh origin/main` ✅
-  - `rtk bash scripts/deploy/deploy_webhook.sh` ⚠️ blocked by sandbox policy at remote push/deploy step; explicit user approval required for production deploy
+  - `rtk bash scripts/deploy/deploy_webhook.sh` ✅ after explicit user approval
+  - Public health: `https://trade.mozasolution.com/health` → `v2026.05.05 12:12 - 6b8f804` ✅
+  - Public UI: `https://trade.mozasolution.com/ui/` serves `index-BvFIoQMh.js` ✅
 - **Deploy Status**:
-  - Not deployed. Ready for production deploy after explicit user approval.
+  - Deployed.
+  - Note: deploy script's direct probe to `http://139.59.211.192:80` failed, but public HTTPS health and UI checks passed immediately after restart.
+  - Note: PM2 logs still show pre-existing `v2/broker/sync` error `column "signal_id" does not exist`; not introduced by this DB/Cache admin deploy.
 
 # Session Log: 2026-05-05 11:10
 - **Starting Task**:

@@ -1,20 +1,23 @@
-# Handoff: FEAT-20260505-DB-CACHE-UI (REVIEW FIXED, READY FOR DEPLOY APPROVAL)
+# Handoff: FEAT-20260505-DB-CACHE-UI (DEPLOYED)
 - From agent: Codex
-- To agent: User / next deploy-capable agent
+- To agent: Next reviewer / maintenance agent
 - Ticket: `/Users/macmini/Trade/Bot/trading/.agents/.product/tickets/2-backlog/2026-05-05-db-cache-enhancements.md`
-- Timestamp: 2026-05-05 12:05 (Europe/Berlin)
-- Status: READY_FOR_DEPLOY_APPROVAL
+- Timestamp: 2026-05-05 12:18 (Europe/Berlin)
+- Status: DONE
 - Work Description:
   - Review follow-up fixes applied in `webhook/server.js`, `web-ui/src/pages/system/DatabasePage.jsx`, and `web-ui/src/pages/system/CachePage.jsx`.
   - Added missing feature doc: `.agents/.product/features/2-done/system_db_cache_admin.md`.
-  - Verified locally: backend syntax, UI production build, build-version bump, deploy guard.
-  - Remaining step: explicit user-approved production deploy via `bash scripts/deploy/deploy_webhook.sh`.
-  - Post-deploy smoke: visit `/system/cache` (search should match metadata/content preview, symbol filter, time ago + expiry) and `/system/db` (search `users` table, sort any column, edit nullable fields, edit `logs` row).
+  - Deployed to production successfully.
+  - Live checks passed on public endpoints.
+  - Residual server note: PM2 logs still show pre-existing `v2/broker/sync` database error `column "signal_id" does not exist`; separate from this deploy scope.
 - Checks:
   - `rtk node --check webhook/server.js`
   - `rtk npm --prefix web-ui run build`
   - `rtk bash scripts/deploy/bump_build_versions.sh`
   - `rtk bash scripts/deploy/check_build_versions.sh origin/main`
+  - `rtk bash scripts/deploy/deploy_webhook.sh`
+  - `rtk curl -sS --max-time 20 https://trade.mozasolution.com/health`
+  - `rtk curl -sS --max-time 20 https://trade.mozasolution.com/ui/`
 
 # Handoff: SID-First Architecture & Broker Integration
 Date: 2026-05-05 (Updated)

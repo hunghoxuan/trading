@@ -101,16 +101,45 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 loadEnvFile();
 
 const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 12:12 - 6b8f804"); // DB schema SHOW column + presets
+
+// --- SSE Notification Bus ---
+const SSE_CLIENTS = new Map(); // userId -> Set<res>
+function sseRegisterClient(userId, res) {
+  if (!SSE_CLIENTS.has(userId)) SSE_CLIENTS.set(userId, new Set());
+  SSE_CLIENTS.get(userId).add(res);
+}
+function sseRemoveClient(userId, res) {
+  const set = SSE_CLIENTS.get(userId);
+  if (set) { set.delete(res); if (!set.size) SSE_CLIENTS.delete(userId); }
+}
+function emitNotification(payload) {
+  const data = `data: ${JSON.stringify(payload)}\n\n`;
+  const targets = new Set();
+  // user-specific clients
+  if (payload.user_id) {
+    const userClients = SSE_CLIENTS.get(payload.user_id);
+    if (userClients) userClients.forEach(r => targets.add(r));
+  }
+  // global clients (admin/system listeners)
+  const globalClients = SSE_CLIENTS.get("*");
+  if (globalClients) globalClients.forEach(r => targets.add(r));
+  for (const res of targets) {
+    try { res.write(data); } catch (e) { /* client disconnected */ }
+  }
+}
+
+// Legacy: keep NOTIFICATION_PULSE for backward compat during migration
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
   if (userId && userId !== "default") {
     if (!NOTIFICATION_PULSE.user[userId]) NOTIFICATION_PULSE.user[userId] = {};
-    NOTIFICATION_PULSE.user[userId].total =
-      (NOTIFICATION_PULSE.user[userId].total || 0) + 1;
+    NOTIFICATION_PULSE.user[userId].total = (NOTIFICATION_PULSE.user[userId].total || 0) + 1;
     const typeKey = `${itemType}_${action}`;
     NOTIFICATION_PULSE.user[userId][typeKey] = Date.now();
   }
+  // Also emit SSE
+  emitNotification({ user_id: userId || null, page: null, event: itemType === "trade" ? "trade_updated" : itemType === "signal" ? "signal_added" : "system_event", message: `${itemType} ${action}`, type: "info", notification: false, console_log: false, ticker: true, need_refresh: false, sound: null });
 }
 const CHART_SNAPSHOT_DIR = path.resolve(__dirname, "snapshots");
 const CHART_SNAPSHOT_CLAUDE_MAP_FILE = path.join(
@@ -12153,6 +12182,29 @@ const appHandler = async (req, res) => {
     `[REQUEST] ${req.method} ${req.url} -> ${url.pathname} (IP: ${ip})`,
   );
 
+  if (req.method === "GET" && url.pathname === "/v2/notifications/stream") {
+    const sess = getUiSessionFromReq(req);
+    const userId = sess.user_id || "*";
+    // SSE headers
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    res.write(":ok\n\n"); // initial comment to establish connection
+    sseRegisterClient(userId, res);
+    // heartbeat every 30s
+    const heartbeat = setInterval(() => {
+      try { res.write(":ping\n\n"); } catch (e) { clearInterval(heartbeat); }
+    }, 30000);
+    req.on("close", () => {
+      clearInterval(heartbeat);
+      sseRemoveClient(userId, res);
+    });
+    return; // do not call json() — SSE is raw
+  }
+
   if (req.method === "GET" && url.pathname === "/v2/notifications/pulse") {
     const sess = getUiSessionFromReq(req);
     const userId = sess.user_id;
@@ -16357,9 +16409,104 @@ const appHandler = async (req, res) => {
     }
   }
 
+  if (req.method === "POST" && url.pathname === "/v2/notifications/emit") {
+    // Internal endpoint for other processes/services to push SSE events
+    if (!requireSystemRoleForUi(req, res)) return;
+    try {
+      const payload = await readJson(req);
+      if (!payload.event) return json(res, 400, { ok: false, error: "event is required" });
+      emitNotification({
+        user_id: payload.user_id || null,
+        page: payload.page || null,
+        event: payload.event,
+        message: payload.message || "",
+        type: payload.type || "info",
+        notification: payload.notification !== false,
+        console_log: payload.console_log || false,
+        ticker: payload.ticker !== false,
+        need_refresh: payload.need_refresh || false,
+        sound: payload.sound || null,
+      });
+      return json(res, 200, { ok: true });
+    } catch (e) {
+      return json(res, 400, { ok: false, error: e.message });
+    }
+  }
+
+  const DEFAULT_EVENT_TYPES = [
+    { event: "trade_added", notification: true, console_log: false, ticker: true, refresh: false, sound: "NEW_SIGNAL" },
+    { event: "trade_updated", notification: false, console_log: false, ticker: true, refresh: false, sound: null },
+    { event: "signal_added", notification: true, console_log: false, ticker: true, refresh: false, sound: "NEW_SIGNAL" },
+    { event: "broker_sync", notification: false, console_log: false, ticker: true, refresh: false, sound: null },
+    { event: "news_alert", notification: true, console_log: false, ticker: true, refresh: false, sound: "NEWS_ALERT" },
+    { event: "system_event", notification: false, console_log: true, ticker: true, refresh: false, sound: null },
+    { event: "page_refresh", notification: false, console_log: false, ticker: false, refresh: true, sound: null },
+    { event: "error", notification: true, console_log: true, ticker: true, refresh: false, sound: null },
+  ];
+
+  if (req.method === "GET" && url.pathname === "/v2/notifications/events") {
+    if (!requireAuthForUi(req, res)) return;
+    try {
+      const sess = getUiSessionFromReq(req);
+      const userId = sess.user_id;
+      let overrides = {};
+      try {
+        const db = await mt5InitBackend();
+        const { rows } = await db.query(
+          "SELECT data FROM user_settings WHERE user_id = $1 AND type = 'notification' AND name = 'preferences'",
+          [userId],
+        );
+        if (rows[0]?.data && typeof rows[0].data === "object") overrides = rows[0].data;
+      } catch (e) { /* use defaults */ }
+      const events = DEFAULT_EVENT_TYPES.map(ev => ({
+        ...ev,
+        ...(overrides[ev.event] || {}),
+      }));
+      return json(res, 200, { ok: true, events });
+    } catch (e) {
+      return json(res, 400, { ok: false, error: e.message });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/v2/notifications/settings") {
+    if (!requireAuthForUi(req, res)) return;
+    try {
+      const sess = getUiSessionFromReq(req);
+      const db = await mt5InitBackend();
+      let data = {};
+      const { rows } = await db.query(
+        "SELECT data FROM user_settings WHERE user_id = $1 AND type = 'notification' AND name = 'preferences'",
+        [sess.user_id],
+      );
+      if (rows[0]?.data && typeof rows[0].data === "object") data = rows[0].data;
+      return json(res, 200, { ok: true, settings: data });
+    } catch (e) {
+      return json(res, 200, { ok: true, settings: {} });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/v2/notifications/settings") {
+    if (!requireAuthForUi(req, res)) return;
+    try {
+      const payload = await readJson(req);
+      const sess = getUiSessionFromReq(req);
+      const data = payload.settings || payload;
+      const db = await mt5InitBackend();
+      await db.query(
+        `INSERT INTO user_settings (user_id, type, name, data)
+         VALUES ($1, 'notification', 'preferences', $2)
+         ON CONFLICT (user_id, type, name)
+         DO UPDATE SET data = $2, updated_at = NOW()`,
+        [sess.user_id, JSON.stringify(data)],
+      );
+      return json(res, 200, { ok: true });
+    } catch (e) {
+      return json(res, 400, { ok: false, error: e.message });
+    }
+  }
+
   if (req.method === "GET" && url.pathname === "/v2/notifications/pulse") {
     const sess = getUiSessionFromReq(req);
-    // Pulse is low-sensitivity, but let's keep it scoped to user if possible
     const userId = sess.user_id || CFG.mt5DefaultUserId || "global";
     try {
       const client = await getRedisClient();

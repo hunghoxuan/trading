@@ -173,9 +173,11 @@ export function SymbolChart({
   hasAnalysis = false,
   skipFetch = false,
 }) {
+  const rootRef = useRef(null);
   const [mode, setMode] = useState(defaultMode);
   const [pendingMode, setPendingMode] = useState(null); // mode we're loading
   const [lastError, setLastError] = useState(null);
+  const [containerWidth, setContainerWidth] = useState(0);
   const cleanSym = useMemo(() => normSym(symbol), [symbol]);
   const defaultGridCols = useMemo(() => {
     const maxCols = Math.max(1, timeframes?.length || 4);
@@ -200,6 +202,26 @@ export function SymbolChart({
       Math.min(Math.max(1, prev), Math.max(1, timeframes?.length || 4)),
     );
   }, [timeframes?.length]);
+
+  useEffect(() => {
+    if (!rootRef.current) return;
+
+    const updateWidth = () => {
+      if (!rootRef.current) return;
+      setContainerWidth(rootRef.current.clientWidth || 0);
+    };
+
+    updateWidth();
+
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => updateWidth());
+      observer.observe(rootRef.current);
+      return () => observer.disconnect();
+    }
+
+    window.addEventListener("resize", updateWidth);
+    return () => window.removeEventListener("resize", updateWidth);
+  }, []);
 
   const { status, master, error, cachedAt, refresh, liveKey, snapshotState } =
     useSymbolChartData({
@@ -322,10 +344,19 @@ export function SymbolChart({
     return MODE_LABELS[m] + " (no data)";
   };
 
-  const chartHeight =
-    gridCols >= (timeframes?.length || 4)
-      ? 250
-      : Math.max(250, ((timeframes?.length || 4) / gridCols) * 250);
+  const chartHeight = useMemo(() => {
+    const cols = Math.max(1, gridCols);
+    const gapPx = 8;
+    const usableWidth = Math.max(0, containerWidth - gapPx * (cols - 1));
+    const tileWidth = usableWidth > 0 ? usableWidth / cols : 0;
+    const targetAspectRatio = cols <= 2 ? 1.7 : 1.45;
+    if (!tileWidth) {
+      return cols <= 2 ? 280 : 240;
+    }
+    return Math.round(
+      Math.max(210, Math.min(360, tileWidth / targetAspectRatio)),
+    );
+  }, [containerWidth, gridCols]);
 
   const showControls = !(hasTradePlan && hasAnalysis);
   const overlayButtons = [
@@ -336,7 +367,11 @@ export function SymbolChart({
   ];
 
   return (
-    <div className="browser-card-v1" style={{ position: "relative" }}>
+    <div
+      ref={rootRef}
+      className="browser-card-v1"
+      style={{ position: "relative", width: "100%" }}
+    >
       {/* ── Header ── */}
       <div
         style={{
@@ -556,7 +591,7 @@ export function SymbolChart({
           const chartId = `${cleanSym}-${String(tf).toLowerCase()}`;
 
           return (
-            <div key={`${mode}-${tf}`} style={{ minWidth: 100 }}>
+            <div key={`${mode}-${tf}`} style={{ minWidth: 0 }}>
               <TfHeader
                 tf={tf}
                 context={context}

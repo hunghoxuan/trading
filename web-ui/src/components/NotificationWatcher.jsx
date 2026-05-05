@@ -1,118 +1,93 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { api } from "../api";
 import { playSound, SoundEvents } from "../utils/SoundManager";
 
+// Store events in a global array so TickerBar can read them
+window.__tickerEvents = window.__tickerEvents || [];
+
 /**
- * Global component that watches for events and plays sounds.
+ * Global component: SSE stream listener for real-time notifications.
+ * Dispatches events to: browser notification, console log, ticker, page refresh, sound.
  */
 export default function NotificationWatcher() {
-  const lastState = useRef({
-    signalIds: new Set(),
-    tradeStatuses: {}, // sid -> status
-    announcedNews: new Set(),
-    activeKillZone: null,
-  });
+  const esRef = useRef(null);
+  const reconnectTimer = useRef(null);
 
-  const lastPulse = useRef({ global: 0, user: 0 });
-
-  const checkPulse = async () => {
+  const handleEvent = useCallback((payload) => {
     try {
-      const res = await api.notificationPulse();
-      if (!res.ok) return;
+      const p = typeof payload === "string" ? JSON.parse(payload) : payload;
 
-      const hasGlobalChange = res.global > lastPulse.current.global;
-      const hasUserChange = (res.user || 0) > (lastPulse.current.user || 0);
-
-      if (hasGlobalChange || hasUserChange) {
-        lastPulse.current = { global: res.global, user: res.user };
-        await checkEvents();
+      // 1. Console log
+      if (p.console_log) {
+        const fn = p.type === "error" ? console.error : p.type === "warning" ? console.warn : console.log;
+        fn(`[${p.event}] ${p.message}`);
       }
-    } catch (err) {
-      console.warn("[NotificationWatcher] Pulse error:", err);
-    }
-  };
 
-  const checkEvents = async () => {
-    try {
-      // 1. Check Signals & Trades
-      const data = await api.trades({ page: 1, pageSize: 20 });
-      const currentTrades = data.trades || [];
-      
-      let hasNewSignal = false;
-      let hasFilled = false;
-      let hasClosed = false;
-
-      currentTrades.forEach(t => {
-        const sid = t.sid || t.sid;
-        if (!sid) return;
-
-        // Detect New Signal
-        if (!lastState.current.signalIds.has(sid)) {
-          lastState.current.signalIds.add(sid);
-          hasNewSignal = true;
-        }
-
-        // Detect Status Change
-        const prevStatus = lastState.current.tradeStatuses[sid];
-        const curStatus = String(t.status || "").toUpperCase();
-        
-        if (prevStatus && prevStatus !== curStatus) {
-          if (curStatus === "START" || curStatus === "PLACED") hasFilled = true;
-          if (["TP", "SL", "CLOSED", "CANCEL"].includes(curStatus)) hasClosed = true;
-        }
-        lastState.current.tradeStatuses[sid] = curStatus;
-      });
-
-      if (hasNewSignal) playSound(SoundEvents.NEW_SIGNAL);
-      else if (hasFilled) playSound(SoundEvents.TRADE_FILLED);
-      else if (hasClosed) playSound(SoundEvents.TRADE_CLOSED);
-
-      // 2. Check News Alerts (10m before)
-      const newsRes = await fetch("/v2/calendar/today").then(r => r.json());
-      if (newsRes.ok && newsRes.events) {
-        const now = new Date();
-        newsRes.events.forEach(ev => {
-          if (ev.impact !== "High") return;
-          
-          // Parse "10:00am" EST to Date
-          const match = ev.time.match(/(\d+):(\d+)(am|pm)/i);
-          if (!match) return;
-          let h = parseInt(match[1]);
-          const m = parseInt(match[2]);
-          const isPm = match[3].toLowerCase() === 'pm';
-          if (isPm && h < 12) h += 12;
-          if (!isPm && h === 12) h = 0;
-          
-          const evDate = new Date();
-          evDate.setUTCHours(h + 5, m, 0, 0); // Convert EST to UTC approx
-
-          const diffMins = (evDate - now) / 60000;
-          if (diffMins > 0 && diffMins <= 10.5 && !lastState.current.announcedNews.has(ev.title)) {
-            playSound(SoundEvents.NEWS_ALERT);
-            lastState.current.announcedNews.add(ev.title);
-          }
-        });
+      // 2. Browser notification
+      if (p.notification && Notification.permission === "granted") {
+        new Notification(p.event.replace(/_/g, " ").toUpperCase(), { body: p.message, icon: "/favicon.ico" });
       }
-    } catch (err) {
-      console.error("[NotificationWatcher] Error:", err);
+
+      // 3. Ticker
+      if (p.ticker) {
+        window.__tickerEvents.push({ ts: Date.now(), event: p.event, message: p.message, type: p.type });
+        if (window.__tickerEvents.length > 50) window.__tickerEvents.shift();
+        window.dispatchEvent(new CustomEvent("ticker-update"));
+      }
+
+      // 4. Page refresh
+      if (p.need_refresh && p.page) {
+        const currentPath = window.location.pathname;
+        if (p.page === "*" || currentPath.startsWith(p.page) || currentPath === p.page) {
+          window.location.reload();
+        }
+      }
+
+      // 5. Sound
+      if (p.sound && SoundEvents[p.sound]) {
+        playSound(p.sound);
+      }
+    } catch (e) {
+      console.warn("[NotificationWatcher] Failed to handle event:", e);
     }
-  };
-
-  useEffect(() => {
-    // Initial load
-    api.trades({ page: 1, pageSize: 50 }).then(data => {
-      data.trades?.forEach(t => {
-        lastState.current.signalIds.add(t.sid || t.sid);
-        lastState.current.tradeStatuses[t.sid || t.sid] = String(t.status || "").toUpperCase();
-      });
-    });
-
-    // Check News once on load
-    fetch("/v2/calendar/today").then(r => r.json()).catch(() => null);
-
-    const timer = setInterval(checkPulse, 10000); // Check pulse every 10s (lightweight)
-    return () => clearInterval(timer);
   }, []);
 
-  return null; // Transparent background helper
+  const connect = useCallback(() => {
+    if (esRef.current) {
+      esRef.current.close();
+    }
+    try {
+      const es = api.notificationStream();
+      esRef.current = es;
+      es.onmessage = (e) => {
+        if (!e.data || e.data.startsWith(":")) return; // heartbeat
+        handleEvent(e.data);
+      };
+      es.onerror = () => {
+        es.close();
+        esRef.current = null;
+        // Reconnect after 5s
+        if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = setTimeout(connect, 5000);
+      };
+    } catch (e) {
+      console.warn("[NotificationWatcher] SSE connect failed, retrying in 5s:", e);
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      reconnectTimer.current = setTimeout(connect, 5000);
+    }
+  }, [handleEvent]);
+
+  useEffect(() => {
+    // Request notification permission on mount
+    if (Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+    connect();
+    return () => {
+      if (esRef.current) esRef.current.close();
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+    };
+  }, [connect]);
+
+  return null;
 }

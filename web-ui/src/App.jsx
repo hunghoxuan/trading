@@ -15,10 +15,12 @@ import AccountsV2Page from "./pages/system/AccountsV2Page";
 import SnapshotsPage from "./pages/system/SnapshotsPage";
 import StoragePage from "./pages/system/StoragePage";
 import CachePage from "./pages/system/CachePage";
+import EventsPage from "./pages/system/EventsPage";
 import { api, getRuntimeActiveUserId, setRuntimeActiveUserId } from "./api";
 import LoginPage from "./pages/LoginPage";
 import SessionClockBar from "./components/SessionClockBar";
 import NotificationWatcher from "./components/NotificationWatcher";
+import TickerBar from "./components/TickerBar";
 import { normalizeDisplayTimezone } from "./utils/format";
 
 export default function App() {
@@ -137,10 +139,10 @@ export default function App() {
           {getRuntimeActiveUserId() && (
             <span style={{ marginLeft: 10, fontSize: "11px", color: "#f39c12" }}>
               (Acting as {getRuntimeActiveUserId()})
-              <button 
-                type="button" 
-                onClick={() => { setRuntimeActiveUserId(""); window.location.reload(); }} 
-                className="secondary-button icon-button" 
+              <button
+                type="button"
+                onClick={() => { setRuntimeActiveUserId(""); window.location.reload(); }}
+                className="secondary-button icon-button"
                 style={{ marginLeft: 6, padding: "2px 6px" }}
               >
                 ✖
@@ -155,7 +157,7 @@ export default function App() {
           <NavLink to="/trades" className={({ isActive }) => (isActive ? "active" : "")}>Trades</NavLink>
 
           <div style={{ flex: 1 }} />
-          
+
           {canAccessSystemPages && (
             <div className="nav-dropdown">
               <button
@@ -170,6 +172,7 @@ export default function App() {
                 <NavLink to="/system/cache">Cache</NavLink>
                 <NavLink to="/system/logs">Logs</NavLink>
                 <NavLink to="/system/db">DB</NavLink>
+                <NavLink to="/system/events">Events</NavLink>
                 <NavLink to="/system/users">Users</NavLink>
                 <NavLink to="/system/sources">Sources</NavLink>
               </div>
@@ -187,15 +190,15 @@ export default function App() {
               <NavLink to="/settings">Settings</NavLink>
               <NavLink to="/system/accounts">Accounts</NavLink>
               <hr style={{ border: '0', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '4px 0' }} />
-              <button 
-                onClick={handleLogout} 
+              <button
+                onClick={handleLogout}
                 className="nav-item-button danger-text"
-                style={{ 
-                  width: '100%', 
-                  textAlign: 'left', 
-                  background: 'none', 
-                  border: 'none', 
-                  color: '#ff4d4f', 
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  background: 'none',
+                  border: 'none',
+                  color: '#ff4d4f',
                   padding: '8px 12px',
                   fontSize: '11px',
                   cursor: 'pointer'
@@ -205,11 +208,11 @@ export default function App() {
               </button>
             </div>
           </div>
-          <button 
-             onClick={toggleTheme} 
+          <button
+             onClick={toggleTheme}
              className="secondary-button"
-             style={{ 
-               padding: '4px 10px', 
+             style={{
+               padding: '4px 10px',
                fontSize: '11px',
                marginLeft: '10px',
                minWidth: '40px'
@@ -220,6 +223,7 @@ export default function App() {
         </nav>
       </header>
       <SessionClockBar displayTimezone={displayTimezone} />
+      <TickerBar />
       <main className="page-wrap">
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -238,6 +242,7 @@ export default function App() {
           <Route path="/system/cache" element={canAccessSystemPages ? <CachePage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/logs" element={canAccessSystemPages ? <LogsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/db" element={canAccessSystemPages ? <DatabasePage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/system/events" element={canAccessSystemPages ? <EventsPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/users" element={canAccessSystemPages ? <UsersPage authUser={authUser} /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/accounts" element={canAccessSystemPages ? <AccountsV2Page /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/sources" element={canAccessSystemPages ? <SourcesPage /> : <Navigate to="/dashboard" replace />} />

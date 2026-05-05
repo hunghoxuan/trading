@@ -12,6 +12,12 @@ This file tracks the status of user-facing features and links them to technical 
 - **Ticket**: [./2-backlog/2026-05-05-db-cache-enhancements.md]
 - **Summary**: System-only database and cache inspection pages with schema-driven list/detail/edit flows, validated sorting/search, and cache filtering.
 
+## [ ] SSE Notification System
+- **Status**: Planned
+- **Feature Doc**: [../features/1-plan/sse_notification_system.md]
+- **Ticket**: [./2-backlog/2026-05-05-sse-notification-system.md]
+- **Summary**: Real-time SSE push replacing 10s polling. Multi-channel output (toast, ticker, console, sound, refresh) configurable per event type. New `/system/events` management page.
+
 ## [ ] Chart Snapshots Symbols Panel Filters
 - **Status**: Planned
 - **Feature Doc**: [../features/1-plan/chart_snapshots_symbols_panel_filters.md]
