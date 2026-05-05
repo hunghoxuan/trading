@@ -2,12 +2,26 @@ import { useEffect, useState, useMemo } from "react";
 import { api } from "../../api";
 import { showDateTime } from "../../utils/format";
 
+function timeAgo(ms) {
+  if (!ms) return null;
+  const diff = Date.now() - ms;
+  if (diff < 60000) return "just now";
+  if (diff < 3600000) return Math.floor(diff / 60000) + "m ago";
+  if (diff < 86400000) return Math.floor(diff / 3600000) + "h ago";
+  return Math.floor(diff / 86400000) + "d ago";
+}
+
 function CsvTable({ content }) {
   const rows = useMemo(() => {
-    if (typeof content !== 'string') return [];
-    return content.split('\n')
-      .map(line => line.split(','))
-      .filter(cells => cells.length > 1 || (cells.length === 1 && cells[0].trim().length > 0));
+    if (typeof content !== "string") return [];
+    return content
+      .split("\n")
+      .map((line) => line.split(","))
+      .filter(
+        (cells) =>
+          cells.length > 1 ||
+          (cells.length === 1 && cells[0].trim().length > 0),
+      );
   }, [content]);
 
   if (!rows.length) return <div className="minor-text">Empty CSV content</div>;
@@ -16,17 +30,26 @@ function CsvTable({ content }) {
   const dataRows = rows.slice(1);
 
   return (
-    <div className="table-wrap" style={{ maxHeight: '600px', overflow: 'auto' }}>
+    <div
+      className="table-wrap"
+      style={{ maxHeight: "600px", overflow: "auto" }}
+    >
       <table className="events-table">
         <thead>
           <tr>
-            {headers.map((h, i) => <th key={i}>{h}</th>)}
+            {headers.map((h, i) => (
+              <th key={i}>{h}</th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {dataRows.map((row, ri) => (
             <tr key={ri}>
-              {row.map((cell, ci) => <td key={ci} style={{ fontSize: 11 }}>{cell}</td>)}
+              {row.map((cell, ci) => (
+                <td key={ci} style={{ fontSize: 11 }}>
+                  {cell}
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>
@@ -37,16 +60,18 @@ function CsvTable({ content }) {
 
 function JsonViewer({ data }) {
   return (
-    <pre style={{ 
-      background: 'rgba(0,0,0,0.2)', 
-      padding: '15px', 
-      borderRadius: '8px', 
-      fontSize: '12px', 
-      overflow: 'auto',
-      maxHeight: '600px',
-      color: '#adbac7',
-      border: '1px solid var(--border)'
-    }}>
+    <pre
+      style={{
+        background: "rgba(0,0,0,0.2)",
+        padding: "15px",
+        borderRadius: "8px",
+        fontSize: "12px",
+        overflow: "auto",
+        maxHeight: "600px",
+        color: "#adbac7",
+        border: "1px solid var(--border)",
+      }}
+    >
       {JSON.stringify(data, null, 2)}
     </pre>
   );
@@ -93,7 +118,13 @@ export default function CachePage() {
   }
 
   async function handleDelete(key = "", source = "") {
-    if (!key && !window.confirm("Clear ALL cache? This includes Redis, memory, and database market data buffers.")) return;
+    if (
+      !key &&
+      !window.confirm(
+        "Clear ALL cache? This includes Redis, memory, and database market data buffers.",
+      )
+    )
+      return;
     try {
       setBusy(true);
       await api.deleteCache(key, source);
@@ -118,35 +149,78 @@ export default function CachePage() {
   }
 
   const isCsv = (content) => {
-    if (typeof content !== 'string') return false;
+    if (typeof content !== "string") return false;
     if (content.length < 5) return false;
     // Heuristic: check for commas and newlines
-    const lines = content.split('\n');
+    const lines = content.split("\n");
     if (lines.length < 2) return false;
-    return lines[0].includes(',') && lines[1].includes(',');
+    return lines[0].includes(",") && lines[1].includes(",");
   };
 
   return (
-    <div className="stack-layout fadeIn" style={{ height: 'calc(100vh - 120px)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 className="page-title" style={{ margin: 0 }}>CACHE</h2>
-        <div style={{ display: 'flex', gap: 10 }}>
-          {msg && <span className="badge FILLED" style={{ padding: '6px 12px' }}>{msg}</span>}
-          {error && <span className="badge SL" style={{ padding: '6px 12px' }}>{error}</span>}
-          <button className="secondary-button" onClick={loadCache} disabled={loading}>
+    <div
+      className="stack-layout fadeIn"
+      style={{ height: "calc(100vh - 120px)" }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 16,
+        }}
+      >
+        <h2 className="page-title" style={{ margin: 0 }}>
+          CACHE
+        </h2>
+        <div style={{ display: "flex", gap: 10 }}>
+          {msg && (
+            <span className="badge FILLED" style={{ padding: "6px 12px" }}>
+              {msg}
+            </span>
+          )}
+          {error && (
+            <span className="badge SL" style={{ padding: "6px 12px" }}>
+              {error}
+            </span>
+          )}
+          <button
+            className="secondary-button"
+            onClick={loadCache}
+            disabled={loading}
+          >
             {loading ? "REFRESHING..." : "REFRESH LIST"}
           </button>
-          <button className="danger-button" onClick={() => handleDelete("", "")} disabled={busy}>
+          <button
+            className="danger-button"
+            onClick={() => handleDelete("", "")}
+            disabled={busy}
+          >
             CLEAR ALL CACHE
           </button>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: 20, height: '100%', overflow: 'hidden' }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "400px 1fr",
+          gap: 20,
+          height: "100%",
+          overflow: "hidden",
+        }}
+      >
         {/* Left Column: List */}
-        <div className="panel" style={{ overflowY: 'auto', padding: 0 }}>
+        <div className="panel" style={{ overflowY: "auto", padding: 0 }}>
           <table className="events-table">
-            <thead style={{ position: 'sticky', top: 0, background: 'var(--panel-bg)', zIndex: 1 }}>
+            <thead
+              style={{
+                position: "sticky",
+                top: 0,
+                background: "var(--panel-bg)",
+                zIndex: 1,
+              }}
+            >
               <tr>
                 <th>KEY</th>
                 <th style={{ width: 80 }}>SOURCE</th>
@@ -156,37 +230,70 @@ export default function CachePage() {
             </thead>
             <tbody>
               {items.length === 0 ? (
-                <tr><td colSpan="3" style={{ textAlign: 'center', padding: 40 }} className="muted">{loading ? "Loading..." : "No cache items"}</td></tr>
+                <tr>
+                  <td
+                    colSpan="3"
+                    style={{ textAlign: "center", padding: 40 }}
+                    className="muted"
+                  >
+                    {loading ? "Loading..." : "No cache items"}
+                  </td>
+                </tr>
               ) : (
                 items.map((item, idx) => (
-                  <tr 
+                  <tr
                     key={`${item.source}-${item.key}-${idx}`}
-                    className={selectedKey?.key === item.key && selectedKey?.source === item.source ? 'selected-row' : ''}
+                    className={
+                      selectedKey?.key === item.key &&
+                      selectedKey?.source === item.source
+                        ? "selected-row"
+                        : ""
+                    }
                     onClick={() => loadDetail(item.key, item.source)}
-                    style={{ cursor: 'pointer' }}
+                    style={{ cursor: "pointer" }}
                   >
                     <td>
-                      <div style={{ fontSize: 11, fontFamily: 'monospace', wordBreak: 'break-all' }}>{item.key}</div>
-                      {item.data && typeof item.data === 'object' && (
-                        <div className="minor-text" style={{ fontSize: 9, marginTop: 4 }}>
-                          {item.data.symbol} {item.data.tf} · {item.data.bars} bars
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontFamily: "monospace",
+                          wordBreak: "break-all",
+                        }}
+                      >
+                        {item.key}
+                      </div>
+                      {item.data && typeof item.data === "object" && (
+                        <div
+                          className="minor-text"
+                          style={{ fontSize: 9, marginTop: 4 }}
+                        >
+                          {item.data.symbol} {item.data.tf} · {item.data.bars}{" "}
+                          bars
                         </div>
                       )}
                     </td>
                     <td>
-                      <span className={`badge ${item.source === 'memory' ? 'FILLED' : 'OTHER'}`} style={{ fontSize: 9 }}>
+                      <span
+                        className={`badge ${item.source === "memory" ? "FILLED" : "OTHER"}`}
+                        style={{ fontSize: 9 }}
+                      >
                         {item.source.toUpperCase()}
                       </span>
                     </td>
                     <td>
                       <div className="minor-text" style={{ fontSize: 9 }}>
-                        {item.data?.updated_at ? showDateTime(item.data.updated_at) : 'n/a'}
+                        {item.data?.updated_at
+                          ? showDateTime(item.data.updated_at)
+                          : "n/a"}
                       </div>
                     </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button 
+                    <td style={{ textAlign: "right" }}>
+                      <button
                         className="secondary-button icon-button"
-                        onClick={(e) => { e.stopPropagation(); handleDelete(item.key, item.source); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(item.key, item.source);
+                        }}
                       >
                         ✖
                       </button>
@@ -199,23 +306,53 @@ export default function CachePage() {
         </div>
 
         {/* Right Column: Detail */}
-        <div className="panel" style={{ overflowY: 'auto' }}>
+        <div className="panel" style={{ overflowY: "auto" }}>
           <div className="panel-label">CACHE CONTENT PREVIEW</div>
           {!selectedKey ? (
-            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="muted">
+            <div
+              style={{
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              className="muted"
+            >
               Select a cache key to view its content
             </div>
           ) : detailLoading ? (
-            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="loading">
+            <div
+              style={{
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              className="loading"
+            >
               Loading content...
             </div>
           ) : detail ? (
             <div className="stack-layout">
-              <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', borderRadius: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 12, fontFamily: 'monospace' }}>{selectedKey.key} ({selectedKey.source})</span>
-                <span className="minor-text">Type: {typeof detail} {Array.isArray(detail) ? `[Array(${detail.length})]` : ''}</span>
+              <div
+                style={{
+                  padding: "8px 12px",
+                  background: "rgba(255,255,255,0.05)",
+                  borderRadius: 6,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <span style={{ fontSize: 12, fontFamily: "monospace" }}>
+                  {selectedKey.key} ({selectedKey.source})
+                </span>
+                <span className="minor-text">
+                  Type: {typeof detail}{" "}
+                  {Array.isArray(detail) ? `[Array(${detail.length})]` : ""}
+                </span>
               </div>
-              
+
               {isCsv(detail) ? (
                 <CsvTable content={detail} />
               ) : (
@@ -223,7 +360,15 @@ export default function CachePage() {
               )}
             </div>
           ) : (
-            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="muted">
+            <div
+              style={{
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              className="muted"
+            >
               No content available for this key
             </div>
           )}

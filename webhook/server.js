@@ -100,7 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 04:30 - d2eda66"); // DB Index Update
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 04:45 - 6704a34"); // DB Index Update
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
@@ -6954,6 +6954,7 @@ async function _mt5InitBackendInternal() {
       const uid = acc.rows[0]?.user_id || CFG.mt5DefaultUserId;
       const existingMeta = acc.rows[0]?.metadata || {};
 
+      // Update metadata and explicit columns
       const newMeta = {
         ...existingMeta,
         balance: Number(payload.balance || existingMeta.balance || 0),
@@ -6968,8 +6969,28 @@ async function _mt5InitBackendInternal() {
       };
 
       await pool.query(
-        `UPDATE user_accounts SET metadata = $1, updated_at = NOW() WHERE account_id = $2`,
-        [JSON.stringify(newMeta), aid],
+        `
+        UPDATE user_accounts
+        SET metadata = $1,
+            balance = $2,
+            equity = $3,
+            margin = $4,
+            free_margin = $5,
+            leverage = $6,
+            broker_name = $7,
+            updated_at = NOW()
+        WHERE account_id = $8
+      `,
+        [
+          JSON.stringify(newMeta),
+          newMeta.balance,
+          newMeta.equity,
+          newMeta.margin,
+          newMeta.free_margin,
+          newMeta.leverage,
+          newMeta.broker_name,
+          aid,
+        ],
       );
       await StateRepo.del("USER_ACCOUNTS", uid);
       await this.log(
@@ -7331,8 +7352,42 @@ async function _mt5InitBackendInternal() {
             ],
           );
         }
-        matched += res.rowCount;
-        if (res.rowCount > 0) {
+
+        // --- MANUAL TRADE DISCOVERY ---
+        // Final fallback: if no trade was matched and it's OPEN, create it.
+        if (res.rowCount === 0 && it.execution_status === "OPEN") {
+          const discoverySid = mt5GenerateTimeSid();
+          const brokerSource = (payload.broker_name || "BROKER").toUpperCase().replace(/\s+/g, "_");
+          
+          await pool.query(`
+            INSERT INTO trades (
+              trade_id, sid, account_id, user_id, 
+              symbol, action, volume, entry, 
+              execution_status, source, metadata, broker_trade_id,
+              broker_pips, broker_lots, broker_commission, broker_swap, broker_volume,
+              created_at, updated_at
+            ) VALUES ($1, $1, $2, $3, $4, $5, $6, $7, 'OPEN', $8, $9::jsonb, $10, $11, $12, $13, $14, $15, NOW(), NOW())
+            ON CONFLICT (sid) DO NOTHING
+          `, [
+            discoverySid,
+            aid,
+            userId,
+            syncSymbol,
+            syncAction,
+            it.volume || 0,
+            it.entry || 0,
+            brokerSource,
+            syncMeta,
+            ticketCandidates[0] || "",
+            it.pips || 0,
+            it.lots || 0,
+            it.commission || 0,
+            it.swap || 0,
+            it.volume || 0
+          ]);
+          matched++;
+        } else if (res.rowCount > 0) {
+          matched += res.rowCount;
           synced++;
           const tid = String(res.rows?.[0]?.trade_id || "").trim();
           if (tid) {

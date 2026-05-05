@@ -26,3 +26,7 @@ Read all files in this order:
 - Update worklog at START and FINISH of significant work.
 - Test real code changes.
 - Bump matched server/EA versions for backend, EA, UI, or script changes.
+
+## Workflow Laws
+- **Documentation First**: Before executing any new tasks, update or create the relevant Feature document in `.product/features/` and Ticket document in `.product/tickets/`.
+- **Clean Hand-off**: After finishing a task, always update the hand-off document (`MAILBOX.md`) and the relevant Feature/Ticket status with detailed progress.
