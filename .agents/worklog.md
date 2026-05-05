@@ -1,6 +1,31 @@
 # Session Log: 2026-05-05 09:45
 - **Starting Task**:
   - Deploy all remaining local changes: cTrader sync metadata updates and UI volume-stat display updates across signals/trades/detail views.
+- **Work Accomplished**:
+  - **cTrader Bridge**: Increased HTTP timeout and synced `brokerName`, leverage, account balance, `risk_money_planned`, and `volume_size` into the downstream payload.
+  - **Signals/Trades UI**: Updated summary stats to prefer broker-reported `volume_size` when available.
+  - **Trade Detail Header**: Wired broker `volume_size` into the shared header stats builder.
+  - **Docs**: Updated trade lifecycle feature doc for broker-driven volume percentage display.
+  - **Deploy**: Deployed all remaining local changes, then aligned live build/version stamp to `v2026.05.05 07:21 - deployall2`.
+- **Changed Files**:
+  - `bridge-clients/TVBridge_CTrader.cs`
+  - `web-ui/src/pages/signals/SignalsPage.jsx`
+  - `web-ui/src/pages/trades/TradesPage.jsx`
+  - `web-ui/src/pages/trades/V2TradeDetailPage.jsx`
+  - `web-ui/src/utils/signalDetailUtils.jsx`
+  - `.agents/.product/features/2-done/trade_lifecycle.md`
+  - `.agents/worklog.md`
+  - `webhook/server.js`
+  - `bridge-clients/TVBridgeEA.mq5`
+- **Technical Decisions**:
+  - Use broker-synced `volume_size` as the preferred UI percentage source and fall back to the previous local estimate only when absent.
+  - Use an agreed deploy build id (`deployall2`) for the final live version stamp so the reported version matches the actual shipped rollout.
+- **Verification**:
+  - `rtk env BUILD_GIT_ID=deployall2 bash scripts/deploy/bump_build_versions.sh` ✅
+  - `rtk node --check webhook/server.js` ✅
+  - `rtk npm --prefix web-ui run build` ✅
+- **Deploy Status**:
+  - Deployed.
 
 # Session Log: 2026-05-05 09:20
 - **Starting Task**:

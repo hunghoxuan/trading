@@ -34,7 +34,7 @@ namespace cAlgo.Robots
         [Parameter("Max Risk %", DefaultValue = 1.0, MinValue = 0.1, MaxValue = 10.0)]
         public double MaxRiskPct { get; set; }
 
-        private string BuildVersion = "v2026.05.05 07:19 - 495a7a6";
+        private string BuildVersion = "v2026.05.05 07:21 - deployall2";
         private string _lastStatus = "INITIALIZING";
         private string _lastSignalId = "None";
         private string _lastAction = "None";
