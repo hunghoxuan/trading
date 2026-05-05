@@ -100,7 +100,7 @@ function normalizeIsoTimestamp(value, fallback = new Date().toISOString()) {
 
 loadEnvFile();
 
-const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 04:27 - 8d8ec61"); // DB Index Update
+const SERVER_VERSION = envStr(process.env.WEBHOOK_SERVER_VERSION, "v2026.05.05 04:30 - d2eda66"); // DB Index Update
 const NOTIFICATION_PULSE = { global: 0, user: {} };
 function bumpPulse(userId = null, action = "updated", itemType = "general") {
   NOTIFICATION_PULSE.global += 1;
@@ -2664,10 +2664,7 @@ function normalizePublicSidBase(raw, fallbackPrefix = "ID") {
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");
   if (cleaned) return cleaned.slice(0, 48);
-  return `${String(fallbackPrefix || "ID").toUpperCase()}_${mt5GenerateTimeSid()}`.slice(
-    0,
-    48,
-  );
+  return mt5GenerateTimeSid();
 }
 
 function snapshotTimestampToken(dateLike = Date.now()) {
@@ -6258,7 +6255,7 @@ async function _mt5InitBackendInternal() {
     ]);
     const tableName = String(table || "").trim();
     if (!allowed.has(tableName)) {
-      return `${String(fallbackPrefix || "ID").toUpperCase()}_${mt5GenerateTimeSid()}`.slice(0, 48);
+      return mt5GenerateTimeSid();
     }
     const base = normalizePublicSidBase(baseRaw, fallbackPrefix);
     for (let i = 0; i < 120; i += 1) {
