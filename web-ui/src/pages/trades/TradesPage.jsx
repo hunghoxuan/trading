@@ -733,9 +733,16 @@ export default function TradesPage() {
                       className={tradeKeyOf(selectedTrade) === tradeKeyOf(t) ? "active" : ""}
                       onClick={() => {
                         const k = tradeKeyOf(t);
-                        selectedTradeIdRef.current = k;
-                        setSelectedTrade(t);
-                        navigate(`/trades/${k}`, { replace: true });
+                        if (tradeKeyOf(selectedTrade) === k) {
+                          // Deselect — back to list
+                          setSelectedTrade(null);
+                          selectedTradeIdRef.current = "";
+                          navigate("/trades", { replace: true });
+                        } else {
+                          selectedTradeIdRef.current = k;
+                          setSelectedTrade(t);
+                          navigate(`/trades/${k}`, { replace: true });
+                        }
                       }}
                     >
                       <td onClick={(e) => e.stopPropagation()}>

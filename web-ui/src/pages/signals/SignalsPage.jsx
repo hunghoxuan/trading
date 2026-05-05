@@ -686,10 +686,18 @@ export default function SignalsPage() {
                       className={signalRefOf(selectedSignal) === signalRefOf(t) ? "active" : ""}
                       onClick={() => {
                         const ref = signalRefOf(t);
-                        selectedSignalIdRef.current = ref;
-                        setCreateMode(false);
-                        setSelectedSignal(t);
-                        navigate(`/signals/${ref}`, { replace: true });
+                        if (signalRefOf(selectedSignal) === ref) {
+                          // Deselect — back to list
+                          setSelectedSignal(null);
+                          selectedSignalIdRef.current = "";
+                          setCreateMode(false);
+                          navigate("/signals", { replace: true });
+                        } else {
+                          selectedSignalIdRef.current = ref;
+                          setCreateMode(false);
+                          setSelectedSignal(t);
+                          navigate(`/signals/${ref}`, { replace: true });
+                        }
                       }}
                     >
                       <td onClick={e => e.stopPropagation()}>

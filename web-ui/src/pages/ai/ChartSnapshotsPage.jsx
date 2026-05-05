@@ -1943,8 +1943,12 @@ export default function ChartSnapshotsPage() {
 
   const setCfgField = (key, value) => {
     setCfg((prev) => ({ ...prev, [key]: value }));
-    if (key === "symbol" && value) {
-      navigate(`/ai/browser/${encodeURIComponent(value)}`, { replace: true });
+    if (key === "symbol") {
+      if (value) {
+        navigate(`/ai/browser/${encodeURIComponent(value)}`, { replace: true });
+      } else {
+        navigate("/ai/browser", { replace: true });
+      }
     }
   };
   const resetPositionLocal = () => {
