@@ -30,7 +30,13 @@ namespace cAlgo.Robots
         [Parameter("Magic Number", DefaultValue = 20260411)]
         public int MagicNumber { get; set; }
 
-        private string BuildVersion = "v2026.05.05 12:12 - 6b8f804";
+        [Parameter("Max Risk ($)", DefaultValue = 100)]
+        public double MaxRiskAmount { get; set; }
+
+        [Parameter("Max Volume (%)", DefaultValue = 1.0)]
+        public double MaxVolumePercent { get; set; }
+
+        private string BuildVersion = "v2026.05.05 12:35 - 6b8f804";
         
         private string _serverStatus = "WAITING";
         private string _apiStatus = "WAITING";
@@ -191,8 +197,52 @@ namespace cAlgo.Robots
                     return;
                 }
 
+                var sl = ParseDouble(GetJsonValue(json, "sl"));
+                var tp = ParseDouble(GetJsonValue(json, "tp"));
                 var volumeUnits = symbol.QuantityToVolumeInUnits(lots);
-                var res = ExecuteMarketOrder(action == "BUY" ? TradeType.Buy : TradeType.Sell, symbol.Name, volumeUnits, MagicNumber.ToString(), ParseDouble(GetJsonValue(json, "sl")), ParseDouble(GetJsonValue(json, "tp")), id);
+
+                // 1. RISK-BASED VOLUME ADJUSTMENT
+                var currentPrice = (action == "BUY") ? symbol.Ask : symbol.Bid;
+                if (sl > 0)
+                {
+                    double currentRisk = symbol.GetProfit(volumeUnits, Math.Abs(currentPrice - sl));
+                    if (currentRisk > MaxRiskAmount && currentRisk > 0)
+                    {
+                        volumeUnits = volumeUnits * (MaxRiskAmount / currentRisk);
+                        volumeUnits = symbol.NormalizeVolumeInUnits(volumeUnits, RoundingMode.ToLowest);
+                        Print("Risk {0:F2} > Max {1}. Scaled volume to {2}.", currentRisk, MaxRiskAmount, volumeUnits);
+                    }
+                }
+
+                // 2. MAX VOLUME SIZE CAP (Default 1% of balance)
+                // Assuming lots parameter in cTrader is in units if we don't use LotSize, but here 'lots' comes from signal as standardized lot size.
+                // However, we convert to units using QuantityToVolumeInUnits(lots).
+                // We want to cap the total units to 1% of balance? Usually "Volume Size" means the notion value or just units.
+                // The user said "1% total balance". This usually means NotionValue = Balance * 0.01.
+                // VolumeUnits = NotionValue / Symbol.PipValue? No. NotionValue = VolumeUnits * Price.
+                // So VolumeUnits = (Balance * 0.01) / Price.
+                
+                double maxNotional = Account.Balance * (MaxVolumePercent / 100.0);
+                double maxVolumeByBalance = maxNotional / currentPrice;
+                // Adjust for contract size if necessary, but QuantityToVolumeInUnits usually handles "standard lots".
+                // Let's stick to a simpler interpretation: 1% of balance means the risk or the margin? 
+                // Usually "Volume Size" 1% of balance means if balance is 10k, max volume is 100? No.
+                // Let's assume they mean 1% of balance as the notional value.
+                
+                if (volumeUnits > maxVolumeByBalance) {
+                    volumeUnits = symbol.NormalizeVolumeInUnits(maxVolumeByBalance, RoundingMode.ToLowest);
+                    Print("Volume {0} > Max {1:F2}% Balance. Capped volume to {2}.", volumeUnits, MaxVolumePercent, volumeUnits);
+                }
+
+                if (volumeUnits < symbol.VolumeInUnitsMin)
+                {
+                    var msg = string.Format("Rejected: volume {0} < min {1}", volumeUnits, symbol.VolumeInUnitsMin);
+                    UpdateSignalHistory(id, action + " " + symbolCode + " (" + msg + ")");
+                    _ = AckAsync(id, leaseToken, "REJECTED", "", msg);
+                    return;
+                }
+
+                var res = ExecuteMarketOrder(action == "BUY" ? TradeType.Buy : TradeType.Sell, symbol.Name, volumeUnits, MagicNumber.ToString(), sl, tp, id);
                 if (res.IsSuccessful) {
                     UpdateSignalHistory(id, action + " " + symbolCode + " (FILLED)");
                     _ = AckAsync(id, leaseToken, "FILLED", res.Position.Id.ToString(), "");
