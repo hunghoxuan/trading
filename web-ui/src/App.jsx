@@ -233,9 +233,9 @@ export default function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/signals" element={<SignalsPage />} />
-          <Route path="/signals/:signalId" element={<SignalDetailPage />} />
+          <Route path="/signals/:signalId" element={<SignalsPage />} />
           <Route path="/trades" element={<TradesPage />} />
-          <Route path="/trades/:tradeId" element={<V2TradeDetailPage />} />
+          <Route path="/trades/:tradeId" element={<TradesPage />} />
           <Route path="/ai" element={<Navigate to="/ai/browser" replace />} />
           <Route path="/ai/browser" element={<ChartSnapshotsPage />} />
           <Route path="/ai/browser/:symbol" element={<ChartSnapshotsPage />} />
