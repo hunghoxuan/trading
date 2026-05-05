@@ -36,10 +36,10 @@ namespace cAlgo.Robots
         [Parameter("Max Volume (%)", DefaultValue = 1.0)]
         public double MaxVolumePercent { get; set; }
 
-        private string BuildVersion = "v2026.05.05 13:12 - 6b8f804";
+        private string BuildVersion = "v2026.05.05 13:31 - 6b8f804";
         
-        private string _serverStatus = "...";
-        private string _apiStatus = "...";
+        private string _serverStatus = "WAITING";
+        private string _apiStatus = "WAITING";
         private string _pollStatus = "IDLE";
         private string _syncStatus = "IDLE";
         
@@ -60,7 +60,7 @@ namespace cAlgo.Robots
         private HashSet<string> _syncedClosedTickets = new HashSet<string>();
 
 
-        private HttpClient _httpClient = new HttpClient();
+        private HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
         private bool _isBusy = false;
 
         protected override void OnStart()
@@ -129,8 +129,11 @@ namespace cAlgo.Robots
                 {
                     request.Headers.Add("x-api-key", EaApiKey);
                     var response = await _httpClient.SendAsync(request);
-                    _serverStatus = response.IsSuccessStatusCode || (int)response.StatusCode < 500 ? "OK" : "ERR " + (int)response.StatusCode;
                     
+                    // Server is valid if it responds with anything < 500
+                    _serverStatus = (int)response.StatusCode < 500 ? "OK" : "SERVER_ERR";
+                    
+                    // API is valid only if 200 OK
                     if (response.IsSuccessStatusCode)
                     {
                         _apiStatus = "OK";
@@ -143,13 +146,19 @@ namespace cAlgo.Robots
                     }
                     else
                     {
+                        _apiStatus = (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden) ? "KEY_INVALID" : "ERR_" + (int)response.StatusCode;
                         _pollStatus = "FAIL";
                         _lastPollErr = await response.Content.ReadAsStringAsync();
                         if (string.IsNullOrEmpty(_lastPollErr)) _lastPollErr = "HTTP " + (int)response.StatusCode;
                     }
                 }
             }
-            catch (Exception ex) { _pollStatus = "CONN_ERR"; _lastPollErr = ex.Message; }
+            catch (Exception ex) { 
+                _serverStatus = "OFFLINE";
+                _apiStatus = "???";
+                _pollStatus = "ERROR"; 
+                _lastPollErr = ex.Message; 
+            }
         }
 
         private void ProcessResponse(string json)
@@ -276,17 +285,27 @@ namespace cAlgo.Robots
                 var content = new StringContent(payload, Encoding.UTF8, "application/json");
                 content.Headers.Add("x-api-key", EaApiKey);
                 var response = await _httpClient.PostAsync(ServerBaseUrl.TrimEnd('/') + "/v2/broker/sync", content);
+                
+                _serverStatus = (int)response.StatusCode < 500 ? "OK" : "SERVER_ERR";
+                
                 if (response.IsSuccessStatusCode) {
+                    _apiStatus = "OK";
                     _syncCount++; _syncStatus = "OK"; _lastSyncTime = DateTime.Now; _lastSyncErr = "None";
                     var json = await response.Content.ReadAsStringAsync();
                     ParseSyncResults(json);
                 } else { 
+                    _apiStatus = (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden) ? "KEY_INVALID" : "ERR_" + (int)response.StatusCode;
                     _syncStatus = "FAIL (" + (int)response.StatusCode + ")"; 
                     _lastSyncErr = await response.Content.ReadAsStringAsync();
                     if (string.IsNullOrEmpty(_lastSyncErr)) _lastSyncErr = "Server Rejected Payload";
                 }
             }
-            catch (Exception ex) { _syncStatus = "ERROR"; _lastSyncErr = ex.Message; }
+            catch (Exception ex) { 
+                _serverStatus = "OFFLINE";
+                _apiStatus = "???";
+                _syncStatus = "ERROR"; 
+                _lastSyncErr = ex.Message; 
+            }
         }
 
         private void ParseSyncResults(string json)
