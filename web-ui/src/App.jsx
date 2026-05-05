@@ -16,6 +16,7 @@ import SnapshotsPage from "./pages/system/SnapshotsPage";
 import StoragePage from "./pages/system/StoragePage";
 import CachePage from "./pages/system/CachePage";
 import EventsPage from "./pages/system/EventsPage";
+import ToolsPage from "./pages/tools/ToolsPage";
 import { api, getRuntimeActiveUserId, setRuntimeActiveUserId } from "./api";
 import LoginPage from "./pages/LoginPage";
 import SessionClockBar from "./components/SessionClockBar";
@@ -175,6 +176,8 @@ export default function App() {
                 <NavLink to="/system/events">Events</NavLink>
                 <NavLink to="/system/users">Users</NavLink>
                 <NavLink to="/system/sources">Sources</NavLink>
+                <hr style={{ border: '0', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '4px 0' }} />
+                <NavLink to="/tools">🛠 Tools</NavLink>
               </div>
             </div>
           )}
@@ -246,6 +249,7 @@ export default function App() {
           <Route path="/system/users" element={canAccessSystemPages ? <UsersPage authUser={authUser} /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/accounts" element={canAccessSystemPages ? <AccountsV2Page /> : <Navigate to="/dashboard" replace />} />
           <Route path="/system/sources" element={canAccessSystemPages ? <SourcesPage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/tools" element={<ToolsPage />} />
           <Route path="/snapshots" element={<Navigate to="/system/files" replace />} />
           <Route path="/storage" element={<Navigate to="/system/storage" replace />} />
           <Route path="/cache" element={<Navigate to="/system/cache" replace />} />

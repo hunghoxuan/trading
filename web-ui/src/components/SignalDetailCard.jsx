@@ -338,9 +338,13 @@ export function SignalDetailCard({
     if (chart?.enabled) {
       const initial = [];
 
-      // Default TFs based on User Request: { signal_TF, 15m, 4h, 1d }
+      // Trade detail chart defaults must stay stable and explicit.
+      // Do not derive from signal/chart interval because values like "15"
+      // can create duplicate tiles (15m + 15) and hide 5m.
       const signalTf = (chart.interval || "").toLowerCase();
-      const defaults = [signalTf, "15m", "4h", "d"];
+      const defaults = tradePlan?.enabled
+        ? ["d", "4h", "15m", "5m"]
+        : [signalTf, "15m", "4h", "d"];
 
       defaults.forEach((tf) => {
         const t = String(tf || "")

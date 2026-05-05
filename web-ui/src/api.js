@@ -847,6 +847,7 @@ export const api = {
   notificationEvents: () => get("/v2/notifications/events"),
   notificationSettings: () => get("/v2/notifications/settings"),
   notificationSaveSettings: (settings) => post("/v2/notifications/settings", { settings }),
+  notificationTest: (payload = {}) => post("/v2/notifications/test", payload),
   deleteSetting: (type, name) =>
     del(`/v2/settings/${encodeURIComponent(type)}/${encodeURIComponent(name)}`),
 };

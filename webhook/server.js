@@ -16433,6 +16433,30 @@ const appHandler = async (req, res) => {
     }
   }
 
+  if (req.method === "POST" && url.pathname === "/v2/notifications/test") {
+    if (!requireAuthForUi(req, res)) return;
+    try {
+      const sess = getUiSessionFromReq(req);
+      const payload = await readJson(req).catch(() => ({}));
+      const ev = {
+        user_id: sess.user_id,
+        page: payload.page || null,
+        event: payload.event || "system_event",
+        message: payload.message || "🧪 Test notification — all channels firing",
+        type: payload.type || "info",
+        notification: payload.notification !== false,
+        console_log: payload.console_log !== false,
+        ticker: payload.ticker !== false,
+        need_refresh: payload.need_refresh || false,
+        sound: payload.sound || null,
+      };
+      emitNotification(ev);
+      return json(res, 200, { ok: true, sent: ev });
+    } catch (e) {
+      return json(res, 400, { ok: false, error: e.message });
+    }
+  }
+
   const DEFAULT_EVENT_TYPES = [
     { event: "trade_added", notification: true, console_log: false, ticker: true, refresh: false, sound: "NEW_SIGNAL" },
     { event: "trade_updated", notification: false, console_log: false, ticker: true, refresh: false, sound: null },
